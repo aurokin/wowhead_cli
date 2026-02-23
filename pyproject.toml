@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wowhead-cli"
+version = "0.1.0"
+description = "Agent-first CLI for querying Wowhead"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "httpx>=0.28.1,<1.0.0",
+  "orjson>=3.10.16,<4.0.0",
+  "typer>=0.12.5,<1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.5,<9.0.0",
+]
+
+[project.scripts]
+wowhead = "wowhead_cli.main:run"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "live: live network contract tests against Wowhead endpoints",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wowhead_cli"]
