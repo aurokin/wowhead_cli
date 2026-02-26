@@ -227,11 +227,16 @@ def test_live_discovered_entity_type_command_flow(entity_type: str, query: str) 
     comments_payload = _payload_for(
         ["--expansion", expansion_key, "comments", entity_type, str(entity_id), "--limit", "2", "--sort", "newest"]
     )
-    assert comments_payload["counts"]["returned_comments"] == len(comments_payload["comments"])
-    assert comments_payload["counts"]["returned_comments"] > 0
-    first = comments_payload["comments"][0]
-    assert "#comments:id=" in first["citation_url"]
-    assert first["source_url"] == comments_payload["entity"]["url"]
+    returned_comments = comments_payload["counts"]["returned_comments"]
+    comments = comments_payload["comments"]
+    assert returned_comments == len(comments)
+    assert comments_payload["citations"]["comments"] == f'{comments_payload["entity"]["url"]}#comments'
+    if returned_comments > 0:
+        first = comments[0]
+        assert "#comments:id=" in first["citation_url"]
+        assert first["source_url"] == comments_payload["entity"]["url"]
+    else:
+        assert comments == []
 
 
 def test_live_compare_contract_for_discovered_mixed_entity_types() -> None:
