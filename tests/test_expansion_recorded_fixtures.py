@@ -75,7 +75,7 @@ def _install_recorded_transport(monkeypatch: pytest.MonkeyPatch, expansion_key: 
         comment=FIXTURE["comment"],
     )
 
-    def fake_get_json(self, url: str, params: dict[str, Any] | None = None):  # noqa: ANN001
+    def fake_get_json(self, url: str, params: dict[str, Any] | None = None, **kwargs):  # noqa: ANN001
         params = params or {}
         if url == search_url:
             assert params == {"q": FIXTURE["query"]}
@@ -88,7 +88,7 @@ def _install_recorded_transport(monkeypatch: pytest.MonkeyPatch, expansion_key: 
             return deepcopy(replies_payload)
         raise AssertionError(f"Unexpected JSON request for {expansion_key}: url={url} params={params}")
 
-    def fake_get_text(self, url: str, params: dict[str, Any] | None = None):  # noqa: ANN001
+    def fake_get_text(self, url: str, params: dict[str, Any] | None = None, **kwargs):  # noqa: ANN001
         assert params in ({}, None)
         if url == page_url:
             return page_html

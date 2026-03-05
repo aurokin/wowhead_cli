@@ -637,7 +637,6 @@ def entity(
         },
         "data_env": data_env if data_env is not None else cfg.expansion.data_env,
         "comments_included": include_comments,
-        "all_comments_included": all_comments_included,
         "tooltip": tooltip,
         "citations": {
             "page": page_url,
@@ -648,6 +647,7 @@ def entity(
         comments_payload: dict[str, Any] = {
             "count": len(raw_comments),
             "all_comments_included": all_comments_included,
+            "needs_raw_fetch": not all_comments_included,
         }
         if include_all_comments:
             comments_payload["items"] = all_comments

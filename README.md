@@ -10,6 +10,20 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
+## Local Dev Deploy
+
+```bash
+# setup/update editable install and link ~/.local/bin/wowhead
+make dev-deploy
+wowhead search "defias"
+
+# optional: update venv only (no ~/.local/bin changes)
+make dev-deploy-no-link
+```
+
+This project uses editable install mode (`pip install -e`), so code changes are immediately reflected without rebuilding.
+If `wowhead` is not found, add `~/.local/bin` to your `PATH`.
+
 ## Usage
 
 ```bash
@@ -33,7 +47,7 @@ wowhead expansions
 Default output is compact JSON for machine consumption. Use `--pretty` for human-readable JSON.
 Use global `--expansion` to target a version profile; default is `retail`.
 Use `guide` to resolve Wowhead guide IDs/URLs and retrieve metadata plus sampled comments.
-Use `entity` to include comments in the same lookup, skip them with `--no-include-comments`, or return full comment sets with `--include-all-comments`; check `all_comments_included` in output for completeness.
+Use `entity` to include comments in the same lookup, skip them with `--no-include-comments`, or return full comment sets with `--include-all-comments`; use `comments.needs_raw_fetch` to decide if raw comments fetching is still needed.
 Use `--normalize-canonical-to-expansion` if you want canonical page URLs forced into the selected expansion path.
 Use `--compact` to truncate long string fields (for example, tooltip HTML blobs).
 Use `--fields` to project only selected dot-paths from the JSON payload.

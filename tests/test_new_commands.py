@@ -239,6 +239,7 @@ def test_entity_respects_expansion_flag(monkeypatch) -> None:
     assert payload["data_env"] == 4
     assert payload["comments"]["count"] == 1
     assert payload["comments"]["all_comments_included"] is True
+    assert payload["comments"]["needs_raw_fetch"] is False
     assert payload["comments"]["top"][0]["citation_url"].endswith("#comments:id=11")
 
 
@@ -259,7 +260,6 @@ def test_entity_supports_excluding_comments(monkeypatch) -> None:
 
     payload = json.loads(result.stdout)
     assert payload["comments_included"] is False
-    assert payload["all_comments_included"] is False
     assert "comments" not in payload
     assert payload["citations"]["page"] == "https://www.wowhead.com/item=19019"
     assert page_calls == []
@@ -279,9 +279,9 @@ def test_entity_supports_include_all_comments(monkeypatch) -> None:
 
     payload = json.loads(result.stdout)
     assert payload["comments_included"] is True
-    assert payload["all_comments_included"] is True
     assert payload["comments"]["count"] == 1
     assert payload["comments"]["all_comments_included"] is True
+    assert payload["comments"]["needs_raw_fetch"] is False
     assert "items" in payload["comments"]
     assert "top" not in payload["comments"]
     assert payload["comments"]["items"][0]["id"] == 11
@@ -311,8 +311,8 @@ def test_entity_marks_partial_comments_when_more_than_top_limit(monkeypatch) -> 
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["all_comments_included"] is False
     assert payload["comments"]["all_comments_included"] is False
+    assert payload["comments"]["needs_raw_fetch"] is True
     assert payload["comments"]["count"] == 4
     assert len(payload["comments"]["top"]) == 3
 
