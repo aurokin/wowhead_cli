@@ -15,9 +15,12 @@ pip install -e '.[dev]'
 ```bash
 wowhead search "defias"
 wowhead --expansion wotlk search "thunderfury"
+wowhead guide 3143
 wowhead --pretty search "defias"
 wowhead --fields query,count,results search "defias"
 wowhead entity item 19019
+wowhead entity item 19019 --no-include-comments
+wowhead entity item 19019 --include-all-comments
 wowhead --compact entity item 19019
 wowhead --expansion classic entity item 19019
 wowhead --expansion ptr --normalize-canonical-to-expansion entity-page item 19019
@@ -29,6 +32,8 @@ wowhead expansions
 
 Default output is compact JSON for machine consumption. Use `--pretty` for human-readable JSON.
 Use global `--expansion` to target a version profile; default is `retail`.
+Use `guide` to resolve Wowhead guide IDs/URLs and retrieve metadata plus sampled comments.
+Use `entity` to include comments in the same lookup, skip them with `--no-include-comments`, or return full comment sets with `--include-all-comments`; check `all_comments_included` in output for completeness.
 Use `--normalize-canonical-to-expansion` if you want canonical page URLs forced into the selected expansion path.
 Use `--compact` to truncate long string fields (for example, tooltip HTML blobs).
 Use `--fields` to project only selected dot-paths from the JSON payload.

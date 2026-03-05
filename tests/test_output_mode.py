@@ -48,7 +48,11 @@ def test_compact_flag_truncates_long_string_fields(monkeypatch) -> None:
             "tooltip": "x" * 800,
         }
 
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return "<html><body><script>var lv_comments0 = [];</script></body></html>"
+
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
     result = runner.invoke(app, ["--compact", "entity", "item", "19019"])
     assert result.exit_code == 0
 
@@ -83,7 +87,11 @@ def test_fields_flag_supports_nested_paths(monkeypatch) -> None:
     def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
         return {"name": "Thunderfury", "quality": 5}
 
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return "<html><body><script>var lv_comments0 = [];</script></body></html>"
+
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
     result = runner.invoke(app, ["--fields", "entity.url,tooltip.name", "entity", "item", "19019"])
     assert result.exit_code == 0
 

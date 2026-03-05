@@ -19,8 +19,10 @@ from wowhead_cli.page_parser import (
     sort_comments,
 )
 from wowhead_cli.wowhead_client import (
+    WOWHEAD_BASE_URL,
     WowheadClient,
     entity_url,
+    guide_url,
     search_url,
     suggestion_entity_type,
 )
@@ -28,6 +30,10 @@ from wowhead_cli.wowhead_client import (
 app = typer.Typer(
     add_completion=False,
     help="Agent-first CLI for querying Wowhead without browser automation.",
+)
+
+EXPANSION_PREFIXES = frozenset(
+    profile.path_prefix for profile in list_profiles() if profile.path_prefix
 )
 
 
@@ -72,6 +78,78 @@ def _parse_entity_ref_token(token: str) -> tuple[str, int]:
     if entity_id <= 0:
         raise ValueError(f"Entity id must be positive in {token!r}.")
     return entity_type, entity_id
+
+
+def _parse_guide_id_token(token: str) -> int | None:
+    value = token.strip()
+    if not value:
+        return None
+    if value.isdigit():
+        guide_id = int(value)
+    elif value.startswith("guide="):
+        raw_id = value.split("=", 1)[1]
+        if not raw_id.isdigit():
+            raise ValueError(f"Invalid guide id in {token!r}.")
+        guide_id = int(raw_id)
+    else:
+        return None
+    if guide_id <= 0:
+        raise ValueError(f"Guide id must be positive in {token!r}.")
+    return guide_id
+
+
+def _extract_guide_id_from_path(path: str) -> int | None:
+    for segment in [part for part in path.split("/") if part]:
+        if not segment.startswith("guide="):
+            continue
+        raw_id = segment.split("=", 1)[1]
+        if not raw_id.isdigit():
+            raise ValueError(f"Invalid guide id in path {path!r}.")
+        guide_id = int(raw_id)
+        if guide_id <= 0:
+            raise ValueError(f"Guide id must be positive in path {path!r}.")
+        return guide_id
+    return None
+
+
+def _resolve_guide_lookup_input(
+    token: str,
+    *,
+    expansion: ExpansionProfile,
+) -> tuple[str, int | None]:
+    raw = token.strip()
+    if not raw:
+        raise ValueError("Guide reference cannot be empty.")
+
+    direct_id = _parse_guide_id_token(raw)
+    if direct_id is not None:
+        return guide_url(direct_id, expansion=expansion), direct_id
+
+    parsed = urlparse(raw)
+    if parsed.scheme in {"http", "https"}:
+        host = (parsed.hostname or "").lower()
+        if host != "wowhead.com" and not host.endswith(".wowhead.com"):
+            raise ValueError("Guide URL must point to wowhead.com.")
+        if not parsed.path:
+            raise ValueError("Guide URL is missing a path.")
+        guide_id = _extract_guide_id_from_path(parsed.path)
+        return raw, guide_id
+
+    normalized = raw.lstrip("/")
+    if not normalized:
+        raise ValueError("Guide reference cannot be empty.")
+
+    relative_id = _parse_guide_id_token(normalized)
+    if relative_id is not None:
+        return guide_url(relative_id, expansion=expansion), relative_id
+
+    root_segment = normalized.split("/", 1)[0]
+    if root_segment in EXPANSION_PREFIXES:
+        lookup_url = f"{WOWHEAD_BASE_URL}/{normalized}"
+    else:
+        lookup_url = f"{expansion.wowhead_base}/{normalized}"
+    guide_id = _extract_guide_id_from_path(f"/{normalized}")
+    return lookup_url, guide_id
 
 
 def _truncate_text(value: Any, *, max_chars: int) -> str | None:
@@ -327,17 +405,19 @@ def search(
             continue
         entity_type = suggestion_entity_type(row)
         entity_id = row.get("id")
+        candidate_url: str | None = None
+        if isinstance(entity_id, int):
+            if entity_type == "guide":
+                candidate_url = guide_url(entity_id, expansion=cfg.expansion)
+            elif entity_type:
+                candidate_url = entity_url(entity_type, entity_id, expansion=cfg.expansion)
         candidate = {
             "id": entity_id,
             "name": row.get("name"),
             "type_id": row.get("type"),
             "type_name": row.get("typeName"),
             "entity_type": entity_type,
-            "url": (
-                entity_url(entity_type, entity_id, expansion=cfg.expansion)
-                if entity_type and isinstance(entity_id, int)
-                else None
-            ),
+            "url": candidate_url,
             "metadata": {
                 "popularity": row.get("popularity"),
                 "icon": row.get("icon"),
@@ -359,6 +439,114 @@ def search(
     _emit(ctx, payload)
 
 
+@app.command("guide")
+def guide(
+    ctx: typer.Context,
+    guide_ref: str = typer.Argument(
+        ...,
+        help="Guide id, Wowhead guide URL, or guide path.",
+    ),
+    comment_sample: int = typer.Option(
+        3,
+        "--comment-sample",
+        min=0,
+        max=20,
+        help="Top comments to include (sorted by rating).",
+    ),
+    comment_chars: int = typer.Option(
+        320,
+        "--comment-chars",
+        min=60,
+        max=2000,
+        help="Maximum characters for each sampled comment body.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    try:
+        lookup_url, guide_id = _resolve_guide_lookup_input(guide_ref, expansion=cfg.expansion)
+    except ValueError as exc:
+        _fail(ctx, "invalid_argument", str(exc))
+
+    client = WowheadClient(expansion=cfg.expansion)
+    try:
+        default_lookup = guide_url(guide_id, expansion=cfg.expansion) if guide_id is not None else None
+        if guide_id is not None and lookup_url == default_lookup:
+            html = client.guide_page_html(guide_id)
+        else:
+            html = client.page_html(lookup_url)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+
+    metadata = parse_page_metadata(html, fallback_url=lookup_url)
+    canonical_url = metadata["canonical_url"] or lookup_url
+
+    raw_comments: list[dict[str, Any]]
+    try:
+        raw_comments = extract_comments_dataset(html)
+    except ValueError:
+        raw_comments = []
+
+    sampled_comments: list[dict[str, Any]] = []
+    if comment_sample > 0 and raw_comments:
+        ranked = sort_comments(raw_comments, "rating")
+        sampled_norm = normalize_comments(
+            ranked[:comment_sample],
+            page_url=canonical_url,
+            include_replies=False,
+        )
+        for row in sampled_norm:
+            sampled_comments.append(
+                {
+                    "id": row.get("id"),
+                    "user": row.get("user"),
+                    "rating": row.get("rating"),
+                    "date": row.get("date"),
+                    "body": _truncate_text(row.get("body"), max_chars=comment_chars),
+                    "citation_url": row.get("citation_url"),
+                }
+            )
+
+    page_meta_json = parse_page_meta_json(html)
+    payload: dict[str, Any] = {
+        "ok": True,
+        "expansion": cfg.expansion.key,
+        "guide": {
+            "input": guide_ref,
+            "id": guide_id,
+            "lookup_url": lookup_url,
+            "url": canonical_url,
+            "comments_url": f"{canonical_url}#comments",
+        },
+        "query": {
+            "comment_sample": comment_sample,
+            "comment_chars": comment_chars,
+        },
+        "page": {
+            "title": metadata["title"],
+            "description": metadata["description"],
+            "canonical_url": canonical_url,
+        },
+        "comments": {
+            "count": len(raw_comments),
+            "top": sampled_comments,
+        },
+        "citations": {
+            "page": canonical_url,
+            "comments": f"{canonical_url}#comments",
+        },
+    }
+    if isinstance(page_meta_json, dict):
+        payload["page_meta"] = {
+            "page": page_meta_json.get("page"),
+            "server_time": page_meta_json.get("serverTime"),
+            "available_data_envs": page_meta_json.get("availableDataEnvs"),
+            "env_domain": page_meta_json.get("envDomain"),
+        }
+    _emit(ctx, payload)
+
+
 @app.command("entity")
 def entity(
     ctx: typer.Context,
@@ -368,6 +556,16 @@ def entity(
         None,
         "--data-env",
         help="Override Wowhead tooltip dataEnv value. Defaults to selected expansion profile.",
+    ),
+    include_comments: bool = typer.Option(
+        True,
+        "--include-comments/--no-include-comments",
+        help="Include page comments in entity output.",
+    ),
+    include_all_comments: bool = typer.Option(
+        False,
+        "--include-all-comments/--top-comments-only",
+        help="Include all parsed comments instead of only a top-rated summary.",
     ),
 ) -> None:
     cfg = _cfg(ctx)
@@ -382,6 +580,52 @@ def entity(
         _fail(ctx, "parse_error", str(exc))
 
     canonical = entity_url(entity_type, entity_id, expansion=cfg.expansion)
+    page_url = canonical
+    raw_comments: list[dict[str, Any]] = []
+    sampled_comments: list[dict[str, Any]] = []
+    all_comments: list[dict[str, Any]] = []
+    top_comment_limit = 3
+
+    if include_comments:
+        html, metadata = _fetch_entity_page(ctx, client, entity_type, entity_id)
+        page_url = metadata["canonical_url"] or canonical
+        try:
+            raw_comments = extract_comments_dataset(html)
+        except ValueError:
+            raw_comments = []
+
+        if include_all_comments:
+            all_comments = normalize_comments(
+                sort_comments(raw_comments, "newest"),
+                page_url=page_url,
+                include_replies=True,
+            )
+        else:
+            ranked = sort_comments(raw_comments, "rating")
+            sampled_norm = normalize_comments(
+                ranked[:top_comment_limit],
+                page_url=page_url,
+                include_replies=False,
+            )
+            for row in sampled_norm:
+                sampled_comments.append(
+                    {
+                        "id": row.get("id"),
+                        "user": row.get("user"),
+                        "rating": row.get("rating"),
+                        "date": row.get("date"),
+                        "body": _truncate_text(row.get("body"), max_chars=320),
+                        "citation_url": row.get("citation_url"),
+                    }
+                )
+
+    all_comments_included = False
+    if include_comments:
+        if include_all_comments:
+            all_comments_included = len(all_comments) == len(raw_comments)
+        else:
+            all_comments_included = len(sampled_comments) == len(raw_comments)
+
     payload = {
         "ok": True,
         "expansion": cfg.expansion.key,
@@ -392,8 +636,24 @@ def entity(
             "comments_url": f"{canonical}#comments",
         },
         "data_env": data_env if data_env is not None else cfg.expansion.data_env,
+        "comments_included": include_comments,
+        "all_comments_included": all_comments_included,
         "tooltip": tooltip,
+        "citations": {
+            "page": page_url,
+            "comments": f"{page_url}#comments",
+        },
     }
+    if include_comments:
+        comments_payload: dict[str, Any] = {
+            "count": len(raw_comments),
+            "all_comments_included": all_comments_included,
+        }
+        if include_all_comments:
+            comments_payload["items"] = all_comments
+        else:
+            comments_payload["top"] = sampled_comments
+        payload["comments"] = comments_payload
     _emit(ctx, payload)
 
 

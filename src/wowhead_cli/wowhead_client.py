@@ -7,6 +7,7 @@ from wowhead_cli.expansion_profiles import (
     ExpansionProfile,
     build_comment_replies_url,
     build_entity_url,
+    build_guide_lookup_url,
     build_search_suggestions_url,
     build_search_url,
     build_tooltip_url,
@@ -26,6 +27,7 @@ SUGGESTION_TYPE_TO_ENTITY: dict[int, str] = {
     111: "currency",
     112: "companion",
     101: "transmog-set",
+    100: "guide",
 }
 
 
@@ -74,6 +76,12 @@ class WowheadClient:
     def entity_page_html(self, entity_type: str, entity_id: int) -> str:
         return self._get_text(entity_url(entity_type, entity_id, expansion=self.expansion))
 
+    def guide_page_html(self, guide_id: int) -> str:
+        return self._get_text(guide_url(guide_id, expansion=self.expansion))
+
+    def page_html(self, page_url: str) -> str:
+        return self._get_text(page_url)
+
     def comment_replies(self, comment_id: int) -> list[dict[str, Any]]:
         url = build_comment_replies_url(self.expansion)
         payload = self._get_json(url, params={"id": comment_id})
@@ -96,6 +104,11 @@ def entity_url(
 ) -> str:
     profile = expansion if isinstance(expansion, ExpansionProfile) else resolve_expansion(expansion)
     return build_entity_url(profile, entity_type, entity_id)
+
+
+def guide_url(guide_id: int, expansion: str | ExpansionProfile | None = None) -> str:
+    profile = expansion if isinstance(expansion, ExpansionProfile) else resolve_expansion(expansion)
+    return build_guide_lookup_url(profile, guide_id)
 
 
 def search_url(query: str, expansion: str | ExpansionProfile | None = None) -> str:

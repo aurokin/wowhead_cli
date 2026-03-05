@@ -135,6 +135,10 @@ def build_entity_url(profile: ExpansionProfile, entity_type: str, entity_id: int
     return f"{profile.wowhead_base}/{entity_type}={entity_id}"
 
 
+def build_guide_lookup_url(profile: ExpansionProfile, guide_id: int) -> str:
+    return f"{profile.wowhead_base}/guide={guide_id}"
+
+
 def build_search_url(profile: ExpansionProfile, query: str) -> str:
     return f"{profile.wowhead_base}/search?q={quote(query)}"
 
