@@ -331,11 +331,12 @@ def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
     assert payload["matches"]["gatherer_entities"][0]["name"] == "Bellamy's Final Judgement"
     assert payload["top"][0]["score"] >= 1
 
-    result = runner.invoke(app, ["guide-query", str(export_dir), "spell", "--limit", "3"])
+    result = runner.invoke(app, ["guide-query", str(export_dir), "obliterate", "--limit", "3"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["counts"]["linked_entities"] >= 1
     assert payload["matches"]["linked_entities"][0]["entity_type"] == "spell"
+    assert payload["matches"]["linked_entities"][0]["name"] == "Obliterate"
 
     result = runner.invoke(app, ["guide-query", str(export_dir), "welcome guide", "--limit", "2"])
     assert result.exit_code == 0

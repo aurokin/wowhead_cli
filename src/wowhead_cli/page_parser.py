@@ -53,6 +53,10 @@ META_DESCRIPTION_RE = re.compile(
     r"""<meta\b(?=[^>]*\bname=["']description["'])(?=[^>]*\bcontent=["']([^"']+)["'])[^>]*>""",
     re.IGNORECASE,
 )
+A_TAG_RE = re.compile(
+    r"""<a\b(?P<attrs>[^>]*)>(?P<body>.*?)</a>""",
+    re.IGNORECASE | re.DOTALL,
+)
 HREF_RE = re.compile(r"""href=(["'])(?P<href>.*?)\1""", re.IGNORECASE)
 ENTITY_PATH_RE = re.compile(
     r"""^/(?:(?:[a-z]{2}(?:-[A-Z]{2})?|[a-z0-9-]+)/)?(?P<etype>[a-z-]+)=(?P<eid>\d+)""",
@@ -297,6 +301,31 @@ def clean_markup_text(value: str) -> str:
 def extract_linked_entities_from_href(html_text: str, *, source_url: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     seen: set[tuple[str, int]] = set()
+
+    for match in A_TAG_RE.finditer(html_text):
+        href_match = HREF_RE.search(match.group("attrs"))
+        if href_match is None:
+            continue
+        href_raw = unescape(href_match.group("href"))
+        parsed = _parse_entity_ref(href_raw)
+        if parsed is None:
+            continue
+        entity_type, entity_id, absolute_url = parsed
+        key = (entity_type, entity_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append(
+            {
+                "entity_type": entity_type,
+                "id": entity_id,
+                "name": clean_markup_text(match.group("body")) or None,
+                "url": absolute_url,
+                "citation_url": absolute_url,
+                "source_url": source_url,
+                "source_kind": "href",
+            }
+        )
 
     for match in HREF_RE.finditer(html_text):
         href_raw = unescape(match.group("href"))

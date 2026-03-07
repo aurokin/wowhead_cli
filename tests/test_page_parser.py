@@ -35,7 +35,7 @@ def test_parse_page_metadata() -> None:
 def test_extract_linked_entities_from_href() -> None:
     html = """
     <a href="/item=19019/thunderfury">Thunderfury</a>
-    <a href="https://www.wowhead.com/cata/spell=21992/thunderfury">Spell</a>
+    <a href="https://www.wowhead.com/cata/spell=21992/thunderfury"><span>Spell</span></a>
     <a href="/fr/npc=12056/baron-geddon">Baron</a>
     <a href="https://example.com/item=1">Ignore</a>
     """
@@ -47,6 +47,10 @@ def test_extract_linked_entities_from_href() -> None:
     assert ("spell", 21992) in pairs
     assert ("npc", 12056) in pairs
     assert len(records) == 3
+    by_pair = {(row["entity_type"], row["id"]): row for row in records}
+    assert by_pair[("item", 19019)]["name"] == "Thunderfury"
+    assert by_pair[("spell", 21992)]["name"] == "Spell"
+    assert by_pair[("npc", 12056)]["name"] == "Baron"
 
 
 def test_extract_linked_entities_preserves_expansion_prefix_in_url() -> None:
