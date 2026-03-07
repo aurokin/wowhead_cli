@@ -333,6 +333,10 @@ def _slugify_path_fragment(value: str) -> str:
     return rendered or "guide"
 
 
+def _guide_export_root() -> Path:
+    return Path.cwd() / "wowhead_exports"
+
+
 def _default_guide_export_dir(payload: dict[str, Any]) -> Path:
     guide = payload.get("guide")
     page = payload.get("page")
@@ -343,7 +347,7 @@ def _default_guide_export_dir(payload: dict[str, Any]) -> Path:
         name = f"guide-{guide_id}-{_slugify_path_fragment(slug_source)}"
     else:
         name = f"guide-{_slugify_path_fragment(slug_source)}"
-    return Path.cwd() / "wowhead_exports" / name
+    return _guide_export_root() / name
 
 
 def _write_json_file(path: Path, payload: Any) -> None:
@@ -620,6 +624,42 @@ def _load_guide_export(export_dir: Path) -> dict[str, Any]:
         "gatherer_entities": load_jsonl_from_manifest("gatherer_entities_jsonl"),
         "comments": load_jsonl_from_manifest("comments_jsonl"),
     }
+
+
+def _discover_guide_corpora(root: Path) -> list[dict[str, Any]]:
+    if not root.exists() or not root.is_dir():
+        return []
+
+    corpora: list[dict[str, Any]] = []
+    for child in sorted(root.iterdir(), key=lambda path: path.name):
+        if not child.is_dir():
+            continue
+        manifest_path = child / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = _read_json_file(manifest_path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(manifest, dict):
+            continue
+
+        guide = manifest.get("guide")
+        page = manifest.get("page")
+        counts = manifest.get("counts")
+        corpora.append(
+            {
+                "path": str(child),
+                "guide_id": guide.get("id") if isinstance(guide, dict) else None,
+                "title": page.get("title") if isinstance(page, dict) else None,
+                "canonical_url": page.get("canonical_url") if isinstance(page, dict) else None,
+                "expansion": manifest.get("expansion"),
+                "export_version": manifest.get("export_version"),
+                "counts": counts if isinstance(counts, dict) else {},
+            }
+        )
+    corpora.sort(key=lambda row: ((row.get("title") or "").lower(), row["path"]))
+    return corpora
 
 
 @app.callback()
@@ -1191,6 +1231,29 @@ def guide_query(
             "comments": len(comment_matches),
         },
         "top": top_matches[:limit],
+    }
+    _emit(ctx, payload)
+
+
+@app.command("guide-corpus-list")
+def guide_corpus_list(
+    ctx: typer.Context,
+    root: Path | None = typer.Option(
+        None,
+        "--root",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        help="Root directory containing exported guide corpora. Defaults to ./wowhead_exports/.",
+    ),
+) -> None:
+    resolved_root = (root or _guide_export_root()).expanduser()
+    corpora = _discover_guide_corpora(resolved_root)
+    payload = {
+        "ok": True,
+        "root": str(resolved_root),
+        "count": len(corpora),
+        "corpora": corpora,
     }
     _emit(ctx, payload)
 

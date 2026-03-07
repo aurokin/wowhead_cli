@@ -366,6 +366,76 @@ def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
     assert payload["matches"]["comments"][0]["user"] == "A"
 
 
+def test_guide_corpus_list_discovers_exported_corpora(tmp_path) -> None:
+    root = tmp_path / "wowhead_exports"
+    corpus_a = root / "guide-3143-frost"
+    corpus_b = root / "guide-42-other"
+    junk = root / "not-a-corpus"
+    corpus_a.mkdir(parents=True)
+    corpus_b.mkdir(parents=True)
+    junk.mkdir(parents=True)
+
+    (corpus_a / "manifest.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "export_version": 1,
+                "expansion": "retail",
+                "output_dir": str(corpus_a),
+                "guide": {"id": 3143, "url": "https://www.wowhead.com/guide=3143"},
+                "page": {
+                    "title": "Frost Death Knight DPS Guide - Midnight",
+                    "canonical_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                },
+                "counts": {
+                    "sections": 11,
+                    "navigation_links": 15,
+                    "linked_entities": 27,
+                    "gatherer_entities": 52,
+                    "comments": 9,
+                },
+                "files": {"manifest_json": "manifest.json"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (corpus_b / "manifest.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "export_version": 1,
+                "expansion": "classic",
+                "output_dir": str(corpus_b),
+                "guide": {"id": 42, "url": "https://www.wowhead.com/guide=42"},
+                "page": {
+                    "title": "Arcane Mage Guide",
+                    "canonical_url": "https://www.wowhead.com/guide/classes/mage/arcane/overview-pve-dps",
+                },
+                "counts": {
+                    "sections": 4,
+                    "navigation_links": 6,
+                    "linked_entities": 5,
+                    "gatherer_entities": 3,
+                    "comments": 2,
+                },
+                "files": {"manifest_json": "manifest.json"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["guide-corpus-list", "--root", str(root)])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["root"] == str(root)
+    assert payload["count"] == 2
+    assert [row["guide_id"] for row in payload["corpora"]] == [42, 3143]
+    assert payload["corpora"][0]["title"] == "Arcane Mage Guide"
+    assert payload["corpora"][1]["counts"]["linked_entities"] == 27
+
+
 def test_entity_respects_expansion_flag(monkeypatch) -> None:
     calls = []
 
