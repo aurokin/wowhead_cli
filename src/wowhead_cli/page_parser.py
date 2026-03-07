@@ -59,6 +59,20 @@ ENTITY_PATH_RE = re.compile(
 )
 ASSIGNMENT_RE_TEMPLATE = r"""\bvar\s+{name}\s*="""
 GATHERER_RE = re.compile(r"""WH\.Gatherer\.addData\(\s*(?P<dtype>\d+)\s*,\s*(?P<tree>\d+)\s*,\s*""")
+SCRIPT_ID_TEMPLATE = r"""<script\b[^>]*\bid=["']{script_id}["'][^>]*>(?P<body>.*?)</script>"""
+GUIDE_HEADING_RE = re.compile(r"""\[(?P<tag>h[1-6])\b[^\]]*\](?P<body>.*?)\[/\1\]""", re.IGNORECASE | re.DOTALL)
+WOWHEAD_URL_TAG_RE = re.compile(r"""\[url(?:=(?P<url1>[^\]]+)|\s+guide=(?P<guide_id>\d+))\](?P<label>.*?)\[/url\]""", re.IGNORECASE | re.DOTALL)
+INLINE_TAG_RE = re.compile(r"""\[[^\]]+\]""")
+HTML_TAG_RE = re.compile(r"""<[^>]+>""")
+JSON_LD_RE = re.compile(
+    r"""<script\b[^>]*\btype=["']application/ld\+json["'][^>]*>(?P<body>.*?)</script>""",
+    re.IGNORECASE | re.DOTALL,
+)
+GUIDE_RATING_RE = re.compile(r"""GetStars\(\s*(?P<score>\d+(?:\.\d+)?)\s*,""", re.IGNORECASE)
+GUIDE_VOTES_RE = re.compile(
+    r"""id=["']guiderating-votes["']>(?P<votes>\d+)""",
+    re.IGNORECASE,
+)
 
 
 def canonical_comment_url(page_url: str, comment_id: int) -> str:
@@ -95,6 +109,189 @@ def parse_page_meta_json(html_text: str) -> dict[str, Any] | None:
     if isinstance(parsed, dict):
         return parsed
     return None
+
+
+def extract_json_script(html_text: str, script_id: str) -> Any:
+    pattern = re.compile(
+        SCRIPT_ID_TEMPLATE.format(script_id=re.escape(script_id)),
+        re.IGNORECASE | re.DOTALL,
+    )
+    match = pattern.search(html_text)
+    if match is None:
+        raise ValueError(f"Script for {script_id!r} not found.")
+    return json.loads(match.group("body").strip())
+
+
+def extract_json_ld(html_text: str) -> dict[str, Any] | list[Any] | None:
+    match = JSON_LD_RE.search(html_text)
+    if match is None:
+        return None
+    payload = match.group("body").strip()
+    if not payload:
+        return None
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(parsed, (dict, list)):
+        return parsed
+    return None
+
+
+def extract_markup_by_target(html_text: str, *, target: str) -> str | None:
+    marker = "WH.markup.printHtml("
+    start = 0
+    while True:
+        index = html_text.find(marker, start)
+        if index < 0:
+            return None
+        cursor = index + len(marker)
+        while cursor < len(html_text) and html_text[cursor].isspace():
+            cursor += 1
+
+        payload: str | None = None
+        if html_text.startswith("WH.getPageData(", cursor):
+            cursor += len("WH.getPageData(")
+            while cursor < len(html_text) and html_text[cursor].isspace():
+                cursor += 1
+            try:
+                data_key, offset = JSON_DECODER.raw_decode(html_text[cursor:])
+            except json.JSONDecodeError:
+                start = index + len(marker)
+                continue
+            cursor += offset
+            while cursor < len(html_text) and html_text[cursor].isspace():
+                cursor += 1
+            if cursor >= len(html_text) or html_text[cursor] != ")":
+                start = index + len(marker)
+                continue
+            cursor += 1
+            if not isinstance(data_key, str):
+                start = index + len(marker)
+                continue
+            try:
+                parsed = extract_json_script(html_text, f"data.{data_key}")
+            except (ValueError, json.JSONDecodeError):
+                start = index + len(marker)
+                continue
+            if isinstance(parsed, str):
+                payload = parsed
+        else:
+            try:
+                parsed, offset = JSON_DECODER.raw_decode(html_text[cursor:])
+            except json.JSONDecodeError:
+                start = index + len(marker)
+                continue
+            cursor += offset
+            if isinstance(parsed, str):
+                payload = parsed
+
+        while cursor < len(html_text) and html_text[cursor].isspace():
+            cursor += 1
+        if cursor >= len(html_text) or html_text[cursor] != ",":
+            start = index + len(marker)
+            continue
+        cursor += 1
+        while cursor < len(html_text) and html_text[cursor].isspace():
+            cursor += 1
+        try:
+            found_target, offset = JSON_DECODER.raw_decode(html_text[cursor:])
+        except json.JSONDecodeError:
+            start = index + len(marker)
+            continue
+        cursor += offset
+        if found_target == target and payload is not None:
+            return payload
+        start = index + len(marker)
+    return None
+
+
+def extract_guide_sections(markup_text: str) -> list[dict[str, Any]]:
+    sections: list[dict[str, Any]] = []
+    for match in GUIDE_HEADING_RE.finditer(markup_text):
+        tag = match.group("tag").lower()
+        sections.append(
+            {
+                "level": int(tag[1]),
+                "title": clean_markup_text(match.group("body")),
+            }
+        )
+    return sections
+
+
+def extract_guide_section_chunks(markup_text: str) -> list[dict[str, Any]]:
+    matches = list(GUIDE_HEADING_RE.finditer(markup_text))
+    chunks: list[dict[str, Any]] = []
+    for index, match in enumerate(matches):
+        tag = match.group("tag").lower()
+        title = clean_markup_text(match.group("body"))
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(markup_text)
+        raw_content = markup_text[start:end].strip()
+        chunks.append(
+            {
+                "ordinal": index + 1,
+                "level": int(tag[1]),
+                "title": title,
+                "content_raw": raw_content,
+                "content_text": clean_markup_text(raw_content),
+            }
+        )
+    return chunks
+
+
+def extract_markup_urls(markup_text: str, *, source_url: str) -> list[dict[str, str]]:
+    links: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for match in WOWHEAD_URL_TAG_RE.finditer(markup_text):
+        raw_url = match.group("url1")
+        guide_id = match.group("guide_id")
+        if guide_id:
+            raw_url = f"guide={guide_id}"
+        if not raw_url:
+            continue
+        absolute = urljoin(WOWHEAD_BASE_URL, raw_url)
+        key = (absolute, clean_markup_text(match.group("label")))
+        if key in seen:
+            continue
+        seen.add(key)
+        links.append(
+            {
+                "label": key[1],
+                "url": absolute,
+                "source_url": source_url,
+            }
+        )
+    return links
+
+
+def extract_guide_rating(html_text: str) -> dict[str, int | float | None]:
+    score: float | None = None
+    votes: int | None = None
+    score_match = GUIDE_RATING_RE.search(html_text)
+    if score_match is not None:
+        try:
+            score = float(score_match.group("score"))
+        except ValueError:
+            score = None
+    votes_match = GUIDE_VOTES_RE.search(html_text)
+    if votes_match is not None:
+        try:
+            votes = int(votes_match.group("votes"))
+        except ValueError:
+            votes = None
+    return {
+        "score": score,
+        "votes": votes,
+    }
+
+
+def clean_markup_text(value: str) -> str:
+    text = HTML_TAG_RE.sub(" ", value)
+    text = INLINE_TAG_RE.sub(" ", text)
+    text = unescape(text)
+    text = text.replace("\r", " ").replace("\n", " ")
+    return " ".join(text.split())
 
 
 def extract_linked_entities_from_href(html_text: str, *, source_url: str) -> list[dict[str, Any]]:

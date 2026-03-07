@@ -33,11 +33,26 @@ SAMPLE_GUIDE_HTML = """
     <meta name="description" content="Guide description">
     <link rel="canonical" href="https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps">
     <script type="application/json" id="data.pageMeta">{"page":"guide","serverTime":"2026-02-19T09:00:00-06:00","availableDataEnvs":[1,2,3],"envDomain":"wowhead.com"}</script>
+    <script type="application/ld+json">{"@context":"http://schema.org","@type":"Article","headline":"Frost Death Knight DPS Guide - Midnight","datePublished":"2015-03-11T18:36:20-05:00","dateModified":"2026-02-25T17:32:29-06:00","author":{"@type":"Person","name":"khazakdk"}}</script>
+    <script type="application/json" id="data.guide.author">"khazakdk"</script>
+    <script type="application/json" id="data.guide.author.profiles">{"discord":"https://discord.gg/acherus","youtube":"Khazakdk"}</script>
+    <script type="application/json" id="data.guide.aboutTheAuthor.embedData">{"username":"khazakdk","bio":"Writes DK guides."}</script>
+    <script type="application/json" id="data.wowhead-guide-nav">"[b]Spec Basics[/b][ul][li][url=guide/classes/death-knight/frost/overview-pve-dps]Overview[/url][/li][li][url=guide/classes/death-knight/frost/bis-gear]BiS Gear[/url][/li][/ul]"</script>
+    <script type="application/json" id="data.wowhead-guide-body">"[h2 toc=\\"Overview\\"]Frost Death Knight Overview[/h2]\\r\\nWelcome to the guide.\\r\\n[h3]Strengths[/h3]\\r\\n[ul][li][spell=49020]Big damage[/li][/ul]\\r\\n[url=guide/classes/death-knight/frost/bis-gear]Best in Slot Gear[/url]"</script>
   </head>
   <body>
+    <div class="interior-sidebar-rating-text">4.6/5 (<span class="guide-user-actions-rating-votes" id="guiderating-votes">70</span> Votes)</div>
     <script>
+      WH.markup.printHtml(WH.getPageData("wowhead-guide-nav"), "interior-sidebar-related-markup");
+      WH.markup.printHtml(WH.getPageData("wowhead-guide-body"), "guide-body", {"allow":30});
+      $(document).ready(function () {
+        $('#guiderating').append(GetStars(4.61597, false, 0, 3143));
+      });
+      WH.Gatherer.addData(3, 1, {"249277":{"name_enus":"Bellamy's Final Judgement"}});
       var lv_comments0 = [{"id": 91, "number": 0, "user": "A", "body": "Solid guide", "date": "2024-01-01T00:00:00-06:00", "rating": 7, "nreplies": 0, "replies": []}];
     </script>
+    <a href="/item=249277/bellamys-final-judgement">Bellamy's Final Judgement</a>
+    <a href="/spell=49020/obliterate">Obliterate</a>
   </body>
 </html>
 """
@@ -214,6 +229,140 @@ def test_guide_command_rejects_non_wowhead_url() -> None:
     result = runner.invoke(app, ["guide", "https://example.com/guide=3143"])
     assert result.exit_code != 0
     assert "Guide URL must point to wowhead.com" in result.output
+
+
+def test_guide_full_returns_rich_payload(monkeypatch) -> None:
+    def fake_guide_page_html(self, guide_id: int):  # noqa: ANN001
+        assert guide_id == 3143
+        return SAMPLE_GUIDE_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_page_html", fake_guide_page_html)
+    result = runner.invoke(app, ["guide-full", "3143"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["guide"]["id"] == 3143
+    assert payload["author"]["name"] == "khazakdk"
+    assert payload["rating"]["votes"] == 70
+    assert payload["body"]["sections"][0]["title"] == "Frost Death Knight Overview"
+    assert payload["body"]["section_chunks"][0]["content_text"] == "Welcome to the guide."
+    assert payload["navigation"]["links"][0]["url"] == "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps"
+    assert payload["linked_entities"]["count"] >= 2
+    assert payload["gatherer_entities"]["items"][0]["id"] == 249277
+    assert payload["comments"]["all_comments_included"] is True
+    assert payload["comments"]["items"][0]["citation_url"].endswith("#comments:id=91")
+    assert payload["structured_data"]["headline"] == "Frost Death Knight DPS Guide - Midnight"
+
+
+def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:
+    def fake_guide_page_html(self, guide_id: int):  # noqa: ANN001
+        assert guide_id == 3143
+        return SAMPLE_GUIDE_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_page_html", fake_guide_page_html)
+    export_dir = tmp_path / "guide-export"
+    result = runner.invoke(app, ["guide-export", "3143", "--out", str(export_dir)])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["output_dir"] == str(export_dir)
+    assert payload["counts"] == {
+        "sections": 2,
+        "navigation_links": 2,
+        "linked_entities": 2,
+        "gatherer_entities": 1,
+        "comments": 1,
+    }
+
+    expected_files = {
+        "manifest.json",
+        "guide.json",
+        "page.html",
+        "body.markup.txt",
+        "navigation.markup.txt",
+        "sections.jsonl",
+        "navigation-links.jsonl",
+        "linked-entities.jsonl",
+        "gatherer-entities.jsonl",
+        "comments.jsonl",
+        "structured-data.json",
+    }
+    assert expected_files.issubset({path.name for path in export_dir.iterdir()})
+
+    manifest = json.loads((export_dir / "manifest.json").read_text(encoding="utf-8"))
+    guide_json = json.loads((export_dir / "guide.json").read_text(encoding="utf-8"))
+    assert manifest["files"]["manifest_json"] == "manifest.json"
+    assert manifest["files"]["guide_json"] == "guide.json"
+    assert guide_json["guide"]["id"] == 3143
+
+    sections_lines = (export_dir / "sections.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    navigation_lines = (export_dir / "navigation-links.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    comments_lines = (export_dir / "comments.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    first_section = json.loads(sections_lines[0])
+    first_nav = json.loads(navigation_lines[0])
+    first_comment = json.loads(comments_lines[0])
+    assert first_section["ordinal"] == 1
+    assert first_section["level"] == 2
+    assert first_section["title"] == "Frost Death Knight Overview"
+    assert first_section["content_text"] == "Welcome to the guide."
+    assert first_nav["label"] == "Overview"
+    assert first_comment["citation_url"].endswith("#comments:id=91")
+    assert "Welcome to the guide." in (export_dir / "body.markup.txt").read_text(encoding="utf-8")
+
+
+def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
+    def fake_guide_page_html(self, guide_id: int):  # noqa: ANN001
+        assert guide_id == 3143
+        return SAMPLE_GUIDE_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_page_html", fake_guide_page_html)
+    export_dir = tmp_path / "guide-export"
+    export_result = runner.invoke(app, ["guide-export", "3143", "--out", str(export_dir)])
+    assert export_result.exit_code == 0
+
+    result = runner.invoke(app, ["guide-query", str(export_dir), "bellamy", "--limit", "3"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["counts"]["gatherer_entities"] >= 1
+    assert payload["matches"]["gatherer_entities"][0]["name"] == "Bellamy's Final Judgement"
+    assert payload["top"][0]["score"] >= 1
+
+    result = runner.invoke(app, ["guide-query", str(export_dir), "spell", "--limit", "3"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["counts"]["linked_entities"] >= 1
+    assert payload["matches"]["linked_entities"][0]["entity_type"] == "spell"
+
+    result = runner.invoke(app, ["guide-query", str(export_dir), "welcome guide", "--limit", "2"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["matches"]["sections"][0]["title"] == "Frost Death Knight Overview"
+    assert "Welcome to the guide." in payload["matches"]["sections"][0]["preview"]
+
+    result = runner.invoke(
+        app,
+        ["guide-query", str(export_dir), "welcome", "--kind", "sections", "--section-title", "overview"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["filters"] == {
+        "kinds": ["sections"],
+        "section_title": "overview",
+    }
+    assert payload["counts"]["sections"] == 1
+    assert payload["counts"]["comments"] == 0
+    assert payload["matches"]["sections"][0]["title"] == "Frost Death Knight Overview"
+
+    result = runner.invoke(app, ["guide-query", str(export_dir), "solid", "--kind", "comments"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["counts"]["comments"] == 1
+    assert payload["counts"]["sections"] == 0
+    assert payload["matches"]["comments"][0]["user"] == "A"
 
 
 def test_entity_respects_expansion_flag(monkeypatch) -> None:

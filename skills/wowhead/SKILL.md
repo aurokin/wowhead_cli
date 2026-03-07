@@ -14,6 +14,9 @@ Use the local `wowhead` command to fetch structured WoW data and citations.
 - Full page metadata + linked entities: `wowhead entity-page <type> <id>`
 - Comments only / larger comment pull: `wowhead comments <type> <id> --limit <n> --sort newest|rating`
 - Guide lookup: `wowhead guide <guide_id_or_url>`
+- Full guide payload: `wowhead guide-full <guide_id_or_url>`
+- Export local guide assets: `wowhead guide-export <guide_id_or_url> --out <dir>`
+- Query exported guide assets: `wowhead guide-query <dir> "<query>"`
 - Multi-entity compare: `wowhead compare <type:id> <type:id> ...`
 
 ## Standard Workflow
@@ -45,6 +48,10 @@ wowhead entity quest 86864 --no-include-comments
 wowhead entity quest 86864 --include-all-comments
 wowhead comments quest 86864 --limit 50 --sort rating
 wowhead guide 3143
+wowhead guide-full 3143
+wowhead guide-export 3143 --out ./tmp/frost-dk-guide
+wowhead guide-query ./tmp/frost-dk-guide "bellamy"
+wowhead guide-query ./tmp/frost-dk-guide "welcome" --kind sections --section-title overview
 wowhead --expansion classic entity npc 91331
 wowhead --fields entity,tooltip.name,citations entity quest 86682
 ```

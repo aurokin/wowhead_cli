@@ -30,6 +30,10 @@ If `wowhead` is not found, add `~/.local/bin` to your `PATH`.
 wowhead search "defias"
 wowhead --expansion wotlk search "thunderfury"
 wowhead guide 3143
+wowhead guide-full 3143
+wowhead guide-export 3143 --out ./tmp/frost-dk-guide
+wowhead guide-query ./tmp/frost-dk-guide "bellamy"
+wowhead guide-query ./tmp/frost-dk-guide "welcome" --kind sections --section-title overview
 wowhead --pretty search "defias"
 wowhead --fields query,count,results search "defias"
 wowhead entity item 19019
@@ -47,6 +51,9 @@ wowhead expansions
 Default output is compact JSON for machine consumption. Use `--pretty` for human-readable JSON.
 Use global `--expansion` to target a version profile; default is `retail`.
 Use `guide` to resolve Wowhead guide IDs/URLs and retrieve metadata plus sampled comments.
+Use `guide-full` to retrieve the full embedded guide payload in one response, including body markup, nav links, linked entities, gatherer entities, author data, and all parsed comments.
+Use `guide-export` to materialize that payload as local assets (`guide.json`, `page.html`, JSONL slices, and `manifest.json`) for repeated agent exploration.
+Use `guide-query` to search a previously exported guide corpus locally across section content, navigation links, entities, and comments. Use `--kind` to narrow categories and `--section-title` to scope section searches.
 Use `entity` to include comments in the same lookup, skip them with `--no-include-comments`, or return full comment sets with `--include-all-comments`; use `comments.needs_raw_fetch` to decide if raw comments fetching is still needed.
 Use `--normalize-canonical-to-expansion` if you want canonical page URLs forced into the selected expansion path.
 Use `--compact` to truncate long string fields (for example, tooltip HTML blobs).
