@@ -911,6 +911,35 @@ def test_entity_preview_prefers_gatherer_name_when_href_label_missing(monkeypatc
     }
 
 
+def test_entity_preview_prefers_multi_source_links_over_single_source_peers(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {"name": "Thunderfury"}
+
+    html = """
+    <html><head>
+      <link rel="canonical" href="https://www.wowhead.com/item=19019/thunderfury">
+    </head><body>
+      <a href="/spell=49020/obliterate">Obliterate</a>
+      <a href="/spell=49184/howling-blast">Howling Blast</a>
+      <script>
+        WH.Gatherer.addData(6, 1, {"49020":{"name_enus":"Obliterate"}});
+        var lv_comments0 = [];
+      </script>
+    </body></html>
+    """
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return html
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "item", "19019", "--no-include-comments", "--linked-entity-preview-limit", "2"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert [row["id"] for row in payload["linked_entities"]["items"]] == [49020, 49184]
+
+
 def test_entity_preview_fetch_more_command_scales_with_known_count(monkeypatch) -> None:
     def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
         return {"name": "Valorstones"}

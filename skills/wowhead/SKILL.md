@@ -43,6 +43,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 11. For `compare`, use each entity record's `entity.page_url` and `citations.comments`; generated shared/unique linked-entity rows expose only `url`, not a duplicate `citation_url`.
 12. Gatherer-derived linked entities use the linked entity page as both `url` and `citation_url`; `source_url` remains the original page where the relation was found.
 13. Rich linked-entity payloads preserve normalized multi-source attribution under `sources` and `source_kind`; lightweight preview rows stay slim and do not expose that provenance.
+14. Lightweight preview ranking prefers merged multi-source relations over similar single-source peers when other signals are otherwise comparable.
 
 ## Required Usage Rules
 

@@ -464,12 +464,19 @@ def _link_name_rank(record: dict[str, Any]) -> int:
 
 
 def _link_source_rank(record: dict[str, Any]) -> int:
+    sources = _link_source_kinds(record)
+    if len(sources) > 1:
+        return 0
+    if "gatherer" in sources:
+        return 1
+    if "href" in sources:
+        return 2
     source_kind = record.get("source_kind")
     if source_kind == "gatherer":
-        return 0
-    if source_kind == "href":
         return 1
-    return 2
+    if source_kind == "href":
+        return 2
+    return 3
 
 
 def _preview_type_rank(record: dict[str, Any], *, source_entity_type: str) -> int:

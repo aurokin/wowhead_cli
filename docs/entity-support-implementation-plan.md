@@ -131,6 +131,7 @@ Current state after the first phase 1 refactor:
 - `compare` now keeps page/comment URLs only on each entity record and uses a single canonical `url` field on generated overlap/unique linked-entity rows.
 - Gatherer-derived linked entities now use canonical linked-entity page URLs for both `url` and `citation_url`, instead of incorrectly pointing `citation_url` back to the source page.
 - Linked-entity merging now happens through one normalized multi-source relation layer that preserves `sources`, `source_kind`, and stable best-name selection before downstream previews, rich payloads, comparisons, and exports consume the data.
+- Lightweight preview ranking now uses multi-source attribution as a tie-breaker, so merged href/gatherer relations surface ahead of otherwise similar single-source rows.
 
 ### Route Resolution Findings
 
@@ -175,3 +176,4 @@ Current state after the first phase 1 refactor:
 - Trimmed `compare` so per-entity records remain the source of page/comment URLs, removed top-level compare citation arrays, and removed duplicate `citation_url` fields from generated shared/unique linked-entity rows.
 - Fixed gatherer-derived linked-entity citations so `citation_url` now matches the linked entity page URL and preserves expansion path context from the source page.
 - Refactored linked-entity merging behind a normalized multi-source relation layer so duplicated href/gatherer rows now retain deterministic best names plus `sources` attribution across `entity-page`, `guide-full`, `compare`, and exported guide bundles.
+- Updated preview ranking to prefer multi-source merged relations over otherwise similar single-source peers, and verified live on `entity item 19351 --no-include-comments`.
