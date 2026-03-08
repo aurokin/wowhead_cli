@@ -14,6 +14,79 @@ Plan the next two feature areas after the entity-support cleanup work:
 
 These two tracks should stay cleanly separated at the command surface, but they can share lower-level scoring and manifest/index primitives.
 
+## Shared Foundation - Cache And Freshness
+
+Before expanding either track too far, the project should treat caching as a deliberate data layer instead of just a small HTTP convenience.
+
+Current state:
+
+- the CLI already has a local file-based HTTP cache
+- that cache is short-lived and request-shaped
+- it is useful for immediate retries and nearby repeated lookups
+- it is not yet a durable entity store or a shared cache across agents
+
+### Goals
+
+- keep common entity lookups fast without forcing every repeated request through live Wowhead
+- separate short-lived transport caching from reusable local entity storage
+- allow shared cache backends in multi-agent environments
+- make freshness rules explicit per data class
+
+### Proposed cache layers
+
+1. transport cache
+- existing HTTP/text cache
+- still useful for raw response reuse
+- should become configurable instead of hard-coded
+
+2. entity cache
+- normalized `entity` payload cache keyed by expansion, entity type, and entity id
+- designed for reuse by `entity`, guide hydration, and future resolver work
+- file-backed by default
+- optional Redis backend for shared environments
+
+3. bundle-local hydrated store
+- durable local entity payloads written into guide bundles when requested
+- used for bundle-local exploration even when the global cache is cold
+
+### Proposed TTL defaults
+
+These are starting defaults, not fixed rules:
+
+- search suggestions: 15 minutes
+- comment replies / volatile comment subrequests: 15 to 30 minutes
+- tooltip and entity page transport cache: 1 hour
+- normalized entity cache for common objects like spells, items, NPCs, currencies, factions: 1 hour by default
+- guide page transport cache: 1 hour by default
+- hydrated bundle entities: refresh on demand, with `--max-age-hours 24` as a reasonable default policy for daily guide refresh workflows
+
+Reasoning:
+
+- a one-hour TTL is usually safe for most entity data and avoids repeated fetch churn
+- guides can change daily, so bundle refresh policy should be explicit rather than assuming very long freshness
+- transport cache and hydrated local storage should not be forced to share the same TTL
+
+### Backend plan
+
+Start with:
+
+- file-backed transport cache
+- file-backed normalized entity cache
+
+Then add optional:
+
+- Redis transport/entity cache backend for shared or concurrent agent environments
+
+Redis support should stay optional and behind configuration, not required for the single-user local CLI path.
+
+### Required design rules
+
+- cache keys must include expansion and the normalized route target
+- entity cache entries should store fetch timestamp and expiry metadata
+- guide refresh logic should be able to reuse entity cache entries instead of always re-fetching linked entities
+- bundle hydration should be able to populate from cache first, then live fetch only on misses/stale entries
+- cache invalidation should be TTL-first; manual busting commands can come later if needed
+
 ## Current State
 
 ### Local bundle tooling
@@ -30,6 +103,7 @@ Main gaps:
 - no metadata search over bundle titles, classes, expansions, or counts
 - no hydrated local store for frequently referenced entities such as spells, items, NPCs, or talents
 - guide bundles keep linked-entity references, but not local entity payloads for those references
+- no normalized entity cache layer between the short-lived HTTP cache and durable bundle storage
 - no bundle refresh/update workflow
 - no explicit bundle inspect/stats command
 - no root-level index, only directory scans
@@ -60,13 +134,41 @@ Make exported bundles feel like a reusable local knowledge layer rather than iso
 
 1. add a root-level bundle index
 2. add metadata discovery/search across bundles
-3. add local entity hydration and reuse for frequently referenced linked entities
-4. add multi-bundle querying
-5. add bundle inspect and refresh workflows
+3. add normalized local entity caching and reuse for frequently referenced linked entities
+4. add bundle-local hydration for selected linked entities
+5. add multi-bundle querying
+6. add bundle inspect and refresh workflows
 
 ### Proposed Deliverables
 
-#### A0. Linked-entity hydration strategy
+#### A0. Cache and hydration strategy
+
+Define how transport cache, normalized entity cache, and bundle hydration work together.
+
+Add configurable cache policy inputs, for example:
+
+- `WOWHEAD_CACHE_BACKEND=file|redis`
+- `WOWHEAD_CACHE_DIR=...`
+- `WOWHEAD_REDIS_URL=...`
+- `WOWHEAD_ENTITY_CACHE_TTL_SECONDS=3600`
+- `WOWHEAD_GUIDE_CACHE_TTL_SECONDS=3600`
+
+Add an internal normalized entity cache keyed by:
+
+- expansion
+- entity type
+- entity id
+- normalized response shape version
+
+That cache should store compact `entity` payloads, not raw only-transport artifacts.
+
+This becomes the shared reuse layer for:
+
+- repeated `entity` calls
+- linked-entity hydration during `guide-export`
+- future `resolve`/search enrichment work
+
+#### A1. Linked-entity hydration strategy
 
 Define how much referenced-entity data a guide bundle should carry locally.
 
@@ -92,7 +194,9 @@ The hydrated payload should stay compact and reuse the normalized `entity` contr
 
 This solves the common case where a guide references the same spells, talents, items, or NPCs repeatedly and agents keep re-fetching them.
 
-#### A1. Bundle registry and root index
+Hydration should use the normalized entity cache first, then live fetch only when cache entries are missing or stale.
+
+#### A2. Bundle registry and root index
 
 Add a root-level index file under the bundle root, for example:
 
@@ -116,7 +220,7 @@ CLI additions:
 - `guide-bundle-index rebuild [--root <dir>]`
 - `guide-bundle-list` should prefer the index when present and fall back to directory scanning
 
-#### A2. Bundle inspect/stats
+#### A3. Bundle inspect/stats
 
 Add a compact inspection command for one bundle:
 
@@ -133,7 +237,7 @@ It should expose:
 
 This gives agents a clean way to decide whether a local bundle is enough before querying it.
 
-#### A3. Multi-bundle discovery search
+#### A4. Multi-bundle discovery search
 
 Add root-level metadata search:
 
@@ -153,7 +257,7 @@ Output should include:
 - why the bundle matched
 - suggested follow-up command
 
-#### A4. Multi-bundle content query
+#### A5. Multi-bundle content query
 
 Add query across many bundles:
 
@@ -168,7 +272,7 @@ Capabilities:
 
 This is the feature that turns the local export set into a reusable agent dataset.
 
-#### A5. Bundle refresh/update workflow
+#### A6. Bundle refresh/update workflow
 
 Add a way to refresh an existing bundle in place:
 
@@ -182,6 +286,7 @@ Requirements:
 - support refresh cadence controls such as `--max-age-hours 24`
 - distinguish guide-content refresh from hydrated-entity refresh
 - allow incremental hydration so unchanged linked entities are not re-fetched unnecessarily
+- allow refresh to consult entity cache before going back to live Wowhead
 - keep writes atomic enough to avoid half-written bundles
 
 Recommended additions:
@@ -196,11 +301,13 @@ The manifest/index should record:
 - last successful refresh timestamp
 - last linked-entity hydration timestamp
 - per-entity stored-at timestamps for hydrated entity rows when feasible
+- cache policy metadata when hydration depends on shared cache configuration
 
 ### Acceptance Criteria
 
 - agents can discover bundles without already knowing exact paths
 - agents can search bundle metadata across a root
+- repeated entity retrieval benefits from a shared normalized cache layer before bundle-local storage
 - agents can reuse locally hydrated spell/item/npc/talent data from guide bundles without repeated live fetches
 - agents can query content across multiple bundles in one call
 - bundles can be refreshed without manual directory management
@@ -209,19 +316,22 @@ The manifest/index should record:
 ### Risks
 
 - scanning many JSONL files per query will get slow without an index
+- adding Redis too early can complicate single-user local setups if configuration is not simple
 - hydrating too many linked entities blindly can make exports slow and large
 - local entity payloads can go stale faster than the parent guide unless freshness rules are explicit
+- cache policy drift between file and Redis backends can make debugging freshness harder
 - bundle metadata will drift if index rebuild/update rules are not strict
 - multi-bundle ranking can become noisy if bundle-level and record-level scores are mixed casually
 
 ### Recommended Sequence
 
-1. A0 linked-entity hydration strategy
-2. A1 bundle index
-3. A2 bundle inspect
-4. A3 metadata search
-5. A5 refresh workflow
-6. A4 multi-bundle content query
+1. A0 cache and hydration strategy
+2. A1 linked-entity hydration strategy
+3. A2 bundle index
+4. A3 bundle inspect
+5. A4 metadata search
+6. A6 refresh workflow
+7. A5 multi-bundle content query
 
 ## Track B - Cross-Entity Discovery And Ranking
 
@@ -362,7 +472,7 @@ Reasoning:
 
 - better search/resolve helps every live agent workflow immediately
 - bundle indexing should exist before multi-bundle querying, or performance and selection logic will get messy fast
-- hydration/update rules should be designed before broader local bundle expansion, or the repo will accumulate stale duplicated entity payloads
+- cache/hydration/update rules should be designed before broader local bundle expansion, or the repo will accumulate stale duplicated entity payloads
 - the later steps in both tracks benefit from the same scoring discipline established earlier
 
 ## Suggested First Implementation Slice
@@ -371,8 +481,9 @@ If we start immediately, the highest-value first slice is:
 
 1. enhance `search` with compact scoring and `best_next_command`
 2. add `resolve`
-3. define linked-entity hydration layout and manifest timestamps
-4. add `guide-bundle-index rebuild`
-5. add `guide-bundle-search`
+3. define cache configuration, TTL policy, and normalized entity cache layout
+4. define linked-entity hydration layout and manifest timestamps
+5. add `guide-bundle-index rebuild`
+6. add `guide-bundle-search`
 
 That gives agents a cleaner entry point on both live and local workflows without committing to the heaviest multi-bundle query work yet.
