@@ -188,6 +188,42 @@ def test_search_guide_result_includes_guide_url(monkeypatch) -> None:
     assert payload["results"][0]["url"] == "https://www.wowhead.com/wotlk/guide=3143"
 
 
+def test_search_faction_result_includes_faction_url(monkeypatch) -> None:
+    def fake_search(self, query: str):  # noqa: ANN001
+        return {
+            "search": query,
+            "results": [
+                {"type": 8, "id": 529, "name": "Argent Dawn", "typeName": "Faction"},
+            ],
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
+    result = runner.invoke(app, ["search", "argent dawn", "--limit", "1"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["entity_type"] == "faction"
+    assert payload["results"][0]["url"] == "https://www.wowhead.com/faction=529"
+
+
+def test_search_pet_result_includes_pet_url(monkeypatch) -> None:
+    def fake_search(self, query: str):  # noqa: ANN001
+        return {
+            "search": query,
+            "results": [
+                {"type": 9, "id": 39, "name": "Devilsaur", "typeName": "Hunter Pet"},
+            ],
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
+    result = runner.invoke(app, ["search", "devilsaur", "--limit", "1"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["entity_type"] == "pet"
+    assert payload["results"][0]["url"] == "https://www.wowhead.com/pet=39"
+
+
 def test_guide_command_supports_id_lookup(monkeypatch) -> None:
     calls = []
 
@@ -492,6 +528,127 @@ def test_entity_respects_expansion_flag(monkeypatch) -> None:
     assert payload["linked_entities"]["count"] >= 1
     assert payload["linked_entities"]["counts_by_type"]["npc"] == 1
     assert payload["linked_entities"]["fetch_more_command"] == "wowhead entity-page item 19019 --max-links 200"
+
+
+def test_entity_faction_uses_page_metadata_tooltip_fallback(monkeypatch) -> None:
+    html = """
+    <html><head>
+      <meta property="og:title" content="Argent Dawn">
+      <meta name="description" content="Protect Azeroth from the Scourge.">
+      <link rel="canonical" href="https://www.wowhead.com/faction=529/argent-dawn">
+    </head><body><script>var lv_comments0 = [];</script></body></html>
+    """
+
+    def fail_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        raise AssertionError("tooltip should not be called for faction fallback")
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        assert (entity_type, entity_id) == ("faction", 529)
+        return html
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fail_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "faction", "529", "--no-include-comments", "--linked-entity-preview-limit", "0"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["entity"] == {
+        "type": "faction",
+        "id": 529,
+        "name": "Argent Dawn",
+        "page_url": "https://www.wowhead.com/faction=529/argent-dawn",
+    }
+    assert payload["tooltip"]["text"] == "Argent Dawn Protect Azeroth from the Scourge."
+
+
+def test_entity_recipe_routes_through_spell_tooltip(monkeypatch) -> None:
+    tooltip_calls = []
+
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        tooltip_calls.append((entity_type, entity_id, data_env))
+        return {"name": "Seasoned Wolf Kabob", "tooltip": "<b>Seasoned Wolf Kabob</b>"}
+
+    def fail_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        raise AssertionError("entity page should not be fetched")
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fail_html)
+    result = runner.invoke(app, ["entity", "recipe", "2549", "--no-include-comments", "--linked-entity-preview-limit", "0"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert tooltip_calls == [("spell", 2549, None)]
+    assert payload["entity"]["type"] == "recipe"
+    assert payload["entity"]["id"] == 2549
+    assert payload["entity"]["page_url"] == "https://www.wowhead.com/spell=2549"
+    assert payload["entity"]["name"] == "Seasoned Wolf Kabob"
+
+
+def test_entity_page_mount_resolves_underlying_item_page(monkeypatch) -> None:
+    page_calls = []
+    html = """
+    <html><head>
+      <meta property="og:title" content="Reins of the Grand Expedition Yak">
+      <meta name="description" content="Mount item">
+      <link rel="canonical" href="https://www.wowhead.com/item=84101/reins-of-the-grand-expedition-yak">
+    </head><body><a href="/npc=62809/grand-expedition-yak">Yak</a></body></html>
+    """
+
+    def fake_tooltip_with_metadata(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        assert (entity_type, entity_id) == ("mount", 460)
+        return {"name": "Reins of the Grand Expedition Yak"}, "https://nether.wowhead.com/tooltip/item/84101?dataEnv=1"
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        page_calls.append((entity_type, entity_id))
+        return html
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip_with_metadata", fake_tooltip_with_metadata)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity-page", "mount", "460", "--max-links", "5"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert page_calls == [("item", 84101)]
+    assert payload["entity"]["type"] == "mount"
+    assert payload["entity"]["id"] == 460
+    assert payload["entity"]["url"] == "https://www.wowhead.com/item=84101/reins-of-the-grand-expedition-yak"
+    assert payload["linked_entities"]["count"] == 1
+
+
+def test_comments_battle_pet_resolves_underlying_npc_page(monkeypatch) -> None:
+    page_calls = []
+    html = """
+    <html><head>
+      <meta property="og:title" content="Mechanical Squirrel">
+      <meta name="description" content="Battle pet">
+      <link rel="canonical" href="https://www.wowhead.com/npc=2671/mechanical-squirrel">
+    </head><body>
+      <a href="/item=4401/mechanical-squirrel-box">Mechanical Squirrel Box</a>
+      <script>
+        var lv_comments0 = [{"id": 11, "number": 0, "user": "A", "body": "Useful", "date": "2024-01-01T00:00:00-06:00", "rating": 7, "nreplies": 0, "replies": []}];
+      </script>
+    </body></html>
+    """
+
+    def fake_tooltip_with_metadata(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        assert (entity_type, entity_id) == ("battle-pet", 39)
+        return {"name": "Mechanical Squirrel"}, "https://nether.wowhead.com/tooltip/npc/2671?dataEnv=1"
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        page_calls.append((entity_type, entity_id))
+        return html
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip_with_metadata", fake_tooltip_with_metadata)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["comments", "battle-pet", "39", "--limit", "1"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert page_calls == [("npc", 2671)]
+    assert payload["entity"]["type"] == "battle-pet"
+    assert payload["entity"]["id"] == 39
+    assert payload["entity"]["url"] == "https://www.wowhead.com/npc=2671/mechanical-squirrel"
+    assert payload["comments"][0]["citation_url"].endswith("#comments:id=11")
 
 
 def test_entity_supports_excluding_comments(monkeypatch) -> None:

@@ -30,6 +30,11 @@ Use the local `wowhead` command to fetch structured WoW data and citations.
 4. For `entity`, prefer `entity.name` and `entity.page_url` over older tooltip-derived naming; use `tooltip.text` for quick reading and `tooltip.html` only when markup matters.
 5. Inspect `linked_entities.counts_by_type` and the lightweight preview items on regular responses to decide whether to escalate to `entity-page` or `guide-full`.
 6. For `entity`, use `entity.page_url` as the canonical page source and, when comments are included, `citations.comments` for the comment thread source.
+7. Some entity types use special routing under the hood:
+- `faction` and `pet` derive tooltip text from page metadata.
+- `recipe` resolves through spell pages.
+- `mount` resolves through underlying item pages.
+- `battle-pet` resolves through underlying NPC pages.
 
 ## Required Usage Rules
 
@@ -49,6 +54,10 @@ wowhead search "Watch the Den" --limit 5
 wowhead entity quest 86864
 wowhead entity quest 86864 --no-include-comments
 wowhead entity quest 86864 --include-all-comments
+wowhead entity faction 529 --no-include-comments
+wowhead entity recipe 2549 --no-include-comments
+wowhead entity mount 460 --no-include-comments
+wowhead entity battle-pet 39 --no-include-comments
 wowhead comments quest 86864 --limit 50 --sort rating
 wowhead guide 3143
 wowhead guide-full 3143

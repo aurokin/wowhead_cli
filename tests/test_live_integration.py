@@ -105,6 +105,28 @@ def test_live_entity_contract(expansion_key: str) -> None:
     assert isinstance(tooltip.get("text"), str)
 
 
+@pytest.mark.parametrize(
+    ("entity_type", "entity_id", "page_prefix"),
+    [
+        ("faction", 529, "https://www.wowhead.com/faction=529"),
+        ("pet", 39, "https://www.wowhead.com/pet=39"),
+        ("recipe", 2549, "https://www.wowhead.com/spell=2549"),
+        ("mount", 460, "https://www.wowhead.com/item=84101"),
+        ("battle-pet", 39, "https://www.wowhead.com/npc=2671"),
+    ],
+)
+def test_live_special_entity_route_contract(entity_type: str, entity_id: int, page_prefix: str) -> None:
+    _require_live()
+    payload = _payload_for(["entity", entity_type, str(entity_id), "--no-include-comments", "--linked-entity-preview-limit", "0"])
+
+    assert payload["entity"]["type"] == entity_type
+    assert payload["entity"]["id"] == entity_id
+    assert payload["entity"]["page_url"].startswith(page_prefix)
+    tooltip = payload.get("tooltip")
+    assert isinstance(tooltip, dict)
+    assert isinstance(tooltip.get("text"), str)
+
+
 @pytest.mark.parametrize("expansion_key", ["retail", "wotlk", "ptr"])
 def test_live_entity_page_contract(expansion_key: str) -> None:
     _require_live()

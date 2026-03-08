@@ -56,6 +56,18 @@ class RuntimeConfig:
     fields: tuple[str, ...] = ()
 
 
+@dataclass(slots=True)
+class EntityAccessPlan:
+    requested_type: str
+    requested_id: int
+    page_entity_type: str
+    page_entity_id: int
+    tooltip_entity_type: str | None
+    tooltip_entity_id: int | None
+    tooltip_from_page_metadata: bool = False
+    page_from_tooltip_redirect: bool = False
+
+
 def _cfg(ctx: typer.Context) -> RuntimeConfig:
     obj = ctx.obj
     if isinstance(obj, RuntimeConfig):
@@ -73,6 +85,89 @@ def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> No
     }
     _emit(ctx, payload, err=True)
     raise typer.Exit(status)
+
+
+def _build_entity_access_plan(entity_type: str, entity_id: int) -> EntityAccessPlan:
+    normalized_type = entity_type.strip().lower()
+    if normalized_type == "faction":
+        return EntityAccessPlan(
+            requested_type=normalized_type,
+            requested_id=entity_id,
+            page_entity_type="faction",
+            page_entity_id=entity_id,
+            tooltip_entity_type=None,
+            tooltip_entity_id=None,
+            tooltip_from_page_metadata=True,
+        )
+    if normalized_type == "pet":
+        return EntityAccessPlan(
+            requested_type=normalized_type,
+            requested_id=entity_id,
+            page_entity_type="pet",
+            page_entity_id=entity_id,
+            tooltip_entity_type=None,
+            tooltip_entity_id=None,
+            tooltip_from_page_metadata=True,
+        )
+    if normalized_type == "recipe":
+        return EntityAccessPlan(
+            requested_type=normalized_type,
+            requested_id=entity_id,
+            page_entity_type="spell",
+            page_entity_id=entity_id,
+            tooltip_entity_type="spell",
+            tooltip_entity_id=entity_id,
+        )
+    if normalized_type == "mount":
+        return EntityAccessPlan(
+            requested_type=normalized_type,
+            requested_id=entity_id,
+            page_entity_type=normalized_type,
+            page_entity_id=entity_id,
+            tooltip_entity_type="mount",
+            tooltip_entity_id=entity_id,
+            page_from_tooltip_redirect=True,
+        )
+    if normalized_type == "battle-pet":
+        return EntityAccessPlan(
+            requested_type=normalized_type,
+            requested_id=entity_id,
+            page_entity_type=normalized_type,
+            page_entity_id=entity_id,
+            tooltip_entity_type="battle-pet",
+            tooltip_entity_id=entity_id,
+            page_from_tooltip_redirect=True,
+        )
+    return EntityAccessPlan(
+        requested_type=normalized_type,
+        requested_id=entity_id,
+        page_entity_type=normalized_type,
+        page_entity_id=entity_id,
+        tooltip_entity_type=normalized_type,
+        tooltip_entity_id=entity_id,
+    )
+
+
+def _parse_tooltip_final_ref(final_url: str) -> tuple[str, int] | None:
+    parsed = urlparse(final_url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 3 or parts[0] != "tooltip":
+        return None
+    entity_type = parts[1]
+    raw_id = parts[2]
+    if not raw_id.isdigit():
+        return None
+    return entity_type, int(raw_id)
+
+
+def _build_tooltip_from_page_metadata(metadata: dict[str, str | None]) -> tuple[str | None, dict[str, Any]]:
+    title = metadata.get("title")
+    description = metadata.get("description")
+    parts = [part.strip() for part in (title, description) if isinstance(part, str) and part.strip()]
+    payload: dict[str, Any] = {}
+    if parts:
+        payload["text"] = " ".join(parts)
+    return title if isinstance(title, str) and title.strip() else None, payload
 
 
 def _parse_entity_ref_token(token: str) -> tuple[str, int]:
@@ -329,6 +424,41 @@ def _fetch_entity_page(
     fallback_url = entity_url(entity_type, entity_id, expansion=client.expansion)
     metadata = parse_page_metadata(html, fallback_url=fallback_url)
     return html, metadata
+
+
+def _resolve_page_fetch_target(
+    ctx: typer.Context,
+    client: WowheadClient,
+    *,
+    entity_type: str,
+    entity_id: int,
+    data_env: int | None = None,
+) -> EntityAccessPlan:
+    plan = _build_entity_access_plan(entity_type, entity_id)
+    if not plan.page_from_tooltip_redirect:
+        return plan
+    if plan.tooltip_entity_type is None or plan.tooltip_entity_id is None:
+        _fail(ctx, "unsupported_entity_type", f"{entity_type!r} does not define a tooltip route for page resolution.")
+    try:
+        _, final_url = client.tooltip_with_metadata(
+            plan.tooltip_entity_type,
+            plan.tooltip_entity_id,
+            data_env=data_env,
+        )
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+    except ValueError as exc:
+        _fail(ctx, "parse_error", str(exc))
+
+    resolved = _parse_tooltip_final_ref(final_url)
+    if resolved is None:
+        _fail(ctx, "unexpected_response", f"Could not resolve a page target for {entity_type} {entity_id}.")
+    page_entity_type, page_entity_id = resolved
+    plan.page_entity_type = page_entity_type
+    plan.page_entity_id = page_entity_id
+    return plan
 
 
 def _normalize_canonical_entity_url(
@@ -1445,8 +1575,23 @@ def entity(
 ) -> None:
     cfg = _cfg(ctx)
     client = WowheadClient(expansion=cfg.expansion)
+    plan = _build_entity_access_plan(entity_type, entity_id)
+    tooltip: dict[str, Any] = {}
+    tooltip_final_url: str | None = None
     try:
-        tooltip = client.tooltip(entity_type, entity_id, data_env=data_env)
+        if plan.tooltip_entity_type is not None and plan.tooltip_entity_id is not None:
+            if plan.page_from_tooltip_redirect:
+                tooltip, tooltip_final_url = client.tooltip_with_metadata(
+                    plan.tooltip_entity_type,
+                    plan.tooltip_entity_id,
+                    data_env=data_env,
+                )
+            else:
+                tooltip = client.tooltip(
+                    plan.tooltip_entity_type,
+                    plan.tooltip_entity_id,
+                    data_env=data_env,
+                )
     except httpx.HTTPStatusError as exc:
         _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
     except httpx.HTTPError as exc:
@@ -1454,18 +1599,32 @@ def entity(
     except ValueError as exc:
         _fail(ctx, "parse_error", str(exc))
 
-    canonical = entity_url(entity_type, entity_id, expansion=cfg.expansion)
+    if plan.page_from_tooltip_redirect and tooltip_final_url is not None:
+        resolved = _parse_tooltip_final_ref(tooltip_final_url)
+        if resolved is None:
+            _fail(ctx, "unexpected_response", f"Could not resolve a page target for {entity_type} {entity_id}.")
+        plan.page_entity_type, plan.page_entity_id = resolved
+
+    canonical = entity_url(plan.page_entity_type, plan.page_entity_id, expansion=cfg.expansion)
     page_url = canonical
     entity_name, tooltip_payload = _normalize_tooltip_payload(tooltip)
     html: str | None = None
+    metadata: dict[str, str | None] | None = None
     raw_comments: list[dict[str, Any]] = []
     sampled_comments: list[dict[str, Any]] = []
     all_comments: list[dict[str, Any]] = []
     top_comment_limit = 3
 
     if include_comments or linked_entity_preview_limit > 0:
-        html, metadata = _fetch_entity_page(ctx, client, entity_type, entity_id)
+        html, metadata = _fetch_entity_page(ctx, client, plan.page_entity_type, plan.page_entity_id)
         page_url = metadata["canonical_url"] or canonical
+    elif plan.tooltip_from_page_metadata:
+        html, metadata = _fetch_entity_page(ctx, client, plan.page_entity_type, plan.page_entity_id)
+        page_url = metadata["canonical_url"] or canonical
+
+    if plan.tooltip_from_page_metadata and metadata is not None:
+        entity_name, tooltip_payload = _build_tooltip_from_page_metadata(metadata)
+
     if include_comments and html is not None:
         try:
             raw_comments = extract_comments_dataset(html)
@@ -1523,8 +1682,8 @@ def entity(
         payload["linked_entities"] = _build_linked_entity_preview(
             extract_linked_entities_from_href(html, source_url=page_url)
             + extract_gatherer_entities(html, source_url=page_url),
-            entity_type=entity_type,
-            entity_id=entity_id,
+            entity_type=plan.page_entity_type,
+            entity_id=plan.page_entity_id,
             preview_limit=linked_entity_preview_limit,
             fetch_more_command=f"wowhead entity-page {entity_type} {entity_id} --max-links 200",
         )
@@ -1562,15 +1721,21 @@ def entity_page(
 ) -> None:
     cfg = _cfg(ctx)
     client = WowheadClient(expansion=cfg.expansion)
-    html, metadata = _fetch_entity_page(ctx, client, entity_type, entity_id)
+    plan = _resolve_page_fetch_target(
+        ctx,
+        client,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )
+    html, metadata = _fetch_entity_page(ctx, client, plan.page_entity_type, plan.page_entity_id)
 
-    raw_canonical = metadata["canonical_url"] or entity_url(entity_type, entity_id, expansion=cfg.expansion)
+    raw_canonical = metadata["canonical_url"] or entity_url(plan.page_entity_type, plan.page_entity_id, expansion=cfg.expansion)
     canonical_url = (
         _normalize_canonical_entity_url(
             raw_canonical,
             expansion=cfg.expansion,
-            entity_type=entity_type,
-            entity_id=entity_id,
+            entity_type=plan.page_entity_type,
+            entity_id=plan.page_entity_id,
         )
         if cfg.normalize_canonical_to_expansion
         else raw_canonical
@@ -1582,8 +1747,8 @@ def entity_page(
 
     deduped = _dedupe_links(
         links,
-        entity_type=entity_type,
-        entity_id=entity_id,
+        entity_type=plan.page_entity_type,
+        entity_id=plan.page_entity_id,
         max_links=max_links,
     )
 
@@ -1668,14 +1833,20 @@ def comments(
 
     cfg = _cfg(ctx)
     client = WowheadClient(expansion=cfg.expansion)
-    html, metadata = _fetch_entity_page(ctx, client, entity_type, entity_id)
-    raw_canonical = metadata["canonical_url"] or entity_url(entity_type, entity_id, expansion=cfg.expansion)
+    plan = _resolve_page_fetch_target(
+        ctx,
+        client,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )
+    html, metadata = _fetch_entity_page(ctx, client, plan.page_entity_type, plan.page_entity_id)
+    raw_canonical = metadata["canonical_url"] or entity_url(plan.page_entity_type, plan.page_entity_id, expansion=cfg.expansion)
     canonical_url = (
         _normalize_canonical_entity_url(
             raw_canonical,
             expansion=cfg.expansion,
-            entity_type=entity_type,
-            entity_id=entity_id,
+            entity_type=plan.page_entity_type,
+            entity_id=plan.page_entity_id,
         )
         if cfg.normalize_canonical_to_expansion
         else raw_canonical
@@ -1754,8 +1925,8 @@ def comments(
         payload["linked_entities"] = _build_linked_entity_preview(
             extract_linked_entities_from_href(html, source_url=canonical_url)
             + extract_gatherer_entities(html, source_url=canonical_url),
-            entity_type=entity_type,
-            entity_id=entity_id,
+            entity_type=plan.page_entity_type,
+            entity_id=plan.page_entity_id,
             preview_limit=linked_entity_preview_limit,
             fetch_more_command=f"wowhead entity-page {entity_type} {entity_id} --max-links 200",
         )

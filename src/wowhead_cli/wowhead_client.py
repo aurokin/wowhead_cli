@@ -34,6 +34,8 @@ SUGGESTION_TYPE_TO_ENTITY: dict[int, str] = {
     5: "quest",
     6: "spell",
     7: "achievement",
+    8: "faction",
+    9: "pet",
     111: "currency",
     112: "companion",
     101: "transmog-set",
@@ -217,15 +219,37 @@ class WowheadClient:
         *,
         data_env: int | None = None,
     ) -> dict[str, Any]:
+        payload, _ = self.tooltip_with_metadata(entity_type, entity_id, data_env=data_env)
+        return payload
+
+    def tooltip_with_metadata(
+        self,
+        entity_type: str,
+        entity_id: int,
+        *,
+        data_env: int | None = None,
+    ) -> tuple[dict[str, Any], str]:
         url = build_tooltip_url(self.expansion, entity_type, entity_id)
-        payload = self._get_json(
-            url,
-            params={"dataEnv": data_env or self.expansion.data_env},
-            cache_ttl_seconds=240,
-            cache_namespace="tooltip",
+        params = {"dataEnv": data_env or self.expansion.data_env}
+        cache_key = self._cache_key("tooltip_meta", url, params)
+        cached = self._read_cache(cache_key)
+        if isinstance(cached, dict):
+            payload = cached.get("payload")
+            final_url = cached.get("final_url")
+            if isinstance(payload, dict) and isinstance(final_url, str):
+                return payload, final_url
+
+        response = self._request_with_retries(url, params=params)
+        payload = response.json()
+        final_url = str(response.url)
+
+        self._write_cache(
+            cache_key,
+            {"payload": payload, "final_url": final_url},
+            ttl_seconds=240,
         )
         if isinstance(payload, dict):
-            return payload
+            return payload, final_url
         raise ValueError("Unexpected response shape for tooltip endpoint.")
 
     def entity_page_html(self, entity_type: str, entity_id: int) -> str:
