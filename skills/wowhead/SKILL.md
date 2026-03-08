@@ -44,6 +44,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 12. Gatherer-derived linked entities use the linked entity page as both `url` and `citation_url`; `source_url` remains the original page where the relation was found.
 13. Rich linked-entity payloads preserve normalized multi-source attribution under `sources` and `source_kind`; lightweight preview rows stay slim and do not expose that provenance.
 14. Lightweight preview ranking prefers merged multi-source relations over similar single-source peers when other signals are otherwise comparable.
+15. For exported guide bundles, prefer merged `linked_entities` plus `guide-query --linked-source href|gatherer|multi` over treating `linked_entities` and `gatherer_entities` as separate query buckets unless you explicitly need the raw source-specific rows.
 
 ## Required Usage Rules
 
@@ -75,6 +76,7 @@ wowhead guide-bundle-list
 wowhead guide-query ./tmp/frost-dk-guide "bellamy"
 wowhead guide-query 3143 "obliterate" --root ./wowhead_exports
 wowhead guide-query ./tmp/frost-dk-guide "welcome" --kind sections --section-title overview
+wowhead guide-query 3143 "bellamy" --root ./wowhead_exports --kind linked_entities --linked-source multi
 wowhead --expansion classic entity npc 91331
 wowhead --fields entity.name,entity.page_url,tooltip.summary,linked_entities entity quest 86682
 ```

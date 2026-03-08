@@ -426,6 +426,7 @@ def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
     assert payload["filters"] == {
         "kinds": ["sections"],
         "section_title": "overview",
+        "linked_sources": [],
     }
     assert payload["counts"]["sections"] == 1
     assert payload["counts"]["comments"] == 0
@@ -449,6 +450,26 @@ def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
     assert payload["output_dir"] == str(selector_dir)
     assert payload["matches"]["linked_entities"][0]["name"] == "Obliterate"
 
+    result = runner.invoke(
+        app,
+        ["guide-query", "3143", "bellamy", "--root", str(root), "--kind", "linked_entities", "--linked-source", "multi"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["filters"]["linked_sources"] == ["multi"]
+    assert payload["counts"]["linked_entities"] == 1
+    assert payload["matches"]["linked_entities"][0]["name"] == "Bellamy's Final Judgement"
+    assert payload["matches"]["linked_entities"][0]["sources"] == ["gatherer", "href"]
+
+    result = runner.invoke(
+        app,
+        ["guide-query", "3143", "obliterate", "--root", str(root), "--kind", "linked_entities", "--linked-source", "href"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["filters"]["linked_sources"] == ["href"]
+    assert payload["matches"]["linked_entities"][0]["name"] == "Obliterate"
+
     result = runner.invoke(app, ["guide-query", selector_dir.name, "solid", "--root", str(root), "--kind", "comments"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
@@ -459,6 +480,10 @@ def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
     result = runner.invoke(app, ["guide-query", str(missing_dir), "anything"])
     assert result.exit_code != 0
     assert "does not exist" in result.output
+
+    result = runner.invoke(app, ["guide-query", str(selector_dir), "anything", "--linked-source", "bad-source"])
+    assert result.exit_code != 0
+    assert "Unsupported linked source filter" in result.output
 
 
 def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:

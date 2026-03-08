@@ -914,6 +914,51 @@ def _normalize_query_kinds(values: list[str]) -> tuple[str, ...]:
     return tuple(normalized)
 
 
+def _normalize_link_source_filters(values: list[str]) -> tuple[str, ...]:
+    allowed = {"href", "gatherer", "multi"}
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        for candidate in raw.split(","):
+            value = candidate.strip().lower()
+            if not value:
+                continue
+            if value not in allowed:
+                raise ValueError(
+                    f"Unsupported linked source filter {value!r}. Expected one of: {', '.join(sorted(allowed))}."
+                )
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+    return tuple(normalized)
+
+
+def _linked_source_filter_matches(record: dict[str, Any], *, selected_sources: tuple[str, ...]) -> bool:
+    if not selected_sources:
+        return True
+    sources = set(_link_source_kinds(record))
+    if "multi" in selected_sources and len(sources) > 1:
+        return True
+    for source in selected_sources:
+        if source == "multi":
+            continue
+        if source in sources:
+            return True
+    return False
+
+
+def _linked_source_match_rank(record: dict[str, Any]) -> int:
+    sources = _link_source_kinds(record)
+    if len(sources) > 1:
+        return 0
+    if "gatherer" in sources:
+        return 1
+    if "href" in sources:
+        return 2
+    return 3
+
+
 def _build_linked_entity_preview(
     links: list[dict[str, Any]],
     *,
@@ -1692,6 +1737,11 @@ def guide_query(
         "--section-title",
         help="Restrict section searching to section titles containing this text.",
     ),
+    linked_source: list[str] = typer.Option(
+        [],
+        "--linked-source",
+        help="Restrict merged linked-entity matches by provenance. Repeat or pass comma-separated values from: href, gatherer, multi.",
+    ),
     root: Path | None = typer.Option(
         None,
         "--root",
@@ -1708,6 +1758,10 @@ def guide_query(
         _fail(ctx, "invalid_bundle", str(exc))
     try:
         selected_kinds = _normalize_query_kinds(kind)
+    except ValueError as exc:
+        _fail(ctx, "invalid_argument", str(exc))
+    try:
+        selected_link_sources = _normalize_link_source_filters(linked_source)
     except ValueError as exc:
         _fail(ctx, "invalid_argument", str(exc))
 
@@ -1772,6 +1826,8 @@ def guide_query(
         for row in corpus["linked_entities"]:
             if not isinstance(row, dict):
                 continue
+            if not _linked_source_filter_matches(row, selected_sources=selected_link_sources):
+                continue
             score = _score_text_match(query, row.get("name"), row.get("entity_type"), row.get("url"))
             if score <= 0:
                 continue
@@ -1784,9 +1840,17 @@ def guide_query(
                     "name": row.get("name"),
                     "url": row.get("url"),
                     "citation_url": row.get("citation_url"),
+                    "sources": _link_source_kinds(row),
                 }
             )
-    linked_entity_matches.sort(key=lambda row: (-row["score"], row.get("entity_type") or "", row.get("id") or 0))
+    linked_entity_matches.sort(
+        key=lambda row: (
+            -row["score"],
+            _linked_source_match_rank(row),
+            row.get("entity_type") or "",
+            row.get("id") or 0,
+        )
+    )
 
     gatherer_matches: list[dict[str, Any]] = []
     if kind_enabled("gatherer_entities"):
@@ -1846,6 +1910,7 @@ def guide_query(
         "filters": {
             "kinds": list(selected_kinds),
             "section_title": section_title_filter,
+            "linked_sources": list(selected_link_sources),
         },
         "matches": {
             "sections": section_matches[:limit],

@@ -36,6 +36,7 @@ wowhead guide-bundle-list
 wowhead guide-query ./tmp/frost-dk-guide "bellamy"
 wowhead guide-query 3143 "obliterate" --root ./wowhead_exports
 wowhead guide-query ./tmp/frost-dk-guide "welcome" --kind sections --section-title overview
+wowhead guide-query 3143 "bellamy" --root ./wowhead_exports --kind linked_entities --linked-source multi
 wowhead --pretty search "defias"
 wowhead --fields query,count,results search "defias"
 wowhead entity item 19019
@@ -62,7 +63,7 @@ Use `guide` to resolve Wowhead guide IDs/URLs and retrieve metadata plus sampled
 Use `guide-full` to retrieve the full embedded guide payload in one response, including body markup, nav links, linked entities, gatherer entities, author data, and all parsed comments.
 Use `guide-export` to materialize that payload as local assets (`guide.json`, `page.html`, JSONL slices, and `manifest.json`) for repeated agent exploration.
 Use `guide-bundle-list` to discover exported bundles under `./wowhead_exports/` or another root.
-Use `guide-query` to search a previously exported guide bundle locally across section content, navigation links, entities, and comments. It accepts either a direct bundle path or a selector such as guide ID under `--root`. Use `--kind` to narrow categories and `--section-title` to scope section searches.
+Use `guide-query` to search a previously exported guide bundle locally across section content, navigation links, entities, and comments. It accepts either a direct bundle path or a selector such as guide ID under `--root`. Use `--kind` to narrow categories, `--section-title` to scope section searches, and `--linked-source href|gatherer|multi` to filter merged linked-entity matches by provenance.
 Regular `entity`, `guide`, and `comments` responses now include a lightweight `linked_entities` preview with basic records plus a `fetch_more_command` hint; the regular `entity` preview is trimmed to `type`, `id`, `name`, and `url`, and also includes `counts_by_type` so agents can decide quickly whether to escalate. Guide previews expose the merged deduped guide relation set and include `source_counts` so agents can see how href and gatherer sources contributed. Lightweight previews now suppress low-signal names and prefer more actionable relation types before item-heavy noise. Use `--linked-entity-preview-limit 0` on `entity` or `comments` if you want to skip that preview.
 Gatherer-derived linked entities now use the linked entity page itself as both `url` and `citation_url`, while still preserving the source page under `source_url`.
 Rich linked-entity rows now preserve normalized multi-source attribution under `sources` and `source_kind`, so merged href/gatherer records carry deterministic provenance without changing the lightweight preview shape.
