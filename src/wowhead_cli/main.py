@@ -998,8 +998,7 @@ def _build_guide_full_payload(
             "input": guide_ref,
             "id": guide_id,
             "lookup_url": lookup_url,
-            "url": canonical_url,
-            "comments_url": f"{canonical_url}#comments",
+            "page_url": canonical_url,
         },
         "page": {
             "title": metadata["title"],
@@ -1411,8 +1410,7 @@ def guide(
             "input": guide_ref,
             "id": guide_id,
             "lookup_url": lookup_url,
-            "url": canonical_url,
-            "comments_url": f"{canonical_url}#comments",
+            "page_url": canonical_url,
         },
         "query": {
             "comment_sample": comment_sample,

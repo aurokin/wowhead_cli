@@ -239,7 +239,7 @@ def test_guide_command_supports_id_lookup(monkeypatch) -> None:
     assert calls == [3143]
     assert payload["guide"]["id"] == 3143
     assert payload["guide"]["lookup_url"] == "https://www.wowhead.com/wotlk/guide=3143"
-    assert payload["guide"]["url"] == "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps"
+    assert payload["guide"]["page_url"] == "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps"
     assert payload["comments"]["count"] == 1
     assert payload["comments"]["top"][0]["citation_url"].endswith("#comments:id=91")
     assert payload["linked_entities"]["count"] >= 2
@@ -284,6 +284,7 @@ def test_guide_full_returns_rich_payload(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["guide"]["id"] == 3143
+    assert payload["guide"]["page_url"] == "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps"
     assert payload["author"]["name"] == "khazakdk"
     assert payload["rating"]["votes"] == 70
     assert payload["body"]["sections"][0]["title"] == "Frost Death Knight Overview"
@@ -462,7 +463,7 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
                 "export_version": 1,
                 "expansion": "retail",
                 "output_dir": str(corpus_a),
-                "guide": {"id": 3143, "url": "https://www.wowhead.com/guide=3143"},
+                "guide": {"id": 3143, "page_url": "https://www.wowhead.com/guide=3143"},
                 "page": {
                     "title": "Frost Death Knight DPS Guide - Midnight",
                     "canonical_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
@@ -486,7 +487,7 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
                 "export_version": 1,
                 "expansion": "classic",
                 "output_dir": str(corpus_b),
-                "guide": {"id": 42, "url": "https://www.wowhead.com/guide=42"},
+                "guide": {"id": 42, "page_url": "https://www.wowhead.com/guide=42"},
                 "page": {
                     "title": "Arcane Mage Guide",
                     "canonical_url": "https://www.wowhead.com/guide/classes/mage/arcane/overview-pve-dps",

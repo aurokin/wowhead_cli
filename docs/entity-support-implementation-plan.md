@@ -125,6 +125,7 @@ Current state after the first phase 1 refactor:
 - `guide` and `guide-full` now both treat `linked_entities` as the merged deduped guide relation set, with `source_counts` exposing href/gatherer contributions.
 - Lightweight linked-entity previews now suppress low-signal labels such as raw type names or URL-like anchor text and rank more actionable relation types ahead of noisy same-type/item-heavy results.
 - Entity tooltips now expose a cleaned `tooltip.text` and a shorter title-stripped `tooltip.summary` for fast agent scanning.
+- `guide` and `guide-full` now use `guide.page_url` as the canonical guide source and rely on `citations.comments` instead of duplicating the comment-thread URL under `guide.comments_url`.
 
 ### Route Resolution Findings
 
@@ -160,3 +161,5 @@ Current state after the first phase 1 refactor:
 - Added tooltip-specific cleanup for bracket artifacts and repeated sentence fragments.
 - Added `tooltip.summary` as a short agent-facing scan field while keeping full `tooltip.text` and `tooltip.html`.
 - Verified live improvements on `spell 49020`, `mount 460`, and `quest 86739`.
+- Removed duplicate guide comment URL fields and normalized guide page URL naming across `guide` and `guide-full`.
+- Verified live on `guide 3143` and `guide-full 3143`, both of which now expose `guide.page_url`.
