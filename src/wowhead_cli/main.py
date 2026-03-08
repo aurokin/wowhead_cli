@@ -682,6 +682,30 @@ def _fetch_guide_page(
     return html, guide_id, lookup_url, metadata, canonical_url
 
 
+def _collect_guide_linked_entities(
+    *,
+    html: str,
+    canonical_url: str,
+    guide_id: int | None,
+    max_links: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    guide_entity_id = guide_id or 0
+    href_entities = _dedupe_links(
+        extract_linked_entities_from_href(html, source_url=canonical_url),
+        entity_type="guide",
+        entity_id=guide_entity_id,
+        max_links=max_links,
+    )
+    gatherer_entities = extract_gatherer_entities(html, source_url=canonical_url)
+    merged_entities = _dedupe_links(
+        href_entities + gatherer_entities,
+        entity_type="guide",
+        entity_id=guide_entity_id,
+        max_links=max_links,
+    )
+    return href_entities, gatherer_entities, merged_entities
+
+
 def _build_guide_full_payload(
     ctx: typer.Context,
     *,
@@ -708,13 +732,12 @@ def _build_guide_full_payload(
         include_replies=include_replies,
     )
 
-    linked_entities = _dedupe_links(
-        extract_linked_entities_from_href(html, source_url=canonical_url),
-        entity_type="guide",
-        entity_id=guide_id or 0,
+    href_entities, gatherer_entities, linked_entities = _collect_guide_linked_entities(
+        html=html,
+        canonical_url=canonical_url,
+        guide_id=guide_id,
         max_links=max_links,
     )
-    gatherer_entities = extract_gatherer_entities(html, source_url=canonical_url)
 
     page_meta_json = parse_page_meta_json(html)
     json_ld = extract_json_ld(html)
@@ -783,6 +806,11 @@ def _build_guide_full_payload(
         "linked_entities": {
             "count": len(linked_entities),
             "items": linked_entities,
+            "source_counts": {
+                "href": len(href_entities),
+                "gatherer": len(gatherer_entities),
+                "merged": len(linked_entities),
+            },
         },
         "gatherer_entities": {
             "count": len(gatherer_entities),
@@ -1133,14 +1161,24 @@ def guide(
                 }
             )
 
+    href_entities, gatherer_entities, merged_entities = _collect_guide_linked_entities(
+        html=html,
+        canonical_url=canonical_url,
+        guide_id=guide_id,
+        max_links=5000,
+    )
     linked_preview = _build_linked_entity_preview(
-        extract_linked_entities_from_href(html, source_url=canonical_url)
-        + extract_gatherer_entities(html, source_url=canonical_url),
+        merged_entities,
         entity_type="guide",
         entity_id=guide_id or 0,
         preview_limit=linked_entity_preview_limit,
         fetch_more_command=f"wowhead guide-full {guide_ref}",
     )
+    linked_preview["source_counts"] = {
+        "href": len(href_entities),
+        "gatherer": len(gatherer_entities),
+        "merged": linked_preview["count"],
+    }
 
     page_meta_json = parse_page_meta_json(html)
     payload: dict[str, Any] = {

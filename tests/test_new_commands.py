@@ -243,6 +243,7 @@ def test_guide_command_supports_id_lookup(monkeypatch) -> None:
     assert payload["comments"]["count"] == 1
     assert payload["comments"]["top"][0]["citation_url"].endswith("#comments:id=91")
     assert payload["linked_entities"]["count"] >= 2
+    assert payload["linked_entities"]["source_counts"] == {"href": 2, "gatherer": 1, "merged": 2}
     assert payload["linked_entities"]["items"][0]["url"]
 
 
@@ -289,10 +290,27 @@ def test_guide_full_returns_rich_payload(monkeypatch) -> None:
     assert payload["body"]["section_chunks"][0]["content_text"] == "Welcome to the guide."
     assert payload["navigation"]["links"][0]["url"] == "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps"
     assert payload["linked_entities"]["count"] >= 2
+    assert payload["linked_entities"]["source_counts"] == {"href": 2, "gatherer": 1, "merged": 2}
     assert payload["gatherer_entities"]["items"][0]["id"] == 249277
     assert payload["comments"]["all_comments_included"] is True
     assert payload["comments"]["items"][0]["citation_url"].endswith("#comments:id=91")
     assert payload["structured_data"]["headline"] == "Frost Death Knight DPS Guide - Midnight"
+
+
+def test_guide_and_guide_full_share_linked_entity_count(monkeypatch) -> None:
+    def fake_guide_page_html(self, guide_id: int):  # noqa: ANN001
+        assert guide_id == 3143
+        return SAMPLE_GUIDE_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_page_html", fake_guide_page_html)
+    guide_result = runner.invoke(app, ["guide", "3143", "--comment-sample", "0"])
+    full_result = runner.invoke(app, ["guide-full", "3143"])
+    assert guide_result.exit_code == 0
+    assert full_result.exit_code == 0
+
+    guide_payload = json.loads(guide_result.stdout)
+    full_payload = json.loads(full_result.stdout)
+    assert guide_payload["linked_entities"]["count"] == full_payload["linked_entities"]["count"] == 2
 
 
 def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:

@@ -35,6 +35,7 @@ Use the local `wowhead` command to fetch structured WoW data and citations.
 - `recipe` resolves through spell pages.
 - `mount` resolves through underlying item pages.
 - `battle-pet` resolves through underlying NPC pages.
+8. `guide` and `guide-full` now use the same merged `linked_entities` semantics; use `linked_entities.source_counts` when you need to understand how href and gatherer sources contributed.
 
 ## Required Usage Rules
 
