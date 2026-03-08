@@ -51,7 +51,7 @@ def _payload_for(args: list[str]) -> dict[str, Any]:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         pytest.fail(f"Command did not produce JSON.\nargs={args}\nstdout={result.stdout[:2000]}\n{exc}")
-    assert payload.get("ok", True) is True
+    assert payload.get("ok") is not False
     return payload
 
 

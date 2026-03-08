@@ -56,6 +56,7 @@ wowhead expansions
 ```
 
 Default output is compact JSON for machine consumption. Use `--pretty` for human-readable JSON.
+Successful responses omit `ok`; structured failures return `ok: false` with an `error` object.
 Use global `--expansion` to target a version profile; default is `retail`.
 Use `guide` to resolve Wowhead guide IDs/URLs and retrieve metadata plus sampled comments.
 Use `guide-full` to retrieve the full embedded guide payload in one response, including body markup, nav links, linked entities, gatherer entities, author data, and all parsed comments.

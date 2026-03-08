@@ -67,7 +67,6 @@ def test_entity_page_command_returns_links_with_citations(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
     assert payload["linked_entities"]["count"] >= 1
     first = payload["linked_entities"]["items"][0]
     assert "citation_url" in first
@@ -83,7 +82,6 @@ def test_comments_command_returns_comment_citations(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
     assert payload["comments"][0]["citation_url"].endswith("#comments:id=11")
     assert payload["linked_entities"]["count"] >= 1
     assert payload["linked_entities"]["items"][0]["type"] == "npc"
@@ -131,7 +129,6 @@ def test_compare_command_returns_overlap_and_unique_links(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
     assert payload["comparison"]["linked_entities"]["shared_count_total"] == 1
     assert len(payload["comparison"]["linked_entities"]["unique_by_entity"]["item:19019"]) == 1
     assert len(payload["comparison"]["linked_entities"]["unique_by_entity"]["item:19351"]) == 1
@@ -144,7 +141,6 @@ def test_expansions_command_exposes_profiles() -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
     assert payload["default"] == "retail"
     keys = {row["key"] for row in payload["profiles"]}
     assert "retail" in keys
@@ -282,7 +278,6 @@ def test_guide_full_returns_rich_payload(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
     assert payload["guide"]["id"] == 3143
     assert payload["guide"]["page_url"] == "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps"
     assert payload["author"]["name"] == "khazakdk"
@@ -325,7 +320,6 @@ def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
     assert payload["output_dir"] == str(export_dir)
     assert payload["counts"] == {
         "sections": 2,
@@ -385,7 +379,6 @@ def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
     assert payload["counts"]["gatherer_entities"] >= 1
     assert payload["matches"]["gatherer_entities"][0]["name"] == "Bellamy's Final Judgement"
     assert payload["top"][0]["score"] >= 1
@@ -459,7 +452,6 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
     (corpus_a / "manifest.json").write_text(
         json.dumps(
             {
-                "ok": True,
                 "export_version": 1,
                 "expansion": "retail",
                 "output_dir": str(corpus_a),
@@ -483,7 +475,6 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
     (corpus_b / "manifest.json").write_text(
         json.dumps(
             {
-                "ok": True,
                 "export_version": 1,
                 "expansion": "classic",
                 "output_dir": str(corpus_b),
@@ -509,7 +500,6 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
     assert payload["root"] == str(root)
     assert payload["count"] == 2
     assert [row["guide_id"] for row in payload["bundles"]] == [42, 3143]

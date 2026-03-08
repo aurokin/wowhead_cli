@@ -419,7 +419,7 @@ def _filter_payload_fields(payload: dict[str, Any], *, fields: tuple[str, ...]) 
     if not fields:
         return payload
     filtered: dict[str, Any] = {}
-    if "ok" in payload:
+    if payload.get("ok") is False:
         filtered["ok"] = payload["ok"]
     if payload.get("ok") is False and "error" in payload:
         filtered["error"] = payload["error"]
@@ -992,7 +992,6 @@ def _build_guide_full_payload(
         author_embed = None
 
     payload: dict[str, Any] = {
-        "ok": True,
         "expansion": cfg.expansion.key,
         "guide": {
             "input": guide_ref,
@@ -1234,7 +1233,6 @@ def cli(
 def expansions(ctx: typer.Context) -> None:
     profiles = list_profiles()
     payload = {
-        "ok": True,
         "default": resolve_expansion(None).key,
         "profiles": [
             {
@@ -1310,7 +1308,6 @@ def search(
         normalized.append(candidate)
 
     payload: dict[str, Any] = {
-        "ok": True,
         "query": query,
         "expansion": cfg.expansion.key,
         "search_url": search_url(query, expansion=cfg.expansion),
@@ -1404,7 +1401,6 @@ def guide(
 
     page_meta_json = parse_page_meta_json(html)
     payload: dict[str, Any] = {
-        "ok": True,
         "expansion": cfg.expansion.key,
         "guide": {
             "input": guide_ref,
@@ -1564,7 +1560,6 @@ def guide_export(
         files_written["structured_data_json"] = structured_data_path.name
 
     manifest = {
-        "ok": True,
         "export_version": 1,
         "expansion": payload.get("expansion"),
         "output_dir": str(export_dir),
@@ -1764,7 +1759,6 @@ def guide_query(
     top_matches.sort(key=lambda row: (-row["score"], row.get("kind") or ""))
 
     payload = {
-        "ok": True,
         "query": query,
         "output_dir": str(export_dir),
         "guide": guide,
@@ -1807,7 +1801,6 @@ def guide_bundle_list(
     resolved_root = (root or _guide_export_root()).expanduser()
     bundles = _discover_guide_corpora(resolved_root)
     payload = {
-        "ok": True,
         "root": str(resolved_root),
         "count": len(bundles),
         "bundles": bundles,
@@ -2025,7 +2018,6 @@ def entity_page(
     page_meta_json = parse_page_meta_json(html)
 
     payload: dict[str, Any] = {
-        "ok": True,
         "expansion": cfg.expansion.key,
         "normalize_canonical_to_expansion": cfg.normalize_canonical_to_expansion,
         "entity": {
@@ -2164,7 +2156,6 @@ def comments(
     )
 
     payload = {
-        "ok": True,
         "expansion": cfg.expansion.key,
         "normalize_canonical_to_expansion": cfg.normalize_canonical_to_expansion,
         "entity": {
@@ -2422,7 +2413,6 @@ def compare(
         ]
 
     payload = {
-        "ok": True,
         "expansion": cfg.expansion.key,
         "normalize_canonical_to_expansion": cfg.normalize_canonical_to_expansion,
         "inputs": refs_in_order,

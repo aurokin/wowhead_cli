@@ -7,6 +7,8 @@ description: Query World of Warcraft data through the local `wowhead` CLI. Use w
 
 Use the local `wowhead` command to fetch structured WoW data and citations.
 
+Successful responses omit `ok`; only structured failures return `ok: false` with an `error` object.
+
 ## Command Routing
 
 - Unknown ID or ambiguous request: `wowhead search "<query>" --limit 5`

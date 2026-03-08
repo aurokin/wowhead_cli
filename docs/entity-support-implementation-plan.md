@@ -3,7 +3,7 @@
 ## Status
 
 - Overall: in progress
-- Current phase: Phase 1 - entity type routing and advertised support audit
+- Current phase: Phase 2 - contract normalization
 - Last updated: 2026-03-07
 
 ## Goal
@@ -22,7 +22,7 @@ Bring the CLI's advertised entity and guide features up to their actual supporte
 
 ### Phase 1 - Entity Type Routing And Support Audit
 
-Status: in progress
+Status: completed
 
 Work:
 
@@ -39,7 +39,7 @@ Exit criteria:
 
 ### Phase 2 - Contract Normalization
 
-Status: pending
+Status: in progress
 
 Work:
 
@@ -126,6 +126,7 @@ Current state after the first phase 1 refactor:
 - Lightweight linked-entity previews now suppress low-signal labels such as raw type names or URL-like anchor text and rank more actionable relation types ahead of noisy same-type/item-heavy results.
 - Entity tooltips now expose a cleaned `tooltip.text` and a shorter title-stripped `tooltip.summary` for fast agent scanning.
 - `guide` and `guide-full` now use `guide.page_url` as the canonical guide source and rely on `citations.comments` instead of duplicating the comment-thread URL under `guide.comments_url`.
+- Successful CLI payloads and exported guide manifests no longer include `ok: true`; only structured error payloads retain `ok: false`.
 
 ### Route Resolution Findings
 
@@ -163,3 +164,5 @@ Current state after the first phase 1 refactor:
 - Verified live improvements on `spell 49020`, `mount 460`, and `quest 86739`.
 - Removed duplicate guide comment URL fields and normalized guide page URL naming across `guide` and `guide-full`.
 - Verified live on `guide 3143` and `guide-full 3143`, both of which now expose `guide.page_url`.
+- Removed `ok: true` from all successful command payloads and from exported guide manifests so success responses stay compact and structurally consistent.
+- Kept `ok: false` only on structured error payloads and updated tests and docs around that contract.

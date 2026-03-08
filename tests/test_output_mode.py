@@ -21,7 +21,7 @@ def test_search_defaults_to_compact_json(monkeypatch) -> None:
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
     result = runner.invoke(app, ["search", "thunderfury"])
     assert result.exit_code == 0
-    assert result.stdout.startswith('{"ok":true,')
+    assert result.stdout.startswith('{"query":"thunderfury",')
     assert result.stdout.count("\n") == 1
 
 
@@ -38,7 +38,7 @@ def test_pretty_flag_emits_indented_json(monkeypatch) -> None:
     result = runner.invoke(app, ["--pretty", "search", "thunderfury"])
     assert result.exit_code == 0
     assert result.stdout.startswith("{\n")
-    assert '  "ok": true,' in result.stdout
+    assert '  "query": "thunderfury",' in result.stdout
 
 
 def test_compact_flag_truncates_long_string_fields(monkeypatch) -> None:
@@ -77,7 +77,7 @@ def test_fields_flag_projects_requested_fields(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert set(payload.keys()) == {"ok", "query", "count", "results"}
+    assert set(payload.keys()) == {"query", "count", "results"}
     assert payload["query"] == "thunderfury"
     assert payload["count"] == 1
     assert payload["results"][0]["id"] == 19019
