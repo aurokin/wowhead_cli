@@ -68,6 +68,16 @@ def test_extract_gatherer_entities() -> None:
     pairs = {(row["entity_type"], row["id"]) for row in records}
     assert ("npc", 12056) in pairs
     assert ("item", 19019) in pairs
+    by_pair = {(row["entity_type"], row["id"]): row for row in records}
+    assert by_pair[("npc", 12056)]["url"] == "https://www.wowhead.com/npc=12056"
+    assert by_pair[("npc", 12056)]["citation_url"] == "https://www.wowhead.com/npc=12056"
+
+
+def test_extract_gatherer_entities_preserves_expansion_prefix_in_url() -> None:
+    html = 'WH.Gatherer.addData(3, 1, {"19019":{"name_enus":"Thunderfury"}});'
+    records = extract_gatherer_entities(html, source_url="https://www.wowhead.com/wotlk/item=19019")
+    assert records[0]["url"] == "https://www.wowhead.com/wotlk/item=19019"
+    assert records[0]["citation_url"] == "https://www.wowhead.com/wotlk/item=19019"
 
 
 def test_extract_and_normalize_comments() -> None:

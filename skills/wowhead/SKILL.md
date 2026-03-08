@@ -41,6 +41,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 9. Lightweight linked-entity previews are intentionally ranked and filtered for decision-making; they are not DOM-order dumps, and low-signal labels may be omitted from preview names even though the full relation data is still available via `entity-page` or `guide-full`.
 10. For guide responses, prefer `guide.page_url` as the canonical guide source and `citations.comments` for the comment thread source.
 11. For `compare`, use each entity record's `entity.page_url` and `citations.comments`; generated shared/unique linked-entity rows expose only `url`, not a duplicate `citation_url`.
+12. Gatherer-derived linked entities use the linked entity page as both `url` and `citation_url`; `source_url` remains the original page where the relation was found.
 
 ## Required Usage Rules
 

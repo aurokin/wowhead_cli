@@ -3,7 +3,7 @@
 ## Status
 
 - Overall: in progress
-- Current phase: Phase 2 - contract normalization
+- Current phase: Phase 3 - linked entity quality
 - Last updated: 2026-03-07
 
 ## Goal
@@ -39,7 +39,7 @@ Exit criteria:
 
 ### Phase 2 - Contract Normalization
 
-Status: in progress
+Status: completed
 
 Work:
 
@@ -54,7 +54,7 @@ Exit criteria:
 
 ### Phase 3 - Linked Entity Quality
 
-Status: pending
+Status: in progress
 
 Work:
 
@@ -129,6 +129,7 @@ Current state after the first phase 1 refactor:
 - Successful CLI payloads and exported guide manifests no longer include `ok: true`; only structured error payloads retain `ok: false`.
 - `entity-page`, `comments`, and embedded compare entity summaries now use `entity.page_url` and `citations.comments`, removing the older duplicated URL fields from those surfaces.
 - `compare` now keeps page/comment URLs only on each entity record and uses a single canonical `url` field on generated overlap/unique linked-entity rows.
+- Gatherer-derived linked entities now use canonical linked-entity page URLs for both `url` and `citation_url`, instead of incorrectly pointing `citation_url` back to the source page.
 
 ### Route Resolution Findings
 
@@ -171,3 +172,4 @@ Current state after the first phase 1 refactor:
 - Normalized `entity-page`, `comments`, and compare entity summaries onto `entity.page_url` and `citations.comments`, removing the older duplicate URL fields from those surfaces.
 - Verified live on `entity-page quest 86739` and `comments quest 86739`, both of which now expose `entity.page_url` and `citations.comments`.
 - Trimmed `compare` so per-entity records remain the source of page/comment URLs, removed top-level compare citation arrays, and removed duplicate `citation_url` fields from generated shared/unique linked-entity rows.
+- Fixed gatherer-derived linked-entity citations so `citation_url` now matches the linked entity page URL and preserves expansion path context from the source page.

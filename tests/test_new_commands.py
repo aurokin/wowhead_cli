@@ -301,6 +301,7 @@ def test_guide_full_returns_rich_payload(monkeypatch) -> None:
     assert payload["linked_entities"]["count"] >= 2
     assert payload["linked_entities"]["source_counts"] == {"href": 2, "gatherer": 1, "merged": 2}
     assert payload["gatherer_entities"]["items"][0]["id"] == 249277
+    assert payload["gatherer_entities"]["items"][0]["citation_url"] == "https://www.wowhead.com/item=249277"
     assert payload["comments"]["all_comments_included"] is True
     assert payload["comments"]["items"][0]["citation_url"].endswith("#comments:id=91")
     assert payload["structured_data"]["headline"] == "Frost Death Knight DPS Guide - Midnight"

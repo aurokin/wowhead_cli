@@ -381,13 +381,18 @@ def extract_gatherer_entities(html_text: str, *, source_url: str) -> list[dict[s
             name = None
             if isinstance(entity_payload, dict):
                 name = entity_payload.get("name_enus") or entity_payload.get("name")
+            entity_page_url = _entity_url_for_source_context(
+                source_url=source_url,
+                entity_type=entity_type,
+                entity_id=entity_id,
+            )
             records.append(
                 {
                     "entity_type": entity_type,
                     "id": entity_id,
                     "name": name,
-                    "url": entity_url(entity_type, entity_id),
-                    "citation_url": source_url,
+                    "url": entity_page_url,
+                    "citation_url": entity_page_url,
                     "source_url": source_url,
                     "source_kind": "gatherer",
                     "gatherer_data_type": data_type,
@@ -517,6 +522,14 @@ def _parse_entity_ref(href: str) -> tuple[str, int, str] | None:
     else:
         canonical = entity_url(entity_type, entity_id)
     return entity_type, entity_id, canonical
+
+
+def _entity_url_for_source_context(*, source_url: str, entity_type: str, entity_id: int) -> str:
+    parsed = urlparse(source_url)
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if path_parts and path_parts[0] in EXPANSION_PREFIXES:
+        return f"{WOWHEAD_BASE_URL}/{path_parts[0]}/{entity_type}={entity_id}"
+    return entity_url(entity_type, entity_id)
 
 
 def _first_group(pattern: re.Pattern[str], text: str) -> str | None:
