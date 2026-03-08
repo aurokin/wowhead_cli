@@ -129,7 +129,7 @@ def test_recorded_fixture_search_entity_entity_page_comments(
     assert page_result.exit_code == 0
     page_payload = json.loads(page_result.stdout)
     assert page_payload["expansion"] == expansion_key
-    assert page_payload["entity"]["url"] == profile_data["canonical_url"]
+    assert page_payload["entity"]["page_url"] == profile_data["canonical_url"]
     assert page_payload["linked_entities"]["count"] == 1
     assert page_payload["linked_entities"]["items"][0]["url"] == _expected_link_url(profile_data["link_href"])
 
@@ -149,6 +149,7 @@ def test_recorded_fixture_search_entity_entity_page_comments(
     assert comments_result.exit_code == 0
     comments_payload = json.loads(comments_result.stdout)
     assert comments_payload["expansion"] == expansion_key
+    assert comments_payload["entity"]["page_url"] == profile_data["canonical_url"]
     assert comments_payload["counts"]["hydrated_reply_threads"] == 1
     assert comments_payload["comments"][0]["citation_url"] == f'{profile_data["canonical_url"]}#comments:id=342'
     assert comments_payload["comments"][0]["replies"][0]["id"] == 267532

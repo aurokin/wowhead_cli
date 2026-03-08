@@ -67,6 +67,9 @@ def test_entity_page_command_returns_links_with_citations(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
+    assert payload["entity"]["page_url"] == "https://www.wowhead.com/item=19019/thunderfury"
+    assert "comments_url" not in payload["entity"]
+    assert payload["citations"]["comments"] == "https://www.wowhead.com/item=19019/thunderfury#comments"
     assert payload["linked_entities"]["count"] >= 1
     first = payload["linked_entities"]["items"][0]
     assert "citation_url" in first
@@ -82,6 +85,9 @@ def test_comments_command_returns_comment_citations(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
+    assert payload["entity"]["page_url"] == "https://www.wowhead.com/item=19019/thunderfury"
+    assert "comments_url" not in payload["entity"]
+    assert payload["citations"]["comments"] == "https://www.wowhead.com/item=19019/thunderfury#comments"
     assert payload["comments"][0]["citation_url"].endswith("#comments:id=11")
     assert payload["linked_entities"]["count"] >= 1
     assert payload["linked_entities"]["items"][0]["type"] == "npc"
@@ -134,6 +140,9 @@ def test_compare_command_returns_overlap_and_unique_links(monkeypatch) -> None:
     assert len(payload["comparison"]["linked_entities"]["unique_by_entity"]["item:19351"]) == 1
     assert payload["comparison"]["fields"]["name"]["all_equal"] is False
     assert payload["entities"][0]["comments"]["top"][0]["citation_url"].endswith("#comments:id=501")
+    assert payload["entities"][0]["entity"]["page_url"] == "https://www.wowhead.com/item=19019/thunderfury"
+    assert "comments_url" not in payload["entities"][0]["entity"]
+    assert payload["citations"]["comment_pages"][0] == "https://www.wowhead.com/item=19019/thunderfury#comments"
 
 
 def test_expansions_command_exposes_profiles() -> None:
@@ -620,7 +629,7 @@ def test_entity_page_mount_resolves_underlying_item_page(monkeypatch) -> None:
     assert page_calls == [("item", 84101)]
     assert payload["entity"]["type"] == "mount"
     assert payload["entity"]["id"] == 460
-    assert payload["entity"]["url"] == "https://www.wowhead.com/item=84101/reins-of-the-grand-expedition-yak"
+    assert payload["entity"]["page_url"] == "https://www.wowhead.com/item=84101/reins-of-the-grand-expedition-yak"
     assert payload["linked_entities"]["count"] == 1
 
 
@@ -656,7 +665,7 @@ def test_comments_battle_pet_resolves_underlying_npc_page(monkeypatch) -> None:
     assert page_calls == [("npc", 2671)]
     assert payload["entity"]["type"] == "battle-pet"
     assert payload["entity"]["id"] == 39
-    assert payload["entity"]["url"] == "https://www.wowhead.com/npc=2671/mechanical-squirrel"
+    assert payload["entity"]["page_url"] == "https://www.wowhead.com/npc=2671/mechanical-squirrel"
     assert payload["comments"][0]["citation_url"].endswith("#comments:id=11")
 
 
@@ -1044,7 +1053,7 @@ def test_canonical_normalization_flag_for_entity_page(monkeypatch) -> None:
     assert default_result.exit_code == 0
     default_payload = json.loads(default_result.stdout)
     assert default_payload["normalize_canonical_to_expansion"] is False
-    assert default_payload["entity"]["url"] == "https://www.wowhead.com/item=19019/thunderfury-blessed-blade-of-the-windseeker"
+    assert default_payload["entity"]["page_url"] == "https://www.wowhead.com/item=19019/thunderfury-blessed-blade-of-the-windseeker"
 
     normalized_result = runner.invoke(
         app,
@@ -1062,7 +1071,7 @@ def test_canonical_normalization_flag_for_entity_page(monkeypatch) -> None:
     assert normalized_result.exit_code == 0
     normalized_payload = json.loads(normalized_result.stdout)
     assert normalized_payload["normalize_canonical_to_expansion"] is True
-    assert normalized_payload["entity"]["url"] == "https://www.wowhead.com/ptr/item=19019/thunderfury-blessed-blade-of-the-windseeker"
+    assert normalized_payload["entity"]["page_url"] == "https://www.wowhead.com/ptr/item=19019/thunderfury-blessed-blade-of-the-windseeker"
 
 
 def test_canonical_normalization_flag_for_comments_citations(monkeypatch) -> None:
@@ -1096,5 +1105,5 @@ def test_canonical_normalization_flag_for_comments_citations(monkeypatch) -> Non
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["normalize_canonical_to_expansion"] is True
-    assert payload["entity"]["url"] == "https://www.wowhead.com/ptr/item=19019/thunderfury-blessed-blade-of-the-windseeker"
+    assert payload["entity"]["page_url"] == "https://www.wowhead.com/ptr/item=19019/thunderfury-blessed-blade-of-the-windseeker"
     assert payload["comments"][0]["citation_url"] == "https://www.wowhead.com/ptr/item=19019/thunderfury-blessed-blade-of-the-windseeker#comments:id=11"

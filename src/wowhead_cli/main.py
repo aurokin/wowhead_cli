@@ -2023,8 +2023,7 @@ def entity_page(
         "entity": {
             "type": entity_type,
             "id": entity_id,
-            "url": canonical_url,
-            "comments_url": f"{canonical_url}#comments",
+            "page_url": canonical_url,
         },
         "page": {
             "title": metadata["title"],
@@ -2161,8 +2160,7 @@ def comments(
         "entity": {
             "type": entity_type,
             "id": entity_id,
-            "url": canonical_url,
-            "comments_url": f"{canonical_url}#comments",
+            "page_url": canonical_url,
         },
         "query": {
             "limit": limit,
@@ -2331,8 +2329,7 @@ def compare(
                 "entity": {
                     "type": entity_type,
                     "id": entity_id,
-                    "url": canonical_url,
-                    "comments_url": f"{canonical_url}#comments",
+                    "page_url": canonical_url,
                 },
                 "summary": {
                     "name": tooltip.get("name"),
@@ -2428,8 +2425,8 @@ def compare(
         },
         "entities": entity_records,
         "citations": {
-            "entity_pages": [row["entity"]["url"] for row in entity_records],
-            "comment_pages": [row["entity"]["comments_url"] for row in entity_records],
+            "entity_pages": [row["entity"]["page_url"] for row in entity_records],
+            "comment_pages": [row["citations"]["comments"] for row in entity_records],
         },
     }
     _emit(ctx, payload)

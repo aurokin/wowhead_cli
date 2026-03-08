@@ -135,8 +135,9 @@ def test_live_entity_page_contract(expansion_key: str) -> None:
 
     assert payload["expansion"] == expansion_key
     assert payload["normalize_canonical_to_expansion"] is False
-    assert payload["entity"]["comments_url"] == f'{payload["entity"]["url"]}#comments'
-    assert payload["citations"]["page"] == payload["entity"]["url"]
+    assert payload["entity"]["page_url"].startswith(f"{resolve_expansion(expansion_key).wowhead_base}/item=19019")
+    assert payload["citations"]["page"] == payload["entity"]["page_url"]
+    assert payload["citations"]["comments"] == f'{payload["entity"]["page_url"]}#comments'
     assert payload["linked_entities"]["count"] == len(payload["linked_entities"]["items"])
     assert payload["linked_entities"]["count"] > 0
 
@@ -159,7 +160,7 @@ def test_live_ptr_canonical_normalization_contract() -> None:
 
     assert default_payload["normalize_canonical_to_expansion"] is False
     assert normalized_payload["normalize_canonical_to_expansion"] is True
-    assert normalized_payload["entity"]["url"].startswith("https://www.wowhead.com/ptr/item=19019")
+    assert normalized_payload["entity"]["page_url"].startswith("https://www.wowhead.com/ptr/item=19019")
 
 
 @pytest.mark.parametrize("expansion_key", ["retail", "cata", "ptr"])
@@ -185,7 +186,7 @@ def test_live_comments_contract(expansion_key: str) -> None:
     assert payload["counts"]["returned_comments"] > 0
     first = payload["comments"][0]
     assert "#comments:id=" in first["citation_url"]
-    assert first["source_url"] == payload["entity"]["url"]
+    assert first["source_url"] == payload["entity"]["page_url"]
 
 
 @pytest.mark.parametrize("expansion_key", ["retail", "wotlk", "cata"])
@@ -236,7 +237,7 @@ def test_live_discovered_entity_type_command_flow(entity_type: str, query: str) 
     assert entity_payload["expansion"] == expansion_key
     assert entity_payload["entity"]["type"] == entity_type
     assert entity_payload["entity"]["id"] == entity_id
-    assert entity_payload["entity"]["url"].startswith(f"{profile.wowhead_base}/{entity_type}={entity_id}")
+    assert entity_payload["entity"]["page_url"].startswith(f"{profile.wowhead_base}/{entity_type}={entity_id}")
 
     page_payload = _payload_for(
         ["--expansion", expansion_key, "entity-page", entity_type, str(entity_id), "--max-links", "10"]
@@ -245,7 +246,7 @@ def test_live_discovered_entity_type_command_flow(entity_type: str, query: str) 
     assert page_payload["entity"]["id"] == entity_id
     assert page_payload["linked_entities"]["count"] == len(page_payload["linked_entities"]["items"])
     assert page_payload["linked_entities"]["count"] > 0
-    assert page_payload["citations"]["page"] == page_payload["entity"]["url"]
+    assert page_payload["citations"]["page"] == page_payload["entity"]["page_url"]
 
     comments_payload = _payload_for(
         ["--expansion", expansion_key, "comments", entity_type, str(entity_id), "--limit", "2", "--sort", "newest"]
@@ -253,11 +254,11 @@ def test_live_discovered_entity_type_command_flow(entity_type: str, query: str) 
     returned_comments = comments_payload["counts"]["returned_comments"]
     comments = comments_payload["comments"]
     assert returned_comments == len(comments)
-    assert comments_payload["citations"]["comments"] == f'{comments_payload["entity"]["url"]}#comments'
+    assert comments_payload["citations"]["comments"] == f'{comments_payload["entity"]["page_url"]}#comments'
     if returned_comments > 0:
         first = comments[0]
         assert "#comments:id=" in first["citation_url"]
-        assert first["source_url"] == comments_payload["entity"]["url"]
+        assert first["source_url"] == comments_payload["entity"]["page_url"]
     else:
         assert comments == []
 

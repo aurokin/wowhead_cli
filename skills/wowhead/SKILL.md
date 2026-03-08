@@ -31,7 +31,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 - `comments.needs_raw_fetch` indicates whether to call `wowhead comments ...` for full coverage.
 4. For `entity`, prefer `entity.name` and `entity.page_url` over older tooltip-derived naming; use `tooltip.summary` for fast scanning, `tooltip.text` for the cleaned full text, and `tooltip.html` only when markup matters.
 5. Inspect `linked_entities.counts_by_type` and the lightweight preview items on regular responses to decide whether to escalate to `entity-page` or `guide-full`.
-6. For `entity`, use `entity.page_url` as the canonical page source and, when comments are included, `citations.comments` for the comment thread source.
+6. For `entity`, `entity-page`, `comments`, and embedded compare entity summaries, use `entity.page_url` as the canonical page source and `citations.comments` for the comment thread source instead of older duplicated URL fields.
 7. Some entity types use special routing under the hood:
 - `faction` and `pet` derive tooltip text from page metadata.
 - `recipe` resolves through spell pages.
