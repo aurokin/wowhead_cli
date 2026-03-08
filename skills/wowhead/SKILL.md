@@ -25,11 +25,11 @@ Use the local `wowhead` command to fetch structured WoW data and citations.
 1. Resolve candidate with `search` if ID is unknown.
 2. Fetch main object with `entity`.
 3. Inspect comment completeness from `entity` output:
-- `comments_included` indicates whether comments were requested.
 - `comments.all_comments_included` indicates whether returned comments are complete.
 - `comments.needs_raw_fetch` indicates whether to call `wowhead comments ...` for full coverage.
-4. Inspect `linked_entities` preview on regular responses to decide whether to escalate to `entity-page` or `guide-full`.
-5. Use `citations.page` and `citations.comments` in responses.
+4. For `entity`, prefer `entity.name` and `entity.page_url` over older tooltip-derived naming; use `tooltip.text` for quick reading and `tooltip.html` only when markup matters.
+5. Inspect `linked_entities.counts_by_type` and the lightweight preview items on regular responses to decide whether to escalate to `entity-page` or `guide-full`.
+6. For `entity`, use `entity.page_url` as the canonical page source and, when comments are included, `citations.comments` for the comment thread source.
 
 ## Required Usage Rules
 
@@ -58,5 +58,5 @@ wowhead guide-query ./tmp/frost-dk-guide "bellamy"
 wowhead guide-query 3143 "obliterate" --root ./wowhead_exports
 wowhead guide-query ./tmp/frost-dk-guide "welcome" --kind sections --section-title overview
 wowhead --expansion classic entity npc 91331
-wowhead --fields entity,tooltip.name,citations entity quest 86682
+wowhead --fields entity.name,entity.page_url,tooltip.text,linked_entities entity quest 86682
 ```

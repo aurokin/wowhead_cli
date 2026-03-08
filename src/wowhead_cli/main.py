@@ -260,7 +260,7 @@ def _dedupe_links(
     max_links: int,
 ) -> list[dict[str, Any]]:
     deduped: list[dict[str, Any]] = []
-    seen: set[tuple[str, int]] = set()
+    seen_index: dict[tuple[str, int], int] = {}
     for record in links:
         link_type = record.get("entity_type")
         link_id = record.get("id")
@@ -269,13 +269,49 @@ def _dedupe_links(
         if link_type == entity_type and link_id == entity_id:
             continue
         key = (link_type, link_id)
-        if key in seen:
+        existing_index = seen_index.get(key)
+        if existing_index is not None:
+            existing = deduped[existing_index]
+            for field in (
+                "name",
+                "url",
+                "citation_url",
+                "source_url",
+                "source_kind",
+                "gatherer_data_type",
+            ):
+                if existing.get(field) in (None, "") and record.get(field) not in (None, ""):
+                    existing[field] = record[field]
             continue
-        seen.add(key)
+        seen_index[key] = len(deduped)
         deduped.append(record)
         if len(deduped) >= max_links:
             break
     return deduped
+
+
+def _normalize_tooltip_payload(tooltip: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
+    entity_name = tooltip.get("name")
+    name = entity_name if isinstance(entity_name, str) and entity_name.strip() else None
+
+    tooltip_payload = dict(tooltip)
+    tooltip_html = tooltip_payload.pop("tooltip", None)
+    tooltip_payload.pop("name", None)
+
+    if isinstance(tooltip_html, str):
+        tooltip_payload["html"] = tooltip_html
+        tooltip_payload["text"] = clean_markup_text(tooltip_html)
+
+    return name, tooltip_payload
+
+
+def _summarize_linked_entity(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": record.get("entity_type"),
+        "id": record.get("id"),
+        "name": record.get("name"),
+        "url": record.get("url"),
+    }
 
 
 def _fetch_entity_page(
@@ -451,6 +487,7 @@ def _build_linked_entity_preview(
     if preview_limit <= 0:
         return {
             "count": 0,
+            "counts_by_type": {},
             "items": [],
             "more_available": False,
             "fetch_more_command": fetch_more_command,
@@ -462,9 +499,16 @@ def _build_linked_entity_preview(
         max_links=max(len(links), 1),
     )
     preview_items = deduped[:preview_limit]
+    counts_by_type: dict[str, int] = {}
+    for row in deduped:
+        link_type = row.get("entity_type")
+        if not isinstance(link_type, str):
+            continue
+        counts_by_type[link_type] = counts_by_type.get(link_type, 0) + 1
     return {
         "count": len(deduped),
-        "items": preview_items,
+        "counts_by_type": counts_by_type,
+        "items": [_summarize_linked_entity(row) for row in preview_items],
         "more_available": len(deduped) > len(preview_items),
         "fetch_more_command": fetch_more_command,
     }
@@ -1412,6 +1456,7 @@ def entity(
 
     canonical = entity_url(entity_type, entity_id, expansion=cfg.expansion)
     page_url = canonical
+    entity_name, tooltip_payload = _normalize_tooltip_payload(tooltip)
     html: str | None = None
     raw_comments: list[dict[str, Any]] = []
     sampled_comments: list[dict[str, Any]] = []
@@ -1460,22 +1505,20 @@ def entity(
             all_comments_included = len(sampled_comments) == len(raw_comments)
 
     payload = {
-        "ok": True,
         "expansion": cfg.expansion.key,
         "entity": {
             "type": entity_type,
             "id": entity_id,
-            "url": canonical,
-            "comments_url": f"{canonical}#comments",
-        },
-        "data_env": data_env if data_env is not None else cfg.expansion.data_env,
-        "comments_included": include_comments,
-        "tooltip": tooltip,
-        "citations": {
-            "page": page_url,
-            "comments": f"{page_url}#comments",
+            "name": entity_name,
+            "page_url": page_url,
         },
     }
+    if tooltip_payload:
+        payload["tooltip"] = tooltip_payload
+    if include_comments:
+        payload["citations"] = {
+            "comments": f"{page_url}#comments",
+        }
     if html is not None and linked_entity_preview_limit > 0:
         payload["linked_entities"] = _build_linked_entity_preview(
             extract_linked_entities_from_href(html, source_url=page_url)

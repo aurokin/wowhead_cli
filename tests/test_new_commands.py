@@ -86,7 +86,7 @@ def test_comments_command_returns_comment_citations(monkeypatch) -> None:
     assert payload["ok"] is True
     assert payload["comments"][0]["citation_url"].endswith("#comments:id=11")
     assert payload["linked_entities"]["count"] >= 1
-    assert payload["linked_entities"]["items"][0]["entity_type"] == "npc"
+    assert payload["linked_entities"]["items"][0]["type"] == "npc"
 
 
 def test_compare_command_returns_overlap_and_unique_links(monkeypatch) -> None:
@@ -207,7 +207,7 @@ def test_guide_command_supports_id_lookup(monkeypatch) -> None:
     assert payload["comments"]["count"] == 1
     assert payload["comments"]["top"][0]["citation_url"].endswith("#comments:id=91")
     assert payload["linked_entities"]["count"] >= 2
-    assert payload["linked_entities"]["items"][0]["citation_url"]
+    assert payload["linked_entities"]["items"][0]["url"]
 
 
 def test_guide_command_supports_full_wowhead_url(monkeypatch) -> None:
@@ -481,14 +481,16 @@ def test_entity_respects_expansion_flag(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert calls == [("classic", None)]
     assert payload["expansion"] == "classic"
-    assert payload["entity"]["url"] == "https://www.wowhead.com/classic/item=19019"
-    assert payload["entity"]["comments_url"] == "https://www.wowhead.com/classic/item=19019#comments"
-    assert payload["data_env"] == 4
+    assert payload["entity"]["name"] == "Thunderfury"
+    assert payload["entity"]["page_url"] == "https://www.wowhead.com/item=19019/thunderfury"
+    assert "tooltip" not in payload
+    assert payload["citations"]["comments"] == "https://www.wowhead.com/item=19019/thunderfury#comments"
     assert payload["comments"]["count"] == 1
     assert payload["comments"]["all_comments_included"] is True
     assert payload["comments"]["needs_raw_fetch"] is False
     assert payload["comments"]["top"][0]["citation_url"].endswith("#comments:id=11")
     assert payload["linked_entities"]["count"] >= 1
+    assert payload["linked_entities"]["counts_by_type"]["npc"] == 1
     assert payload["linked_entities"]["fetch_more_command"] == "wowhead entity-page item 19019 --max-links 200"
 
 
@@ -508,10 +510,10 @@ def test_entity_supports_excluding_comments(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["comments_included"] is False
     assert "comments" not in payload
     assert "linked_entities" not in payload
-    assert payload["citations"]["page"] == "https://www.wowhead.com/item=19019"
+    assert payload["entity"]["page_url"] == "https://www.wowhead.com/item=19019"
+    assert "citations" not in payload
     assert page_calls == []
 
 
@@ -531,9 +533,10 @@ def test_entity_includes_linked_entity_preview_without_comments(monkeypatch) -> 
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["comments_included"] is False
     assert payload["linked_entities"]["count"] >= 1
-    assert payload["linked_entities"]["items"][0]["entity_type"] == "npc"
+    assert payload["linked_entities"]["counts_by_type"]["npc"] == 1
+    assert payload["linked_entities"]["items"][0]["type"] == "npc"
+    assert set(payload["linked_entities"]["items"][0].keys()) == {"type", "id", "name", "url"}
     assert payload["linked_entities"]["more_available"] is False
     assert page_calls == [("item", 19019)]
 
@@ -551,7 +554,6 @@ def test_entity_supports_include_all_comments(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["comments_included"] is True
     assert payload["comments"]["count"] == 1
     assert payload["comments"]["all_comments_included"] is True
     assert payload["comments"]["needs_raw_fetch"] is False
@@ -588,6 +590,60 @@ def test_entity_marks_partial_comments_when_more_than_top_limit(monkeypatch) -> 
     assert payload["comments"]["needs_raw_fetch"] is True
     assert payload["comments"]["count"] == 4
     assert len(payload["comments"]["top"]) == 3
+
+
+def test_entity_normalizes_tooltip_name_and_html(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {"name": "Thunderfury", "tooltip": "<b>Legendary</b> weapon", "quality": 5}
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return "<html><body><script>var lv_comments0 = [];</script></body></html>"
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "item", "19019"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["entity"]["name"] == "Thunderfury"
+    assert payload["tooltip"]["quality"] == 5
+    assert payload["tooltip"]["html"] == "<b>Legendary</b> weapon"
+    assert payload["tooltip"]["text"] == "Legendary weapon"
+    assert "name" not in payload["tooltip"]
+    assert "tooltip" not in payload["tooltip"]
+
+
+def test_entity_preview_prefers_gatherer_name_when_href_label_missing(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {"name": "Thunderfury"}
+
+    html = """
+    <html><head>
+      <link rel="canonical" href="https://www.wowhead.com/item=19019/thunderfury">
+    </head><body>
+      <a href="/spell=49020"></a>
+      <script>
+        WH.Gatherer.addData(6, 1, {"49020":{"name_enus":"Obliterate"}});
+        var lv_comments0 = [];
+      </script>
+    </body></html>
+    """
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return html
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "item", "19019", "--no-include-comments"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["linked_entities"]["items"][0] == {
+        "type": "spell",
+        "id": 49020,
+        "name": "Obliterate",
+        "url": "https://www.wowhead.com/spell=49020",
+    }
 
 
 def test_compare_respects_expansion_flag_for_generated_urls(monkeypatch) -> None:

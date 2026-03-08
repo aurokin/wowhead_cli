@@ -51,7 +51,7 @@ def _payload_for(args: list[str]) -> dict[str, Any]:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         pytest.fail(f"Command did not produce JSON.\nargs={args}\nstdout={result.stdout[:2000]}\n{exc}")
-    assert payload.get("ok") is True
+    assert payload.get("ok", True) is True
     return payload
 
 
@@ -97,12 +97,12 @@ def test_live_entity_contract(expansion_key: str) -> None:
     payload = _payload_for(["--expansion", expansion_key, "entity", "item", "19019"])
 
     assert payload["expansion"] == expansion_key
-    assert payload["data_env"] == profile.data_env
-    assert payload["entity"]["url"].startswith(f"{profile.wowhead_base}/item=19019")
-    assert payload["entity"]["comments_url"].startswith(payload["entity"]["url"] + "#comments")
+    assert payload["entity"]["page_url"].startswith(f"{profile.wowhead_base}/item=19019")
+    assert payload["citations"]["comments"].startswith(payload["entity"]["page_url"] + "#comments")
     tooltip = payload["tooltip"]
-    assert isinstance(tooltip.get("name"), str)
+    assert isinstance(payload["entity"].get("name"), str)
     assert isinstance(tooltip.get("icon"), str)
+    assert isinstance(tooltip.get("text"), str)
 
 
 @pytest.mark.parametrize("expansion_key", ["retail", "wotlk", "ptr"])

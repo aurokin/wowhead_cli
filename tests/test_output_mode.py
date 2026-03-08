@@ -57,7 +57,7 @@ def test_compact_flag_truncates_long_string_fields(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    tooltip = payload["tooltip"]["tooltip"]
+    tooltip = payload["tooltip"]["html"]
     assert isinstance(tooltip, str)
     assert len(tooltip) == 280
     assert tooltip.endswith("...")
@@ -92,10 +92,10 @@ def test_fields_flag_supports_nested_paths(monkeypatch) -> None:
 
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
-    result = runner.invoke(app, ["--fields", "entity.url,tooltip.name", "entity", "item", "19019"])
+    result = runner.invoke(app, ["--fields", "entity.name,tooltip.quality", "entity", "item", "19019"])
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert set(payload.keys()) == {"ok", "entity", "tooltip"}
-    assert payload["entity"]["url"] == "https://www.wowhead.com/item=19019"
-    assert payload["tooltip"]["name"] == "Thunderfury"
+    assert set(payload.keys()) == {"entity", "tooltip"}
+    assert payload["entity"]["name"] == "Thunderfury"
+    assert payload["tooltip"]["quality"] == 5

@@ -120,8 +120,10 @@ def test_recorded_fixture_search_entity_entity_page_comments(
     assert entity_result.exit_code == 0
     entity_payload = json.loads(entity_result.stdout)
     assert entity_payload["expansion"] == expansion_key
-    assert entity_payload["data_env"] == profile_data["data_env"]
-    assert entity_payload["entity"]["url"] == build_entity_url(profile, "item", 19019)
+    assert entity_payload["entity"]["name"] == FIXTURE["tooltip"]["name"]
+    assert entity_payload["entity"]["page_url"] == profile_data["canonical_url"]
+    assert entity_payload["linked_entities"]["count"] == 1
+    assert entity_payload["linked_entities"]["items"][0]["type"] == "npc"
 
     page_result = runner.invoke(app, ["--expansion", expansion_key, "entity-page", "item", "19019", "--max-links", "5"])
     assert page_result.exit_code == 0
