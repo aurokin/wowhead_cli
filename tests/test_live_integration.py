@@ -103,6 +103,7 @@ def test_live_entity_contract(expansion_key: str) -> None:
     assert isinstance(payload["entity"].get("name"), str)
     assert isinstance(tooltip.get("icon"), str)
     assert isinstance(tooltip.get("text"), str)
+    assert isinstance(tooltip.get("summary"), str)
 
 
 @pytest.mark.parametrize(

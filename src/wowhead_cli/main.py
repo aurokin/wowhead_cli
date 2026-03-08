@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
+import re
 from typing import Any, Callable
 from urllib.parse import urlparse
 
@@ -564,6 +565,44 @@ def _dedupe_links(
     return deduped
 
 
+BRACKET_FRAGMENT_RE = re.compile(r"""\[[^\]]*\]""")
+ADJACENT_SENTENCE_RE = re.compile(r"""(?P<sentence>[A-Z][^.?!]{8,}?)(?:[.?!])\s+(?P=sentence)(?:[.?!])""")
+
+
+def _clean_tooltip_text(text: str) -> str:
+    cleaned = BRACKET_FRAGMENT_RE.sub(" ", text)
+    cleaned = cleaned.replace("[", " ").replace("]", " ")
+    cleaned = cleaned.replace(" .", ".").replace(" ,", ",")
+    cleaned = " ".join(cleaned.split())
+    while True:
+        collapsed = ADJACENT_SENTENCE_RE.sub(r"\g<sentence>.", cleaned)
+        if collapsed == cleaned:
+            break
+        cleaned = collapsed
+    return cleaned.strip()
+
+
+def _strip_leading_entity_name(text: str, *, entity_name: str | None) -> str:
+    if not entity_name:
+        return text
+    if not text.startswith(entity_name):
+        return text
+    remainder = text[len(entity_name) :].lstrip(" :-")
+    return remainder.strip() or text
+
+
+def _build_tooltip_summary(text: str, *, entity_name: str | None, max_chars: int = 220) -> str | None:
+    if not text:
+        return None
+    summary = _strip_leading_entity_name(text, entity_name=entity_name)
+    if len(summary) <= max_chars:
+        return summary
+    clipped = summary[: max_chars - 3]
+    if " " in clipped:
+        clipped = clipped.rsplit(" ", 1)[0]
+    return clipped.rstrip(" ,;:-") + "..."
+
+
 def _normalize_tooltip_payload(tooltip: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
     entity_name = tooltip.get("name")
     name = entity_name if isinstance(entity_name, str) and entity_name.strip() else None
@@ -574,7 +613,11 @@ def _normalize_tooltip_payload(tooltip: dict[str, Any]) -> tuple[str | None, dic
 
     if isinstance(tooltip_html, str):
         tooltip_payload["html"] = tooltip_html
-        tooltip_payload["text"] = clean_markup_text(tooltip_html)
+        tooltip_text = _clean_tooltip_text(clean_markup_text(tooltip_html))
+        tooltip_payload["text"] = tooltip_text
+        tooltip_summary = _build_tooltip_summary(tooltip_text, entity_name=name)
+        if tooltip_summary:
+            tooltip_payload["summary"] = tooltip_summary
 
     return name, tooltip_payload
 

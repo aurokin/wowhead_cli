@@ -124,6 +124,7 @@ Current state after the first phase 1 refactor:
 - `fetch_more_command` for regular entity/comment linked-entity previews now scales to the known deduped count instead of hard-coding `--max-links 200`.
 - `guide` and `guide-full` now both treat `linked_entities` as the merged deduped guide relation set, with `source_counts` exposing href/gatherer contributions.
 - Lightweight linked-entity previews now suppress low-signal labels such as raw type names or URL-like anchor text and rank more actionable relation types ahead of noisy same-type/item-heavy results.
+- Entity tooltips now expose a cleaned `tooltip.text` and a shorter title-stripped `tooltip.summary` for fast agent scanning.
 
 ### Route Resolution Findings
 
@@ -156,3 +157,6 @@ Current state after the first phase 1 refactor:
 - Added lightweight preview ranking and diversity selection so regular previews prefer actionable relation types over low-signal rows.
 - Added low-signal name suppression for labels like `item` and URL-shaped anchor text in the lightweight preview surface.
 - Verified live improvements on `npc 448`, `item 19019`, and `currency 3008`.
+- Added tooltip-specific cleanup for bracket artifacts and repeated sentence fragments.
+- Added `tooltip.summary` as a short agent-facing scan field while keeping full `tooltip.text` and `tooltip.html`.
+- Verified live improvements on `spell 49020`, `mount 460`, and `quest 86739`.

@@ -47,7 +47,7 @@ wowhead entity mount 460 --no-include-comments
 wowhead entity battle-pet 39 --no-include-comments
 wowhead --compact entity item 19019
 wowhead --expansion classic entity item 19019
-wowhead --fields entity.name,entity.page_url,tooltip.text,linked_entities entity quest 86739
+wowhead --fields entity.name,entity.page_url,tooltip.summary,linked_entities entity quest 86739
 wowhead --expansion ptr --normalize-canonical-to-expansion entity-page item 19019
 wowhead entity-page item 19019 --max-links 100
 wowhead comments item 19019 --limit 30 --sort rating
@@ -63,7 +63,7 @@ Use `guide-export` to materialize that payload as local assets (`guide.json`, `p
 Use `guide-bundle-list` to discover exported bundles under `./wowhead_exports/` or another root.
 Use `guide-query` to search a previously exported guide bundle locally across section content, navigation links, entities, and comments. It accepts either a direct bundle path or a selector such as guide ID under `--root`. Use `--kind` to narrow categories and `--section-title` to scope section searches.
 Regular `entity`, `guide`, and `comments` responses now include a lightweight `linked_entities` preview with basic records plus a `fetch_more_command` hint; the regular `entity` preview is trimmed to `type`, `id`, `name`, and `url`, and also includes `counts_by_type` so agents can decide quickly whether to escalate. Guide previews expose the merged deduped guide relation set and include `source_counts` so agents can see how href and gatherer sources contributed. Lightweight previews now suppress low-signal names and prefer more actionable relation types before item-heavy noise. Use `--linked-entity-preview-limit 0` on `entity` or `comments` if you want to skip that preview.
-Use `entity` to include comments in the same lookup, skip them with `--no-include-comments`, or return full comment sets with `--include-all-comments`; entity responses expose the primary name at `entity.name`, the canonical page at `entity.page_url`, and normalized tooltip fields at `tooltip.text` and `tooltip.html`. When comments are included, `citations.comments` provides the comment thread source URL. Use `comments.needs_raw_fetch` to decide if raw comments fetching is still needed.
+Use `entity` to include comments in the same lookup, skip them with `--no-include-comments`, or return full comment sets with `--include-all-comments`; entity responses expose the primary name at `entity.name`, the canonical page at `entity.page_url`, and normalized tooltip fields at `tooltip.summary`, `tooltip.text`, and `tooltip.html`. When comments are included, `citations.comments` provides the comment thread source URL. Use `comments.needs_raw_fetch` to decide if raw comments fetching is still needed.
 Some advertised entity types are resolved through type-specific routing under the hood: `faction` and `pet` use page-metadata tooltip fallbacks, `recipe` resolves through spell pages, `mount` resolves through underlying item pages, and `battle-pet` resolves through underlying NPC pages.
 Use `--normalize-canonical-to-expansion` if you want canonical page URLs forced into the selected expansion path.
 Use `--compact` to truncate long string fields (for example, tooltip HTML blobs).

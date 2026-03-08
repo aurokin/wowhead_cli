@@ -92,10 +92,11 @@ def test_fields_flag_supports_nested_paths(monkeypatch) -> None:
 
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
-    result = runner.invoke(app, ["--fields", "entity.name,tooltip.quality", "entity", "item", "19019"])
+    result = runner.invoke(app, ["--fields", "entity.name,tooltip.quality,tooltip.summary", "entity", "item", "19019"])
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
     assert set(payload.keys()) == {"entity", "tooltip"}
     assert payload["entity"]["name"] == "Thunderfury"
     assert payload["tooltip"]["quality"] == 5
+    assert "summary" not in payload["tooltip"]

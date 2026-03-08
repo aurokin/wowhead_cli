@@ -784,8 +784,57 @@ def test_entity_normalizes_tooltip_name_and_html(monkeypatch) -> None:
     assert payload["tooltip"]["quality"] == 5
     assert payload["tooltip"]["html"] == "<b>Legendary</b> weapon"
     assert payload["tooltip"]["text"] == "Legendary weapon"
+    assert payload["tooltip"]["summary"] == "Legendary weapon"
     assert "name" not in payload["tooltip"]
     assert "tooltip" not in payload["tooltip"]
+
+
+def test_entity_cleans_spell_tooltip_artifacts_and_builds_summary(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {
+            "name": "Obliterate",
+            "tooltip": (
+                "<a href=\"/spell=49020/obliterate\"><b>Obliterate</b></a>"
+                "<div>Talent</div><div>Instant</div>"
+                "<div>A brutal attack [that deals [(105.751% of Attack Power)] Physical and "
+                "[(105.751% of Attack Power)] Frost damage.] Physical and Frost damage.]</div>"
+            ),
+        }
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return "<html><body><script>var lv_comments0 = [];</script></body></html>"
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "spell", "49020"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["tooltip"]["text"] == "Obliterate Talent Instant A brutal attack Physical and Frost damage."
+    assert payload["tooltip"]["summary"] == "Talent Instant A brutal attack Physical and Frost damage."
+
+
+def test_entity_tooltip_summary_strips_leading_entity_name(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {
+            "name": "Fairbreeze Favors",
+            "tooltip": (
+                "<table><tr><td><b>Fairbreeze Favors</b></td></tr></table>"
+                "<table><tr><td>Help restore order in Fairbreeze Village.</td></tr></table>"
+            ),
+        }
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return "<html><body><script>var lv_comments0 = [];</script></body></html>"
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "quest", "86739"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["tooltip"]["text"] == "Fairbreeze Favors Help restore order in Fairbreeze Village."
+    assert payload["tooltip"]["summary"] == "Help restore order in Fairbreeze Village."
 
 
 def test_entity_preview_prefers_gatherer_name_when_href_label_missing(monkeypatch) -> None:
