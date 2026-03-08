@@ -259,7 +259,12 @@ def _build_tooltip_from_page_metadata(metadata: dict[str, str | None]) -> tuple[
     parts = [part.strip() for part in (title, description) if isinstance(part, str) and part.strip()]
     payload: dict[str, Any] = {}
     if parts:
-        payload["text"] = " ".join(parts)
+        entity_name = title if isinstance(title, str) and title.strip() else None
+        tooltip_text = _clean_tooltip_text(" ".join(parts))
+        payload["text"] = tooltip_text
+        tooltip_summary = _build_tooltip_summary(tooltip_text, entity_name=entity_name)
+        if tooltip_summary:
+            payload["summary"] = tooltip_summary
     return title if isinstance(title, str) and title.strip() else None, payload
 
 
@@ -694,6 +699,12 @@ def _normalize_tooltip_payload(tooltip: dict[str, Any]) -> tuple[str | None, dic
     if isinstance(tooltip_html, str):
         tooltip_payload["html"] = tooltip_html
         tooltip_text = _clean_tooltip_text(clean_markup_text(tooltip_html))
+        tooltip_payload["text"] = tooltip_text
+        tooltip_summary = _build_tooltip_summary(tooltip_text, entity_name=name)
+        if tooltip_summary:
+            tooltip_payload["summary"] = tooltip_summary
+    elif isinstance(tooltip_payload.get("text"), str):
+        tooltip_text = _clean_tooltip_text(str(tooltip_payload["text"]))
         tooltip_payload["text"] = tooltip_text
         tooltip_summary = _build_tooltip_summary(tooltip_text, entity_name=name)
         if tooltip_summary:

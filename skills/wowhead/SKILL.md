@@ -29,7 +29,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 3. Inspect comment completeness from `entity` output:
 - `comments.all_comments_included` indicates whether returned comments are complete.
 - `comments.needs_raw_fetch` indicates whether to call `wowhead comments ...` for full coverage.
-4. For `entity`, prefer `entity.name` and `entity.page_url` over older tooltip-derived naming; use `tooltip.summary` for fast scanning, `tooltip.text` for the cleaned full text, and `tooltip.html` only when markup matters.
+4. For `entity`, prefer `entity.name` and `entity.page_url` over older tooltip-derived naming; use `tooltip.summary` for fast scanning, `tooltip.text` for the cleaned full text, and `tooltip.html` only when markup matters. Page-metadata tooltip fallbacks such as `faction` and `pet` also expose `tooltip.summary`, not just `tooltip.text`.
 5. Inspect `linked_entities.counts_by_type` and the lightweight preview items on regular responses to decide whether to escalate to `entity-page` or `guide-full`.
 6. For `entity`, `entity-page`, `comments`, and embedded compare entity summaries, use `entity.page_url` as the canonical page source and `citations.comments` for the comment thread source instead of older duplicated URL fields.
 7. Some entity types use special routing under the hood:

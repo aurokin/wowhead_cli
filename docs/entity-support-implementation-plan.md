@@ -3,7 +3,7 @@
 ## Status
 
 - Overall: in progress
-- Current phase: Phase 3 - linked entity quality
+- Current phase: Phase 4 - tooltip and text cleanup
 - Last updated: 2026-03-07
 
 ## Goal
@@ -54,7 +54,7 @@ Exit criteria:
 
 ### Phase 3 - Linked Entity Quality
 
-Status: in progress
+Status: completed
 
 Work:
 
@@ -69,7 +69,7 @@ Exit criteria:
 
 ### Phase 4 - Tooltip And Text Cleanup
 
-Status: pending
+Status: in progress
 
 Work:
 
@@ -134,6 +134,7 @@ Current state after the first phase 1 refactor:
 - Lightweight preview ranking now uses multi-source attribution as a tie-breaker, so merged href/gatherer relations surface ahead of otherwise similar single-source rows.
 - `guide-query` can now filter merged `linked_entities` by provenance via `--linked-source`, reducing the need to treat `linked_entities` and `gatherer_entities` as separate query buckets for normal agent workflows.
 - `guide-query` now de-duplicates the flattened `top` list across merged `linked_entity` and raw `gatherer_entity` rows, so the best merged row wins without hiding the raw source-specific bucket from `matches`.
+- Page-metadata tooltip fallbacks now produce both cleaned `tooltip.text` and `tooltip.summary`, not just a raw title+description join.
 
 ### Route Resolution Findings
 
@@ -181,3 +182,4 @@ Current state after the first phase 1 refactor:
 - Updated preview ranking to prefer multi-source merged relations over otherwise similar single-source peers, and verified live on `entity item 19351 --no-include-comments`.
 - Extended `guide-query` with `--linked-source href|gatherer|multi` so exported-bundle retrieval can stay on merged linked-entity rows while still filtering by provenance when needed.
 - De-duplicated `guide-query`'s flattened `top` list so merged linked-entity rows outrank and suppress duplicate raw gatherer rows there, while leaving the explicit `matches.gatherer_entities` bucket intact.
+- Extended tooltip cleanup to page-metadata fallback entities so types like `faction` now expose `tooltip.summary` in addition to cleaned `tooltip.text`, and verified live on `entity faction 529`.

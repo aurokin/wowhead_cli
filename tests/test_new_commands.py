@@ -623,6 +623,7 @@ def test_entity_faction_uses_page_metadata_tooltip_fallback(monkeypatch) -> None
         "page_url": "https://www.wowhead.com/faction=529/argent-dawn",
     }
     assert payload["tooltip"]["text"] == "Argent Dawn Protect Azeroth from the Scourge."
+    assert payload["tooltip"]["summary"] == "Protect Azeroth from the Scourge."
 
 
 def test_entity_recipe_routes_through_spell_tooltip(monkeypatch) -> None:
