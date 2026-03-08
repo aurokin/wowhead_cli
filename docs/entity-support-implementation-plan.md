@@ -117,9 +117,12 @@ Current state after the first phase 1 refactor:
 
 ### Confirmed Contract Issues
 
-- `fetch_more_command` currently caps at `--max-links 200` even when preview counts exceed 200.
 - `guide` and `guide-full` currently report different linked-entity totals for the same guide because they are counting different sources.
 - Some preview items still surface low-signal names or poor ordering.
+
+### Recently Fixed Contract Issues
+
+- `fetch_more_command` for regular entity/comment linked-entity previews now scales to the known deduped count instead of hard-coding `--max-links 200`.
 
 ### Route Resolution Findings
 
@@ -144,3 +147,5 @@ Current state after the first phase 1 refactor:
 - Added tooltip-redirect page resolution for `mount` and `battle-pet`.
 - Added unit coverage for the new routing behavior and live contract coverage for the special-route entity types.
 - Verified with `pytest -q` and live smokes for `faction 529`, `recipe 2549`, `mount 460`, and `battle-pet 39`.
+- Fixed regular entity/comment `fetch_more_command` hints so large previews suggest an appropriate `--max-links` value.
+- Verified live on `currency 3008`, which now reports `wowhead entity-page currency 3008 --max-links 308`.

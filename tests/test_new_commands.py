@@ -803,6 +803,33 @@ def test_entity_preview_prefers_gatherer_name_when_href_label_missing(monkeypatc
     }
 
 
+def test_entity_preview_fetch_more_command_scales_with_known_count(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {"name": "Valorstones"}
+
+    links = "\n".join(f'<a href="/item={200000 + idx}">Item {idx}</a>' for idx in range(250))
+    html = f"""
+    <html><head>
+      <link rel="canonical" href="https://www.wowhead.com/currency=3008/valorstones">
+    </head><body>
+      {links}
+      <script>var lv_comments0 = [];</script>
+    </body></html>
+    """
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return html
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "currency", "3008", "--no-include-comments"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["linked_entities"]["count"] == 250
+    assert payload["linked_entities"]["fetch_more_command"] == "wowhead entity-page currency 3008 --max-links 250"
+
+
 def test_compare_respects_expansion_flag_for_generated_urls(monkeypatch) -> None:
     def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
         return {"name": f"Item {entity_id}", "quality": 1, "icon": "inv_misc_questionmark"}

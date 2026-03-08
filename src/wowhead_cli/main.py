@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 import httpx
@@ -409,6 +409,11 @@ def _summarize_linked_entity(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _entity_page_fetch_more_command(entity_type: str, entity_id: int, link_count: int) -> str:
+    max_links = min(max(link_count, 200), 2000)
+    return f"wowhead entity-page {entity_type} {entity_id} --max-links {max_links}"
+
+
 def _fetch_entity_page(
     ctx: typer.Context,
     client: WowheadClient,
@@ -612,15 +617,21 @@ def _build_linked_entity_preview(
     entity_type: str,
     entity_id: int,
     preview_limit: int,
-    fetch_more_command: str,
+    fetch_more_command: str | None = None,
+    fetch_more_command_builder: Callable[[int], str] | None = None,
 ) -> dict[str, Any]:
+    def render_fetch_more(count: int) -> str | None:
+        if fetch_more_command_builder is not None:
+            return fetch_more_command_builder(count)
+        return fetch_more_command
+
     if preview_limit <= 0:
         return {
             "count": 0,
             "counts_by_type": {},
             "items": [],
             "more_available": False,
-            "fetch_more_command": fetch_more_command,
+            "fetch_more_command": render_fetch_more(0),
         }
     deduped = _dedupe_links(
         links,
@@ -640,7 +651,7 @@ def _build_linked_entity_preview(
         "counts_by_type": counts_by_type,
         "items": [_summarize_linked_entity(row) for row in preview_items],
         "more_available": len(deduped) > len(preview_items),
-        "fetch_more_command": fetch_more_command,
+        "fetch_more_command": render_fetch_more(len(deduped)),
     }
 
 
@@ -1685,7 +1696,7 @@ def entity(
             entity_type=plan.page_entity_type,
             entity_id=plan.page_entity_id,
             preview_limit=linked_entity_preview_limit,
-            fetch_more_command=f"wowhead entity-page {entity_type} {entity_id} --max-links 200",
+            fetch_more_command_builder=lambda count: _entity_page_fetch_more_command(entity_type, entity_id, count),
         )
     if include_comments:
         comments_payload: dict[str, Any] = {
@@ -1928,7 +1939,7 @@ def comments(
             entity_type=plan.page_entity_type,
             entity_id=plan.page_entity_id,
             preview_limit=linked_entity_preview_limit,
-            fetch_more_command=f"wowhead entity-page {entity_type} {entity_id} --max-links 200",
+            fetch_more_command_builder=lambda count: _entity_page_fetch_more_command(entity_type, entity_id, count),
         )
     _emit(ctx, payload)
 
