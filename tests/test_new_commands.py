@@ -890,6 +890,50 @@ def test_entity_cleans_spell_tooltip_artifacts_and_builds_summary(monkeypatch) -
     assert payload["tooltip"]["summary"] == "Talent Instant A brutal attack Physical and Frost damage."
 
 
+def test_entity_item_summary_prefers_effect_text_over_item_metadata(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {
+            "name": "Thunderfury",
+            "tooltip": (
+                "<table><tr><td><b>Thunderfury</b><br>Item Level 40<br>Binds when picked up</td></tr></table>"
+                "<table><tr><td>Chance on hit: Blasts your enemy with lightning and slows its attack speed.</td></tr></table>"
+            ),
+        }
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return "<html><body><script>var lv_comments0 = [];</script></body></html>"
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "item", "19019"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["tooltip"]["summary"] == "Chance on hit: Blasts your enemy with lightning and slows its attack speed."
+
+
+def test_entity_mount_summary_prefers_use_text_over_mount_metadata(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {
+            "name": "Grand Expedition Yak",
+            "tooltip": (
+                "<table><tr><td><b>Grand Expedition Yak</b><br>Item Level 10<br>Mount (Account-wide)</td></tr></table>"
+                "<table><tr><td>Use: Teaches you how to summon this three-person mount with vendors.</td></tr></table>"
+            ),
+        }
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return "<html><body><script>var lv_comments0 = [];</script></body></html>"
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "mount", "460"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["tooltip"]["summary"] == "Use: Teaches you how to summon this three-person mount with vendors."
+
+
 def test_entity_tooltip_summary_strips_leading_entity_name(monkeypatch) -> None:
     def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
         return {

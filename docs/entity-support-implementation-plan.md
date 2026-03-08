@@ -4,7 +4,7 @@
 
 - Overall: in progress
 - Current phase: Phase 4 - tooltip and text cleanup
-- Last updated: 2026-03-07
+- Last updated: 2026-03-08
 
 ## Goal
 
@@ -183,3 +183,4 @@ Current state after the first phase 1 refactor:
 - Extended `guide-query` with `--linked-source href|gatherer|multi` so exported-bundle retrieval can stay on merged linked-entity rows while still filtering by provenance when needed.
 - De-duplicated `guide-query`'s flattened `top` list so merged linked-entity rows outrank and suppress duplicate raw gatherer rows there, while leaving the explicit `matches.gatherer_entities` bucket intact.
 - Extended tooltip cleanup to page-metadata fallback entities so types like `faction` now expose `tooltip.summary` in addition to cleaned `tooltip.text`, and verified live on `entity faction 529`.
+- Refined `tooltip.summary` for noisy item- and mount-style outputs so effect/use text like `Chance on hit:` and `Use:` is preferred over item metadata, and verified live on `entity item 19019` and `entity mount 460`.

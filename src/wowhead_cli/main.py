@@ -652,6 +652,14 @@ def _dedupe_links(
 
 BRACKET_FRAGMENT_RE = re.compile(r"""\[[^\]]*\]""")
 ADJACENT_SENTENCE_RE = re.compile(r"""(?P<sentence>[A-Z][^.?!]{8,}?)(?:[.?!])\s+(?P=sentence)(?:[.?!])""")
+TOOLTIP_SUMMARY_MARKERS = (
+    "Use:",
+    "Chance on hit:",
+    "Equip:",
+    "Chance on strike:",
+    "Chance on melee hit:",
+)
+SENTENCE_END_RE = re.compile(r"""[.?!](?:\s|$)""")
 
 
 def _clean_tooltip_text(text: str) -> str:
@@ -676,10 +684,38 @@ def _strip_leading_entity_name(text: str, *, entity_name: str | None) -> str:
     return remainder.strip() or text
 
 
+def _prefer_tooltip_summary_span(text: str) -> str:
+    best_index: int | None = None
+    for marker in TOOLTIP_SUMMARY_MARKERS:
+        index = text.find(marker)
+        if index <= 0:
+            continue
+        if best_index is None or index < best_index:
+            best_index = index
+    if best_index is None:
+        return text
+    prefix = text[:best_index].strip()
+    if len(prefix) < 24:
+        return text
+    return text[best_index:].strip()
+
+
+def _prefer_first_summary_sentence(text: str) -> str:
+    match = SENTENCE_END_RE.search(text)
+    if match is None:
+        return text
+    sentence = text[: match.end()].strip()
+    if len(sentence) < 24:
+        return text
+    return sentence
+
+
 def _build_tooltip_summary(text: str, *, entity_name: str | None, max_chars: int = 220) -> str | None:
     if not text:
         return None
     summary = _strip_leading_entity_name(text, entity_name=entity_name)
+    summary = _prefer_tooltip_summary_span(summary)
+    summary = _prefer_first_summary_sentence(summary)
     if len(summary) <= max_chars:
         return summary
     clipped = summary[: max_chars - 3]
