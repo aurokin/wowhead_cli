@@ -2,7 +2,7 @@
 
 ## Status
 
-- Overall: planned
+- Overall: in progress
 - Last updated: 2026-03-08
 
 ## Goal
@@ -20,10 +20,12 @@ Before expanding either track too far, the project should treat caching as a del
 
 Current state:
 
-- the CLI already has a local file-based HTTP cache
-- that cache is short-lived and request-shaped
+- the CLI now has a configurable transport cache with file and optional Redis backends
+- the transport cache now has longer default TTLs for stable entity/page fetches
+- invalid cache configuration now fails as a structured CLI error instead of a traceback
+- it still remains a request-shaped transport cache, not yet a normalized durable entity store
 - it is useful for immediate retries and nearby repeated lookups
-- it is not yet a durable entity store or a shared cache across agents
+- it is not yet a durable entity store or a full shared cache across agents
 
 ### Goals
 

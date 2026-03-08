@@ -18,6 +18,9 @@ dependencies = [
 dev = [
   "pytest>=8.3.5,<9.0.0",
 ]
+redis = [
+  "redis>=5.0.0,<6.0.0",
+]
 
 [project.scripts]
 wowhead = "wowhead_cli.main:run"

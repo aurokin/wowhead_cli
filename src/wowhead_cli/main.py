@@ -168,6 +168,15 @@ def _cfg(ctx: typer.Context) -> RuntimeConfig:
     return RuntimeConfig()
 
 
+def _client(ctx: typer.Context) -> WowheadClient:
+    cfg = _cfg(ctx)
+    try:
+        return WowheadClient(expansion=cfg.expansion)
+    except ValueError as exc:
+        _fail(ctx, "invalid_cache_config", str(exc))
+        raise AssertionError("unreachable")
+
+
 def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> None:
     payload = {
         "ok": False,
@@ -1226,7 +1235,7 @@ def _build_guide_full_payload(
     include_replies: bool,
 ) -> tuple[dict[str, Any], str]:
     cfg = _cfg(ctx)
-    client = WowheadClient(expansion=cfg.expansion)
+    client = _client(ctx)
     html, guide_id, lookup_url, metadata, canonical_url = _fetch_guide_page(
         ctx,
         client,
@@ -1553,7 +1562,7 @@ def search(
     ),
 ) -> None:
     cfg = _cfg(ctx)
-    client = WowheadClient(expansion=cfg.expansion)
+    client = _client(ctx)
     try:
         response = client.search_suggestions(query)
     except httpx.HTTPStatusError as exc:
@@ -1636,7 +1645,7 @@ def guide(
     ),
 ) -> None:
     cfg = _cfg(ctx)
-    client = WowheadClient(expansion=cfg.expansion)
+    client = _client(ctx)
     html, guide_id, lookup_url, metadata, canonical_url = _fetch_guide_page(
         ctx,
         client,
@@ -2148,7 +2157,7 @@ def entity(
     ),
 ) -> None:
     cfg = _cfg(ctx)
-    client = WowheadClient(expansion=cfg.expansion)
+    client = _client(ctx)
     plan = _build_entity_access_plan(entity_type, entity_id)
     tooltip: dict[str, Any] = {}
     tooltip_final_url: str | None = None
@@ -2294,7 +2303,7 @@ def entity_page(
     ),
 ) -> None:
     cfg = _cfg(ctx)
-    client = WowheadClient(expansion=cfg.expansion)
+    client = _client(ctx)
     plan = _resolve_page_fetch_target(
         ctx,
         client,
@@ -2404,7 +2413,7 @@ def comments(
         _fail(ctx, "invalid_argument", "sort must be one of: newest, oldest, rating.")
 
     cfg = _cfg(ctx)
-    client = WowheadClient(expansion=cfg.expansion)
+    client = _client(ctx)
     plan = _resolve_page_fetch_target(
         ctx,
         client,
@@ -2563,7 +2572,7 @@ def compare(
         parsed_refs.append((entity_type, entity_id, token))
 
     cfg = _cfg(ctx)
-    client = WowheadClient(expansion=cfg.expansion)
+    client = _client(ctx)
     entity_records: list[dict[str, Any]] = []
     entity_link_sets: dict[str, set[tuple[str, int]]] = {}
 

@@ -8,6 +8,9 @@ Agent-first CLI for querying Wowhead endpoints without browser automation.
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
+
+# optional: install Redis cache support
+pip install -e '.[dev,redis]'
 ```
 
 ## Local Dev Deploy
@@ -79,6 +82,25 @@ Some advertised entity types are resolved through type-specific routing under th
 Use `--normalize-canonical-to-expansion` if you want canonical page URLs forced into the selected expansion path.
 Use `--compact` to truncate long string fields (for example, tooltip HTML blobs).
 Use `--fields` to project only selected dot-paths from the JSON payload.
+Transport caching is now configurable through env vars. Useful defaults:
+
+```bash
+WOWHEAD_CACHE_BACKEND=file
+WOWHEAD_CACHE_DIR=~/.cache/wowhead_cli/http
+WOWHEAD_SEARCH_CACHE_TTL_SECONDS=900
+WOWHEAD_TOOLTIP_CACHE_TTL_SECONDS=3600
+WOWHEAD_ENTITY_PAGE_CACHE_TTL_SECONDS=3600
+WOWHEAD_GUIDE_PAGE_CACHE_TTL_SECONDS=3600
+WOWHEAD_COMMENT_REPLIES_CACHE_TTL_SECONDS=1800
+```
+
+Optional Redis support uses namespaced keys so it can share an existing Redis safely:
+
+```bash
+WOWHEAD_CACHE_BACKEND=redis
+WOWHEAD_REDIS_URL=redis://host:6379/3
+WOWHEAD_REDIS_PREFIX=wowhead_cli
+```
 
 See `ROADMAP.md` for deferred multi-expansion/subdomain support planning.
 See `WOWHEAD_EXPANSION_RESEARCH.md` for routing/dataEnv findings used by the profile model.

@@ -100,3 +100,18 @@ def test_fields_flag_supports_nested_paths(monkeypatch) -> None:
     assert payload["entity"]["name"] == "Thunderfury"
     assert payload["tooltip"]["quality"] == 5
     assert "summary" not in payload["tooltip"]
+
+
+def test_invalid_cache_config_returns_structured_error(monkeypatch) -> None:
+    monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "broken")
+    result = runner.invoke(app, ["search", "thunderfury"])
+    assert result.exit_code == 1
+
+    payload = json.loads(result.stderr)
+    assert payload == {
+        "ok": False,
+        "error": {
+            "code": "invalid_cache_config",
+            "message": "WOWHEAD_CACHE_BACKEND must be one of: file, redis, none.",
+        },
+    }

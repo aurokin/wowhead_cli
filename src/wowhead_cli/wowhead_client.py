@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import random
-import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+from wowhead_cli.cache import (
+    DEFAULT_HTTP_CACHE_DIR,
+    CacheSettings,
+    CacheTTLConfig,
+    build_cache_store,
+    load_cache_settings_from_env,
+)
 from wowhead_cli.expansion_profiles import (
     ExpansionProfile,
     build_comment_replies_url,
@@ -23,7 +28,7 @@ from wowhead_cli.expansion_profiles import (
 WOWHEAD_BASE_URL = "https://www.wowhead.com"
 NETHER_BASE_URL = "https://nether.wowhead.com"
 
-DEFAULT_CACHE_DIR = Path.home() / ".cache" / "wowhead_cli" / "http"
+DEFAULT_CACHE_DIR = DEFAULT_HTTP_CACHE_DIR
 DEFAULT_RETRY_ATTEMPTS = 3
 RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
@@ -52,12 +57,68 @@ class WowheadClient:
         retry_attempts: int = DEFAULT_RETRY_ATTEMPTS,
         cache_enabled: bool = True,
         cache_dir: Path | None = None,
+        cache_backend: str | None = None,
+        cache_prefix: str | None = None,
+        redis_url: str | None = None,
+        cache_ttls: CacheTTLConfig | None = None,
     ) -> None:
+        self._http_client: httpx.Client | None = None
+        cache_settings = load_cache_settings_from_env()
+        if cache_dir is not None:
+            cache_settings = CacheSettings(
+                enabled=cache_settings.enabled,
+                backend=cache_settings.backend,
+                cache_dir=cache_dir.expanduser(),
+                redis_url=cache_settings.redis_url,
+                prefix=cache_settings.prefix,
+                ttls=cache_settings.ttls,
+            )
+        if cache_backend is not None:
+            normalized_backend = cache_backend.strip().lower()
+            enabled = normalized_backend not in {"none", "off", "disabled"}
+            backend = "file" if not enabled else normalized_backend
+            cache_settings = CacheSettings(
+                enabled=enabled,
+                backend=backend,
+                cache_dir=cache_settings.cache_dir,
+                redis_url=cache_settings.redis_url,
+                prefix=cache_settings.prefix,
+                ttls=cache_settings.ttls,
+            )
+        if cache_prefix is not None:
+            cache_settings = CacheSettings(
+                enabled=cache_settings.enabled,
+                backend=cache_settings.backend,
+                cache_dir=cache_settings.cache_dir,
+                redis_url=cache_settings.redis_url,
+                prefix=cache_prefix,
+                ttls=cache_settings.ttls,
+            )
+        if redis_url is not None:
+            cache_settings = CacheSettings(
+                enabled=cache_settings.enabled,
+                backend=cache_settings.backend,
+                cache_dir=cache_settings.cache_dir,
+                redis_url=redis_url,
+                prefix=cache_settings.prefix,
+                ttls=cache_settings.ttls,
+            )
+        if cache_ttls is not None:
+            cache_settings = CacheSettings(
+                enabled=cache_settings.enabled,
+                backend=cache_settings.backend,
+                cache_dir=cache_settings.cache_dir,
+                redis_url=cache_settings.redis_url,
+                prefix=cache_settings.prefix,
+                ttls=cache_ttls,
+            )
+
         self._timeout_seconds = timeout_seconds
         self._retry_attempts = max(1, retry_attempts)
-        self._cache_enabled = cache_enabled
-        self._cache_dir = (cache_dir or DEFAULT_CACHE_DIR).expanduser()
-        self._http_client: httpx.Client | None = None
+        self._cache_enabled = cache_enabled and cache_settings.enabled
+        self._cache_dir = cache_settings.cache_dir
+        self._cache_ttls = cache_settings.ttls
+        self._cache_store = build_cache_store(cache_settings) if self._cache_enabled else None
         self.expansion = expansion if isinstance(expansion, ExpansionProfile) else resolve_expansion(expansion)
 
     def __enter__(self) -> WowheadClient:
@@ -70,8 +131,9 @@ class WowheadClient:
         self.close()
 
     def close(self) -> None:
-        if self._http_client is not None:
-            self._http_client.close()
+        http_client = getattr(self, "_http_client", None)
+        if http_client is not None:
+            http_client.close()
             self._http_client = None
 
     def _client(self) -> httpx.Client:
@@ -108,53 +170,17 @@ class WowheadClient:
     def _cache_key(self, namespace: str, url: str, params: dict[str, Any] | None) -> str:
         encoded = urlencode(sorted(params.items()), doseq=True) if params else ""
         raw = f"{namespace}|{url}|{encoded}".encode("utf-8")
-        return hashlib.sha256(raw).hexdigest()
-
-    def _cache_path(self, key: str) -> Path:
-        return self._cache_dir / f"{key}.json"
+        return f"{namespace}:{hashlib.sha256(raw).hexdigest()}"
 
     def _read_cache(self, key: str) -> Any | None:
-        if not self._cache_enabled:
+        if not self._cache_enabled or self._cache_store is None:
             return None
-        path = self._cache_path(key)
-        if not path.exists():
-            return None
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:  # noqa: BLE001
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            return None
-        if not isinstance(data, dict):
-            return None
-        expires_at = data.get("expires_at")
-        if not isinstance(expires_at, (int, float)):
-            return None
-        if expires_at <= time.time():
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            return None
-        return data.get("payload")
+        return self._cache_store.get(key)
 
     def _write_cache(self, key: str, payload: Any, *, ttl_seconds: int) -> None:
-        if not self._cache_enabled:
+        if not self._cache_enabled or self._cache_store is None:
             return
-        try:
-            self._cache_dir.mkdir(parents=True, exist_ok=True)
-            path = self._cache_path(key)
-            temp = path.with_suffix(".tmp")
-            data = {
-                "expires_at": time.time() + ttl_seconds,
-                "payload": payload,
-            }
-            temp.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
-            temp.replace(path)
-        except Exception:  # noqa: BLE001
-            return
+        self._cache_store.set(key, payload, ttl_seconds=ttl_seconds)
 
     def _get_json(
         self,
@@ -205,7 +231,7 @@ class WowheadClient:
         payload = self._get_json(
             url,
             params={"q": query},
-            cache_ttl_seconds=180,
+            cache_ttl_seconds=self._cache_ttls.search_suggestions,
             cache_namespace="search_suggestions",
         )
         if isinstance(payload, dict):
@@ -246,7 +272,7 @@ class WowheadClient:
         self._write_cache(
             cache_key,
             {"payload": payload, "final_url": final_url},
-            ttl_seconds=240,
+            ttl_seconds=self._cache_ttls.tooltip_meta,
         )
         if isinstance(payload, dict):
             return payload, final_url
@@ -255,27 +281,32 @@ class WowheadClient:
     def entity_page_html(self, entity_type: str, entity_id: int) -> str:
         return self._get_text(
             entity_url(entity_type, entity_id, expansion=self.expansion),
-            cache_ttl_seconds=240,
+            cache_ttl_seconds=self._cache_ttls.entity_page_html,
             cache_namespace="entity_page_html",
         )
 
     def guide_page_html(self, guide_id: int) -> str:
         return self._get_text(
             guide_url(guide_id, expansion=self.expansion),
-            cache_ttl_seconds=240,
+            cache_ttl_seconds=self._cache_ttls.guide_page_html,
             cache_namespace="guide_page_html",
         )
 
     def page_html(self, page_url: str) -> str:
         return self._get_text(
             page_url,
-            cache_ttl_seconds=240,
+            cache_ttl_seconds=self._cache_ttls.page_html,
             cache_namespace="page_html",
         )
 
     def comment_replies(self, comment_id: int) -> list[dict[str, Any]]:
         url = build_comment_replies_url(self.expansion)
-        payload = self._get_json(url, params={"id": comment_id}, cache_ttl_seconds=90, cache_namespace="comment_replies")
+        payload = self._get_json(
+            url,
+            params={"id": comment_id},
+            cache_ttl_seconds=self._cache_ttls.comment_replies,
+            cache_namespace="comment_replies",
+        )
         if isinstance(payload, list):
             return [row for row in payload if isinstance(row, dict)]
         return []
