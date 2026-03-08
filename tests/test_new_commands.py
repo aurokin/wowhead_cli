@@ -388,7 +388,7 @@ def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
     assert "does not exist" in result.output
 
 
-def test_guide_corpus_list_discovers_exported_corpora(tmp_path) -> None:
+def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
     root = tmp_path / "wowhead_exports"
     corpus_a = root / "guide-3143-frost"
     corpus_b = root / "guide-42-other"
@@ -446,17 +446,17 @@ def test_guide_corpus_list_discovers_exported_corpora(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    result = runner.invoke(app, ["guide-corpus-list", "--root", str(root)])
+    result = runner.invoke(app, ["guide-bundle-list", "--root", str(root)])
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["root"] == str(root)
     assert payload["count"] == 2
-    assert [row["guide_id"] for row in payload["corpora"]] == [42, 3143]
-    assert payload["corpora"][0]["dir_name"] == "guide-42-other"
-    assert payload["corpora"][0]["title"] == "Arcane Mage Guide"
-    assert payload["corpora"][1]["counts"]["linked_entities"] == 27
+    assert [row["guide_id"] for row in payload["bundles"]] == [42, 3143]
+    assert payload["bundles"][0]["dir_name"] == "guide-42-other"
+    assert payload["bundles"][0]["title"] == "Arcane Mage Guide"
+    assert payload["bundles"][1]["counts"]["linked_entities"] == 27
 
 
 def test_entity_respects_expansion_flag(monkeypatch) -> None:

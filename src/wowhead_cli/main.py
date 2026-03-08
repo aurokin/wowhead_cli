@@ -670,20 +670,20 @@ def _looks_like_path(value: str) -> bool:
 def _resolve_corpus_ref(corpus_ref: str, *, root: Path | None) -> Path:
     raw = corpus_ref.strip()
     if not raw:
-        raise ValueError("Corpus reference cannot be empty.")
+        raise ValueError("Bundle reference cannot be empty.")
 
     expanded = Path(raw).expanduser()
     if expanded.exists():
         if not expanded.is_dir():
-            raise ValueError(f"Corpus path {expanded} is not a directory.")
+            raise ValueError(f"Bundle path {expanded} is not a directory.")
         return expanded.resolve()
     if _looks_like_path(raw):
-        raise ValueError(f"Corpus path {expanded} does not exist.")
+        raise ValueError(f"Bundle path {expanded} does not exist.")
 
     search_root = (root or _guide_export_root()).expanduser()
     corpora = _discover_guide_corpora(search_root)
     if not corpora:
-        raise ValueError(f"No exported corpora found under {search_root}.")
+        raise ValueError(f"No exported bundles found under {search_root}.")
 
     lowered = raw.lower()
 
@@ -716,10 +716,10 @@ def _resolve_corpus_ref(corpus_ref: str, *, root: Path | None) -> Path:
                 matches.append(row)
 
     if not matches:
-        raise ValueError(f"No corpus matched {raw!r} under {search_root}.")
+        raise ValueError(f"No bundle matched {raw!r} under {search_root}.")
     if len(matches) > 1:
         options = ", ".join(row.get("dir_name") or row["path"] for row in matches[:5])
-        raise ValueError(f"Corpus selector {raw!r} is ambiguous under {search_root}. Matches: {options}")
+        raise ValueError(f"Bundle selector {raw!r} is ambiguous under {search_root}. Matches: {options}")
     return Path(matches[0]["path"])
 
 
@@ -1104,11 +1104,11 @@ def guide_export(
 @app.command("guide-query")
 def guide_query(
     ctx: typer.Context,
-    corpus_ref: str = typer.Argument(
+    bundle_ref: str = typer.Argument(
         ...,
-        help="Corpus directory path or selector (guide id, corpus dir name, or title match).",
+        help="Bundle directory path or selector (guide id, bundle dir name, or title match).",
     ),
-    query: str = typer.Argument(..., help="Query text to search within the exported corpus."),
+    query: str = typer.Argument(..., help="Query text to search within the exported bundle."),
     limit: int = typer.Option(
         5,
         "--limit",
@@ -1132,14 +1132,14 @@ def guide_query(
         file_okay=False,
         dir_okay=True,
         resolve_path=True,
-        help="Root directory used to resolve non-path corpus selectors. Defaults to ./wowhead_exports/.",
+        help="Root directory used to resolve non-path bundle selectors. Defaults to ./wowhead_exports/.",
     ),
 ) -> None:
     try:
-        export_dir = _resolve_corpus_ref(corpus_ref, root=root)
+        export_dir = _resolve_corpus_ref(bundle_ref, root=root)
         corpus = _load_guide_export(export_dir)
     except (ValueError, json.JSONDecodeError) as exc:
-        _fail(ctx, "invalid_corpus", str(exc))
+        _fail(ctx, "invalid_bundle", str(exc))
     try:
         selected_kinds = _normalize_query_kinds(kind)
     except ValueError as exc:
@@ -1301,8 +1301,8 @@ def guide_query(
     _emit(ctx, payload)
 
 
-@app.command("guide-corpus-list")
-def guide_corpus_list(
+@app.command("guide-bundle-list")
+def guide_bundle_list(
     ctx: typer.Context,
     root: Path | None = typer.Option(
         None,
@@ -1310,16 +1310,16 @@ def guide_corpus_list(
         file_okay=False,
         dir_okay=True,
         resolve_path=True,
-        help="Root directory containing exported guide corpora. Defaults to ./wowhead_exports/.",
+        help="Root directory containing exported guide bundles. Defaults to ./wowhead_exports/.",
     ),
 ) -> None:
     resolved_root = (root or _guide_export_root()).expanduser()
-    corpora = _discover_guide_corpora(resolved_root)
+    bundles = _discover_guide_corpora(resolved_root)
     payload = {
         "ok": True,
         "root": str(resolved_root),
-        "count": len(corpora),
-        "corpora": corpora,
+        "count": len(bundles),
+        "bundles": bundles,
     }
     _emit(ctx, payload)
 
