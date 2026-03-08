@@ -492,6 +492,91 @@ def _preview_sort_key(record: dict[str, Any], *, source_entity_type: str) -> tup
     )
 
 
+SOURCE_KIND_PRIORITY = {
+    "gatherer": 0,
+    "href": 1,
+}
+
+
+def _link_source_kinds(record: dict[str, Any]) -> list[str]:
+    raw_sources = record.get("sources")
+    values: list[str] = []
+    if isinstance(raw_sources, list):
+        for raw in raw_sources:
+            if isinstance(raw, str) and raw not in values:
+                values.append(raw)
+    source_kind = record.get("source_kind")
+    if isinstance(source_kind, str) and source_kind not in values:
+        values.append(source_kind)
+    if not values:
+        return []
+    return sorted(values, key=lambda value: (SOURCE_KIND_PRIORITY.get(value, 99), value))
+
+
+def _preferred_source_kind(record: dict[str, Any]) -> str | None:
+    sources = _link_source_kinds(record)
+    if sources:
+        return sources[0]
+    source_kind = record.get("source_kind")
+    if isinstance(source_kind, str):
+        return source_kind
+    return None
+
+
+def _merge_link_records(existing: dict[str, Any], candidate: dict[str, Any], *, link_type: str) -> dict[str, Any]:
+    merged = dict(existing)
+
+    existing_name = _normalize_link_name(merged.get("name"), entity_type=link_type)
+    candidate_name = _normalize_link_name(candidate.get("name"), entity_type=link_type)
+    if existing_name is None and candidate_name is not None:
+        merged["name"] = candidate_name
+    elif existing_name is not None:
+        merged["name"] = existing_name
+
+    for field in (
+        "url",
+        "citation_url",
+        "source_url",
+        "gatherer_data_type",
+    ):
+        if merged.get(field) in (None, "") and candidate.get(field) not in (None, ""):
+            merged[field] = candidate[field]
+
+    source_urls: list[str] = []
+    for value in (merged.get("source_url"), candidate.get("source_url")):
+        if isinstance(value, str) and value and value not in source_urls:
+            source_urls.append(value)
+    if source_urls:
+        merged["source_urls"] = source_urls
+
+    source_kinds: list[str] = []
+    for value in _link_source_kinds(existing) + _link_source_kinds(candidate):
+        if value not in source_kinds:
+            source_kinds.append(value)
+    if source_kinds:
+        merged["sources"] = sorted(source_kinds, key=lambda value: (SOURCE_KIND_PRIORITY.get(value, 99), value))
+
+    preferred_source_kind = _preferred_source_kind(merged) or _preferred_source_kind(candidate)
+    if preferred_source_kind is not None:
+        merged["source_kind"] = preferred_source_kind
+
+    return merged
+
+
+def _normalize_link_record(record: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(record)
+    sources = _link_source_kinds(normalized)
+    if sources:
+        normalized["sources"] = sources
+        normalized["source_kind"] = sources[0]
+    elif "sources" in normalized:
+        normalized.pop("sources", None)
+    source_url = normalized.get("source_url")
+    if isinstance(source_url, str) and source_url:
+        normalized["source_urls"] = [source_url]
+    return normalized
+
+
 def _select_preview_records(
     records: list[dict[str, Any]],
     *,
@@ -544,22 +629,10 @@ def _dedupe_links(
         existing_index = seen_index.get(key)
         if existing_index is not None:
             existing = deduped[existing_index]
-            existing_name = _normalize_link_name(existing.get("name"), entity_type=link_type)
-            candidate_name = _normalize_link_name(record.get("name"), entity_type=link_type)
-            if existing_name is None and candidate_name is not None:
-                existing["name"] = candidate_name
-                existing["source_kind"] = record.get("source_kind")
-            for field in (
-                "url",
-                "citation_url",
-                "source_url",
-                "gatherer_data_type",
-            ):
-                if existing.get(field) in (None, "") and record.get(field) not in (None, ""):
-                    existing[field] = record[field]
+            deduped[existing_index] = _merge_link_records(existing, record, link_type=link_type)
             continue
         seen_index[key] = len(deduped)
-        deduped.append(record)
+        deduped.append(_normalize_link_record(record))
         if len(deduped) >= max_links:
             break
     return deduped

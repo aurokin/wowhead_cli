@@ -302,6 +302,9 @@ def test_guide_full_returns_rich_payload(monkeypatch) -> None:
     assert payload["linked_entities"]["source_counts"] == {"href": 2, "gatherer": 1, "merged": 2}
     assert payload["gatherer_entities"]["items"][0]["id"] == 249277
     assert payload["gatherer_entities"]["items"][0]["citation_url"] == "https://www.wowhead.com/item=249277"
+    merged_item = next(row for row in payload["linked_entities"]["items"] if row["id"] == 249277)
+    assert merged_item["sources"] == ["gatherer", "href"]
+    assert merged_item["source_kind"] == "gatherer"
     assert payload["comments"]["all_comments_included"] is True
     assert payload["comments"]["items"][0]["citation_url"].endswith("#comments:id=91")
     assert payload["structured_data"]["headline"] == "Frost Death Knight DPS Guide - Midnight"
@@ -370,12 +373,16 @@ def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:
     first_section = json.loads(sections_lines[0])
     first_nav = json.loads(navigation_lines[0])
     first_comment = json.loads(comments_lines[0])
+    linked_entity_lines = (export_dir / "linked-entities.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    linked_rows = [json.loads(line) for line in linked_entity_lines]
+    merged_item = next(row for row in linked_rows if row["id"] == 249277)
     assert first_section["ordinal"] == 1
     assert first_section["level"] == 2
     assert first_section["title"] == "Frost Death Knight Overview"
     assert first_section["content_text"] == "Welcome to the guide."
     assert first_nav["label"] == "Overview"
     assert first_comment["citation_url"].endswith("#comments:id=91")
+    assert merged_item["sources"] == ["gatherer", "href"]
     assert "Welcome to the guide." in (export_dir / "body.markup.txt").read_text(encoding="utf-8")
 
 
@@ -672,6 +679,35 @@ def test_comments_battle_pet_resolves_underlying_npc_page(monkeypatch) -> None:
     assert payload["entity"]["id"] == 39
     assert payload["entity"]["page_url"] == "https://www.wowhead.com/npc=2671/mechanical-squirrel"
     assert payload["comments"][0]["citation_url"].endswith("#comments:id=11")
+
+
+def test_entity_page_merges_multi_source_linked_entities(monkeypatch) -> None:
+    html = """
+    <html><head>
+      <meta property="og:title" content="Thunderfury">
+      <meta name="description" content="Legendary sword">
+      <link rel="canonical" href="https://www.wowhead.com/item=19019/thunderfury">
+    </head><body>
+      <a href="/spell=49020"></a>
+      <script>
+        WH.Gatherer.addData(6, 1, {"49020":{"name_enus":"Obliterate"}});
+        var lv_comments0 = [];
+      </script>
+    </body></html>
+    """
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return html
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity-page", "item", "19019", "--max-links", "5"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["linked_entities"]["count"] == 1
+    assert payload["linked_entities"]["items"][0]["name"] == "Obliterate"
+    assert payload["linked_entities"]["items"][0]["sources"] == ["gatherer", "href"]
+    assert payload["linked_entities"]["items"][0]["source_kind"] == "gatherer"
 
 
 def test_entity_supports_excluding_comments(monkeypatch) -> None:
