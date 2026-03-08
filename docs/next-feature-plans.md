@@ -28,6 +28,8 @@ Main gaps:
 
 - no query across many bundles
 - no metadata search over bundle titles, classes, expansions, or counts
+- no hydrated local store for frequently referenced entities such as spells, items, NPCs, or talents
+- guide bundles keep linked-entity references, but not local entity payloads for those references
 - no bundle refresh/update workflow
 - no explicit bundle inspect/stats command
 - no root-level index, only directory scans
@@ -58,10 +60,37 @@ Make exported bundles feel like a reusable local knowledge layer rather than iso
 
 1. add a root-level bundle index
 2. add metadata discovery/search across bundles
-3. add multi-bundle querying
-4. add bundle inspect and refresh workflows
+3. add local entity hydration and reuse for frequently referenced linked entities
+4. add multi-bundle querying
+5. add bundle inspect and refresh workflows
 
 ### Proposed Deliverables
+
+#### A0. Linked-entity hydration strategy
+
+Define how much referenced-entity data a guide bundle should carry locally.
+
+Current state:
+
+- guide bundles already store linked-entity references through `linked-entities.jsonl`
+- guide bundles already store raw gatherer-derived entity references through `gatherer-entities.jsonl`
+- those rows are mostly relation records, not hydrated local entity payloads
+
+Add a bounded enrichment layer, for example:
+
+- `guide-export <guide> --hydrate-linked-entities`
+- `guide-export <guide> --hydrate-types spell,item,npc`
+- `guide-export <guide> --hydrate-limit 200`
+
+Hydrated entity storage should be separate from the guide manifest body, for example:
+
+- `entities/manifest.json`
+- `entities/spell/49020.json`
+- `entities/item/19019.json`
+
+The hydrated payload should stay compact and reuse the normalized `entity` contract rather than dumping full `entity-page` blobs by default.
+
+This solves the common case where a guide references the same spells, talents, items, or NPCs repeatedly and agents keep re-fetching them.
 
 #### A1. Bundle registry and root index
 
@@ -99,6 +128,7 @@ It should expose:
 - available files
 - counts
 - source breakdown for linked entities
+- hydrated-entity counts by type if local entity storage exists
 - basic freshness info
 
 This gives agents a clean way to decide whether a local bundle is enough before querying it.
@@ -149,12 +179,29 @@ Requirements:
 
 - preserve bundle path unless the user asks to relocate it
 - update manifest timestamps and export version
+- support refresh cadence controls such as `--max-age-hours 24`
+- distinguish guide-content refresh from hydrated-entity refresh
+- allow incremental hydration so unchanged linked entities are not re-fetched unnecessarily
 - keep writes atomic enough to avoid half-written bundles
+
+Recommended additions:
+
+- `guide-export <guide> --update`
+- `guide-export <guide> --update --refresh-linked-entities`
+- `guide-bundle-refresh <bundle-or-selector> [--root <dir>]`
+
+The manifest/index should record:
+
+- guide fetch timestamp
+- last successful refresh timestamp
+- last linked-entity hydration timestamp
+- per-entity stored-at timestamps for hydrated entity rows when feasible
 
 ### Acceptance Criteria
 
 - agents can discover bundles without already knowing exact paths
 - agents can search bundle metadata across a root
+- agents can reuse locally hydrated spell/item/npc/talent data from guide bundles without repeated live fetches
 - agents can query content across multiple bundles in one call
 - bundles can be refreshed without manual directory management
 - root-level listing/search does not degrade badly as bundle count grows
@@ -162,16 +209,19 @@ Requirements:
 ### Risks
 
 - scanning many JSONL files per query will get slow without an index
+- hydrating too many linked entities blindly can make exports slow and large
+- local entity payloads can go stale faster than the parent guide unless freshness rules are explicit
 - bundle metadata will drift if index rebuild/update rules are not strict
 - multi-bundle ranking can become noisy if bundle-level and record-level scores are mixed casually
 
 ### Recommended Sequence
 
-1. A1 bundle index
-2. A2 bundle inspect
-3. A3 metadata search
-4. A4 multi-bundle content query
+1. A0 linked-entity hydration strategy
+2. A1 bundle index
+3. A2 bundle inspect
+4. A3 metadata search
 5. A5 refresh workflow
+6. A4 multi-bundle content query
 
 ## Track B - Cross-Entity Discovery And Ranking
 
@@ -312,6 +362,7 @@ Reasoning:
 
 - better search/resolve helps every live agent workflow immediately
 - bundle indexing should exist before multi-bundle querying, or performance and selection logic will get messy fast
+- hydration/update rules should be designed before broader local bundle expansion, or the repo will accumulate stale duplicated entity payloads
 - the later steps in both tracks benefit from the same scoring discipline established earlier
 
 ## Suggested First Implementation Slice
@@ -320,7 +371,8 @@ If we start immediately, the highest-value first slice is:
 
 1. enhance `search` with compact scoring and `best_next_command`
 2. add `resolve`
-3. add `guide-bundle-index rebuild`
-4. add `guide-bundle-search`
+3. define linked-entity hydration layout and manifest timestamps
+4. add `guide-bundle-index rebuild`
+5. add `guide-bundle-search`
 
 That gives agents a cleaner entry point on both live and local workflows without committing to the heaviest multi-bundle query work yet.
