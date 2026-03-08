@@ -2347,7 +2347,6 @@ def compare(
                     "top": sampled_comments,
                 },
                 "citations": {
-                    "page": canonical_url,
                     "comments": f"{canonical_url}#comments",
                 },
             }
@@ -2381,7 +2380,6 @@ def compare(
         {
             "entity_type": link_type,
             "id": link_id,
-            "citation_url": entity_url(link_type, link_id, expansion=cfg.expansion),
             "url": entity_url(link_type, link_id, expansion=cfg.expansion),
         }
         for link_type, link_id in sorted(shared)
@@ -2404,7 +2402,6 @@ def compare(
                 "entity_type": link_type,
                 "id": link_id,
                 "url": entity_url(link_type, link_id, expansion=cfg.expansion),
-                "citation_url": entity_url(link_type, link_id, expansion=cfg.expansion),
             }
             for link_type, link_id in unique_pairs[:max_unique_links]
         ]
@@ -2424,10 +2421,6 @@ def compare(
             },
         },
         "entities": entity_records,
-        "citations": {
-            "entity_pages": [row["entity"]["page_url"] for row in entity_records],
-            "comment_pages": [row["citations"]["comments"] for row in entity_records],
-        },
     }
     _emit(ctx, payload)
 

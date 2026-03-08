@@ -215,8 +215,13 @@ def test_live_compare_contract(expansion_key: str) -> None:
         assert isinstance(fields[key]["all_equal"], bool)
     links = payload["comparison"]["linked_entities"]
     assert links["shared_count_total"] >= links["shared_count_returned"]
-    for page_url in payload["citations"]["entity_pages"]:
+    for row in payload["entities"]:
+        page_url = row["entity"]["page_url"]
         assert page_url.startswith(f"{profile.wowhead_base}/")
+        assert row["citations"]["comments"].startswith(page_url + "#comments")
+        assert "page" not in row["citations"]
+    for link_row in links["shared_items"]:
+        assert "citation_url" not in link_row
 
 
 @pytest.mark.parametrize(
@@ -305,6 +310,11 @@ def test_live_compare_contract_for_discovered_mixed_entity_types() -> None:
         assert isinstance(fields[key]["all_equal"], bool)
     links = payload["comparison"]["linked_entities"]
     assert links["shared_count_total"] >= links["shared_count_returned"]
-    assert len(payload["citations"]["entity_pages"]) == 3
-    for page_url in payload["citations"]["entity_pages"]:
+    assert len(payload["entities"]) == 3
+    for row in payload["entities"]:
+        page_url = row["entity"]["page_url"]
         assert page_url.startswith(f"{profile.wowhead_base}/")
+        assert row["citations"]["comments"].startswith(page_url + "#comments")
+        assert "page" not in row["citations"]
+    for link_row in links["shared_items"]:
+        assert "citation_url" not in link_row

@@ -142,7 +142,11 @@ def test_compare_command_returns_overlap_and_unique_links(monkeypatch) -> None:
     assert payload["entities"][0]["comments"]["top"][0]["citation_url"].endswith("#comments:id=501")
     assert payload["entities"][0]["entity"]["page_url"] == "https://www.wowhead.com/item=19019/thunderfury"
     assert "comments_url" not in payload["entities"][0]["entity"]
-    assert payload["citations"]["comment_pages"][0] == "https://www.wowhead.com/item=19019/thunderfury#comments"
+    assert "page" not in payload["entities"][0]["citations"]
+    assert payload["entities"][0]["citations"]["comments"] == "https://www.wowhead.com/item=19019/thunderfury#comments"
+    assert "citation_url" not in payload["comparison"]["linked_entities"]["shared_items"][0]
+    assert "citation_url" not in payload["comparison"]["linked_entities"]["unique_by_entity"]["item:19019"][0]
+    assert "citations" not in payload
 
 
 def test_expansions_command_exposes_profiles() -> None:
@@ -1020,11 +1024,12 @@ def test_compare_respects_expansion_flag_for_generated_urls(monkeypatch) -> None
 
     payload = json.loads(result.stdout)
     assert payload["expansion"] == "wotlk"
-    assert payload["citations"]["entity_pages"] == [
+    assert [row["entity"]["page_url"] for row in payload["entities"]] == [
         "https://www.wowhead.com/wotlk/item=1",
         "https://www.wowhead.com/wotlk/item=2",
     ]
     assert payload["comparison"]["linked_entities"]["shared_items"][0]["url"] == "https://www.wowhead.com/wotlk/npc=12056"
+    assert "citation_url" not in payload["comparison"]["linked_entities"]["shared_items"][0]
 
 
 def test_invalid_expansion_is_rejected() -> None:

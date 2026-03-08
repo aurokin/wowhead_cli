@@ -128,6 +128,7 @@ Current state after the first phase 1 refactor:
 - `guide` and `guide-full` now use `guide.page_url` as the canonical guide source and rely on `citations.comments` instead of duplicating the comment-thread URL under `guide.comments_url`.
 - Successful CLI payloads and exported guide manifests no longer include `ok: true`; only structured error payloads retain `ok: false`.
 - `entity-page`, `comments`, and embedded compare entity summaries now use `entity.page_url` and `citations.comments`, removing the older duplicated URL fields from those surfaces.
+- `compare` now keeps page/comment URLs only on each entity record and uses a single canonical `url` field on generated overlap/unique linked-entity rows.
 
 ### Route Resolution Findings
 
@@ -169,3 +170,4 @@ Current state after the first phase 1 refactor:
 - Kept `ok: false` only on structured error payloads and updated tests and docs around that contract.
 - Normalized `entity-page`, `comments`, and compare entity summaries onto `entity.page_url` and `citations.comments`, removing the older duplicate URL fields from those surfaces.
 - Verified live on `entity-page quest 86739` and `comments quest 86739`, both of which now expose `entity.page_url` and `citations.comments`.
+- Trimmed `compare` so per-entity records remain the source of page/comment URLs, removed top-level compare citation arrays, and removed duplicate `citation_url` fields from generated shared/unique linked-entity rows.
