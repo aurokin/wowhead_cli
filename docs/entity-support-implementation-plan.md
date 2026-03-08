@@ -2,8 +2,8 @@
 
 ## Status
 
-- Overall: in progress
-- Current phase: Phase 4 - tooltip and text cleanup
+- Overall: current four-phase plan completed
+- Current phase: Phase 4 - tooltip and text cleanup (completed)
 - Last updated: 2026-03-08
 
 ## Goal
@@ -69,7 +69,7 @@ Exit criteria:
 
 ### Phase 4 - Tooltip And Text Cleanup
 
-Status: in progress
+Status: completed
 
 Work:
 
@@ -185,3 +185,4 @@ Current state after the first phase 1 refactor:
 - Extended tooltip cleanup to page-metadata fallback entities so types like `faction` now expose `tooltip.summary` in addition to cleaned `tooltip.text`, and verified live on `entity faction 529`.
 - Refined `tooltip.summary` for noisy item- and mount-style outputs so effect/use text like `Chance on hit:` and `Use:` is preferred over item metadata, and verified live on `entity item 19019` and `entity mount 460`.
 - Tightened `tooltip.text` for item-style outputs by normalizing broken money formatting, removing long quoted flavor-text lines, and fixing noisy spacing around parentheticals and stat bonuses; verified live on `entity item 19019`, `entity item 19351`, and `entity mount 460`.
+- Refined spell-style `tooltip.summary` selection so cast metadata no longer hides the actual effect description when a clearer descriptive clause is present; verified live on `entity spell 49020`.

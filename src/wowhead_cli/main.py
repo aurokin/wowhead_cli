@@ -664,6 +664,28 @@ TOOLTIP_SUMMARY_MARKERS = (
     "Chance on strike:",
     "Chance on melee hit:",
 )
+TOOLTIP_DESCRIPTION_MARKERS = (
+    "A ",
+    "An ",
+    "Calls forth",
+    "Blasts",
+    "Deals",
+    "Heals",
+    "Summons",
+    "Teleport",
+    "Help ",
+)
+TOOLTIP_METADATA_TERMS = (
+    "Talent",
+    "Passive",
+    "Instant",
+    "Requires",
+    "Range",
+    "Melee",
+    "Cooldown",
+    "Cast",
+    "Runes",
+)
 SENTENCE_END_RE = re.compile(r"""[.?!](?:\s|$)""")
 
 
@@ -729,11 +751,32 @@ def _prefer_first_summary_sentence(text: str) -> str:
     return sentence
 
 
+def _prefer_descriptive_summary_span(text: str) -> str:
+    if any(text.startswith(marker) for marker in TOOLTIP_SUMMARY_MARKERS):
+        return text
+    prefix_lower = text.lower()
+    if not any(term.lower() in prefix_lower for term in TOOLTIP_METADATA_TERMS):
+        return text
+
+    best_index: int | None = None
+    for marker in TOOLTIP_DESCRIPTION_MARKERS:
+        index = text.find(marker)
+        if index < 12:
+            continue
+        if best_index is None or index < best_index:
+            best_index = index
+
+    if best_index is None:
+        return text
+    return text[best_index:].strip()
+
+
 def _build_tooltip_summary(text: str, *, entity_name: str | None, max_chars: int = 220) -> str | None:
     if not text:
         return None
     summary = _strip_leading_entity_name(text, entity_name=entity_name)
     summary = _prefer_tooltip_summary_span(summary)
+    summary = _prefer_descriptive_summary_span(summary)
     summary = _prefer_first_summary_sentence(summary)
     if len(summary) <= max_chars:
         return summary

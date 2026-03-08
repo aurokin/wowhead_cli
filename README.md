@@ -73,6 +73,7 @@ Use `entity` to include comments in the same lookup, skip them with `--no-includ
 Page-metadata tooltip fallbacks such as `faction` and `pet` now expose `tooltip.summary` as well, not just `tooltip.text`.
 For noisier item- and mount-style tooltips, `tooltip.summary` now prefers effect/use text such as `Chance on hit:` or `Use:` over boilerplate item metadata, while `tooltip.text` still preserves the cleaned full text.
 That cleaned `tooltip.text` now also normalizes item-style money amounts like `Sell Price: 4g 2s 63c`, removes long quoted flavor-text lines, and fixes noisy spacing such as `(90)` or `+4 Parry`.
+Spell-style `tooltip.summary` now also prefers the descriptive effect clause over cast metadata when both are present, so summaries lead with what the spell actually does instead of `Talent`, `Range`, or `Requires` boilerplate.
 `compare` now keeps page/comment URLs only on each entity record and removes duplicated top-level citation arrays; generated overlap/unique linked-entity rows expose a single canonical `url` instead of repeating it under `citation_url`.
 Some advertised entity types are resolved through type-specific routing under the hood: `faction` and `pet` use page-metadata tooltip fallbacks, `recipe` resolves through spell pages, `mount` resolves through underlying item pages, and `battle-pet` resolves through underlying NPC pages.
 Use `--normalize-canonical-to-expansion` if you want canonical page URLs forced into the selected expansion path.

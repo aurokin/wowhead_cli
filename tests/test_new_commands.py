@@ -887,7 +887,7 @@ def test_entity_cleans_spell_tooltip_artifacts_and_builds_summary(monkeypatch) -
 
     payload = json.loads(result.stdout)
     assert payload["tooltip"]["text"] == "Obliterate Talent Instant A brutal attack Physical and Frost damage."
-    assert payload["tooltip"]["summary"] == "Talent Instant A brutal attack Physical and Frost damage."
+    assert payload["tooltip"]["summary"] == "A brutal attack Physical and Frost damage."
 
 
 def test_entity_item_summary_prefers_effect_text_over_item_metadata(monkeypatch) -> None:
