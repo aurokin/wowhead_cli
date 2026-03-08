@@ -848,6 +848,98 @@ def test_entity_preview_fetch_more_command_scales_with_known_count(monkeypatch) 
     assert payload["linked_entities"]["fetch_more_command"] == "wowhead entity-page currency 3008 --max-links 250"
 
 
+def test_entity_preview_suppresses_low_signal_names(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {"name": "Hogger"}
+
+    html = """
+    <html><head>
+      <link rel="canonical" href="https://www.wowhead.com/npc=448/hogger">
+    </head><body>
+      <a href="/item=727">item</a>
+      <a href="/npc=34942/memory-of-hogger">Memory of Hogger</a>
+      <a href="/spell=8732/thunderclap">Thunderclap</a>
+      <script>var lv_comments0 = [];</script>
+    </body></html>
+    """
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return html
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "npc", "448", "--no-include-comments"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["linked_entities"]["items"][0] == {
+        "type": "npc",
+        "id": 34942,
+        "name": "Memory of Hogger",
+        "url": "https://www.wowhead.com/npc=34942",
+    }
+    assert payload["linked_entities"]["items"][-1]["name"] is None
+
+
+def test_entity_preview_prefers_diverse_high_value_types(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {"name": "Test Item"}
+
+    html = """
+    <html><head>
+      <link rel="canonical" href="https://www.wowhead.com/item=1/test-item">
+    </head><body>
+      <a href="/item=2/item-two">Item Two</a>
+      <a href="/item=3/item-three">Item Three</a>
+      <a href="/npc=4/test-npc">Test NPC</a>
+      <a href="/quest=5/test-quest">Test Quest</a>
+      <a href="/spell=6/test-spell">Test Spell</a>
+      <script>var lv_comments0 = [];</script>
+    </body></html>
+    """
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return html
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "item", "1", "--no-include-comments", "--linked-entity-preview-limit", "4"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert [row["type"] for row in payload["linked_entities"]["items"]] == ["npc", "quest", "spell", "item"]
+
+
+def test_currency_preview_demotes_items_below_more_actionable_types(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {"name": "Valorstones"}
+
+    html = """
+    <html><head>
+      <link rel="canonical" href="https://www.wowhead.com/currency=3008/valorstones">
+    </head><body>
+      <a href="/item=10/item-ten">Item Ten</a>
+      <a href="/item=11/item-eleven">Item Eleven</a>
+      <a href="/npc=12/test-npc">Test NPC</a>
+      <a href="/quest=13/test-quest">Test Quest</a>
+      <a href="/spell=14/test-spell">Test Spell</a>
+      <a href="/object=15/test-object">Test Object</a>
+      <script>var lv_comments0 = [];</script>
+    </body></html>
+    """
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return html
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "currency", "3008", "--no-include-comments", "--linked-entity-preview-limit", "4"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert [row["type"] for row in payload["linked_entities"]["items"]] == ["npc", "quest", "spell", "object"]
+
+
 def test_compare_respects_expansion_flag_for_generated_urls(monkeypatch) -> None:
     def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
         return {"name": f"Item {entity_id}", "quality": 1, "icon": "inv_misc_questionmark"}

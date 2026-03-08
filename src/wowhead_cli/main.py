@@ -68,6 +68,98 @@ class EntityAccessPlan:
     page_from_tooltip_redirect: bool = False
 
 
+LOW_SIGNAL_LINK_NAMES = frozenset(
+    {
+        "achievement",
+        "battle pet",
+        "currency",
+        "faction",
+        "guide",
+        "item",
+        "mount",
+        "npc",
+        "object",
+        "pet",
+        "quest",
+        "recipe",
+        "spell",
+        "transmog set",
+        "zone",
+    }
+)
+
+PREVIEW_TYPE_PRIORITY: dict[str, int] = {
+    "npc": 0,
+    "quest": 1,
+    "spell": 2,
+    "object": 3,
+    "item": 4,
+    "achievement": 5,
+    "zone": 6,
+    "faction": 7,
+    "currency": 8,
+    "pet": 9,
+    "battle-pet": 10,
+    "mount": 11,
+    "recipe": 12,
+    "transmog-set": 13,
+    "guide": 14,
+}
+
+CONTEXTUAL_PREVIEW_TYPE_PRIORITY: dict[str, dict[str, int]] = {
+    "currency": {
+        "npc": 0,
+        "quest": 1,
+        "spell": 2,
+        "object": 3,
+        "faction": 4,
+        "zone": 5,
+        "item": 6,
+        "currency": 7,
+    },
+    "zone": {
+        "npc": 0,
+        "quest": 1,
+        "object": 2,
+        "spell": 3,
+        "item": 4,
+        "zone": 5,
+        "faction": 6,
+    },
+    "item": {
+        "npc": 0,
+        "quest": 1,
+        "spell": 2,
+        "achievement": 3,
+        "zone": 4,
+        "object": 5,
+        "item": 6,
+    },
+    "npc": {
+        "npc": 0,
+        "quest": 1,
+        "spell": 2,
+        "item": 3,
+        "object": 4,
+    },
+    "quest": {
+        "npc": 0,
+        "item": 1,
+        "quest": 2,
+        "spell": 3,
+        "object": 4,
+        "currency": 5,
+    },
+    "guide": {
+        "spell": 0,
+        "item": 1,
+        "npc": 2,
+        "quest": 3,
+        "object": 4,
+    },
+}
+
+
 def _cfg(ctx: typer.Context) -> RuntimeConfig:
     obj = ctx.obj
     if isinstance(obj, RuntimeConfig):
@@ -347,6 +439,90 @@ def _emit(ctx: typer.Context, payload: dict[str, Any], *, err: bool = False) -> 
     emit(rendered, pretty=cfg.pretty, err=err)
 
 
+def _normalize_link_name(value: Any, *, entity_type: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    name = value.strip()
+    if not name:
+        return None
+    normalized = name.lower()
+    if normalized.startswith("http") or normalized.startswith("www.") or "wowhead.com/" in normalized:
+        return None
+    if entity_type:
+        normalized_type = entity_type.replace("-", " ").strip().lower()
+        if normalized == normalized_type or normalized == normalized_type.replace(" ", ""):
+            return None
+    if normalized in LOW_SIGNAL_LINK_NAMES:
+        return None
+    return name
+
+
+def _link_name_rank(record: dict[str, Any]) -> int:
+    entity_type = record.get("entity_type") if isinstance(record.get("entity_type"), str) else None
+    return 0 if _normalize_link_name(record.get("name"), entity_type=entity_type) is not None else 1
+
+
+def _link_source_rank(record: dict[str, Any]) -> int:
+    source_kind = record.get("source_kind")
+    if source_kind == "gatherer":
+        return 0
+    if source_kind == "href":
+        return 1
+    return 2
+
+
+def _preview_type_rank(record: dict[str, Any], *, source_entity_type: str) -> int:
+    entity_type = record.get("entity_type")
+    if not isinstance(entity_type, str):
+        return 99
+    contextual = CONTEXTUAL_PREVIEW_TYPE_PRIORITY.get(source_entity_type)
+    if contextual is not None and entity_type in contextual:
+        return contextual[entity_type]
+    return PREVIEW_TYPE_PRIORITY.get(entity_type, 99)
+
+
+def _preview_sort_key(record: dict[str, Any], *, source_entity_type: str) -> tuple[int, int, int, int]:
+    link_id = record.get("id")
+    return (
+        _link_name_rank(record),
+        _preview_type_rank(record, source_entity_type=source_entity_type),
+        _link_source_rank(record),
+        link_id if isinstance(link_id, int) else 0,
+    )
+
+
+def _select_preview_records(
+    records: list[dict[str, Any]],
+    *,
+    source_entity_type: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if limit <= 0 or not records:
+        return []
+    ranked = sorted(records, key=lambda record: _preview_sort_key(record, source_entity_type=source_entity_type))
+    selected: list[dict[str, Any]] = []
+    selected_keys: set[tuple[str, int]] = set()
+    used_types: set[str] = set()
+
+    for unique_type_only in (True, False):
+        for record in ranked:
+            entity_type = record.get("entity_type")
+            entity_id = record.get("id")
+            if not isinstance(entity_type, str) or not isinstance(entity_id, int):
+                continue
+            key = (entity_type, entity_id)
+            if key in selected_keys:
+                continue
+            if unique_type_only and entity_type in used_types:
+                continue
+            selected.append(record)
+            selected_keys.add(key)
+            used_types.add(entity_type)
+            if len(selected) >= limit:
+                return selected
+    return selected[:limit]
+
+
 def _dedupe_links(
     links: list[dict[str, Any]],
     *,
@@ -367,12 +543,15 @@ def _dedupe_links(
         existing_index = seen_index.get(key)
         if existing_index is not None:
             existing = deduped[existing_index]
+            existing_name = _normalize_link_name(existing.get("name"), entity_type=link_type)
+            candidate_name = _normalize_link_name(record.get("name"), entity_type=link_type)
+            if existing_name is None and candidate_name is not None:
+                existing["name"] = candidate_name
+                existing["source_kind"] = record.get("source_kind")
             for field in (
-                "name",
                 "url",
                 "citation_url",
                 "source_url",
-                "source_kind",
                 "gatherer_data_type",
             ):
                 if existing.get(field) in (None, "") and record.get(field) not in (None, ""):
@@ -401,10 +580,11 @@ def _normalize_tooltip_payload(tooltip: dict[str, Any]) -> tuple[str | None, dic
 
 
 def _summarize_linked_entity(record: dict[str, Any]) -> dict[str, Any]:
+    entity_type = record.get("entity_type") if isinstance(record.get("entity_type"), str) else None
     return {
         "type": record.get("entity_type"),
         "id": record.get("id"),
-        "name": record.get("name"),
+        "name": _normalize_link_name(record.get("name"), entity_type=entity_type),
         "url": record.get("url"),
     }
 
@@ -639,7 +819,7 @@ def _build_linked_entity_preview(
         entity_id=entity_id,
         max_links=max(len(links), 1),
     )
-    preview_items = deduped[:preview_limit]
+    preview_items = _select_preview_records(deduped, source_entity_type=entity_type, limit=preview_limit)
     counts_by_type: dict[str, int] = {}
     for row in deduped:
         link_type = row.get("entity_type")

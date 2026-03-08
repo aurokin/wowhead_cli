@@ -36,6 +36,7 @@ Use the local `wowhead` command to fetch structured WoW data and citations.
 - `mount` resolves through underlying item pages.
 - `battle-pet` resolves through underlying NPC pages.
 8. `guide` and `guide-full` now use the same merged `linked_entities` semantics; use `linked_entities.source_counts` when you need to understand how href and gatherer sources contributed.
+9. Lightweight linked-entity previews are intentionally ranked and filtered for decision-making; they are not DOM-order dumps, and low-signal labels may be omitted from preview names even though the full relation data is still available via `entity-page` or `guide-full`.
 
 ## Required Usage Rules
 

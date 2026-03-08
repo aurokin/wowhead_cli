@@ -123,6 +123,7 @@ Current state after the first phase 1 refactor:
 
 - `fetch_more_command` for regular entity/comment linked-entity previews now scales to the known deduped count instead of hard-coding `--max-links 200`.
 - `guide` and `guide-full` now both treat `linked_entities` as the merged deduped guide relation set, with `source_counts` exposing href/gatherer contributions.
+- Lightweight linked-entity previews now suppress low-signal labels such as raw type names or URL-like anchor text and rank more actionable relation types ahead of noisy same-type/item-heavy results.
 
 ### Route Resolution Findings
 
@@ -152,3 +153,6 @@ Current state after the first phase 1 refactor:
 - Normalized `guide` and `guide-full` so both use the same merged `linked_entities` semantics.
 - Added `source_counts` to guide linked-entity payloads so href and gatherer contributions remain visible.
 - Verified live on guide `3143`, where both `guide` and `guide-full` now report `linked_entities.count = 52`.
+- Added lightweight preview ranking and diversity selection so regular previews prefer actionable relation types over low-signal rows.
+- Added low-signal name suppression for labels like `item` and URL-shaped anchor text in the lightweight preview surface.
+- Verified live improvements on `npc 448`, `item 19019`, and `currency 3008`.
