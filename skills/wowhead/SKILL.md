@@ -18,6 +18,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 - Guide lookup: `wowhead guide <guide_id_or_url>`
 - Full guide payload: `wowhead guide-full <guide_id_or_url>`
 - Export local guide assets: `wowhead guide-export <guide_id_or_url> --out <dir>`
+- Export local guide assets plus bounded linked-entity hydration: `wowhead guide-export <guide_id_or_url> --out <dir> --hydrate-linked-entities [--hydrate-type spell,item,npc]`
 - List exported guide bundles: `wowhead guide-bundle-list [--root <dir>]`
 - Query exported guide assets: `wowhead guide-query <dir> "<query>"`
 - Multi-entity compare: `wowhead compare <type:id> <type:id> ...`
@@ -47,6 +48,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 15. For exported guide bundles, prefer merged `linked_entities` plus `guide-query --linked-source href|gatherer|multi` over treating `linked_entities` and `gatherer_entities` as separate query buckets unless you explicitly need the raw source-specific rows.
 16. In `guide-query`, the flattened `top` list prefers the merged linked-entity row over a duplicate raw gatherer row for the same entity; use `matches.gatherer_entities` if you explicitly need the raw source-specific result too.
 17. Cache behavior is now configurable by env vars. Default caching uses file storage with longer TTLs for stable entity/page fetches, plus a normalized `entity` response cache for repeated `entity` lookups with the same flags. For shared environments, optional Redis support uses a required key prefix such as `WOWHEAD_REDIS_PREFIX=wowhead_cli` so this CLI can coexist cleanly with other apps on the same Redis.
+18. `guide-export --hydrate-linked-entities` writes compact normalized entity payloads for selected linked entities under `entities/<type>/<id>.json`, plus `entities/manifest.json`. Default hydrated types are `spell,item,npc`; use `--hydrate-type` and `--hydrate-limit` to keep exports bounded.
 
 ## Required Usage Rules
 
@@ -74,6 +76,7 @@ wowhead comments quest 86864 --limit 50 --sort rating
 wowhead guide 3143
 wowhead guide-full 3143
 wowhead guide-export 3143 --out ./tmp/frost-dk-guide
+wowhead guide-export 3143 --out ./tmp/frost-dk-guide --hydrate-linked-entities --hydrate-type spell,item
 wowhead guide-bundle-list
 wowhead guide-query ./tmp/frost-dk-guide "bellamy"
 wowhead guide-query 3143 "obliterate" --root ./wowhead_exports

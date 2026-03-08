@@ -35,6 +35,7 @@ wowhead --expansion wotlk search "thunderfury"
 wowhead guide 3143
 wowhead guide-full 3143
 wowhead guide-export 3143 --out ./tmp/frost-dk-guide
+wowhead guide-export 3143 --out ./tmp/frost-dk-guide --hydrate-linked-entities --hydrate-type spell,item --hydrate-limit 100
 wowhead guide-bundle-list
 wowhead guide-query ./tmp/frost-dk-guide "bellamy"
 wowhead guide-query 3143 "obliterate" --root ./wowhead_exports
@@ -65,6 +66,7 @@ Use global `--expansion` to target a version profile; default is `retail`.
 Use `guide` to resolve Wowhead guide IDs/URLs and retrieve metadata plus sampled comments.
 Use `guide-full` to retrieve the full embedded guide payload in one response, including body markup, nav links, linked entities, gatherer entities, author data, and all parsed comments.
 Use `guide-export` to materialize that payload as local assets (`guide.json`, `page.html`, JSONL slices, and `manifest.json`) for repeated agent exploration.
+Use `--hydrate-linked-entities` to also write bounded local entity payloads under `entities/<type>/<id>.json` plus `entities/manifest.json`. Hydration reuses the normalized `entity` contract and defaults to `spell,item,npc` when enabled; use `--hydrate-type` and `--hydrate-limit` to narrow it.
 Use `guide-bundle-list` to discover exported bundles under `./wowhead_exports/` or another root.
 Use `guide-query` to search a previously exported guide bundle locally across section content, navigation links, entities, and comments. It accepts either a direct bundle path or a selector such as guide ID under `--root`. Use `--kind` to narrow categories, `--section-title` to scope section searches, and `--linked-source href|gatherer|multi` to filter merged linked-entity matches by provenance. The flattened `top` list now prefers the merged linked-entity row over duplicate raw gatherer rows when both match the same entity.
 Regular `entity`, `guide`, and `comments` responses now include a lightweight `linked_entities` preview with basic records plus a `fetch_more_command` hint; the regular `entity` preview is trimmed to `type`, `id`, `name`, and `url`, and also includes `counts_by_type` so agents can decide quickly whether to escalate. Guide previews expose the merged deduped guide relation set and include `source_counts` so agents can see how href and gatherer sources contributed. Lightweight previews now suppress low-signal names and prefer more actionable relation types before item-heavy noise. Use `--linked-entity-preview-limit 0` on `entity` or `comments` if you want to skip that preview.

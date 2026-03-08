@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -106,6 +107,26 @@ PREVIEW_TYPE_PRIORITY: dict[str, int] = {
     "transmog-set": 13,
     "guide": 14,
 }
+
+DEFAULT_HYDRATE_ENTITY_TYPES = ("spell", "item", "npc")
+HYDRATABLE_ENTITY_TYPES = frozenset(
+    {
+        "achievement",
+        "battle-pet",
+        "currency",
+        "faction",
+        "item",
+        "mount",
+        "npc",
+        "object",
+        "pet",
+        "quest",
+        "recipe",
+        "spell",
+        "transmog-set",
+        "zone",
+    }
+)
 
 CONTEXTUAL_PREVIEW_TYPE_PRIORITY: dict[str, dict[str, int]] = {
     "currency": {
@@ -959,6 +980,45 @@ def _write_optional_text_file(path: Path, value: Any) -> bool:
     return True
 
 
+def _iso_now_utc() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _hydrate_guide_linked_entities(
+    ctx: typer.Context,
+    client: WowheadClient,
+    *,
+    linked_items: list[Any],
+    hydrate_types: tuple[str, ...],
+    hydrate_limit: int,
+) -> list[dict[str, Any]]:
+    hydrated_rows: list[dict[str, Any]] = []
+    selected_types = set(hydrate_types)
+    for row in linked_items:
+        if len(hydrated_rows) >= hydrate_limit:
+            break
+        if not isinstance(row, dict):
+            continue
+        entity_type = row.get("entity_type")
+        entity_id = row.get("id")
+        if not isinstance(entity_type, str) or not isinstance(entity_id, int):
+            continue
+        if entity_type not in selected_types:
+            continue
+        payload = _build_entity_payload(
+            ctx,
+            client,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            data_env=None,
+            include_comments=False,
+            include_all_comments=False,
+            linked_entity_preview_limit=0,
+        )
+        hydrated_rows.append(payload)
+    return hydrated_rows
+
+
 def _read_json_file(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -1044,6 +1104,26 @@ def _normalize_link_source_filters(values: list[str]) -> tuple[str, ...]:
             if value not in allowed:
                 raise ValueError(
                     f"Unsupported linked source filter {value!r}. Expected one of: {', '.join(sorted(allowed))}."
+                )
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+    return tuple(normalized)
+
+
+def _normalize_hydrate_types(values: list[str]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    raw_values = values or list(DEFAULT_HYDRATE_ENTITY_TYPES)
+    for raw in raw_values:
+        for candidate in raw.split(","):
+            value = candidate.strip().lower()
+            if not value:
+                continue
+            if value not in HYDRATABLE_ENTITY_TYPES:
+                raise ValueError(
+                    f"Unsupported hydrate entity type {value!r}. Expected one of: {', '.join(sorted(HYDRATABLE_ENTITY_TYPES))}."
                 )
             if value in seen:
                 continue
@@ -1174,6 +1254,166 @@ def _build_linked_entity_preview(
         "more_available": len(deduped) > len(preview_items),
         "fetch_more_command": render_fetch_more(len(deduped)),
     }
+
+
+def _build_entity_payload(
+    ctx: typer.Context,
+    client: WowheadClient,
+    *,
+    entity_type: str,
+    entity_id: int,
+    data_env: int | None,
+    include_comments: bool,
+    include_all_comments: bool,
+    linked_entity_preview_limit: int,
+    top_comment_limit: int = 3,
+    top_comment_chars: int = 320,
+) -> dict[str, Any]:
+    cfg = _cfg(ctx)
+    cached_payload = client.get_cached_entity_response(
+        requested_type=entity_type,
+        requested_id=entity_id,
+        data_env=data_env,
+        include_comments=include_comments,
+        include_all_comments=include_all_comments,
+        linked_entity_preview_limit=linked_entity_preview_limit,
+    )
+    if isinstance(cached_payload, dict):
+        return cached_payload
+
+    plan = _build_entity_access_plan(entity_type, entity_id)
+    tooltip: dict[str, Any] = {}
+    tooltip_final_url: str | None = None
+    try:
+        if plan.tooltip_entity_type is not None and plan.tooltip_entity_id is not None:
+            if plan.page_from_tooltip_redirect:
+                tooltip, tooltip_final_url = client.tooltip_with_metadata(
+                    plan.tooltip_entity_type,
+                    plan.tooltip_entity_id,
+                    data_env=data_env,
+                )
+            else:
+                tooltip = client.tooltip(
+                    plan.tooltip_entity_type,
+                    plan.tooltip_entity_id,
+                    data_env=data_env,
+                )
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+    except ValueError as exc:
+        _fail(ctx, "parse_error", str(exc))
+
+    if plan.page_from_tooltip_redirect and tooltip_final_url is not None:
+        resolved = _parse_tooltip_final_ref(tooltip_final_url)
+        if resolved is None:
+            _fail(ctx, "unexpected_response", f"Could not resolve a page target for {entity_type} {entity_id}.")
+        plan.page_entity_type, plan.page_entity_id = resolved
+
+    canonical = entity_url(plan.page_entity_type, plan.page_entity_id, expansion=cfg.expansion)
+    page_url = canonical
+    entity_name, tooltip_payload = _normalize_tooltip_payload(tooltip)
+    html: str | None = None
+    metadata: dict[str, str | None] | None = None
+    raw_comments: list[dict[str, Any]] = []
+    sampled_comments: list[dict[str, Any]] = []
+    all_comments: list[dict[str, Any]] = []
+
+    if include_comments or linked_entity_preview_limit > 0:
+        html, metadata = _fetch_entity_page(ctx, client, plan.page_entity_type, plan.page_entity_id)
+        page_url = metadata["canonical_url"] or canonical
+    elif plan.tooltip_from_page_metadata:
+        html, metadata = _fetch_entity_page(ctx, client, plan.page_entity_type, plan.page_entity_id)
+        page_url = metadata["canonical_url"] or canonical
+
+    if plan.tooltip_from_page_metadata and metadata is not None:
+        entity_name, tooltip_payload = _build_tooltip_from_page_metadata(metadata)
+
+    if include_comments and html is not None:
+        try:
+            raw_comments = extract_comments_dataset(html)
+        except ValueError:
+            raw_comments = []
+
+        if include_all_comments:
+            all_comments = normalize_comments(
+                sort_comments(raw_comments, "newest"),
+                page_url=page_url,
+                include_replies=True,
+            )
+        else:
+            ranked = sort_comments(raw_comments, "rating")
+            sampled_norm = normalize_comments(
+                ranked[:top_comment_limit],
+                page_url=page_url,
+                include_replies=False,
+            )
+            for row in sampled_norm:
+                sampled_comments.append(
+                    {
+                        "id": row.get("id"),
+                        "user": row.get("user"),
+                        "rating": row.get("rating"),
+                        "date": row.get("date"),
+                        "body": _truncate_text(row.get("body"), max_chars=top_comment_chars),
+                        "citation_url": row.get("citation_url"),
+                    }
+                )
+
+    all_comments_included = False
+    if include_comments:
+        if include_all_comments:
+            all_comments_included = len(all_comments) == len(raw_comments)
+        else:
+            all_comments_included = len(sampled_comments) == len(raw_comments)
+
+    payload = {
+        "expansion": cfg.expansion.key,
+        "entity": {
+            "type": entity_type,
+            "id": entity_id,
+            "name": entity_name,
+            "page_url": page_url,
+        },
+    }
+    if tooltip_payload:
+        payload["tooltip"] = tooltip_payload
+    if include_comments:
+        payload["citations"] = {
+            "comments": f"{page_url}#comments",
+        }
+    if html is not None and linked_entity_preview_limit > 0:
+        payload["linked_entities"] = _build_linked_entity_preview(
+            extract_linked_entities_from_href(html, source_url=page_url)
+            + extract_gatherer_entities(html, source_url=page_url),
+            entity_type=plan.page_entity_type,
+            entity_id=plan.page_entity_id,
+            preview_limit=linked_entity_preview_limit,
+            fetch_more_command_builder=lambda count: _entity_page_fetch_more_command(entity_type, entity_id, count),
+        )
+    if include_comments:
+        comments_payload: dict[str, Any] = {
+            "count": len(raw_comments),
+            "all_comments_included": all_comments_included,
+            "needs_raw_fetch": not all_comments_included,
+        }
+        if include_all_comments:
+            comments_payload["items"] = all_comments
+        else:
+            comments_payload["top"] = sampled_comments
+        payload["comments"] = comments_payload
+
+    client.set_cached_entity_response(
+        payload,
+        requested_type=entity_type,
+        requested_id=entity_id,
+        data_env=data_env,
+        include_comments=include_comments,
+        include_all_comments=include_all_comments,
+        linked_entity_preview_limit=linked_entity_preview_limit,
+    )
+    return payload
 
 
 def _fetch_guide_page(
@@ -1792,13 +2032,37 @@ def guide_export(
         "--include-replies/--no-include-replies",
         help="Include inline replies already present in the embedded comments payload.",
     ),
+    hydrate_linked_entities: bool = typer.Option(
+        False,
+        "--hydrate-linked-entities/--no-hydrate-linked-entities",
+        help="Hydrate selected linked entities into local entity JSON files using the normalized entity contract.",
+    ),
+    hydrate_type: list[str] = typer.Option(
+        [],
+        "--hydrate-type",
+        help="Restrict hydrated linked entity types. Repeat or pass comma-separated values from: achievement, battle-pet, currency, faction, item, mount, npc, object, pet, quest, recipe, spell, transmog-set, zone. Defaults to spell,item,npc when hydration is enabled.",
+    ),
+    hydrate_limit: int = typer.Option(
+        100,
+        "--hydrate-limit",
+        min=1,
+        max=1000,
+        help="Maximum linked entities to hydrate when --hydrate-linked-entities is enabled.",
+    ),
 ) -> None:
+    client = _client(ctx)
     payload, html = _build_guide_full_payload(
         ctx,
         guide_ref=guide_ref,
         max_links=max_links,
         include_replies=include_replies,
     )
+    selected_hydrate_types: tuple[str, ...] = ()
+    if hydrate_linked_entities:
+        try:
+            selected_hydrate_types = _normalize_hydrate_types(hydrate_type)
+        except ValueError as exc:
+            _fail(ctx, "invalid_argument", str(exc))
     export_dir = (out or _default_guide_export_dir(payload)).expanduser()
     export_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1845,6 +2109,55 @@ def guide_export(
         _write_jsonl_file(export_dir / "gatherer-entities.jsonl", gatherer_items)
         files_written["gatherer_entities_jsonl"] = "gatherer-entities.jsonl"
 
+    hydrated_entities: list[dict[str, Any]] = []
+    hydrated_summary_items: list[dict[str, Any]] = []
+    if hydrate_linked_entities and isinstance(linked_items, list):
+        hydrated_entities = _hydrate_guide_linked_entities(
+            ctx,
+            client,
+            linked_items=linked_items,
+            hydrate_types=selected_hydrate_types,
+            hydrate_limit=hydrate_limit,
+        )
+        if hydrated_entities:
+            entities_dir = export_dir / "entities"
+            for row in hydrated_entities:
+                entity = row.get("entity")
+                if not isinstance(entity, dict):
+                    continue
+                hydrated_type = entity.get("type")
+                hydrated_id = entity.get("id")
+                if not isinstance(hydrated_type, str) or not isinstance(hydrated_id, int):
+                    continue
+                entity_path = entities_dir / hydrated_type / f"{hydrated_id}.json"
+                entity_path.parent.mkdir(parents=True, exist_ok=True)
+                _write_json_file(entity_path, row)
+                hydrated_summary_items.append(
+                    {
+                        "entity_type": hydrated_type,
+                        "id": hydrated_id,
+                        "name": entity.get("name"),
+                        "page_url": entity.get("page_url"),
+                        "path": str(entity_path.relative_to(export_dir)),
+                    }
+                )
+            counts_by_type: dict[str, int] = {}
+            for row in hydrated_summary_items:
+                hydrated_type = row.get("entity_type")
+                if not isinstance(hydrated_type, str):
+                    continue
+                counts_by_type[hydrated_type] = counts_by_type.get(hydrated_type, 0) + 1
+            entities_manifest = {
+                "hydrated_at": _iso_now_utc(),
+                "count": len(hydrated_summary_items),
+                "types": list(selected_hydrate_types),
+                "counts_by_type": counts_by_type,
+                "items": hydrated_summary_items,
+            }
+            entities_manifest_path = entities_dir / "manifest.json"
+            _write_json_file(entities_manifest_path, entities_manifest)
+            files_written["entities_manifest_json"] = "entities/manifest.json"
+
     comments = payload.get("comments")
     comment_items = comments.get("items") if isinstance(comments, dict) else []
     if isinstance(comment_items, list):
@@ -1873,7 +2186,13 @@ def guide_export(
             "navigation_links": len(nav_links) if isinstance(nav_links, list) else 0,
             "linked_entities": len(linked_items) if isinstance(linked_items, list) else 0,
             "gatherer_entities": len(gatherer_items) if isinstance(gatherer_items, list) else 0,
+            "hydrated_entities": len(hydrated_summary_items),
             "comments": len(comment_items) if isinstance(comment_items, list) else 0,
+        },
+        "hydration": {
+            "enabled": hydrate_linked_entities,
+            "types": list(selected_hydrate_types),
+            "limit": hydrate_limit if hydrate_linked_entities else 0,
         },
         "files": files_written,
     }
@@ -2156,146 +2475,12 @@ def entity(
         help="Maximum linked entities to include as a lightweight preview. Set to 0 to disable.",
     ),
 ) -> None:
-    cfg = _cfg(ctx)
     client = _client(ctx)
-    cached_payload = client.get_cached_entity_response(
-        requested_type=entity_type,
-        requested_id=entity_id,
-        data_env=data_env,
-        include_comments=include_comments,
-        include_all_comments=include_all_comments,
-        linked_entity_preview_limit=linked_entity_preview_limit,
-    )
-    if isinstance(cached_payload, dict):
-        _emit(ctx, cached_payload)
-        return
-    plan = _build_entity_access_plan(entity_type, entity_id)
-    tooltip: dict[str, Any] = {}
-    tooltip_final_url: str | None = None
-    try:
-        if plan.tooltip_entity_type is not None and plan.tooltip_entity_id is not None:
-            if plan.page_from_tooltip_redirect:
-                tooltip, tooltip_final_url = client.tooltip_with_metadata(
-                    plan.tooltip_entity_type,
-                    plan.tooltip_entity_id,
-                    data_env=data_env,
-                )
-            else:
-                tooltip = client.tooltip(
-                    plan.tooltip_entity_type,
-                    plan.tooltip_entity_id,
-                    data_env=data_env,
-                )
-    except httpx.HTTPStatusError as exc:
-        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
-    except httpx.HTTPError as exc:
-        _fail(ctx, "network_error", str(exc))
-    except ValueError as exc:
-        _fail(ctx, "parse_error", str(exc))
-
-    if plan.page_from_tooltip_redirect and tooltip_final_url is not None:
-        resolved = _parse_tooltip_final_ref(tooltip_final_url)
-        if resolved is None:
-            _fail(ctx, "unexpected_response", f"Could not resolve a page target for {entity_type} {entity_id}.")
-        plan.page_entity_type, plan.page_entity_id = resolved
-
-    canonical = entity_url(plan.page_entity_type, plan.page_entity_id, expansion=cfg.expansion)
-    page_url = canonical
-    entity_name, tooltip_payload = _normalize_tooltip_payload(tooltip)
-    html: str | None = None
-    metadata: dict[str, str | None] | None = None
-    raw_comments: list[dict[str, Any]] = []
-    sampled_comments: list[dict[str, Any]] = []
-    all_comments: list[dict[str, Any]] = []
-    top_comment_limit = 3
-
-    if include_comments or linked_entity_preview_limit > 0:
-        html, metadata = _fetch_entity_page(ctx, client, plan.page_entity_type, plan.page_entity_id)
-        page_url = metadata["canonical_url"] or canonical
-    elif plan.tooltip_from_page_metadata:
-        html, metadata = _fetch_entity_page(ctx, client, plan.page_entity_type, plan.page_entity_id)
-        page_url = metadata["canonical_url"] or canonical
-
-    if plan.tooltip_from_page_metadata and metadata is not None:
-        entity_name, tooltip_payload = _build_tooltip_from_page_metadata(metadata)
-
-    if include_comments and html is not None:
-        try:
-            raw_comments = extract_comments_dataset(html)
-        except ValueError:
-            raw_comments = []
-
-        if include_all_comments:
-            all_comments = normalize_comments(
-                sort_comments(raw_comments, "newest"),
-                page_url=page_url,
-                include_replies=True,
-            )
-        else:
-            ranked = sort_comments(raw_comments, "rating")
-            sampled_norm = normalize_comments(
-                ranked[:top_comment_limit],
-                page_url=page_url,
-                include_replies=False,
-            )
-            for row in sampled_norm:
-                sampled_comments.append(
-                    {
-                        "id": row.get("id"),
-                        "user": row.get("user"),
-                        "rating": row.get("rating"),
-                        "date": row.get("date"),
-                        "body": _truncate_text(row.get("body"), max_chars=320),
-                        "citation_url": row.get("citation_url"),
-                    }
-                )
-
-    all_comments_included = False
-    if include_comments:
-        if include_all_comments:
-            all_comments_included = len(all_comments) == len(raw_comments)
-        else:
-            all_comments_included = len(sampled_comments) == len(raw_comments)
-
-    payload = {
-        "expansion": cfg.expansion.key,
-        "entity": {
-            "type": entity_type,
-            "id": entity_id,
-            "name": entity_name,
-            "page_url": page_url,
-        },
-    }
-    if tooltip_payload:
-        payload["tooltip"] = tooltip_payload
-    if include_comments:
-        payload["citations"] = {
-            "comments": f"{page_url}#comments",
-        }
-    if html is not None and linked_entity_preview_limit > 0:
-        payload["linked_entities"] = _build_linked_entity_preview(
-            extract_linked_entities_from_href(html, source_url=page_url)
-            + extract_gatherer_entities(html, source_url=page_url),
-            entity_type=plan.page_entity_type,
-            entity_id=plan.page_entity_id,
-            preview_limit=linked_entity_preview_limit,
-            fetch_more_command_builder=lambda count: _entity_page_fetch_more_command(entity_type, entity_id, count),
-        )
-    if include_comments:
-        comments_payload: dict[str, Any] = {
-            "count": len(raw_comments),
-            "all_comments_included": all_comments_included,
-            "needs_raw_fetch": not all_comments_included,
-        }
-        if include_all_comments:
-            comments_payload["items"] = all_comments
-        else:
-            comments_payload["top"] = sampled_comments
-        payload["comments"] = comments_payload
-    client.set_cached_entity_response(
-        payload,
-        requested_type=entity_type,
-        requested_id=entity_id,
+    payload = _build_entity_payload(
+        ctx,
+        client,
+        entity_type=entity_type,
+        entity_id=entity_id,
         data_env=data_env,
         include_comments=include_comments,
         include_all_comments=include_all_comments,

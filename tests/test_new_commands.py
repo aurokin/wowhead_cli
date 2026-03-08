@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from typer.testing import CliRunner
 
@@ -343,6 +344,7 @@ def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:
         "navigation_links": 2,
         "linked_entities": 2,
         "gatherer_entities": 1,
+        "hydrated_entities": 0,
         "comments": 1,
     }
 
@@ -384,6 +386,66 @@ def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:
     assert first_comment["citation_url"].endswith("#comments:id=91")
     assert merged_item["sources"] == ["gatherer", "href"]
     assert "Welcome to the guide." in (export_dir / "body.markup.txt").read_text(encoding="utf-8")
+
+
+def test_guide_export_hydrates_linked_entities(monkeypatch, tmp_path: Path) -> None:
+    def fake_guide_page_html(self, guide_id: int):  # noqa: ANN001
+        assert guide_id == 3143
+        return SAMPLE_GUIDE_HTML
+
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        if (entity_type, entity_id) == ("spell", 49020):
+            return {
+                "name": "Obliterate",
+                "tooltip": "<table><tr><td><b>Obliterate</b><br>Talent<br>Instant<br>A brutal attack.</td></tr></table>",
+            }
+        if (entity_type, entity_id) == ("item", 249277):
+            return {
+                "name": "Bellamy's Final Judgement",
+                "tooltip": "<table><tr><td><b>Bellamy's Final Judgement</b><br>Item Level 639</td></tr></table>",
+            }
+        raise AssertionError(f"Unexpected tooltip lookup: {(entity_type, entity_id)}")
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_page_html", fake_guide_page_html)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+
+    export_dir = tmp_path / "guide-export"
+    result = runner.invoke(
+        app,
+        [
+            "guide-export",
+            "3143",
+            "--out",
+            str(export_dir),
+            "--hydrate-linked-entities",
+            "--hydrate-type",
+            "spell,item",
+            "--hydrate-limit",
+            "2",
+        ],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["counts"]["hydrated_entities"] == 2
+    assert payload["hydration"] == {
+        "enabled": True,
+        "types": ["spell", "item"],
+        "limit": 2,
+    }
+
+    entities_manifest = json.loads((export_dir / "entities" / "manifest.json").read_text(encoding="utf-8"))
+    assert entities_manifest["count"] == 2
+    assert entities_manifest["counts_by_type"] == {"item": 1, "spell": 1}
+    assert {row["path"] for row in entities_manifest["items"]} == {
+        "entities/item/249277.json",
+        "entities/spell/49020.json",
+    }
+
+    hydrated_spell = json.loads((export_dir / "entities" / "spell" / "49020.json").read_text(encoding="utf-8"))
+    hydrated_item = json.loads((export_dir / "entities" / "item" / "249277.json").read_text(encoding="utf-8"))
+    assert hydrated_spell["entity"]["name"] == "Obliterate"
+    assert hydrated_item["entity"]["name"] == "Bellamy's Final Judgement"
 
 
 def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
