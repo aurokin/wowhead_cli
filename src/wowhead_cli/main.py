@@ -1473,12 +1473,13 @@ def _build_guide_full_payload(
     guide_ref: str,
     max_links: int,
     include_replies: bool,
+    client: WowheadClient | None = None,
 ) -> tuple[dict[str, Any], str]:
     cfg = _cfg(ctx)
-    client = _client(ctx)
+    resolved_client = client or _client(ctx)
     html, guide_id, lookup_url, metadata, canonical_url = _fetch_guide_page(
         ctx,
-        client,
+        resolved_client,
         guide_ref=guide_ref,
     )
 
@@ -1628,6 +1629,86 @@ def _load_guide_export(export_dir: Path) -> dict[str, Any]:
     }
 
 
+def _parse_iso8601_utc(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _guide_bundle_is_fresh(manifest: dict[str, Any], *, max_age_hours: int) -> bool:
+    cutoff = datetime.now(timezone.utc)
+    exported_at = _parse_iso8601_utc(manifest.get("exported_at"))
+    if exported_at is None:
+        return False
+    age_seconds = (cutoff - exported_at).total_seconds()
+    if age_seconds > max_age_hours * 3600:
+        return False
+
+    hydration = manifest.get("hydration")
+    if isinstance(hydration, dict) and hydration.get("enabled") is True:
+        hydrated_at = _parse_iso8601_utc(hydration.get("hydrated_at"))
+        if hydrated_at is None:
+            return False
+        hydrated_age_seconds = (cutoff - hydrated_at).total_seconds()
+        if hydrated_age_seconds > max_age_hours * 3600:
+            return False
+    return True
+
+
+def _infer_guide_export_options(manifest: dict[str, Any]) -> tuple[str, int, bool, bool, tuple[str, ...], int]:
+    export_options = manifest.get("export_options")
+    guide = manifest.get("guide")
+    hydration = manifest.get("hydration")
+
+    guide_ref: str | None = None
+    if isinstance(export_options, dict) and isinstance(export_options.get("guide_ref"), str):
+        guide_ref = export_options["guide_ref"]
+    elif isinstance(guide, dict):
+        input_ref = guide.get("input")
+        guide_id = guide.get("id")
+        if isinstance(input_ref, str) and input_ref.strip():
+            guide_ref = input_ref
+        elif isinstance(guide_id, int):
+            guide_ref = str(guide_id)
+    if guide_ref is None:
+        raise ValueError("Bundle manifest is missing a guide reference for refresh.")
+
+    max_links = 250
+    include_replies = False
+    if isinstance(export_options, dict):
+        if isinstance(export_options.get("max_links"), int):
+            max_links = export_options["max_links"]
+        if isinstance(export_options.get("include_replies"), bool):
+            include_replies = export_options["include_replies"]
+    elif isinstance(manifest.get("comments"), dict):
+        include_replies = bool(manifest["comments"].get("include_replies"))
+
+    hydrate_enabled = False
+    hydrate_types: tuple[str, ...] = ()
+    hydrate_limit = 100
+    if isinstance(hydration, dict):
+        hydrate_enabled = hydration.get("enabled") is True
+        raw_types = hydration.get("types")
+        if isinstance(raw_types, list):
+            hydrate_types = tuple(value for value in raw_types if isinstance(value, str))
+        raw_limit = hydration.get("limit")
+        if isinstance(raw_limit, int):
+            hydrate_limit = raw_limit
+    if hydrate_enabled and not hydrate_types:
+        hydrate_types = tuple(DEFAULT_HYDRATE_ENTITY_TYPES)
+
+    return guide_ref, max_links, include_replies, hydrate_enabled, hydrate_types, hydrate_limit
+
+
 def _discover_guide_corpora(root: Path) -> list[dict[str, Any]]:
     if not root.exists() or not root.is_dir():
         return []
@@ -1663,6 +1744,174 @@ def _discover_guide_corpora(root: Path) -> list[dict[str, Any]]:
         )
     corpora.sort(key=lambda row: ((row.get("title") or "").lower(), row["path"]))
     return corpora
+
+
+def _write_guide_export_bundle(
+    ctx: typer.Context,
+    *,
+    client: WowheadClient,
+    guide_ref: str,
+    export_dir: Path,
+    max_links: int,
+    include_replies: bool,
+    hydrate_linked_entities: bool,
+    hydrate_types: tuple[str, ...],
+    hydrate_limit: int,
+) -> dict[str, Any]:
+    payload, html = _build_guide_full_payload(
+        ctx,
+        guide_ref=guide_ref,
+        max_links=max_links,
+        include_replies=include_replies,
+        client=client,
+    )
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    files_written: dict[str, str] = {}
+
+    guide_json_path = export_dir / "guide.json"
+    _write_json_file(guide_json_path, payload)
+    files_written["guide_json"] = guide_json_path.name
+
+    page_html_path = export_dir / "page.html"
+    page_html_path.write_text(html, encoding="utf-8")
+    files_written["page_html"] = page_html_path.name
+
+    body = payload.get("body")
+    if isinstance(body, dict) and _write_optional_text_file(export_dir / "body.markup.txt", body.get("raw_markup")):
+        files_written["body_markup"] = "body.markup.txt"
+
+    navigation = payload.get("navigation")
+    if isinstance(navigation, dict) and _write_optional_text_file(
+        export_dir / "navigation.markup.txt",
+        navigation.get("raw_markup"),
+    ):
+        files_written["navigation_markup"] = "navigation.markup.txt"
+
+    sections = body.get("section_chunks") if isinstance(body, dict) else []
+    if isinstance(sections, list):
+        _write_jsonl_file(export_dir / "sections.jsonl", sections)
+        files_written["sections_jsonl"] = "sections.jsonl"
+
+    nav_links = navigation.get("links") if isinstance(navigation, dict) else []
+    if isinstance(nav_links, list):
+        _write_jsonl_file(export_dir / "navigation-links.jsonl", nav_links)
+        files_written["navigation_links_jsonl"] = "navigation-links.jsonl"
+
+    linked_entities = payload.get("linked_entities")
+    linked_items = linked_entities.get("items") if isinstance(linked_entities, dict) else []
+    if isinstance(linked_items, list):
+        _write_jsonl_file(export_dir / "linked-entities.jsonl", linked_items)
+        files_written["linked_entities_jsonl"] = "linked-entities.jsonl"
+
+    gatherer_entities = payload.get("gatherer_entities")
+    gatherer_items = gatherer_entities.get("items") if isinstance(gatherer_entities, dict) else []
+    if isinstance(gatherer_items, list):
+        _write_jsonl_file(export_dir / "gatherer-entities.jsonl", gatherer_items)
+        files_written["gatherer_entities_jsonl"] = "gatherer-entities.jsonl"
+
+    hydrated_summary_items: list[dict[str, Any]] = []
+    hydrated_at: str | None = None
+    if hydrate_linked_entities and isinstance(linked_items, list):
+        hydrated_entities = _hydrate_guide_linked_entities(
+            ctx,
+            client,
+            linked_items=linked_items,
+            hydrate_types=hydrate_types,
+            hydrate_limit=hydrate_limit,
+        )
+        if hydrated_entities:
+            entities_dir = export_dir / "entities"
+            for row in hydrated_entities:
+                entity = row.get("entity")
+                if not isinstance(entity, dict):
+                    continue
+                hydrated_type = entity.get("type")
+                hydrated_id = entity.get("id")
+                if not isinstance(hydrated_type, str) or not isinstance(hydrated_id, int):
+                    continue
+                entity_path = entities_dir / hydrated_type / f"{hydrated_id}.json"
+                entity_path.parent.mkdir(parents=True, exist_ok=True)
+                _write_json_file(entity_path, row)
+                hydrated_summary_items.append(
+                    {
+                        "entity_type": hydrated_type,
+                        "id": hydrated_id,
+                        "name": entity.get("name"),
+                        "page_url": entity.get("page_url"),
+                        "path": str(entity_path.relative_to(export_dir)),
+                    }
+                )
+            counts_by_type: dict[str, int] = {}
+            for row in hydrated_summary_items:
+                hydrated_type = row.get("entity_type")
+                if not isinstance(hydrated_type, str):
+                    continue
+                counts_by_type[hydrated_type] = counts_by_type.get(hydrated_type, 0) + 1
+            hydrated_at = _iso_now_utc()
+            entities_manifest = {
+                "hydrated_at": hydrated_at,
+                "count": len(hydrated_summary_items),
+                "types": list(hydrate_types),
+                "counts_by_type": counts_by_type,
+                "items": hydrated_summary_items,
+            }
+            entities_manifest_path = entities_dir / "manifest.json"
+            _write_json_file(entities_manifest_path, entities_manifest)
+            files_written["entities_manifest_json"] = "entities/manifest.json"
+
+    comments = payload.get("comments")
+    comment_items = comments.get("items") if isinstance(comments, dict) else []
+    if isinstance(comment_items, list):
+        _write_jsonl_file(export_dir / "comments.jsonl", comment_items)
+        files_written["comments_jsonl"] = "comments.jsonl"
+
+    structured_data = payload.get("structured_data")
+    if structured_data is not None:
+        structured_data_path = export_dir / "structured-data.json"
+        _write_json_file(structured_data_path, structured_data)
+        files_written["structured_data_json"] = structured_data_path.name
+
+    exported_at = _iso_now_utc()
+    manifest = {
+        "export_version": 2,
+        "exported_at": exported_at,
+        "guide_fetched_at": exported_at,
+        "expansion": payload.get("expansion"),
+        "output_dir": str(export_dir),
+        "guide": payload.get("guide"),
+        "page": {
+            "title": payload.get("page", {}).get("title") if isinstance(payload.get("page"), dict) else None,
+            "canonical_url": payload.get("page", {}).get("canonical_url")
+            if isinstance(payload.get("page"), dict)
+            else None,
+        },
+        "counts": {
+            "sections": len(sections) if isinstance(sections, list) else 0,
+            "navigation_links": len(nav_links) if isinstance(nav_links, list) else 0,
+            "linked_entities": len(linked_items) if isinstance(linked_items, list) else 0,
+            "gatherer_entities": len(gatherer_items) if isinstance(gatherer_items, list) else 0,
+            "hydrated_entities": len(hydrated_summary_items),
+            "comments": len(comment_items) if isinstance(comment_items, list) else 0,
+        },
+        "hydration": {
+            "enabled": hydrate_linked_entities,
+            "types": list(hydrate_types),
+            "limit": hydrate_limit if hydrate_linked_entities else 0,
+            "hydrated_at": hydrated_at,
+        },
+        "export_options": {
+            "guide_ref": guide_ref,
+            "max_links": max_links,
+            "include_replies": include_replies,
+        },
+        "files": files_written,
+    }
+    manifest_path = export_dir / "manifest.json"
+    _write_json_file(manifest_path, manifest)
+    manifest["files"]["manifest_json"] = manifest_path.name
+    _write_json_file(manifest_path, manifest)
+    return manifest
 
 
 def _looks_like_path(value: str) -> bool:
@@ -2051,156 +2300,34 @@ def guide_export(
     ),
 ) -> None:
     client = _client(ctx)
-    payload, html = _build_guide_full_payload(
-        ctx,
-        guide_ref=guide_ref,
-        max_links=max_links,
-        include_replies=include_replies,
-    )
     selected_hydrate_types: tuple[str, ...] = ()
     if hydrate_linked_entities:
         try:
             selected_hydrate_types = _normalize_hydrate_types(hydrate_type)
         except ValueError as exc:
             _fail(ctx, "invalid_argument", str(exc))
-    export_dir = (out or _default_guide_export_dir(payload)).expanduser()
-    export_dir.mkdir(parents=True, exist_ok=True)
-
-    files_written: dict[str, str] = {}
-
-    guide_json_path = export_dir / "guide.json"
-    _write_json_file(guide_json_path, payload)
-    files_written["guide_json"] = guide_json_path.name
-
-    page_html_path = export_dir / "page.html"
-    page_html_path.write_text(html, encoding="utf-8")
-    files_written["page_html"] = page_html_path.name
-
-    body = payload.get("body")
-    if isinstance(body, dict) and _write_optional_text_file(export_dir / "body.markup.txt", body.get("raw_markup")):
-        files_written["body_markup"] = "body.markup.txt"
-
-    navigation = payload.get("navigation")
-    if isinstance(navigation, dict) and _write_optional_text_file(
-        export_dir / "navigation.markup.txt",
-        navigation.get("raw_markup"),
-    ):
-        files_written["navigation_markup"] = "navigation.markup.txt"
-
-    sections = body.get("section_chunks") if isinstance(body, dict) else []
-    if isinstance(sections, list):
-        _write_jsonl_file(export_dir / "sections.jsonl", sections)
-        files_written["sections_jsonl"] = "sections.jsonl"
-
-    nav_links = navigation.get("links") if isinstance(navigation, dict) else []
-    if isinstance(nav_links, list):
-        _write_jsonl_file(export_dir / "navigation-links.jsonl", nav_links)
-        files_written["navigation_links_jsonl"] = "navigation-links.jsonl"
-
-    linked_entities = payload.get("linked_entities")
-    linked_items = linked_entities.get("items") if isinstance(linked_entities, dict) else []
-    if isinstance(linked_items, list):
-        _write_jsonl_file(export_dir / "linked-entities.jsonl", linked_items)
-        files_written["linked_entities_jsonl"] = "linked-entities.jsonl"
-
-    gatherer_entities = payload.get("gatherer_entities")
-    gatherer_items = gatherer_entities.get("items") if isinstance(gatherer_entities, dict) else []
-    if isinstance(gatherer_items, list):
-        _write_jsonl_file(export_dir / "gatherer-entities.jsonl", gatherer_items)
-        files_written["gatherer_entities_jsonl"] = "gatherer-entities.jsonl"
-
-    hydrated_entities: list[dict[str, Any]] = []
-    hydrated_summary_items: list[dict[str, Any]] = []
-    if hydrate_linked_entities and isinstance(linked_items, list):
-        hydrated_entities = _hydrate_guide_linked_entities(
+    if out is None:
+        preview_payload, _ = _build_guide_full_payload(
             ctx,
-            client,
-            linked_items=linked_items,
-            hydrate_types=selected_hydrate_types,
-            hydrate_limit=hydrate_limit,
+            guide_ref=guide_ref,
+            max_links=max_links,
+            include_replies=include_replies,
+            client=client,
         )
-        if hydrated_entities:
-            entities_dir = export_dir / "entities"
-            for row in hydrated_entities:
-                entity = row.get("entity")
-                if not isinstance(entity, dict):
-                    continue
-                hydrated_type = entity.get("type")
-                hydrated_id = entity.get("id")
-                if not isinstance(hydrated_type, str) or not isinstance(hydrated_id, int):
-                    continue
-                entity_path = entities_dir / hydrated_type / f"{hydrated_id}.json"
-                entity_path.parent.mkdir(parents=True, exist_ok=True)
-                _write_json_file(entity_path, row)
-                hydrated_summary_items.append(
-                    {
-                        "entity_type": hydrated_type,
-                        "id": hydrated_id,
-                        "name": entity.get("name"),
-                        "page_url": entity.get("page_url"),
-                        "path": str(entity_path.relative_to(export_dir)),
-                    }
-                )
-            counts_by_type: dict[str, int] = {}
-            for row in hydrated_summary_items:
-                hydrated_type = row.get("entity_type")
-                if not isinstance(hydrated_type, str):
-                    continue
-                counts_by_type[hydrated_type] = counts_by_type.get(hydrated_type, 0) + 1
-            entities_manifest = {
-                "hydrated_at": _iso_now_utc(),
-                "count": len(hydrated_summary_items),
-                "types": list(selected_hydrate_types),
-                "counts_by_type": counts_by_type,
-                "items": hydrated_summary_items,
-            }
-            entities_manifest_path = entities_dir / "manifest.json"
-            _write_json_file(entities_manifest_path, entities_manifest)
-            files_written["entities_manifest_json"] = "entities/manifest.json"
-
-    comments = payload.get("comments")
-    comment_items = comments.get("items") if isinstance(comments, dict) else []
-    if isinstance(comment_items, list):
-        _write_jsonl_file(export_dir / "comments.jsonl", comment_items)
-        files_written["comments_jsonl"] = "comments.jsonl"
-
-    structured_data = payload.get("structured_data")
-    if structured_data is not None:
-        structured_data_path = export_dir / "structured-data.json"
-        _write_json_file(structured_data_path, structured_data)
-        files_written["structured_data_json"] = structured_data_path.name
-
-    manifest = {
-        "export_version": 1,
-        "expansion": payload.get("expansion"),
-        "output_dir": str(export_dir),
-        "guide": payload.get("guide"),
-        "page": {
-            "title": payload.get("page", {}).get("title") if isinstance(payload.get("page"), dict) else None,
-            "canonical_url": payload.get("page", {}).get("canonical_url")
-            if isinstance(payload.get("page"), dict)
-            else None,
-        },
-        "counts": {
-            "sections": len(sections) if isinstance(sections, list) else 0,
-            "navigation_links": len(nav_links) if isinstance(nav_links, list) else 0,
-            "linked_entities": len(linked_items) if isinstance(linked_items, list) else 0,
-            "gatherer_entities": len(gatherer_items) if isinstance(gatherer_items, list) else 0,
-            "hydrated_entities": len(hydrated_summary_items),
-            "comments": len(comment_items) if isinstance(comment_items, list) else 0,
-        },
-        "hydration": {
-            "enabled": hydrate_linked_entities,
-            "types": list(selected_hydrate_types),
-            "limit": hydrate_limit if hydrate_linked_entities else 0,
-        },
-        "files": files_written,
-    }
-    manifest_path = export_dir / "manifest.json"
-    _write_json_file(manifest_path, manifest)
-    manifest["files"]["manifest_json"] = manifest_path.name
-    _write_json_file(manifest_path, manifest)
-
+        export_dir = _default_guide_export_dir(preview_payload).expanduser()
+    else:
+        export_dir = out.expanduser()
+    manifest = _write_guide_export_bundle(
+        ctx,
+        client=client,
+        guide_ref=guide_ref,
+        export_dir=export_dir,
+        max_links=max_links,
+        include_replies=include_replies,
+        hydrate_linked_entities=hydrate_linked_entities,
+        hydrate_types=selected_hydrate_types,
+        hydrate_limit=hydrate_limit,
+    )
     _emit(ctx, manifest)
 
 
@@ -2445,6 +2572,82 @@ def guide_bundle_list(
         "bundles": bundles,
     }
     _emit(ctx, payload)
+
+
+@app.command("guide-bundle-refresh")
+def guide_bundle_refresh(
+    ctx: typer.Context,
+    bundle_ref: str = typer.Argument(
+        ...,
+        help="Bundle directory path or selector (guide id, bundle dir name, or title match).",
+    ),
+    root: Path | None = typer.Option(
+        None,
+        "--root",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        help="Root directory used to resolve non-path bundle selectors. Defaults to ./wowhead_exports/.",
+    ),
+    max_age_hours: int = typer.Option(
+        24,
+        "--max-age-hours",
+        min=1,
+        max=24 * 30,
+        help="Default freshness window in hours. If omitted, bundles newer than 24 hours are treated as fresh.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force/--no-force",
+        help="Refresh even when the bundle is still within the freshness window.",
+    ),
+) -> None:
+    try:
+        export_dir = _resolve_corpus_ref(bundle_ref, root=root)
+        corpus = _load_guide_export(export_dir)
+    except (ValueError, json.JSONDecodeError) as exc:
+        _fail(ctx, "invalid_bundle", str(exc))
+
+    manifest = corpus["manifest"]
+    if not isinstance(manifest, dict):
+        _fail(ctx, "invalid_bundle", "Bundle manifest is not a JSON object.")
+
+    try:
+        guide_ref, max_links, include_replies, hydrate_enabled, hydrate_types, hydrate_limit = _infer_guide_export_options(
+            manifest
+        )
+    except ValueError as exc:
+        _fail(ctx, "invalid_bundle", str(exc))
+
+    is_fresh = _guide_bundle_is_fresh(manifest, max_age_hours=max_age_hours)
+    if is_fresh and not force:
+        refreshed_manifest = dict(manifest)
+        refreshed_manifest["refresh"] = {
+            "updated": False,
+            "reason": "fresh",
+            "max_age_hours": max_age_hours,
+        }
+        _emit(ctx, refreshed_manifest)
+        return
+
+    client = _client(ctx)
+    refreshed_manifest = _write_guide_export_bundle(
+        ctx,
+        client=client,
+        guide_ref=guide_ref,
+        export_dir=export_dir,
+        max_links=max_links,
+        include_replies=include_replies,
+        hydrate_linked_entities=hydrate_enabled,
+        hydrate_types=hydrate_types,
+        hydrate_limit=hydrate_limit,
+    )
+    refreshed_manifest["refresh"] = {
+        "updated": True,
+        "reason": "forced" if force else "stale",
+        "max_age_hours": max_age_hours,
+    }
+    _emit(ctx, refreshed_manifest)
 
 
 @app.command("entity")

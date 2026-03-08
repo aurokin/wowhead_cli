@@ -24,8 +24,9 @@ Current state:
 - the transport cache now has longer default TTLs for stable entity/page fetches
 - the CLI now also has a normalized `entity` response cache for repeated `entity` lookups with the same flags
 - `guide-export` can now write bounded hydrated linked-entity payloads under `entities/` using the normalized entity contract
+- `guide-bundle-refresh` can now infer refresh settings from bundle manifests and defaults to a 24-hour freshness window when no `--max-age-hours` is supplied
 - invalid cache configuration now fails as a structured CLI error instead of a traceback
-- it still does not yet have a broader normalized durable entity store beyond bounded guide-export hydration
+- it still does not yet support selective rehydration policies beyond the bundle-level refresh flow
 - it is useful for immediate retries and nearby repeated lookups
 - it is not yet a durable entity store or a full shared cache across agents
 

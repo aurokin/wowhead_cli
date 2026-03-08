@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 
@@ -368,6 +369,20 @@ def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:
     assert manifest["files"]["manifest_json"] == "manifest.json"
     assert manifest["files"]["guide_json"] == "guide.json"
     assert guide_json["guide"]["id"] == 3143
+    assert manifest["export_version"] == 2
+    assert manifest["export_options"] == {
+        "guide_ref": "3143",
+        "max_links": 250,
+        "include_replies": False,
+    }
+    assert manifest["hydration"] == {
+        "enabled": False,
+        "types": [],
+        "limit": 0,
+        "hydrated_at": None,
+    }
+    assert isinstance(manifest["exported_at"], str)
+    assert isinstance(manifest["guide_fetched_at"], str)
 
     sections_lines = (export_dir / "sections.jsonl").read_text(encoding="utf-8").strip().splitlines()
     navigation_lines = (export_dir / "navigation-links.jsonl").read_text(encoding="utf-8").strip().splitlines()
@@ -428,11 +443,10 @@ def test_guide_export_hydrates_linked_entities(monkeypatch, tmp_path: Path) -> N
 
     payload = json.loads(result.stdout)
     assert payload["counts"]["hydrated_entities"] == 2
-    assert payload["hydration"] == {
-        "enabled": True,
-        "types": ["spell", "item"],
-        "limit": 2,
-    }
+    assert payload["hydration"]["enabled"] is True
+    assert payload["hydration"]["types"] == ["spell", "item"]
+    assert payload["hydration"]["limit"] == 2
+    assert isinstance(payload["hydration"]["hydrated_at"], str)
 
     entities_manifest = json.loads((export_dir / "entities" / "manifest.json").read_text(encoding="utf-8"))
     assert entities_manifest["count"] == 2
@@ -446,6 +460,127 @@ def test_guide_export_hydrates_linked_entities(monkeypatch, tmp_path: Path) -> N
     hydrated_item = json.loads((export_dir / "entities" / "item" / "249277.json").read_text(encoding="utf-8"))
     assert hydrated_spell["entity"]["name"] == "Obliterate"
     assert hydrated_item["entity"]["name"] == "Bellamy's Final Judgement"
+
+
+def test_guide_bundle_refresh_skips_fresh_bundle_with_default_max_age(tmp_path: Path) -> None:
+    root = tmp_path / "wowhead_exports"
+    bundle_dir = root / "guide-3143-frost"
+    bundle_dir.mkdir(parents=True)
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "export_version": 2,
+                "exported_at": now,
+                "guide_fetched_at": now,
+                "expansion": "retail",
+                "output_dir": str(bundle_dir),
+                "guide": {
+                    "input": "3143",
+                    "id": 3143,
+                    "page_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                },
+                "page": {
+                    "title": "Frost Death Knight DPS Guide - Midnight",
+                    "canonical_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                },
+                "counts": {
+                    "sections": 11,
+                    "navigation_links": 15,
+                    "linked_entities": 52,
+                    "gatherer_entities": 52,
+                    "hydrated_entities": 0,
+                    "comments": 9,
+                },
+                "hydration": {
+                    "enabled": False,
+                    "types": [],
+                    "limit": 0,
+                    "hydrated_at": None,
+                },
+                "export_options": {
+                    "guide_ref": "3143",
+                    "max_links": 250,
+                    "include_replies": False,
+                },
+                "files": {"manifest_json": "manifest.json"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["guide-bundle-refresh", "3143", "--root", str(root)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["refresh"] == {
+        "updated": False,
+        "reason": "fresh",
+        "max_age_hours": 24,
+    }
+
+
+def test_guide_bundle_refresh_updates_stale_bundle_and_reuses_manifest_settings(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_guide_page_html(self, guide_id: int):  # noqa: ANN001
+        assert guide_id == 3143
+        return SAMPLE_GUIDE_HTML
+
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        if (entity_type, entity_id) == ("spell", 49020):
+            return {
+                "name": "Obliterate",
+                "tooltip": "<table><tr><td><b>Obliterate</b><br>Talent<br>Instant<br>A brutal attack.</td></tr></table>",
+            }
+        if (entity_type, entity_id) == ("item", 249277):
+            return {
+                "name": "Bellamy's Final Judgement",
+                "tooltip": "<table><tr><td><b>Bellamy's Final Judgement</b><br>Item Level 639</td></tr></table>",
+            }
+        raise AssertionError(f"Unexpected tooltip lookup: {(entity_type, entity_id)}")
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_page_html", fake_guide_page_html)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+
+    export_dir = tmp_path / "guide-export"
+    export_result = runner.invoke(
+        app,
+        [
+            "guide-export",
+            "3143",
+            "--out",
+            str(export_dir),
+            "--hydrate-linked-entities",
+            "--hydrate-type",
+            "spell,item",
+            "--hydrate-limit",
+            "2",
+        ],
+    )
+    assert export_result.exit_code == 0
+
+    manifest_path = export_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    stale = (datetime.now(timezone.utc) - timedelta(hours=48)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    manifest["exported_at"] = stale
+    manifest["guide_fetched_at"] = stale
+    manifest["hydration"]["hydrated_at"] = stale
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = runner.invoke(app, ["guide-bundle-refresh", str(export_dir)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["refresh"] == {
+        "updated": True,
+        "reason": "stale",
+        "max_age_hours": 24,
+    }
+    assert payload["hydration"]["enabled"] is True
+    assert payload["hydration"]["types"] == ["spell", "item"]
+    assert payload["counts"]["hydrated_entities"] == 2
+    assert (export_dir / "entities" / "manifest.json").exists()
 
 
 def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
