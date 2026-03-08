@@ -95,3 +95,39 @@ def test_wowhead_client_uses_updated_default_cache_ttls() -> None:
     assert client._cache_ttls.entity_page_html == 3600
     assert client._cache_ttls.guide_page_html == 3600
     assert client._cache_ttls.comment_replies == 1800
+    assert client._cache_ttls.entity_response == 3600
+
+
+def test_entity_response_cache_roundtrips_with_shape_flags(tmp_path: Path) -> None:
+    client = WowheadClient(cache_dir=tmp_path, cache_backend="file")
+    payload = {"entity": {"type": "item", "id": 19019, "name": "Thunderfury"}}
+
+    client.set_cached_entity_response(
+        payload,
+        requested_type="item",
+        requested_id=19019,
+        data_env=None,
+        include_comments=False,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    )
+
+    cached = client.get_cached_entity_response(
+        requested_type="item",
+        requested_id=19019,
+        data_env=None,
+        include_comments=False,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    )
+    assert cached == payload
+
+    changed_shape = client.get_cached_entity_response(
+        requested_type="item",
+        requested_id=19019,
+        data_env=None,
+        include_comments=True,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    )
+    assert changed_shape is None

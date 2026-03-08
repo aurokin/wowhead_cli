@@ -1005,6 +1005,37 @@ def test_entity_tooltip_summary_strips_leading_entity_name(monkeypatch) -> None:
     assert payload["tooltip"]["summary"] == "Help restore order in Fairbreeze Village."
 
 
+def test_entity_uses_normalized_entity_cache_between_invocations(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "file")
+    monkeypatch.setenv("WOWHEAD_CACHE_DIR", str(tmp_path / "cache"))
+    calls = {"tooltip": 0}
+
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        calls["tooltip"] += 1
+        return {
+            "name": "Thunderfury",
+            "tooltip": "<table><tr><td><b>Thunderfury</b><br>Legendary weapon</td></tr></table>",
+        }
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        raise AssertionError("entity_page_html should not be used when comments and preview are disabled")
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+
+    args = ["entity", "item", "19019", "--no-include-comments", "--linked-entity-preview-limit", "0"]
+    first = runner.invoke(app, args)
+    assert first.exit_code == 0
+    second = runner.invoke(app, args)
+    assert second.exit_code == 0
+
+    assert calls["tooltip"] == 1
+    assert json.loads(first.stdout) == json.loads(second.stdout)
+
+
 def test_entity_preview_prefers_gatherer_name_when_href_label_missing(monkeypatch) -> None:
     def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
         return {"name": "Thunderfury"}

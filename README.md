@@ -92,6 +92,7 @@ WOWHEAD_TOOLTIP_CACHE_TTL_SECONDS=3600
 WOWHEAD_ENTITY_PAGE_CACHE_TTL_SECONDS=3600
 WOWHEAD_GUIDE_PAGE_CACHE_TTL_SECONDS=3600
 WOWHEAD_COMMENT_REPLIES_CACHE_TTL_SECONDS=1800
+WOWHEAD_ENTITY_CACHE_TTL_SECONDS=3600
 ```
 
 Optional Redis support uses namespaced keys so it can share an existing Redis safely:
@@ -101,6 +102,11 @@ WOWHEAD_CACHE_BACKEND=redis
 WOWHEAD_REDIS_URL=redis://host:6379/3
 WOWHEAD_REDIS_PREFIX=wowhead_cli
 ```
+
+The cache now has two active layers:
+
+- transport cache for raw tooltip/page/search/comment responses
+- normalized `entity` response cache for repeated `entity` lookups with the same flags
 
 See `ROADMAP.md` for deferred multi-expansion/subdomain support planning.
 See `WOWHEAD_EXPANSION_RESEARCH.md` for routing/dataEnv findings used by the profile model.

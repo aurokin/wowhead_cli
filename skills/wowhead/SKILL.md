@@ -46,7 +46,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 14. Lightweight preview ranking prefers merged multi-source relations over similar single-source peers when other signals are otherwise comparable.
 15. For exported guide bundles, prefer merged `linked_entities` plus `guide-query --linked-source href|gatherer|multi` over treating `linked_entities` and `gatherer_entities` as separate query buckets unless you explicitly need the raw source-specific rows.
 16. In `guide-query`, the flattened `top` list prefers the merged linked-entity row over a duplicate raw gatherer row for the same entity; use `matches.gatherer_entities` if you explicitly need the raw source-specific result too.
-17. Cache behavior is now configurable by env vars. Default transport caching uses file storage with longer TTLs for stable entity/page fetches. For shared environments, optional Redis support uses a required key prefix such as `WOWHEAD_REDIS_PREFIX=wowhead_cli` so this CLI can coexist cleanly with other apps on the same Redis.
+17. Cache behavior is now configurable by env vars. Default caching uses file storage with longer TTLs for stable entity/page fetches, plus a normalized `entity` response cache for repeated `entity` lookups with the same flags. For shared environments, optional Redis support uses a required key prefix such as `WOWHEAD_REDIS_PREFIX=wowhead_cli` so this CLI can coexist cleanly with other apps on the same Redis.
 
 ## Required Usage Rules
 

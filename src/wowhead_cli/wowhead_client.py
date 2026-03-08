@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import random
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ NETHER_BASE_URL = "https://nether.wowhead.com"
 DEFAULT_CACHE_DIR = DEFAULT_HTTP_CACHE_DIR
 DEFAULT_RETRY_ATTEMPTS = 3
 RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+ENTITY_RESPONSE_CACHE_VERSION = 1
 
 SUGGESTION_TYPE_TO_ENTITY: dict[int, str] = {
     1: "npc",
@@ -172,6 +174,32 @@ class WowheadClient:
         raw = f"{namespace}|{url}|{encoded}".encode("utf-8")
         return f"{namespace}:{hashlib.sha256(raw).hexdigest()}"
 
+    def _entity_response_cache_key(
+        self,
+        *,
+        requested_type: str,
+        requested_id: int,
+        data_env: int | None,
+        include_comments: bool,
+        include_all_comments: bool,
+        linked_entity_preview_limit: int,
+    ) -> str:
+        raw = json.dumps(
+            {
+                "v": ENTITY_RESPONSE_CACHE_VERSION,
+                "expansion": self.expansion.key,
+                "type": requested_type,
+                "id": requested_id,
+                "data_env": data_env,
+                "include_comments": include_comments,
+                "include_all_comments": include_all_comments,
+                "linked_entity_preview_limit": linked_entity_preview_limit,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return f"entity_response:{hashlib.sha256(raw).hexdigest()}"
+
     def _read_cache(self, key: str) -> Any | None:
         if not self._cache_enabled or self._cache_store is None:
             return None
@@ -181,6 +209,48 @@ class WowheadClient:
         if not self._cache_enabled or self._cache_store is None:
             return
         self._cache_store.set(key, payload, ttl_seconds=ttl_seconds)
+
+    def get_cached_entity_response(
+        self,
+        *,
+        requested_type: str,
+        requested_id: int,
+        data_env: int | None,
+        include_comments: bool,
+        include_all_comments: bool,
+        linked_entity_preview_limit: int,
+    ) -> dict[str, Any] | None:
+        key = self._entity_response_cache_key(
+            requested_type=requested_type,
+            requested_id=requested_id,
+            data_env=data_env,
+            include_comments=include_comments,
+            include_all_comments=include_all_comments,
+            linked_entity_preview_limit=linked_entity_preview_limit,
+        )
+        cached = self._read_cache(key)
+        return cached if isinstance(cached, dict) else None
+
+    def set_cached_entity_response(
+        self,
+        payload: dict[str, Any],
+        *,
+        requested_type: str,
+        requested_id: int,
+        data_env: int | None,
+        include_comments: bool,
+        include_all_comments: bool,
+        linked_entity_preview_limit: int,
+    ) -> None:
+        key = self._entity_response_cache_key(
+            requested_type=requested_type,
+            requested_id=requested_id,
+            data_env=data_env,
+            include_comments=include_comments,
+            include_all_comments=include_all_comments,
+            linked_entity_preview_limit=linked_entity_preview_limit,
+        )
+        self._write_cache(key, payload, ttl_seconds=self._cache_ttls.entity_response)
 
     def _get_json(
         self,

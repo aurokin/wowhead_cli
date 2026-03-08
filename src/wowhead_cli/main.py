@@ -2158,6 +2158,17 @@ def entity(
 ) -> None:
     cfg = _cfg(ctx)
     client = _client(ctx)
+    cached_payload = client.get_cached_entity_response(
+        requested_type=entity_type,
+        requested_id=entity_id,
+        data_env=data_env,
+        include_comments=include_comments,
+        include_all_comments=include_all_comments,
+        linked_entity_preview_limit=linked_entity_preview_limit,
+    )
+    if isinstance(cached_payload, dict):
+        _emit(ctx, cached_payload)
+        return
     plan = _build_entity_access_plan(entity_type, entity_id)
     tooltip: dict[str, Any] = {}
     tooltip_final_url: str | None = None
@@ -2281,6 +2292,15 @@ def entity(
         else:
             comments_payload["top"] = sampled_comments
         payload["comments"] = comments_payload
+    client.set_cached_entity_response(
+        payload,
+        requested_type=entity_type,
+        requested_id=entity_id,
+        data_env=data_env,
+        include_comments=include_comments,
+        include_all_comments=include_all_comments,
+        linked_entity_preview_limit=linked_entity_preview_limit,
+    )
     _emit(ctx, payload)
 
 

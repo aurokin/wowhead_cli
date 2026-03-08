@@ -22,8 +22,9 @@ Current state:
 
 - the CLI now has a configurable transport cache with file and optional Redis backends
 - the transport cache now has longer default TTLs for stable entity/page fetches
+- the CLI now also has a normalized `entity` response cache for repeated `entity` lookups with the same flags
 - invalid cache configuration now fails as a structured CLI error instead of a traceback
-- it still remains a request-shaped transport cache, not yet a normalized durable entity store
+- it still does not yet have a broader normalized durable entity store that can be reused for guide hydration
 - it is useful for immediate retries and nearby repeated lookups
 - it is not yet a durable entity store or a full shared cache across agents
 

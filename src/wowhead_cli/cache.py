@@ -21,6 +21,7 @@ class CacheTTLConfig:
     guide_page_html: int = 3600
     page_html: int = 3600
     comment_replies: int = 1800
+    entity_response: int = 3600
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +79,7 @@ def load_cache_settings_from_env() -> CacheSettings:
         guide_page_html=_env_int("WOWHEAD_GUIDE_PAGE_CACHE_TTL_SECONDS", 3600),
         page_html=_env_int("WOWHEAD_PAGE_CACHE_TTL_SECONDS", 3600),
         comment_replies=_env_int("WOWHEAD_COMMENT_REPLIES_CACHE_TTL_SECONDS", 1800),
+        entity_response=_env_int("WOWHEAD_ENTITY_CACHE_TTL_SECONDS", 3600),
     )
     return CacheSettings(
         enabled=enabled,
