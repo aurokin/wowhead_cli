@@ -28,7 +28,8 @@ Use the local `wowhead` command to fetch structured WoW data and citations.
 - `comments_included` indicates whether comments were requested.
 - `comments.all_comments_included` indicates whether returned comments are complete.
 - `comments.needs_raw_fetch` indicates whether to call `wowhead comments ...` for full coverage.
-4. Use `citations.page` and `citations.comments` in responses.
+4. Inspect `linked_entities` preview on regular responses to decide whether to escalate to `entity-page` or `guide-full`.
+5. Use `citations.page` and `citations.comments` in responses.
 
 ## Required Usage Rules
 
@@ -39,6 +40,7 @@ Use the local `wowhead` command to fetch structured WoW data and citations.
 - Use `--pretty` for user-facing JSON output.
 - If comments are not needed, use `--no-include-comments` for faster lookups.
 - If full comment set is required in one call, use `--include-all-comments`.
+- Use `--linked-entity-preview-limit 0` if you need the faster `entity`/`comments` path without relation previews.
 
 ## Examples
 

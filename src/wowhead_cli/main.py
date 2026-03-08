@@ -440,6 +440,36 @@ def _normalize_query_kinds(values: list[str]) -> tuple[str, ...]:
     return tuple(normalized)
 
 
+def _build_linked_entity_preview(
+    links: list[dict[str, Any]],
+    *,
+    entity_type: str,
+    entity_id: int,
+    preview_limit: int,
+    fetch_more_command: str,
+) -> dict[str, Any]:
+    if preview_limit <= 0:
+        return {
+            "count": 0,
+            "items": [],
+            "more_available": False,
+            "fetch_more_command": fetch_more_command,
+        }
+    deduped = _dedupe_links(
+        links,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        max_links=max(len(links), 1),
+    )
+    preview_items = deduped[:preview_limit]
+    return {
+        "count": len(deduped),
+        "items": preview_items,
+        "more_available": len(deduped) > len(preview_items),
+        "fetch_more_command": fetch_more_command,
+    }
+
+
 def _fetch_guide_page(
     ctx: typer.Context,
     client: WowheadClient,
@@ -876,6 +906,13 @@ def guide(
         max=2000,
         help="Maximum characters for each sampled comment body.",
     ),
+    linked_entity_preview_limit: int = typer.Option(
+        5,
+        "--linked-entity-preview-limit",
+        min=0,
+        max=50,
+        help="Maximum linked entities to include as a lightweight preview. Set to 0 to disable.",
+    ),
 ) -> None:
     cfg = _cfg(ctx)
     client = WowheadClient(expansion=cfg.expansion)
@@ -911,6 +948,15 @@ def guide(
                 }
             )
 
+    linked_preview = _build_linked_entity_preview(
+        extract_linked_entities_from_href(html, source_url=canonical_url)
+        + extract_gatherer_entities(html, source_url=canonical_url),
+        entity_type="guide",
+        entity_id=guide_id or 0,
+        preview_limit=linked_entity_preview_limit,
+        fetch_more_command=f"wowhead guide-full {guide_ref}",
+    )
+
     page_meta_json = parse_page_meta_json(html)
     payload: dict[str, Any] = {
         "ok": True,
@@ -935,6 +981,7 @@ def guide(
             "count": len(raw_comments),
             "top": sampled_comments,
         },
+        "linked_entities": linked_preview,
         "citations": {
             "page": canonical_url,
             "comments": f"{canonical_url}#comments",
@@ -1344,6 +1391,13 @@ def entity(
         "--include-all-comments/--top-comments-only",
         help="Include all parsed comments instead of only a top-rated summary.",
     ),
+    linked_entity_preview_limit: int = typer.Option(
+        5,
+        "--linked-entity-preview-limit",
+        min=0,
+        max=50,
+        help="Maximum linked entities to include as a lightweight preview. Set to 0 to disable.",
+    ),
 ) -> None:
     cfg = _cfg(ctx)
     client = WowheadClient(expansion=cfg.expansion)
@@ -1358,14 +1412,16 @@ def entity(
 
     canonical = entity_url(entity_type, entity_id, expansion=cfg.expansion)
     page_url = canonical
+    html: str | None = None
     raw_comments: list[dict[str, Any]] = []
     sampled_comments: list[dict[str, Any]] = []
     all_comments: list[dict[str, Any]] = []
     top_comment_limit = 3
 
-    if include_comments:
+    if include_comments or linked_entity_preview_limit > 0:
         html, metadata = _fetch_entity_page(ctx, client, entity_type, entity_id)
         page_url = metadata["canonical_url"] or canonical
+    if include_comments and html is not None:
         try:
             raw_comments = extract_comments_dataset(html)
         except ValueError:
@@ -1420,6 +1476,15 @@ def entity(
             "comments": f"{page_url}#comments",
         },
     }
+    if html is not None and linked_entity_preview_limit > 0:
+        payload["linked_entities"] = _build_linked_entity_preview(
+            extract_linked_entities_from_href(html, source_url=page_url)
+            + extract_gatherer_entities(html, source_url=page_url),
+            entity_type=entity_type,
+            entity_id=entity_id,
+            preview_limit=linked_entity_preview_limit,
+            fetch_more_command=f"wowhead entity-page {entity_type} {entity_id} --max-links 200",
+        )
     if include_comments:
         comments_payload: dict[str, Any] = {
             "count": len(raw_comments),
@@ -1547,6 +1612,13 @@ def comments(
         "--hydrate-missing-replies/--no-hydrate-missing-replies",
         help="Fetch missing replies via /comment/show-replies when embedded data is incomplete.",
     ),
+    linked_entity_preview_limit: int = typer.Option(
+        5,
+        "--linked-entity-preview-limit",
+        min=0,
+        max=50,
+        help="Maximum linked entities to include as a lightweight preview. Set to 0 to disable.",
+    ),
 ) -> None:
     if sort not in {"newest", "oldest", "rating"}:
         _fail(ctx, "invalid_argument", "sort must be one of: newest, oldest, rating.")
@@ -1635,6 +1707,15 @@ def comments(
             "comments": f"{canonical_url}#comments",
         },
     }
+    if linked_entity_preview_limit > 0:
+        payload["linked_entities"] = _build_linked_entity_preview(
+            extract_linked_entities_from_href(html, source_url=canonical_url)
+            + extract_gatherer_entities(html, source_url=canonical_url),
+            entity_type=entity_type,
+            entity_id=entity_id,
+            preview_limit=linked_entity_preview_limit,
+            fetch_more_command=f"wowhead entity-page {entity_type} {entity_id} --max-links 200",
+        )
     _emit(ctx, payload)
 
 

@@ -85,6 +85,8 @@ def test_comments_command_returns_comment_citations(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["comments"][0]["citation_url"].endswith("#comments:id=11")
+    assert payload["linked_entities"]["count"] >= 1
+    assert payload["linked_entities"]["items"][0]["entity_type"] == "npc"
 
 
 def test_compare_command_returns_overlap_and_unique_links(monkeypatch) -> None:
@@ -204,6 +206,8 @@ def test_guide_command_supports_id_lookup(monkeypatch) -> None:
     assert payload["guide"]["url"] == "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps"
     assert payload["comments"]["count"] == 1
     assert payload["comments"]["top"][0]["citation_url"].endswith("#comments:id=91")
+    assert payload["linked_entities"]["count"] >= 2
+    assert payload["linked_entities"]["items"][0]["citation_url"]
 
 
 def test_guide_command_supports_full_wowhead_url(monkeypatch) -> None:
@@ -484,9 +488,34 @@ def test_entity_respects_expansion_flag(monkeypatch) -> None:
     assert payload["comments"]["all_comments_included"] is True
     assert payload["comments"]["needs_raw_fetch"] is False
     assert payload["comments"]["top"][0]["citation_url"].endswith("#comments:id=11")
+    assert payload["linked_entities"]["count"] >= 1
+    assert payload["linked_entities"]["fetch_more_command"] == "wowhead entity-page item 19019 --max-links 200"
 
 
 def test_entity_supports_excluding_comments(monkeypatch) -> None:
+    page_calls = []
+
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {"name": "Thunderfury"}
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        page_calls.append((entity_type, entity_id))
+        return SAMPLE_PAGE_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "item", "19019", "--no-include-comments", "--linked-entity-preview-limit", "0"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["comments_included"] is False
+    assert "comments" not in payload
+    assert "linked_entities" not in payload
+    assert payload["citations"]["page"] == "https://www.wowhead.com/item=19019"
+    assert page_calls == []
+
+
+def test_entity_includes_linked_entity_preview_without_comments(monkeypatch) -> None:
     page_calls = []
 
     def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
@@ -503,9 +532,10 @@ def test_entity_supports_excluding_comments(monkeypatch) -> None:
 
     payload = json.loads(result.stdout)
     assert payload["comments_included"] is False
-    assert "comments" not in payload
-    assert payload["citations"]["page"] == "https://www.wowhead.com/item=19019"
-    assert page_calls == []
+    assert payload["linked_entities"]["count"] >= 1
+    assert payload["linked_entities"]["items"][0]["entity_type"] == "npc"
+    assert payload["linked_entities"]["more_available"] is False
+    assert page_calls == [("item", 19019)]
 
 
 def test_entity_supports_include_all_comments(monkeypatch) -> None:
