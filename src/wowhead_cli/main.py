@@ -650,6 +650,7 @@ def _discover_guide_corpora(root: Path) -> list[dict[str, Any]]:
         corpora.append(
             {
                 "path": str(child),
+                "dir_name": child.name,
                 "guide_id": guide.get("id") if isinstance(guide, dict) else None,
                 "title": page.get("title") if isinstance(page, dict) else None,
                 "canonical_url": page.get("canonical_url") if isinstance(page, dict) else None,
@@ -660,6 +661,66 @@ def _discover_guide_corpora(root: Path) -> list[dict[str, Any]]:
         )
     corpora.sort(key=lambda row: ((row.get("title") or "").lower(), row["path"]))
     return corpora
+
+
+def _looks_like_path(value: str) -> bool:
+    return value.startswith(("/", ".", "~")) or "/" in value
+
+
+def _resolve_corpus_ref(corpus_ref: str, *, root: Path | None) -> Path:
+    raw = corpus_ref.strip()
+    if not raw:
+        raise ValueError("Corpus reference cannot be empty.")
+
+    expanded = Path(raw).expanduser()
+    if expanded.exists():
+        if not expanded.is_dir():
+            raise ValueError(f"Corpus path {expanded} is not a directory.")
+        return expanded.resolve()
+    if _looks_like_path(raw):
+        raise ValueError(f"Corpus path {expanded} does not exist.")
+
+    search_root = (root or _guide_export_root()).expanduser()
+    corpora = _discover_guide_corpora(search_root)
+    if not corpora:
+        raise ValueError(f"No exported corpora found under {search_root}.")
+
+    lowered = raw.lower()
+
+    def exact_matches() -> list[dict[str, Any]]:
+        matches: list[dict[str, Any]] = []
+        for row in corpora:
+            guide_id = row.get("guide_id")
+            title = row.get("title")
+            dir_name = row.get("dir_name")
+            if isinstance(guide_id, int) and str(guide_id) == raw:
+                matches.append(row)
+                continue
+            if isinstance(dir_name, str) and dir_name.lower() == lowered:
+                matches.append(row)
+                continue
+            if isinstance(title, str) and title.lower() == lowered:
+                matches.append(row)
+        return matches
+
+    matches = exact_matches()
+    if not matches:
+        matches = []
+        for row in corpora:
+            title = row.get("title")
+            dir_name = row.get("dir_name")
+            if isinstance(title, str) and lowered in title.lower():
+                matches.append(row)
+                continue
+            if isinstance(dir_name, str) and lowered in dir_name.lower():
+                matches.append(row)
+
+    if not matches:
+        raise ValueError(f"No corpus matched {raw!r} under {search_root}.")
+    if len(matches) > 1:
+        options = ", ".join(row.get("dir_name") or row["path"] for row in matches[:5])
+        raise ValueError(f"Corpus selector {raw!r} is ambiguous under {search_root}. Matches: {options}")
+    return Path(matches[0]["path"])
 
 
 @app.callback()
@@ -1043,13 +1104,9 @@ def guide_export(
 @app.command("guide-query")
 def guide_query(
     ctx: typer.Context,
-    export_dir: Path = typer.Argument(
+    corpus_ref: str = typer.Argument(
         ...,
-        exists=True,
-        file_okay=False,
-        dir_okay=True,
-        resolve_path=True,
-        help="Directory containing a prior guide-export corpus.",
+        help="Corpus directory path or selector (guide id, corpus dir name, or title match).",
     ),
     query: str = typer.Argument(..., help="Query text to search within the exported corpus."),
     limit: int = typer.Option(
@@ -1069,8 +1126,17 @@ def guide_query(
         "--section-title",
         help="Restrict section searching to section titles containing this text.",
     ),
+    root: Path | None = typer.Option(
+        None,
+        "--root",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        help="Root directory used to resolve non-path corpus selectors. Defaults to ./wowhead_exports/.",
+    ),
 ) -> None:
     try:
+        export_dir = _resolve_corpus_ref(corpus_ref, root=root)
         corpus = _load_guide_export(export_dir)
     except (ValueError, json.JSONDecodeError) as exc:
         _fail(ctx, "invalid_corpus", str(exc))

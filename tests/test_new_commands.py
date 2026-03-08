@@ -365,6 +365,28 @@ def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
     assert payload["counts"]["sections"] == 0
     assert payload["matches"]["comments"][0]["user"] == "A"
 
+    root = tmp_path / "wowhead_exports"
+    selector_dir = root / export_dir.name
+    root.mkdir(exist_ok=True)
+    export_dir.rename(selector_dir)
+
+    result = runner.invoke(app, ["guide-query", "3143", "obliterate", "--root", str(root)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["output_dir"] == str(selector_dir)
+    assert payload["matches"]["linked_entities"][0]["name"] == "Obliterate"
+
+    result = runner.invoke(app, ["guide-query", selector_dir.name, "solid", "--root", str(root), "--kind", "comments"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["output_dir"] == str(selector_dir)
+    assert payload["matches"]["comments"][0]["user"] == "A"
+
+    missing_dir = tmp_path / "missing-corpus"
+    result = runner.invoke(app, ["guide-query", str(missing_dir), "anything"])
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
+
 
 def test_guide_corpus_list_discovers_exported_corpora(tmp_path) -> None:
     root = tmp_path / "wowhead_exports"
@@ -432,6 +454,7 @@ def test_guide_corpus_list_discovers_exported_corpora(tmp_path) -> None:
     assert payload["root"] == str(root)
     assert payload["count"] == 2
     assert [row["guide_id"] for row in payload["corpora"]] == [42, 3143]
+    assert payload["corpora"][0]["dir_name"] == "guide-42-other"
     assert payload["corpora"][0]["title"] == "Arcane Mage Guide"
     assert payload["corpora"][1]["counts"]["linked_entities"] == 27
 

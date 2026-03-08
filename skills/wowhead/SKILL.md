@@ -53,6 +53,7 @@ wowhead guide-full 3143
 wowhead guide-export 3143 --out ./tmp/frost-dk-guide
 wowhead guide-corpus-list
 wowhead guide-query ./tmp/frost-dk-guide "bellamy"
+wowhead guide-query 3143 "obliterate" --root ./wowhead_exports
 wowhead guide-query ./tmp/frost-dk-guide "welcome" --kind sections --section-title overview
 wowhead --expansion classic entity npc 91331
 wowhead --fields entity,tooltip.name,citations entity quest 86682
