@@ -45,6 +45,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 13. Rich linked-entity payloads preserve normalized multi-source attribution under `sources` and `source_kind`; lightweight preview rows stay slim and do not expose that provenance.
 14. Lightweight preview ranking prefers merged multi-source relations over similar single-source peers when other signals are otherwise comparable.
 15. For exported guide bundles, prefer merged `linked_entities` plus `guide-query --linked-source href|gatherer|multi` over treating `linked_entities` and `gatherer_entities` as separate query buckets unless you explicitly need the raw source-specific rows.
+16. In `guide-query`, the flattened `top` list prefers the merged linked-entity row over a duplicate raw gatherer row for the same entity; use `matches.gatherer_entities` if you explicitly need the raw source-specific result too.
 
 ## Required Usage Rules
 

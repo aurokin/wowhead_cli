@@ -959,6 +959,61 @@ def _linked_source_match_rank(record: dict[str, Any]) -> int:
     return 3
 
 
+def _linked_entity_query_score(row: dict[str, Any], *, query: str) -> int:
+    score = _score_text_match(query, row.get("name"), row.get("entity_type"), row.get("url"))
+    if score <= 0:
+        return 0
+    score += _score_text_match(query, row.get("name"))
+    if len(_link_source_kinds(row)) > 1:
+        score += 1
+    return score
+
+
+GUIDE_QUERY_KIND_PRIORITY = {
+    "linked_entity": 0,
+    "section": 1,
+    "navigation": 2,
+    "comment": 3,
+    "gatherer_entity": 4,
+}
+
+
+def _guide_query_match_sort_key(row: dict[str, Any]) -> tuple[int, int, int, int, str, int]:
+    kind = row.get("kind") if isinstance(row.get("kind"), str) else ""
+    entity_type = row.get("entity_type") if isinstance(row.get("entity_type"), str) else ""
+    link_id = row.get("id")
+    ordinal = row.get("ordinal")
+    numeric = ordinal if isinstance(ordinal, int) else (link_id if isinstance(link_id, int) else 0)
+    if kind == "linked_entity":
+        return (
+            -int(row.get("score") or 0),
+            GUIDE_QUERY_KIND_PRIORITY.get(kind, 99),
+            _linked_source_match_rank(row),
+            _preview_type_rank(row, source_entity_type="guide"),
+            entity_type,
+            numeric,
+        )
+    return (
+        -int(row.get("score") or 0),
+        GUIDE_QUERY_KIND_PRIORITY.get(kind, 99),
+        99,
+        99,
+        entity_type or kind,
+        numeric,
+    )
+
+
+def _guide_query_top_dedupe_key(row: dict[str, Any]) -> tuple[str, int] | None:
+    kind = row.get("kind")
+    if kind not in {"linked_entity", "gatherer_entity"}:
+        return None
+    entity_type = row.get("entity_type")
+    entity_id = row.get("id")
+    if not isinstance(entity_type, str) or not isinstance(entity_id, int):
+        return None
+    return entity_type, entity_id
+
+
 def _build_linked_entity_preview(
     links: list[dict[str, Any]],
     *,
@@ -1828,13 +1883,13 @@ def guide_query(
                 continue
             if not _linked_source_filter_matches(row, selected_sources=selected_link_sources):
                 continue
-            score = _score_text_match(query, row.get("name"), row.get("entity_type"), row.get("url"))
+            score = _linked_entity_query_score(row, query=query)
             if score <= 0:
                 continue
             linked_entity_matches.append(
                 {
                     "kind": "linked_entity",
-                    "score": score + _score_text_match(query, row.get("name")),
+                    "score": score,
                     "entity_type": row.get("entity_type"),
                     "id": row.get("id"),
                     "name": row.get("name"),
@@ -1843,14 +1898,7 @@ def guide_query(
                     "sources": _link_source_kinds(row),
                 }
             )
-    linked_entity_matches.sort(
-        key=lambda row: (
-            -row["score"],
-            _linked_source_match_rank(row),
-            row.get("entity_type") or "",
-            row.get("id") or 0,
-        )
-    )
+    linked_entity_matches.sort(key=_guide_query_match_sort_key)
 
     gatherer_matches: list[dict[str, Any]] = []
     if kind_enabled("gatherer_entities"):
@@ -1900,7 +1948,16 @@ def guide_query(
         + gatherer_matches[:limit]
         + comment_matches[:limit]
     )
-    top_matches.sort(key=lambda row: (-row["score"], row.get("kind") or ""))
+    top_matches.sort(key=_guide_query_match_sort_key)
+    deduped_top_matches: list[dict[str, Any]] = []
+    seen_top_keys: set[tuple[str, int]] = set()
+    for row in top_matches:
+        dedupe_key = _guide_query_top_dedupe_key(row)
+        if dedupe_key is not None:
+            if dedupe_key in seen_top_keys:
+                continue
+            seen_top_keys.add(dedupe_key)
+        deduped_top_matches.append(row)
 
     payload = {
         "query": query,
@@ -1926,7 +1983,7 @@ def guide_query(
             "gatherer_entities": len(gatherer_matches),
             "comments": len(comment_matches),
         },
-        "top": top_matches[:limit],
+        "top": deduped_top_matches[:limit],
     }
     _emit(ctx, payload)
 
