@@ -934,6 +934,54 @@ def test_entity_mount_summary_prefers_use_text_over_mount_metadata(monkeypatch) 
     assert payload["tooltip"]["summary"] == "Use: Teaches you how to summon this three-person mount with vendors."
 
 
+def test_entity_item_tooltip_text_formats_money_and_stat_spacing(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {
+            "name": "Maladath",
+            "tooltip": (
+                "<table><tr><td><b>Maladath</b><br>+ 4 Parry<br>+ 2 Haste<br>"
+                "Sell Price: 86 98</td></tr></table>"
+            ),
+        }
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return "<html><body><script>var lv_comments0 = [];</script></body></html>"
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "item", "19351"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["tooltip"]["text"] == "Maladath +4 Parry +2 Haste Sell Price: 86g 98s"
+
+
+def test_entity_item_style_tooltip_text_drops_flavor_quotes_and_normalizes_parenthetical_level(monkeypatch) -> None:
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        return {
+            "name": "Grand Expedition Yak",
+            "tooltip": (
+                "<table><tr><td><b>Grand Expedition Yak</b><br>Requires level 1 to 90 ( 90)<br>"
+                "Sell Price: 30,000<br>"
+                "\"These beasts of burden are known to carry over five times their own weight.\"<br>"
+                "Vendor: Uncle Bigpocket<br>Cost: 120000</td></tr></table>"
+            ),
+        }
+
+    def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
+        return "<html><body><script>var lv_comments0 = [];</script></body></html>"
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.entity_page_html", fake_html)
+    result = runner.invoke(app, ["entity", "item", "84101"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["tooltip"]["text"] == (
+        "Grand Expedition Yak Requires level 1 to 90 (90) Sell Price: 30,000g Vendor: Uncle Bigpocket Cost: 120000g"
+    )
+
+
 def test_entity_tooltip_summary_strips_leading_entity_name(monkeypatch) -> None:
     def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
         return {

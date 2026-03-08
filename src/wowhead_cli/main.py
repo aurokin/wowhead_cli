@@ -652,6 +652,11 @@ def _dedupe_links(
 
 BRACKET_FRAGMENT_RE = re.compile(r"""\[[^\]]*\]""")
 ADJACENT_SENTENCE_RE = re.compile(r"""(?P<sentence>[A-Z][^.?!]{8,}?)(?:[.?!])\s+(?P=sentence)(?:[.?!])""")
+FLAVOR_QUOTE_RE = re.compile(r'''\s*"[^"]{20,}"''')
+PAREN_OPEN_SPACE_RE = re.compile(r"""\(\s+""")
+PAREN_CLOSE_SPACE_RE = re.compile(r"""\s+\)""")
+PLUS_STAT_RE = re.compile(r"""(?<!\S)\+\s+(\d)""")
+MONEY_LABEL_RE = re.compile(r"""(?P<label>Sell Price:|Cost:)\s+(?P<amount>\d[\d,]*(?:\s+\d[\d,]*){0,2})""")
 TOOLTIP_SUMMARY_MARKERS = (
     "Use:",
     "Chance on hit:",
@@ -662,9 +667,23 @@ TOOLTIP_SUMMARY_MARKERS = (
 SENTENCE_END_RE = re.compile(r"""[.?!](?:\s|$)""")
 
 
+def _format_money_amount(amount: str) -> str:
+    parts = amount.split()
+    if len(parts) == 1:
+        return f"{parts[0]}g"
+    suffixes = ("g", "s", "c")
+    formatted = [f"{part}{suffixes[index]}" for index, part in enumerate(parts[: len(suffixes)])]
+    return " ".join(formatted)
+
+
 def _clean_tooltip_text(text: str) -> str:
     cleaned = BRACKET_FRAGMENT_RE.sub(" ", text)
+    cleaned = FLAVOR_QUOTE_RE.sub(" ", cleaned)
     cleaned = cleaned.replace("[", " ").replace("]", " ")
+    cleaned = PAREN_OPEN_SPACE_RE.sub("(", cleaned)
+    cleaned = PAREN_CLOSE_SPACE_RE.sub(")", cleaned)
+    cleaned = PLUS_STAT_RE.sub(r"+\1", cleaned)
+    cleaned = MONEY_LABEL_RE.sub(lambda match: f"{match.group('label')} {_format_money_amount(match.group('amount'))}", cleaned)
     cleaned = cleaned.replace(" .", ".").replace(" ,", ",")
     cleaned = " ".join(cleaned.split())
     while True:
