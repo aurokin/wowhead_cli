@@ -1426,7 +1426,7 @@ def _load_or_build_cached_entity_payload(
     include_comments: bool,
     include_all_comments: bool,
     linked_entity_preview_limit: int,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], str]:
     cached_payload = client.get_cached_entity_response(
         requested_type=entity_type,
         requested_id=entity_id,
@@ -1436,17 +1436,30 @@ def _load_or_build_cached_entity_payload(
         linked_entity_preview_limit=linked_entity_preview_limit,
     )
     if isinstance(cached_payload, dict):
-        return cached_payload
-    return _build_entity_payload(
-        ctx,
-        client,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        data_env=data_env,
-        include_comments=include_comments,
-        include_all_comments=include_all_comments,
-        linked_entity_preview_limit=linked_entity_preview_limit,
+        return cached_payload, "entity_cache"
+    return (
+        _build_entity_payload(
+            ctx,
+            client,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            data_env=data_env,
+            include_comments=include_comments,
+            include_all_comments=include_all_comments,
+            linked_entity_preview_limit=linked_entity_preview_limit,
+        ),
+        "live_fetch",
     )
+
+
+def _hydrate_source_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        source = row.get("storage_source")
+        if not isinstance(source, str):
+            continue
+        counts[source] = counts.get(source, 0) + 1
+    return counts
 
 
 def _fetch_guide_page(
@@ -1904,8 +1917,9 @@ def _write_guide_export_bundle(
 
             if existing_payload is not None:
                 payload_row = existing_payload
+                storage_source = "bundle_store"
             else:
-                payload_row = _load_or_build_cached_entity_payload(
+                payload_row, storage_source = _load_or_build_cached_entity_payload(
                     ctx,
                     client,
                     entity_type=hydrated_type,
@@ -1930,6 +1944,7 @@ def _write_guide_export_bundle(
                     "page_url": entity.get("page_url"),
                     "path": str(entity_path.relative_to(export_dir)),
                     "stored_at": stored_at,
+                    "storage_source": storage_source,
                 }
             )
 
@@ -1946,6 +1961,7 @@ def _write_guide_export_bundle(
                 "count": len(hydrated_summary_items),
                 "types": list(hydrate_types),
                 "counts_by_type": counts_by_type,
+                "counts_by_storage_source": _hydrate_source_counts(hydrated_summary_items),
                 "items": hydrated_summary_items,
             }
             entities_manifest_path = entities_dir / "manifest.json"
@@ -1991,6 +2007,7 @@ def _write_guide_export_bundle(
             "types": list(hydrate_types),
             "limit": hydrate_limit if hydrate_linked_entities else 0,
             "hydrated_at": hydrated_at,
+            "source_counts": _hydrate_source_counts(hydrated_summary_items),
         },
         "export_options": {
             "guide_ref": guide_ref,

@@ -381,6 +381,7 @@ def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:
         "types": [],
         "limit": 0,
         "hydrated_at": None,
+        "source_counts": {},
     }
     assert isinstance(manifest["exported_at"], str)
     assert isinstance(manifest["guide_fetched_at"], str)
@@ -452,10 +453,13 @@ def test_guide_export_hydrates_linked_entities(monkeypatch, tmp_path: Path) -> N
     entities_manifest = json.loads((export_dir / "entities" / "manifest.json").read_text(encoding="utf-8"))
     assert entities_manifest["count"] == 2
     assert entities_manifest["counts_by_type"] == {"item": 1, "spell": 1}
+    assert entities_manifest["counts_by_storage_source"] == {"live_fetch": 2}
     assert {row["path"] for row in entities_manifest["items"]} == {
         "entities/item/249277.json",
         "entities/spell/49020.json",
     }
+    assert {row["storage_source"] for row in entities_manifest["items"]} == {"live_fetch"}
+    assert payload["hydration"]["source_counts"] == {"live_fetch": 2}
 
     hydrated_spell = json.loads((export_dir / "entities" / "spell" / "49020.json").read_text(encoding="utf-8"))
     hydrated_item = json.loads((export_dir / "entities" / "item" / "249277.json").read_text(encoding="utf-8"))
@@ -542,6 +546,12 @@ def test_guide_export_hydration_uses_normalized_entity_cache_before_live_fetch(
         ],
     )
     assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["hydration"]["source_counts"] == {"entity_cache": 2}
+    entities_manifest = json.loads((export_dir / "entities" / "manifest.json").read_text(encoding="utf-8"))
+    assert entities_manifest["counts_by_storage_source"] == {"entity_cache": 2}
+    assert {row["storage_source"] for row in entities_manifest["items"]} == {"entity_cache"}
 
     spell_payload = json.loads((export_dir / "entities" / "spell" / "49020.json").read_text(encoding="utf-8"))
     item_payload = json.loads((export_dir / "entities" / "item" / "249277.json").read_text(encoding="utf-8"))
@@ -761,6 +771,106 @@ def test_guide_bundle_refresh_rehydrates_only_stale_hydrated_entities(
     }
     assert refreshed_items[("spell", 49020)]["stored_at"] == fresh
     assert refreshed_items[("item", 249277)]["stored_at"] != stale
+    assert refreshed_items[("spell", 49020)]["storage_source"] == "bundle_store"
+    assert refreshed_items[("item", 249277)]["storage_source"] == "live_fetch"
+    assert refreshed_entities_manifest["counts_by_storage_source"] == {
+        "bundle_store": 1,
+        "live_fetch": 1,
+    }
+    assert payload["hydration"]["source_counts"] == {
+        "bundle_store": 1,
+        "live_fetch": 1,
+    }
+
+
+def test_guide_export_hydration_provenance_can_mix_cache_and_live_fetch(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "file")
+    monkeypatch.setenv("WOWHEAD_CACHE_DIR", str(tmp_path / "cache"))
+
+    def fake_guide_page_html(self, guide_id: int):  # noqa: ANN001
+        assert guide_id == 3143
+        return SAMPLE_GUIDE_HTML
+
+    tooltip_calls: dict[tuple[str, int], int] = {}
+
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        key = (entity_type, entity_id)
+        tooltip_calls[key] = tooltip_calls.get(key, 0) + 1
+        if key == ("item", 249277):
+            return {
+                "name": "Bellamy's Final Judgement",
+                "tooltip": "<table><tr><td><b>Bellamy's Final Judgement</b><br>Item Level 639</td></tr></table>",
+            }
+        raise AssertionError(f"Unexpected tooltip lookup: {key}")
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_page_html", fake_guide_page_html)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+
+    cache_client = WowheadClient(cache_dir=tmp_path / "cache", cache_backend="file")
+    cache_client.set_cached_entity_response(
+        {
+            "expansion": "retail",
+            "entity": {
+                "type": "spell",
+                "id": 49020,
+                "name": "Obliterate",
+                "page_url": "https://www.wowhead.com/spell=49020/obliterate",
+            },
+            "tooltip": {
+                "summary": "A brutal attack.",
+                "text": "Obliterate Talent Instant A brutal attack.",
+                "html": "<table><tr><td><b>Obliterate</b><br>Talent<br>Instant<br>A brutal attack.</td></tr></table>",
+            },
+        },
+        requested_type="spell",
+        requested_id=49020,
+        data_env=None,
+        include_comments=False,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    )
+
+    export_dir = tmp_path / "guide-export"
+    result = runner.invoke(
+        app,
+        [
+            "guide-export",
+            "3143",
+            "--out",
+            str(export_dir),
+            "--hydrate-linked-entities",
+            "--hydrate-type",
+            "spell,item",
+            "--hydrate-limit",
+            "2",
+        ],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["hydration"]["source_counts"] == {
+        "entity_cache": 1,
+        "live_fetch": 1,
+    }
+    assert tooltip_calls == {
+        ("item", 249277): 1,
+    }
+    entities_manifest = json.loads((export_dir / "entities" / "manifest.json").read_text(encoding="utf-8"))
+    assert entities_manifest["counts_by_storage_source"] == {
+        "entity_cache": 1,
+        "live_fetch": 1,
+    }
+    source_by_entity = {
+        (row["entity_type"], row["id"]): row["storage_source"]
+        for row in entities_manifest["items"]
+    }
+    assert source_by_entity == {
+        ("spell", 49020): "entity_cache",
+        ("item", 249277): "live_fetch",
+    }
 
 
 def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
