@@ -990,6 +990,8 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
     corpus_a.mkdir(parents=True)
     corpus_b.mkdir(parents=True)
     junk.mkdir(parents=True)
+    fresh = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    stale = (datetime.now(timezone.utc) - timedelta(hours=48)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     (corpus_a / "manifest.json").write_text(
         json.dumps(
@@ -997,6 +999,8 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
                 "export_version": 1,
                 "expansion": "retail",
                 "output_dir": str(corpus_a),
+                "exported_at": stale,
+                "guide_fetched_at": stale,
                 "guide": {"id": 3143, "page_url": "https://www.wowhead.com/guide=3143"},
                 "page": {
                     "title": "Frost Death Knight DPS Guide - Midnight",
@@ -1007,7 +1011,15 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
                     "navigation_links": 15,
                     "linked_entities": 27,
                     "gatherer_entities": 52,
+                    "hydrated_entities": 2,
                     "comments": 9,
+                },
+                "hydration": {
+                    "enabled": True,
+                    "types": ["spell", "item"],
+                    "limit": 2,
+                    "hydrated_at": stale,
+                    "source_counts": {"entity_cache": 1, "live_fetch": 1},
                 },
                 "files": {"manifest_json": "manifest.json"},
             }
@@ -1020,6 +1032,8 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
                 "export_version": 1,
                 "expansion": "classic",
                 "output_dir": str(corpus_b),
+                "exported_at": fresh,
+                "guide_fetched_at": fresh,
                 "guide": {"id": 42, "page_url": "https://www.wowhead.com/guide=42"},
                 "page": {
                     "title": "Arcane Mage Guide",
@@ -1030,7 +1044,15 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
                     "navigation_links": 6,
                     "linked_entities": 5,
                     "gatherer_entities": 3,
+                    "hydrated_entities": 0,
                     "comments": 2,
+                },
+                "hydration": {
+                    "enabled": False,
+                    "types": [],
+                    "limit": 0,
+                    "hydrated_at": None,
+                    "source_counts": {},
                 },
                 "files": {"manifest_json": "manifest.json"},
             }
@@ -1044,10 +1066,47 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
     payload = json.loads(result.stdout)
     assert payload["root"] == str(root)
     assert payload["count"] == 2
+    assert payload["max_age_hours"] == 24
     assert [row["guide_id"] for row in payload["bundles"]] == [42, 3143]
     assert payload["bundles"][0]["dir_name"] == "guide-42-other"
     assert payload["bundles"][0]["title"] == "Arcane Mage Guide"
+    assert payload["bundles"][0]["freshness"] == {
+        "max_age_hours": 24,
+        "bundle": "fresh",
+        "hydration": "disabled",
+    }
+    assert payload["bundles"][0]["hydration"] == {
+        "enabled": False,
+        "types": [],
+        "limit": 0,
+        "hydrated_at": None,
+        "hydrated_entities": 0,
+        "source_counts": {},
+    }
     assert payload["bundles"][1]["counts"]["linked_entities"] == 27
+    assert payload["bundles"][1]["freshness"] == {
+        "max_age_hours": 24,
+        "bundle": "stale",
+        "hydration": "stale",
+    }
+    assert payload["bundles"][1]["hydration"] == {
+        "enabled": True,
+        "types": ["spell", "item"],
+        "limit": 2,
+        "hydrated_at": stale,
+        "hydrated_entities": 2,
+        "source_counts": {"entity_cache": 1, "live_fetch": 1},
+    }
+
+    result = runner.invoke(app, ["guide-bundle-list", "--root", str(root), "--max-age-hours", "72"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["max_age_hours"] == 72
+    assert payload["bundles"][1]["freshness"] == {
+        "max_age_hours": 72,
+        "bundle": "fresh",
+        "hydration": "fresh",
+    }
 
 
 def test_entity_respects_expansion_flag(monkeypatch) -> None:

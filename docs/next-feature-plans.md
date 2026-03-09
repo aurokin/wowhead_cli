@@ -99,7 +99,7 @@ Redis support should stay optional and behind configuration, not required for th
 What exists now:
 
 - `guide-export` writes one guide bundle to disk
-- `guide-bundle-list` lists exported bundles under a root
+- `guide-bundle-list` lists exported bundles under a root and now includes per-bundle freshness and hydration summaries
 - `guide-query` searches one bundle at a time by path or selector
 
 Main gaps:

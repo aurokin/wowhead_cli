@@ -1763,7 +1763,64 @@ def _infer_guide_export_options(manifest: dict[str, Any]) -> tuple[str, int, boo
     return guide_ref, max_links, include_replies, hydrate_enabled, hydrate_types, hydrate_limit
 
 
-def _discover_guide_corpora(root: Path) -> list[dict[str, Any]]:
+def _bundle_hydration_summary(manifest: dict[str, Any], *, counts: dict[str, Any]) -> dict[str, Any]:
+    hydration = manifest.get("hydration")
+    enabled = False
+    types: list[str] = []
+    limit = 0
+    hydrated_at = None
+    source_counts: dict[str, int] = {}
+    if isinstance(hydration, dict):
+        enabled = hydration.get("enabled") is True
+        raw_types = hydration.get("types")
+        if isinstance(raw_types, list):
+            types = [value for value in raw_types if isinstance(value, str)]
+        raw_limit = hydration.get("limit")
+        if isinstance(raw_limit, int):
+            limit = raw_limit
+        raw_hydrated_at = hydration.get("hydrated_at")
+        hydrated_at = raw_hydrated_at if isinstance(raw_hydrated_at, str) else None
+        raw_source_counts = hydration.get("source_counts")
+        if isinstance(raw_source_counts, dict):
+            source_counts = {
+                key: value
+                for key, value in raw_source_counts.items()
+                if isinstance(key, str) and isinstance(value, int)
+            }
+    hydrated_entities = counts.get("hydrated_entities") if isinstance(counts.get("hydrated_entities"), int) else 0
+    return {
+        "enabled": enabled,
+        "types": types,
+        "limit": limit,
+        "hydrated_at": hydrated_at,
+        "hydrated_entities": hydrated_entities,
+        "source_counts": source_counts,
+    }
+
+
+def _bundle_freshness_summary(manifest: dict[str, Any], *, max_age_hours: int) -> dict[str, Any]:
+    exported_at_raw = manifest.get("exported_at")
+    exported_at = exported_at_raw if isinstance(exported_at_raw, str) else None
+    hydration = manifest.get("hydration")
+    hydrated_at_raw = hydration.get("hydrated_at") if isinstance(hydration, dict) else None
+    hydrated_at = hydrated_at_raw if isinstance(hydrated_at_raw, str) else None
+
+    bundle_status = "fresh" if _guide_bundle_is_fresh({"exported_at": exported_at}, max_age_hours=max_age_hours) else "stale"
+    hydration_status = "disabled"
+    if isinstance(hydration, dict) and hydration.get("enabled") is True:
+        hydration_status = (
+            "fresh"
+            if _guide_bundle_is_fresh({"exported_at": exported_at, "hydration": {"enabled": True, "hydrated_at": hydrated_at}}, max_age_hours=max_age_hours)
+            else "stale"
+        )
+    return {
+        "max_age_hours": max_age_hours,
+        "bundle": bundle_status,
+        "hydration": hydration_status,
+    }
+
+
+def _discover_guide_corpora(root: Path, *, max_age_hours: int) -> list[dict[str, Any]]:
     if not root.exists() or not root.is_dir():
         return []
 
@@ -1784,6 +1841,7 @@ def _discover_guide_corpora(root: Path) -> list[dict[str, Any]]:
         guide = manifest.get("guide")
         page = manifest.get("page")
         counts = manifest.get("counts")
+        counts_dict = counts if isinstance(counts, dict) else {}
         corpora.append(
             {
                 "path": str(child),
@@ -1793,7 +1851,13 @@ def _discover_guide_corpora(root: Path) -> list[dict[str, Any]]:
                 "canonical_url": page.get("canonical_url") if isinstance(page, dict) else None,
                 "expansion": manifest.get("expansion"),
                 "export_version": manifest.get("export_version"),
-                "counts": counts if isinstance(counts, dict) else {},
+                "counts": counts_dict,
+                "exported_at": manifest.get("exported_at") if isinstance(manifest.get("exported_at"), str) else None,
+                "guide_fetched_at": (
+                    manifest.get("guide_fetched_at") if isinstance(manifest.get("guide_fetched_at"), str) else None
+                ),
+                "freshness": _bundle_freshness_summary(manifest, max_age_hours=max_age_hours),
+                "hydration": _bundle_hydration_summary(manifest, counts=counts_dict),
             }
         )
     corpora.sort(key=lambda row: ((row.get("title") or "").lower(), row["path"]))
@@ -2041,7 +2105,7 @@ def _resolve_corpus_ref(corpus_ref: str, *, root: Path | None) -> Path:
         raise ValueError(f"Bundle path {expanded} does not exist.")
 
     search_root = (root or _guide_export_root()).expanduser()
-    corpora = _discover_guide_corpora(search_root)
+    corpora = _discover_guide_corpora(search_root, max_age_hours=24)
     if not corpora:
         raise ValueError(f"No exported bundles found under {search_root}.")
 
@@ -2672,12 +2736,20 @@ def guide_bundle_list(
         resolve_path=True,
         help="Root directory containing exported guide bundles. Defaults to ./wowhead_exports/.",
     ),
+    max_age_hours: int = typer.Option(
+        24,
+        "--max-age-hours",
+        min=1,
+        max=24 * 30,
+        help="Freshness window in hours used for the list's bundle and hydration status summaries.",
+    ),
 ) -> None:
     resolved_root = (root or _guide_export_root()).expanduser()
-    bundles = _discover_guide_corpora(resolved_root)
+    bundles = _discover_guide_corpora(resolved_root, max_age_hours=max_age_hours)
     payload = {
         "root": str(resolved_root),
         "count": len(bundles),
+        "max_age_hours": max_age_hours,
         "bundles": bundles,
     }
     _emit(ctx, payload)
