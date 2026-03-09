@@ -1763,6 +1763,10 @@ def _infer_guide_export_options(manifest: dict[str, Any]) -> tuple[str, int, boo
     return guide_ref, max_links, include_replies, hydrate_enabled, hydrate_types, hydrate_limit
 
 
+def _guide_bundle_index_path(root: Path) -> Path:
+    return root / "index.json"
+
+
 def _bundle_hydration_summary(manifest: dict[str, Any], *, counts: dict[str, Any]) -> dict[str, Any]:
     hydration = manifest.get("hydration")
     enabled = False
@@ -1820,7 +1824,43 @@ def _bundle_freshness_summary(manifest: dict[str, Any], *, max_age_hours: int) -
     }
 
 
-def _discover_guide_corpora(root: Path, *, max_age_hours: int) -> list[dict[str, Any]]:
+def _bundle_index_row(child: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    guide = manifest.get("guide")
+    page = manifest.get("page")
+    counts = manifest.get("counts")
+    counts_dict = counts if isinstance(counts, dict) else {}
+    return {
+        "path": str(child),
+        "dir_name": child.name,
+        "guide_id": guide.get("id") if isinstance(guide, dict) else None,
+        "title": page.get("title") if isinstance(page, dict) else None,
+        "canonical_url": page.get("canonical_url") if isinstance(page, dict) else None,
+        "expansion": manifest.get("expansion"),
+        "export_version": manifest.get("export_version"),
+        "counts": counts_dict,
+        "exported_at": manifest.get("exported_at") if isinstance(manifest.get("exported_at"), str) else None,
+        "guide_fetched_at": (
+            manifest.get("guide_fetched_at") if isinstance(manifest.get("guide_fetched_at"), str) else None
+        ),
+        "hydration": _bundle_hydration_summary(manifest, counts=counts_dict),
+    }
+
+
+def _bundle_row_with_freshness(row: dict[str, Any], *, max_age_hours: int) -> dict[str, Any]:
+    hydration = row.get("hydration")
+    manifest_like = {
+        "exported_at": row.get("exported_at"),
+        "hydration": {
+            "enabled": hydration.get("enabled") if isinstance(hydration, dict) else False,
+            "hydrated_at": hydration.get("hydrated_at") if isinstance(hydration, dict) else None,
+        },
+    }
+    enriched = dict(row)
+    enriched["freshness"] = _bundle_freshness_summary(manifest_like, max_age_hours=max_age_hours)
+    return enriched
+
+
+def _scan_guide_bundle_rows(root: Path) -> list[dict[str, Any]]:
     if not root.exists() or not root.is_dir():
         return []
 
@@ -1837,31 +1877,57 @@ def _discover_guide_corpora(root: Path, *, max_age_hours: int) -> list[dict[str,
             continue
         if not isinstance(manifest, dict):
             continue
-
-        guide = manifest.get("guide")
-        page = manifest.get("page")
-        counts = manifest.get("counts")
-        counts_dict = counts if isinstance(counts, dict) else {}
-        corpora.append(
-            {
-                "path": str(child),
-                "dir_name": child.name,
-                "guide_id": guide.get("id") if isinstance(guide, dict) else None,
-                "title": page.get("title") if isinstance(page, dict) else None,
-                "canonical_url": page.get("canonical_url") if isinstance(page, dict) else None,
-                "expansion": manifest.get("expansion"),
-                "export_version": manifest.get("export_version"),
-                "counts": counts_dict,
-                "exported_at": manifest.get("exported_at") if isinstance(manifest.get("exported_at"), str) else None,
-                "guide_fetched_at": (
-                    manifest.get("guide_fetched_at") if isinstance(manifest.get("guide_fetched_at"), str) else None
-                ),
-                "freshness": _bundle_freshness_summary(manifest, max_age_hours=max_age_hours),
-                "hydration": _bundle_hydration_summary(manifest, counts=counts_dict),
-            }
-        )
+        corpora.append(_bundle_index_row(child, manifest))
     corpora.sort(key=lambda row: ((row.get("title") or "").lower(), row["path"]))
     return corpora
+
+
+def _write_guide_bundle_index(root: Path) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    bundles = _scan_guide_bundle_rows(root)
+    index_payload = {
+        "index_version": 1,
+        "updated_at": _iso_now_utc(),
+        "root": str(root),
+        "count": len(bundles),
+        "bundles": bundles,
+    }
+    _write_json_file(_guide_bundle_index_path(root), index_payload)
+
+
+def _load_guide_bundle_index(root: Path) -> list[dict[str, Any]] | None:
+    index_path = _guide_bundle_index_path(root)
+    if not index_path.exists():
+        return None
+    try:
+        payload = _read_json_file(index_path)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    bundles = payload.get("bundles")
+    if not isinstance(bundles, list):
+        return None
+    normalized_rows: list[dict[str, Any]] = []
+    for row in bundles:
+        if not isinstance(row, dict):
+            return None
+        path_value = row.get("path")
+        if not isinstance(path_value, str):
+            return None
+        manifest_path = Path(path_value) / "manifest.json"
+        if not manifest_path.exists():
+            return None
+        normalized_rows.append(row)
+    normalized_rows.sort(key=lambda row: ((row.get("title") or "").lower(), row["path"]))
+    return normalized_rows
+
+
+def _discover_guide_corpora(root: Path, *, max_age_hours: int) -> list[dict[str, Any]]:
+    base_rows = _load_guide_bundle_index(root)
+    if base_rows is None:
+        base_rows = _scan_guide_bundle_rows(root)
+    return [_bundle_row_with_freshness(row, max_age_hours=max_age_hours) for row in base_rows]
 
 
 def _write_guide_export_bundle(
@@ -2084,6 +2150,7 @@ def _write_guide_export_bundle(
     _write_json_file(manifest_path, manifest)
     manifest["files"]["manifest_json"] = manifest_path.name
     _write_json_file(manifest_path, manifest)
+    _write_guide_bundle_index(export_dir.parent)
     return manifest
 
 

@@ -367,9 +367,13 @@ def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:
 
     manifest = json.loads((export_dir / "manifest.json").read_text(encoding="utf-8"))
     guide_json = json.loads((export_dir / "guide.json").read_text(encoding="utf-8"))
+    root_index = json.loads((tmp_path / "index.json").read_text(encoding="utf-8"))
     assert manifest["files"]["manifest_json"] == "manifest.json"
     assert manifest["files"]["guide_json"] == "guide.json"
     assert guide_json["guide"]["id"] == 3143
+    assert root_index["index_version"] == 1
+    assert root_index["count"] == 1
+    assert root_index["bundles"][0]["path"] == str(export_dir)
     assert manifest["export_version"] == 2
     assert manifest["export_options"] == {
         "guide_ref": "3143",
@@ -1104,6 +1108,74 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
     assert payload["max_age_hours"] == 72
     assert payload["bundles"][1]["freshness"] == {
         "max_age_hours": 72,
+        "bundle": "fresh",
+        "hydration": "fresh",
+    }
+
+
+def test_guide_bundle_list_uses_root_index_when_available(monkeypatch, tmp_path: Path) -> None:
+    root = tmp_path / "wowhead_exports"
+    bundle_dir = root / "guide-3143-frost"
+    bundle_dir.mkdir(parents=True)
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    (bundle_dir / "manifest.json").write_text(
+        json.dumps({"guide": {"id": 3143}}),
+        encoding="utf-8",
+    )
+    (root / "index.json").write_text(
+        json.dumps(
+            {
+                "index_version": 1,
+                "updated_at": now,
+                "root": str(root),
+                "count": 1,
+                "bundles": [
+                    {
+                        "path": str(bundle_dir),
+                        "dir_name": bundle_dir.name,
+                        "guide_id": 3143,
+                        "title": "Frost Death Knight DPS Guide - Midnight",
+                        "canonical_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                        "expansion": "retail",
+                        "export_version": 2,
+                        "counts": {
+                            "sections": 11,
+                            "navigation_links": 15,
+                            "linked_entities": 52,
+                            "gatherer_entities": 52,
+                            "hydrated_entities": 1,
+                            "comments": 9,
+                        },
+                        "exported_at": now,
+                        "guide_fetched_at": now,
+                        "hydration": {
+                            "enabled": True,
+                            "types": ["spell"],
+                            "limit": 1,
+                            "hydrated_at": now,
+                            "hydrated_entities": 1,
+                            "source_counts": {"entity_cache": 1},
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_scan(root_path: Path) -> list[dict[str, object]]:  # noqa: ANN202
+        raise AssertionError(f"scan should not be used when a valid index exists: {root_path}")
+
+    monkeypatch.setattr("wowhead_cli.main._scan_guide_bundle_rows", fail_scan)
+
+    result = runner.invoke(app, ["guide-bundle-list", "--root", str(root)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["bundles"][0]["guide_id"] == 3143
+    assert payload["bundles"][0]["hydration"]["source_counts"] == {"entity_cache": 1}
+    assert payload["bundles"][0]["freshness"] == {
+        "max_age_hours": 24,
         "bundle": "fresh",
         "hydration": "fresh",
     }
