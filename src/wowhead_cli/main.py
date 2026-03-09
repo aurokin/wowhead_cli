@@ -1664,6 +1664,14 @@ def _guide_bundle_is_fresh(manifest: dict[str, Any], *, max_age_hours: int) -> b
     return True
 
 
+def _is_stored_at_fresh(stored_at: Any, *, max_age_hours: int) -> bool:
+    parsed = _parse_iso8601_utc(stored_at)
+    if parsed is None:
+        return False
+    age_seconds = (datetime.now(timezone.utc) - parsed).total_seconds()
+    return age_seconds <= max_age_hours * 3600
+
+
 def _infer_guide_export_options(manifest: dict[str, Any]) -> tuple[str, int, bool, bool, tuple[str, ...], int]:
     export_options = manifest.get("export_options")
     guide = manifest.get("guide")
@@ -1757,6 +1765,8 @@ def _write_guide_export_bundle(
     hydrate_linked_entities: bool,
     hydrate_types: tuple[str, ...],
     hydrate_limit: int,
+    rehydrate_max_age_hours: int | None = None,
+    force_rehydrate: bool = False,
 ) -> dict[str, Any]:
     payload, html = _build_guide_full_payload(
         ctx,
@@ -1813,35 +1823,84 @@ def _write_guide_export_bundle(
     hydrated_summary_items: list[dict[str, Any]] = []
     hydrated_at: str | None = None
     if hydrate_linked_entities and isinstance(linked_items, list):
-        hydrated_entities = _hydrate_guide_linked_entities(
-            ctx,
-            client,
-            linked_items=linked_items,
-            hydrate_types=hydrate_types,
-            hydrate_limit=hydrate_limit,
+        entities_dir = export_dir / "entities"
+        existing_entities_manifest_path = entities_dir / "manifest.json"
+        existing_entities_manifest = (
+            _read_json_file(existing_entities_manifest_path)
+            if existing_entities_manifest_path.exists()
+            else None
         )
-        if hydrated_entities:
-            entities_dir = export_dir / "entities"
-            for row in hydrated_entities:
-                entity = row.get("entity")
-                if not isinstance(entity, dict):
-                    continue
-                hydrated_type = entity.get("type")
-                hydrated_id = entity.get("id")
-                if not isinstance(hydrated_type, str) or not isinstance(hydrated_id, int):
-                    continue
-                entity_path = entities_dir / hydrated_type / f"{hydrated_id}.json"
-                entity_path.parent.mkdir(parents=True, exist_ok=True)
-                _write_json_file(entity_path, row)
-                hydrated_summary_items.append(
-                    {
-                        "entity_type": hydrated_type,
-                        "id": hydrated_id,
-                        "name": entity.get("name"),
-                        "page_url": entity.get("page_url"),
-                        "path": str(entity_path.relative_to(export_dir)),
-                    }
+        existing_items_by_key: dict[tuple[str, int], dict[str, Any]] = {}
+        if isinstance(existing_entities_manifest, dict):
+            existing_items = existing_entities_manifest.get("items")
+            if isinstance(existing_items, list):
+                for row in existing_items:
+                    if not isinstance(row, dict):
+                        continue
+                    existing_type = row.get("entity_type")
+                    existing_id = row.get("id")
+                    if isinstance(existing_type, str) and isinstance(existing_id, int):
+                        existing_items_by_key[(existing_type, existing_id)] = row
+
+        selected_types = set(hydrate_types)
+        for row in linked_items:
+            if len(hydrated_summary_items) >= hydrate_limit:
+                break
+            if not isinstance(row, dict):
+                continue
+            hydrated_type = row.get("entity_type")
+            hydrated_id = row.get("id")
+            if not isinstance(hydrated_type, str) or not isinstance(hydrated_id, int):
+                continue
+            if hydrated_type not in selected_types:
+                continue
+
+            entity_path = entities_dir / hydrated_type / f"{hydrated_id}.json"
+            existing_summary = existing_items_by_key.get((hydrated_type, hydrated_id))
+            existing_payload: dict[str, Any] | None = None
+            stored_at = existing_summary.get("stored_at") if isinstance(existing_summary, dict) else None
+            can_reuse_existing = (
+                not force_rehydrate
+                and rehydrate_max_age_hours is not None
+                and entity_path.exists()
+                and _is_stored_at_fresh(stored_at, max_age_hours=rehydrate_max_age_hours)
+            )
+            if can_reuse_existing:
+                loaded = _read_json_file(entity_path)
+                existing_payload = loaded if isinstance(loaded, dict) else None
+
+            if existing_payload is not None:
+                payload_row = existing_payload
+            else:
+                payload_row = _build_entity_payload(
+                    ctx,
+                    client,
+                    entity_type=hydrated_type,
+                    entity_id=hydrated_id,
+                    data_env=None,
+                    include_comments=False,
+                    include_all_comments=False,
+                    linked_entity_preview_limit=0,
                 )
+                entity_path.parent.mkdir(parents=True, exist_ok=True)
+                _write_json_file(entity_path, payload_row)
+                stored_at = _iso_now_utc()
+
+            entity = payload_row.get("entity")
+            if not isinstance(entity, dict):
+                continue
+            hydrated_summary_items.append(
+                {
+                    "entity_type": hydrated_type,
+                    "id": hydrated_id,
+                    "name": entity.get("name"),
+                    "page_url": entity.get("page_url"),
+                    "path": str(entity_path.relative_to(export_dir)),
+                    "stored_at": stored_at,
+                }
+            )
+
+        if hydrated_summary_items:
             counts_by_type: dict[str, int] = {}
             for row in hydrated_summary_items:
                 hydrated_type = row.get("entity_type")
@@ -2641,6 +2700,8 @@ def guide_bundle_refresh(
         hydrate_linked_entities=hydrate_enabled,
         hydrate_types=hydrate_types,
         hydrate_limit=hydrate_limit,
+        rehydrate_max_age_hours=max_age_hours,
+        force_rehydrate=force,
     )
     refreshed_manifest["refresh"] = {
         "updated": True,

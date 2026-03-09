@@ -26,7 +26,7 @@ Current state:
 - `guide-export` can now write bounded hydrated linked-entity payloads under `entities/` using the normalized entity contract
 - `guide-bundle-refresh` can now infer refresh settings from bundle manifests and defaults to a 24-hour freshness window when no `--max-age-hours` is supplied
 - invalid cache configuration now fails as a structured CLI error instead of a traceback
-- it still does not yet support selective rehydration policies beyond the bundle-level refresh flow
+- bundle refresh now supports selective linked-entity rehydration based on per-entity `stored_at` timestamps in `entities/manifest.json`
 - it is useful for immediate retries and nearby repeated lookups
 - it is not yet a durable entity store or a full shared cache across agents
 
@@ -199,7 +199,7 @@ The hydrated payload should stay compact and reuse the normalized `entity` contr
 
 This solves the common case where a guide references the same spells, talents, items, or NPCs repeatedly and agents keep re-fetching them.
 
-Hydration should use the normalized entity cache first, then live fetch only when cache entries are missing or stale.
+Hydration should use the normalized entity cache first, then live fetch only when cache entries are missing or stale. Bundle refresh should also be able to reuse still-fresh hydrated entity files individually instead of rehydrating the full selected set every run.
 
 #### A2. Bundle registry and root index
 

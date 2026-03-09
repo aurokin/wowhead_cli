@@ -583,6 +583,99 @@ def test_guide_bundle_refresh_updates_stale_bundle_and_reuses_manifest_settings(
     assert (export_dir / "entities" / "manifest.json").exists()
 
 
+def test_guide_bundle_refresh_rehydrates_only_stale_hydrated_entities(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    tooltip_calls: dict[tuple[str, int], int] = {}
+
+    def fake_guide_page_html(self, guide_id: int):  # noqa: ANN001
+        assert guide_id == 3143
+        return SAMPLE_GUIDE_HTML
+
+    def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        key = (entity_type, entity_id)
+        tooltip_calls[key] = tooltip_calls.get(key, 0) + 1
+        if key == ("spell", 49020):
+            return {
+                "name": "Obliterate",
+                "tooltip": "<table><tr><td><b>Obliterate</b><br>Talent<br>Instant<br>A brutal attack.</td></tr></table>",
+            }
+        if key == ("item", 249277):
+            return {
+                "name": "Bellamy's Final Judgement",
+                "tooltip": "<table><tr><td><b>Bellamy's Final Judgement</b><br>Item Level 639</td></tr></table>",
+            }
+        raise AssertionError(f"Unexpected tooltip lookup: {key}")
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_page_html", fake_guide_page_html)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fake_tooltip)
+
+    export_dir = tmp_path / "guide-export"
+    export_result = runner.invoke(
+        app,
+        [
+            "guide-export",
+            "3143",
+            "--out",
+            str(export_dir),
+            "--hydrate-linked-entities",
+            "--hydrate-type",
+            "spell,item",
+            "--hydrate-limit",
+            "2",
+        ],
+    )
+    assert export_result.exit_code == 0
+    assert tooltip_calls == {
+        ("spell", 49020): 1,
+        ("item", 249277): 1,
+    }
+
+    tooltip_calls.clear()
+
+    stale = (datetime.now(timezone.utc) - timedelta(hours=48)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    fresh = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    manifest_path = export_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["exported_at"] = stale
+    manifest["guide_fetched_at"] = stale
+    manifest["hydration"]["hydrated_at"] = stale
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    entities_manifest_path = export_dir / "entities" / "manifest.json"
+    entities_manifest = json.loads(entities_manifest_path.read_text(encoding="utf-8"))
+    items = entities_manifest["items"]
+    for row in items:
+        if row["entity_type"] == "spell":
+            row["stored_at"] = fresh
+        elif row["entity_type"] == "item":
+            row["stored_at"] = stale
+    entities_manifest["hydrated_at"] = stale
+    entities_manifest_path.write_text(json.dumps(entities_manifest), encoding="utf-8")
+
+    result = runner.invoke(app, ["guide-bundle-refresh", str(export_dir)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["refresh"] == {
+        "updated": True,
+        "reason": "stale",
+        "max_age_hours": 24,
+    }
+    assert tooltip_calls == {
+        ("item", 249277): 1,
+    }
+
+    refreshed_entities_manifest = json.loads(entities_manifest_path.read_text(encoding="utf-8"))
+    refreshed_items = {
+        (row["entity_type"], row["id"]): row
+        for row in refreshed_entities_manifest["items"]
+    }
+    assert refreshed_items[("spell", 49020)]["stored_at"] == fresh
+    assert refreshed_items[("item", 249277)]["stored_at"] != stale
+
+
 def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
     def fake_guide_page_html(self, guide_id: int):  # noqa: ANN001
         assert guide_id == 3143
