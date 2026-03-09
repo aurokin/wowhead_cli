@@ -7,6 +7,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from wowhead_cli.main import app
+from wowhead_cli.wowhead_client import WowheadClient
 
 runner = CliRunner()
 
@@ -460,6 +461,92 @@ def test_guide_export_hydrates_linked_entities(monkeypatch, tmp_path: Path) -> N
     hydrated_item = json.loads((export_dir / "entities" / "item" / "249277.json").read_text(encoding="utf-8"))
     assert hydrated_spell["entity"]["name"] == "Obliterate"
     assert hydrated_item["entity"]["name"] == "Bellamy's Final Judgement"
+
+
+def test_guide_export_hydration_uses_normalized_entity_cache_before_live_fetch(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "file")
+    monkeypatch.setenv("WOWHEAD_CACHE_DIR", str(tmp_path / "cache"))
+
+    def fake_guide_page_html(self, guide_id: int):  # noqa: ANN001
+        assert guide_id == 3143
+        return SAMPLE_GUIDE_HTML
+
+    def fail_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
+        raise AssertionError(f"tooltip should not be used when normalized cache is prepopulated: {(entity_type, entity_id)}")
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_page_html", fake_guide_page_html)
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.tooltip", fail_tooltip)
+
+    cache_client = WowheadClient(cache_dir=tmp_path / "cache", cache_backend="file")
+    cache_client.set_cached_entity_response(
+        {
+            "expansion": "retail",
+            "entity": {
+                "type": "spell",
+                "id": 49020,
+                "name": "Obliterate",
+                "page_url": "https://www.wowhead.com/spell=49020/obliterate",
+            },
+            "tooltip": {
+                "summary": "A brutal attack.",
+                "text": "Obliterate Talent Instant A brutal attack.",
+                "html": "<table><tr><td><b>Obliterate</b><br>Talent<br>Instant<br>A brutal attack.</td></tr></table>",
+            },
+        },
+        requested_type="spell",
+        requested_id=49020,
+        data_env=None,
+        include_comments=False,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    )
+    cache_client.set_cached_entity_response(
+        {
+            "expansion": "retail",
+            "entity": {
+                "type": "item",
+                "id": 249277,
+                "name": "Bellamy's Final Judgement",
+                "page_url": "https://www.wowhead.com/item=249277/bellamys-final-judgement",
+            },
+            "tooltip": {
+                "summary": "Item Level 639",
+                "text": "Bellamy's Final Judgement Item Level 639",
+                "html": "<table><tr><td><b>Bellamy's Final Judgement</b><br>Item Level 639</td></tr></table>",
+            },
+        },
+        requested_type="item",
+        requested_id=249277,
+        data_env=None,
+        include_comments=False,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    )
+
+    export_dir = tmp_path / "guide-export"
+    result = runner.invoke(
+        app,
+        [
+            "guide-export",
+            "3143",
+            "--out",
+            str(export_dir),
+            "--hydrate-linked-entities",
+            "--hydrate-type",
+            "spell,item",
+            "--hydrate-limit",
+            "2",
+        ],
+    )
+    assert result.exit_code == 0
+
+    spell_payload = json.loads((export_dir / "entities" / "spell" / "49020.json").read_text(encoding="utf-8"))
+    item_payload = json.loads((export_dir / "entities" / "item" / "249277.json").read_text(encoding="utf-8"))
+    assert spell_payload["entity"]["name"] == "Obliterate"
+    assert item_payload["entity"]["name"] == "Bellamy's Final Judgement"
 
 
 def test_guide_bundle_refresh_skips_fresh_bundle_with_default_max_age(tmp_path: Path) -> None:

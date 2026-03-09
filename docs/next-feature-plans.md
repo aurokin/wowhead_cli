@@ -23,7 +23,7 @@ Current state:
 - the CLI now has a configurable transport cache with file and optional Redis backends
 - the transport cache now has longer default TTLs for stable entity/page fetches
 - the CLI now also has a normalized `entity` response cache for repeated `entity` lookups with the same flags
-- `guide-export` can now write bounded hydrated linked-entity payloads under `entities/` using the normalized entity contract
+- `guide-export` can now write bounded hydrated linked-entity payloads under `entities/` using the normalized entity contract, and it checks the normalized entity cache before live fetches
 - `guide-bundle-refresh` can now infer refresh settings from bundle manifests and defaults to a 24-hour freshness window when no `--max-age-hours` is supplied
 - invalid cache configuration now fails as a structured CLI error instead of a traceback
 - bundle refresh now supports selective linked-entity rehydration based on per-entity `stored_at` timestamps in `entities/manifest.json`

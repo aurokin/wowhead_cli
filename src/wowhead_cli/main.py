@@ -1416,6 +1416,39 @@ def _build_entity_payload(
     return payload
 
 
+def _load_or_build_cached_entity_payload(
+    ctx: typer.Context,
+    client: WowheadClient,
+    *,
+    entity_type: str,
+    entity_id: int,
+    data_env: int | None,
+    include_comments: bool,
+    include_all_comments: bool,
+    linked_entity_preview_limit: int,
+) -> dict[str, Any]:
+    cached_payload = client.get_cached_entity_response(
+        requested_type=entity_type,
+        requested_id=entity_id,
+        data_env=data_env,
+        include_comments=include_comments,
+        include_all_comments=include_all_comments,
+        linked_entity_preview_limit=linked_entity_preview_limit,
+    )
+    if isinstance(cached_payload, dict):
+        return cached_payload
+    return _build_entity_payload(
+        ctx,
+        client,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        data_env=data_env,
+        include_comments=include_comments,
+        include_all_comments=include_all_comments,
+        linked_entity_preview_limit=linked_entity_preview_limit,
+    )
+
+
 def _fetch_guide_page(
     ctx: typer.Context,
     client: WowheadClient,
@@ -1872,7 +1905,7 @@ def _write_guide_export_bundle(
             if existing_payload is not None:
                 payload_row = existing_payload
             else:
-                payload_row = _build_entity_payload(
+                payload_row = _load_or_build_cached_entity_payload(
                     ctx,
                     client,
                     entity_type=hydrated_type,
