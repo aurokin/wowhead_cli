@@ -131,3 +131,57 @@ def test_entity_response_cache_roundtrips_with_shape_flags(tmp_path: Path) -> No
         linked_entity_preview_limit=0,
     )
     assert changed_shape is None
+
+
+def test_entity_response_cache_is_scoped_by_expansion(tmp_path: Path) -> None:
+    retail_client = WowheadClient(cache_dir=tmp_path, cache_backend="file", expansion="retail")
+    classic_client = WowheadClient(cache_dir=tmp_path, cache_backend="file", expansion="classic")
+
+    retail_payload = {"expansion": "retail", "entity": {"type": "item", "id": 19019, "name": "Thunderfury"}}
+    classic_payload = {"expansion": "classic", "entity": {"type": "item", "id": 19019, "name": "Thunderfury"}}
+
+    retail_client.set_cached_entity_response(
+        retail_payload,
+        requested_type="item",
+        requested_id=19019,
+        data_env=None,
+        include_comments=False,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    )
+
+    assert classic_client.get_cached_entity_response(
+        requested_type="item",
+        requested_id=19019,
+        data_env=None,
+        include_comments=False,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    ) is None
+
+    classic_client.set_cached_entity_response(
+        classic_payload,
+        requested_type="item",
+        requested_id=19019,
+        data_env=None,
+        include_comments=False,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    )
+
+    assert retail_client.get_cached_entity_response(
+        requested_type="item",
+        requested_id=19019,
+        data_env=None,
+        include_comments=False,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    ) == retail_payload
+    assert classic_client.get_cached_entity_response(
+        requested_type="item",
+        requested_id=19019,
+        data_env=None,
+        include_comments=False,
+        include_all_comments=False,
+        linked_entity_preview_limit=0,
+    ) == classic_payload
