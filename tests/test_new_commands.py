@@ -1181,6 +1181,136 @@ def test_guide_bundle_list_uses_root_index_when_available(monkeypatch, tmp_path:
     }
 
 
+def test_guide_bundle_search_returns_ranked_matches_and_follow_up_commands(tmp_path: Path) -> None:
+    root = tmp_path / "wowhead_exports"
+    frost = root / "guide-3143-frost"
+    arcane = root / "guide-42-arcane"
+    frost.mkdir(parents=True)
+    arcane.mkdir(parents=True)
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    for bundle_dir, guide_id, title, expansion in [
+        (frost, 3143, "Frost Death Knight DPS Guide - Midnight", "retail"),
+        (arcane, 42, "Arcane Mage Guide", "classic"),
+    ]:
+        (bundle_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "export_version": 2,
+                    "output_dir": str(bundle_dir),
+                    "exported_at": now,
+                    "guide_fetched_at": now,
+                    "expansion": expansion,
+                    "guide": {"id": guide_id, "page_url": f"https://www.wowhead.com/guide={guide_id}"},
+                    "page": {
+                        "title": title,
+                        "canonical_url": f"https://www.wowhead.com/guide/{guide_id}",
+                    },
+                    "counts": {
+                        "sections": 1,
+                        "navigation_links": 1,
+                        "linked_entities": 1,
+                        "gatherer_entities": 1,
+                        "hydrated_entities": 0,
+                        "comments": 1,
+                    },
+                    "hydration": {
+                        "enabled": False,
+                        "types": [],
+                        "limit": 0,
+                        "hydrated_at": None,
+                        "source_counts": {},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    result = runner.invoke(app, ["guide-bundle-search", "frost death knight", "--root", str(root)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["query"] == "frost death knight"
+    assert payload["count"] == 1
+    assert payload["matches"][0]["guide_id"] == 3143
+    assert "title" in payload["matches"][0]["match_reasons"]
+    assert payload["matches"][0]["suggested_query_command"] == (
+        f"wowhead guide-query 3143 'frost death knight' --root {root}"
+    )
+
+    result = runner.invoke(app, ["guide-bundle-search", "42", "--root", str(root)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["matches"][0]["guide_id"] == 42
+    assert "guide_id" in payload["matches"][0]["match_reasons"]
+
+    result = runner.invoke(app, ["guide-bundle-search", "classic", "--root", str(root), "--limit", "1"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 1
+    assert payload["matches"][0]["guide_id"] == 42
+    assert "expansion" in payload["matches"][0]["match_reasons"]
+
+
+def test_guide_bundle_search_uses_root_index_when_available(monkeypatch, tmp_path: Path) -> None:
+    root = tmp_path / "wowhead_exports"
+    bundle_dir = root / "guide-3143-frost"
+    bundle_dir.mkdir(parents=True)
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    (bundle_dir / "manifest.json").write_text(json.dumps({"guide": {"id": 3143}}), encoding="utf-8")
+    (root / "index.json").write_text(
+        json.dumps(
+            {
+                "index_version": 1,
+                "updated_at": now,
+                "root": str(root),
+                "count": 1,
+                "bundles": [
+                    {
+                        "path": str(bundle_dir),
+                        "dir_name": bundle_dir.name,
+                        "guide_id": 3143,
+                        "title": "Frost Death Knight DPS Guide - Midnight",
+                        "canonical_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                        "expansion": "retail",
+                        "export_version": 2,
+                        "counts": {
+                            "sections": 11,
+                            "navigation_links": 15,
+                            "linked_entities": 52,
+                            "gatherer_entities": 52,
+                            "hydrated_entities": 1,
+                            "comments": 9,
+                        },
+                        "exported_at": now,
+                        "guide_fetched_at": now,
+                        "hydration": {
+                            "enabled": True,
+                            "types": ["spell"],
+                            "limit": 1,
+                            "hydrated_at": now,
+                            "hydrated_entities": 1,
+                            "source_counts": {"entity_cache": 1},
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_scan(root_path: Path) -> list[dict[str, object]]:  # noqa: ANN202
+        raise AssertionError(f"scan should not be used when a valid index exists: {root_path}")
+
+    monkeypatch.setattr("wowhead_cli.main._scan_guide_bundle_rows", fail_scan)
+
+    result = runner.invoke(app, ["guide-bundle-search", "frost", "--root", str(root)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["matches"][0]["guide_id"] == 3143
+    assert "title" in payload["matches"][0]["match_reasons"]
+
+
 def test_entity_respects_expansion_flag(monkeypatch) -> None:
     calls = []
 

@@ -15,6 +15,7 @@ wowhead guide-export 3143 --out ./tmp/frost-dk-guide
 wowhead guide-export 3143 --out ./tmp/frost-dk-guide --hydrate-linked-entities --hydrate-type spell,item --hydrate-limit 100
 wowhead guide-bundle-list
 wowhead guide-bundle-list --max-age-hours 72
+wowhead guide-bundle-search "frost death knight"
 wowhead guide-bundle-refresh ./tmp/frost-dk-guide
 wowhead guide-bundle-refresh 3143 --root ./wowhead_exports --max-age-hours 6
 wowhead guide-query ./tmp/frost-dk-guide "bellamy"
@@ -117,10 +118,11 @@ Hydration behavior:
 
 Bundle discovery and refresh:
 - `guide-bundle-list` discovers bundles under `./wowhead_exports/` or another root
+- `guide-bundle-search` searches indexed bundle metadata across a root
 - it includes `freshness` and `hydration` summaries
 - `--max-age-hours` changes the freshness threshold used by those summaries
 - bundle exports and refreshes maintain a root-level `index.json`
-- `guide-bundle-list` prefers that index when it is present and valid
+- `guide-bundle-list` and `guide-bundle-search` prefer that index when it is present and valid
 - `guide-bundle-refresh` refreshes an existing bundle in place
 - if `--max-age-hours` is omitted on refresh, the default freshness window is `24`
 - refresh selectively rehydrates stale hydrated entity payloads unless `--force` is used

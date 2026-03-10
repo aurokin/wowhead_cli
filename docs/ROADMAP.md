@@ -8,7 +8,6 @@ Goal:
 Make exported guide bundles behave like a reusable local knowledge base instead of isolated directories.
 
 Open work:
-- add metadata search across all bundles under a root
 - add content query across multiple bundles in one command
 - add a compact bundle inspect or stats command for one bundle
 - add index maintenance and repair flows when `index.json` is missing or stale
@@ -16,7 +15,7 @@ Open work:
 Why this matters:
 - agents should be able to find the right bundle without already knowing a path
 - agents should be able to search across many exported guides without iterating one bundle at a time
-- the root index is now in place, so this is the next natural layer on top
+- indexed metadata search is now in place, so the next step is cross-bundle content retrieval
 
 ### 2. Cross-Entity Discovery And Resolution
 
@@ -58,13 +57,12 @@ These are lower priority, but still likely useful:
 
 ## Recommended Order
 
-1. multi-bundle metadata search
-2. multi-bundle content query
-3. bundle inspect and index repair workflows
-4. `search` ranking cleanup
-5. `resolve` command
-6. search narrowing and follow-up guidance
-7. cache and freshness inspection commands
+1. multi-bundle content query
+2. bundle inspect and index repair workflows
+3. `search` ranking cleanup
+4. `resolve` command
+5. search narrowing and follow-up guidance
+6. cache and freshness inspection commands
 
 ## Success Criteria
 

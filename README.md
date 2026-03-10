@@ -34,6 +34,7 @@ wowhead search "defias"
 wowhead guide 3143
 wowhead guide-export 3143 --out ./tmp/frost-dk-guide
 wowhead guide-bundle-list
+wowhead guide-bundle-search "frost"
 wowhead entity item 19019
 wowhead comments item 19019 --limit 30 --sort rating
 wowhead compare item:19019 item:19351 --comment-sample 2

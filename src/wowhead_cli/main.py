@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
+import shlex
 from pathlib import Path
 import re
 from typing import Any, Callable
@@ -1860,6 +1861,82 @@ def _bundle_row_with_freshness(row: dict[str, Any], *, max_age_hours: int) -> di
     return enriched
 
 
+def _bundle_search_score_and_reasons(row: dict[str, Any], *, query: str) -> tuple[int, list[str]]:
+    reasons: list[str] = []
+    score = 0
+    query_normalized = " ".join(query.lower().split())
+
+    title = row.get("title")
+    dir_name = row.get("dir_name")
+    canonical_url = row.get("canonical_url")
+    expansion = row.get("expansion")
+    guide_id = row.get("guide_id")
+    hydration = row.get("hydration")
+    freshness = row.get("freshness")
+
+    if isinstance(guide_id, int) and query_normalized == str(guide_id):
+        score += 15
+        reasons.append("guide_id")
+
+    title_score = _score_text_match(query, title)
+    if title_score > 0:
+        score += title_score * 4
+        reasons.append("title")
+
+    dir_score = _score_text_match(query, dir_name)
+    if dir_score > 0:
+        score += dir_score * 3
+        reasons.append("dir_name")
+
+    url_score = _score_text_match(query, canonical_url)
+    if url_score > 0:
+        score += url_score * 2
+        reasons.append("canonical_url")
+
+    expansion_score = _score_text_match(query, expansion)
+    if expansion_score > 0:
+        score += expansion_score * 2
+        reasons.append("expansion")
+
+    if isinstance(hydration, dict):
+        if hydration.get("enabled") is True and query_normalized in {"hydrated", "hydration"}:
+            score += 3
+            reasons.append("hydration_enabled")
+        raw_types = hydration.get("types")
+        if isinstance(raw_types, list):
+            hydration_type_score = _score_text_match(query, *raw_types)
+            if hydration_type_score > 0:
+                score += hydration_type_score * 2
+                reasons.append("hydration_types")
+
+    if isinstance(freshness, dict):
+        bundle_status = freshness.get("bundle")
+        hydration_status = freshness.get("hydration")
+        if isinstance(bundle_status, str) and _score_text_match(query, bundle_status) > 0:
+            score += 2
+            reasons.append("bundle_freshness")
+        if isinstance(hydration_status, str) and hydration_status != "disabled" and _score_text_match(query, hydration_status) > 0:
+            score += 2
+            reasons.append("hydration_freshness")
+
+    unique_reasons: list[str] = []
+    seen: set[str] = set()
+    for reason in reasons:
+        if reason in seen:
+            continue
+        seen.add(reason)
+        unique_reasons.append(reason)
+    return score, unique_reasons
+
+
+def _guide_bundle_query_command(row: dict[str, Any], *, query: str, root: Path) -> str:
+    guide_id = row.get("guide_id")
+    selector = str(guide_id) if isinstance(guide_id, int) else shlex.quote(str(row.get("path")))
+    quoted_query = shlex.quote(query)
+    quoted_root = shlex.quote(str(root))
+    return f"wowhead guide-query {selector} {quoted_query} --root {quoted_root}"
+
+
 def _scan_guide_bundle_rows(root: Path) -> list[dict[str, Any]]:
     if not root.exists() or not root.is_dir():
         return []
@@ -2788,6 +2865,60 @@ def guide_query(
             "comments": len(comment_matches),
         },
         "top": deduped_top_matches[:limit],
+    }
+    _emit(ctx, payload)
+
+
+@app.command("guide-bundle-search")
+def guide_bundle_search(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Query text to search across exported bundle metadata."),
+    root: Path | None = typer.Option(
+        None,
+        "--root",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        help="Root directory containing exported guide bundles. Defaults to ./wowhead_exports/.",
+    ),
+    limit: int = typer.Option(
+        5,
+        "--limit",
+        min=1,
+        max=50,
+        help="Maximum matching bundles to return.",
+    ),
+    max_age_hours: int = typer.Option(
+        24,
+        "--max-age-hours",
+        min=1,
+        max=24 * 30,
+        help="Freshness window in hours used for bundle freshness summaries.",
+    ),
+) -> None:
+    normalized_query = " ".join(query.split())
+    if not normalized_query:
+        _fail(ctx, "invalid_argument", "query cannot be empty.")
+
+    resolved_root = (root or _guide_export_root()).expanduser()
+    bundles = _discover_guide_corpora(resolved_root, max_age_hours=max_age_hours)
+    matches: list[dict[str, Any]] = []
+    for row in bundles:
+        score, reasons = _bundle_search_score_and_reasons(row, query=normalized_query)
+        if score <= 0:
+            continue
+        match = dict(row)
+        match["score"] = score
+        match["match_reasons"] = reasons
+        match["suggested_query_command"] = _guide_bundle_query_command(row, query=normalized_query, root=resolved_root)
+        matches.append(match)
+    matches.sort(key=lambda row: (-row["score"], (row.get("title") or "").lower(), row.get("path") or ""))
+    payload = {
+        "query": normalized_query,
+        "root": str(resolved_root),
+        "max_age_hours": max_age_hours,
+        "count": len(matches),
+        "matches": matches[:limit],
     }
     _emit(ctx, payload)
 
