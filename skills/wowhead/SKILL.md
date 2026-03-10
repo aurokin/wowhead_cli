@@ -22,6 +22,8 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 - List exported guide bundles: `wowhead guide-bundle-list [--root <dir>] [--max-age-hours <n>]`
 - Search exported bundle metadata: `wowhead guide-bundle-search "<query>" [--root <dir>]`
 - Query exported bundle content across a root: `wowhead guide-bundle-query "<query>" [--root <dir>]`
+- Inspect one exported guide bundle: `wowhead guide-bundle-inspect <bundle-or-selector> [--root <dir>]`
+- Rebuild a root bundle index explicitly: `wowhead guide-bundle-index-rebuild [--root <dir>]`
 - Refresh an exported guide bundle in place: `wowhead guide-bundle-refresh <bundle-or-selector> [--root <dir>]`
 - Query exported guide assets: `wowhead guide-query <dir> "<query>"`
 - Multi-entity compare: `wowhead compare <type:id> <type:id> ...`
@@ -55,7 +57,9 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 19. `guide-bundle-list` now includes per-bundle `freshness` and `hydration` summaries so agents can see stale or fresh status, hydration settings, hydrated entity counts, and hydration provenance directly from discovery. It uses a default `24` hour threshold unless `--max-age-hours` is supplied, and it prefers a root-level `index.json` when available instead of rescanning bundle directories.
 20. `guide-bundle-search` searches indexed bundle metadata across a root and returns ranked matches, compact match reasons, and a suggested `guide-query` command for each hit.
 21. `guide-bundle-query` searches content across all bundles under a root and returns both matching bundles and a flattened cross-bundle `top` list. It reuses the same kinds, section-title filter, and linked-source filter behavior as `guide-query`, so agents can broaden from one bundle to many without changing query semantics.
-22. `guide-bundle-refresh` infers refresh settings from the stored bundle manifest. If `--max-age-hours` is omitted, the default freshness window is 24 hours, so agents can safely refresh without passing a threshold in the common case. For hydrated bundles, refresh reuses entity payloads whose `stored_at` timestamp is still fresh and only re-fetches stale ones unless `--force` is used.
+22. `guide-bundle-inspect` is the trust-check command for one bundle. It compares manifest counts to observed local files, reports freshness and hydration state, and tells you whether the root `index.json` is valid and contains that bundle.
+23. `guide-bundle-index-rebuild` is the explicit repair path for root discovery. Use it when `index.json` is missing, broken, or out of sync with the actual bundle directories.
+24. `guide-bundle-refresh` infers refresh settings from the stored bundle manifest. If `--max-age-hours` is omitted, the default freshness window is 24 hours, so agents can safely refresh without passing a threshold in the common case. For hydrated bundles, refresh reuses entity payloads whose `stored_at` timestamp is still fresh and only re-fetches stale ones unless `--force` is used.
 
 ## Required Usage Rules
 

@@ -2,21 +2,7 @@
 
 ## Current Priorities
 
-### 1. Multi-Bundle Discovery And Query
-
-Goal:
-Make exported guide bundles behave like a reusable local knowledge base instead of isolated directories.
-
-Open work:
-- add a compact bundle inspect or stats command for one bundle
-- add index maintenance and repair flows when `index.json` is missing or stale
-
-Why this matters:
-- agents should be able to find the right bundle without already knowing a path
-- agents should be able to search across many exported guides without iterating one bundle at a time
-- indexed metadata search and content query are now in place, so the next step is bundle inspection and repair workflows
-
-### 2. Cross-Entity Discovery And Resolution
+### 1. Cross-Entity Discovery And Resolution
 
 Goal:
 Make it easier for an agent to go from an ambiguous natural-language query to the correct next command.
@@ -32,7 +18,7 @@ Why this matters:
 - agents still spend work interpreting raw search result lists
 - the CLI already has good retrieval surfaces, but the discovery step is still weaker than it should be
 
-### 3. Cache And Freshness Operations
+### 2. Cache And Freshness Operations
 
 Goal:
 Keep the cache and hydrated local data trustworthy and easy to inspect.
@@ -56,11 +42,10 @@ These are lower priority, but still likely useful:
 
 ## Recommended Order
 
-1. bundle inspect and index repair workflows
-2. `search` ranking cleanup
-3. `resolve` command
-4. search narrowing and follow-up guidance
-5. cache and freshness inspection commands
+1. `search` ranking cleanup
+2. `resolve` command
+3. search narrowing and follow-up guidance
+4. cache and freshness inspection commands
 
 ## Success Criteria
 

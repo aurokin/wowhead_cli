@@ -17,6 +17,8 @@ wowhead guide-bundle-list
 wowhead guide-bundle-list --max-age-hours 72
 wowhead guide-bundle-search "frost death knight"
 wowhead guide-bundle-query "obliterate"
+wowhead guide-bundle-inspect 3143
+wowhead guide-bundle-index-rebuild
 wowhead guide-bundle-refresh ./tmp/frost-dk-guide
 wowhead guide-bundle-refresh 3143 --root ./wowhead_exports --max-age-hours 6
 wowhead guide-query ./tmp/frost-dk-guide "bellamy"
@@ -121,10 +123,12 @@ Bundle discovery and refresh:
 - `guide-bundle-list` discovers bundles under `./wowhead_exports/` or another root
 - `guide-bundle-search` searches indexed bundle metadata across a root
 - `guide-bundle-query` searches exported bundle content across a root using the same match kinds and linked-source filters as `guide-query`
+- `guide-bundle-inspect` checks one bundle for freshness, file presence, observed counts, and root index membership
+- `guide-bundle-index-rebuild` rescans a root and rewrites `index.json` explicitly for repair cases
 - it includes `freshness` and `hydration` summaries
 - `--max-age-hours` changes the freshness threshold used by those summaries
 - bundle exports and refreshes maintain a root-level `index.json`
-- `guide-bundle-list` and `guide-bundle-search` prefer that index when it is present and valid
+- `guide-bundle-list`, `guide-bundle-search`, and `guide-bundle-query` prefer that index when it is present and valid
 - `guide-bundle-refresh` refreshes an existing bundle in place
 - if `--max-age-hours` is omitted on refresh, the default freshness window is `24`
 - refresh selectively rehydrates stale hydrated entity payloads unless `--force` is used

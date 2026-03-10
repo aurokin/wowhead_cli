@@ -1611,6 +1611,155 @@ def test_guide_bundle_query_uses_filters_and_root_index(monkeypatch, tmp_path: P
 
 
 
+def test_guide_bundle_inspect_reports_counts_and_index_status(tmp_path: Path) -> None:
+    root = tmp_path / "wowhead_exports"
+    bundle_dir = _write_bundle_fixture(
+        root,
+        dir_name="guide-3143-frost",
+        guide_id=3143,
+        title="Frost Death Knight DPS Guide - Midnight",
+        sections=[
+            {
+                "ordinal": 1,
+                "level": 2,
+                "title": "Rotation",
+                "content_text": "Use Obliterate.",
+            }
+        ],
+        linked_entities=[
+            {
+                "entity_type": "spell",
+                "id": 49020,
+                "name": "Obliterate",
+                "url": "https://www.wowhead.com/spell=49020/obliterate",
+                "citation_url": "https://www.wowhead.com/spell=49020/obliterate",
+                "sources": ["href", "gatherer"],
+                "source_kind": "href",
+            }
+        ],
+        comments=[
+            {
+                "id": 7,
+                "user": "Tester",
+                "body": "Obliterate section is clear.",
+                "citation_url": "https://www.wowhead.com/guide=3143#comments:id=7",
+            }
+        ],
+    )
+    manifest_path = bundle_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["counts"]["hydrated_entities"] = 1
+    manifest["hydration"] = {
+        "enabled": True,
+        "types": ["spell"],
+        "limit": 1,
+        "hydrated_at": manifest["exported_at"],
+        "source_counts": {"entity_cache": 1},
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    entities_dir = bundle_dir / "entities"
+    entities_dir.mkdir()
+    (entities_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "hydrated_at": manifest["exported_at"],
+                "count": 1,
+                "counts_by_type": {"spell": 1},
+                "counts_by_storage_source": {"entity_cache": 1},
+                "items": [
+                    {
+                        "entity_type": "spell",
+                        "id": 49020,
+                        "path": "entities/spell/49020.json",
+                        "stored_at": manifest["exported_at"],
+                        "storage_source": "entity_cache",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rebuild = runner.invoke(app, ["guide-bundle-index-rebuild", "--root", str(root)])
+    assert rebuild.exit_code == 0
+
+    result = runner.invoke(app, ["guide-bundle-inspect", "3143", "--root", str(root)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["guide"]["id"] == 3143
+    assert payload["freshness"]["bundle"] == "fresh"
+    assert payload["freshness"]["hydration"] == "fresh"
+    assert payload["counts"]["manifest"] == payload["counts"]["observed"]
+    assert payload["hydration"]["enabled"] is True
+    assert payload["entities_manifest"]["count"] == 1
+    assert payload["index"]["valid"] is True
+    assert payload["index"]["contains_bundle"] is True
+    assert payload["issues"] == []
+
+
+
+def test_guide_bundle_inspect_reports_missing_files_and_invalid_index(tmp_path: Path) -> None:
+    root = tmp_path / "wowhead_exports"
+    bundle_dir = _write_bundle_fixture(
+        root,
+        dir_name="guide-3143-frost",
+        guide_id=3143,
+        title="Frost Death Knight DPS Guide - Midnight",
+        sections=[
+            {
+                "ordinal": 1,
+                "level": 2,
+                "title": "Rotation",
+                "content_text": "Use Obliterate.",
+            }
+        ],
+    )
+    (bundle_dir / "sections.jsonl").unlink()
+    (root / "index.json").write_text(json.dumps({"broken": True}), encoding="utf-8")
+
+    result = runner.invoke(app, ["guide-bundle-inspect", str(bundle_dir)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    issue_codes = {row["code"] for row in payload["issues"]}
+    assert {"missing_file", "count_mismatch", "invalid_index"}.issubset(issue_codes)
+    assert payload["files"]["sections_jsonl"]["exists"] is False
+    assert payload["counts"]["manifest"]["sections"] == 1
+    assert payload["counts"]["observed"]["sections"] == 0
+    assert payload["index"]["exists"] is True
+    assert payload["index"]["valid"] is False
+
+
+
+def test_guide_bundle_index_rebuild_rewrites_invalid_index(tmp_path: Path) -> None:
+    root = tmp_path / "wowhead_exports"
+    _write_bundle_fixture(
+        root,
+        dir_name="guide-3143-frost",
+        guide_id=3143,
+        title="Frost Death Knight DPS Guide - Midnight",
+    )
+    _write_bundle_fixture(
+        root,
+        dir_name="guide-42-arcane",
+        guide_id=42,
+        title="Arcane Mage Guide",
+        expansion="classic",
+    )
+    (root / "index.json").write_text(json.dumps({"broken": True}), encoding="utf-8")
+
+    result = runner.invoke(app, ["guide-bundle-index-rebuild", "--root", str(root)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 2
+    assert payload["index"]["previous"] == {"exists": True, "valid": False, "count": 0}
+    assert payload["index"]["current"] == {"exists": True, "valid": True, "count": 2}
+
+    rebuilt_index = json.loads((root / "index.json").read_text(encoding="utf-8"))
+    assert rebuilt_index["count"] == 2
+    assert {row["guide_id"] for row in rebuilt_index["bundles"]} == {42, 3143}
+
+
+
 def test_entity_respects_expansion_flag(monkeypatch) -> None:
     calls = []
 

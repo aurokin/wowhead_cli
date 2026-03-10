@@ -2182,6 +2182,171 @@ def _discover_guide_corpora(root: Path, *, max_age_hours: int) -> list[dict[str,
     return [_bundle_row_with_freshness(row, max_age_hours=max_age_hours) for row in base_rows]
 
 
+def _bundle_file_details(export_dir: Path, manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        return {}
+    details: dict[str, dict[str, Any]] = {}
+    for key, relative_path in files.items():
+        if not isinstance(key, str) or not isinstance(relative_path, str):
+            continue
+        full_path = export_dir / relative_path
+        details[key] = {
+            "path": str(full_path),
+            "exists": full_path.exists(),
+        }
+    return details
+
+
+def _load_bundle_entities_manifest(export_dir: Path) -> dict[str, Any] | None:
+    path = export_dir / "entities" / "manifest.json"
+    if not path.exists():
+        return None
+    try:
+        payload = _read_json_file(path)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _bundle_observed_counts(corpus: dict[str, Any], entities_manifest: dict[str, Any] | None) -> dict[str, int]:
+    hydrated_entities = 0
+    if isinstance(entities_manifest, dict):
+        raw_count = entities_manifest.get("count")
+        if isinstance(raw_count, int):
+            hydrated_entities = raw_count
+        else:
+            items = entities_manifest.get("items")
+            if isinstance(items, list):
+                hydrated_entities = len(items)
+    return {
+        "sections": len(corpus.get("sections") or []),
+        "navigation_links": len(corpus.get("navigation_links") or []),
+        "linked_entities": len(corpus.get("linked_entities") or []),
+        "gatherer_entities": len(corpus.get("gatherer_entities") or []),
+        "hydrated_entities": hydrated_entities,
+        "comments": len(corpus.get("comments") or []),
+    }
+
+
+def _bundle_index_status(root: Path, *, export_dir: Path) -> dict[str, Any]:
+    index_path = _guide_bundle_index_path(root)
+    status = {
+        "root": str(root),
+        "path": str(index_path),
+        "exists": index_path.exists(),
+        "valid": False,
+        "contains_bundle": False,
+        "count": 0,
+    }
+    if not status["exists"]:
+        return status
+    rows = _load_guide_bundle_index(root)
+    if rows is None:
+        return status
+    status["valid"] = True
+    status["count"] = len(rows)
+    status["contains_bundle"] = any(str(export_dir) == row.get("path") for row in rows if isinstance(row, dict))
+    return status
+
+
+def _bundle_inspection_issues(
+    *,
+    manifest: dict[str, Any],
+    file_details: dict[str, dict[str, Any]],
+    observed_counts: dict[str, int],
+    index_status: dict[str, Any],
+) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for key, detail in file_details.items():
+        if detail.get("exists") is True:
+            continue
+        issues.append(
+            {
+                "code": "missing_file",
+                "file": key,
+                "path": detail.get("path"),
+            }
+        )
+
+    manifest_counts = manifest.get("counts")
+    if isinstance(manifest_counts, dict):
+        for key, observed_value in observed_counts.items():
+            expected = manifest_counts.get(key)
+            if isinstance(expected, int) and expected != observed_value:
+                issues.append(
+                    {
+                        "code": "count_mismatch",
+                        "field": key,
+                        "manifest": expected,
+                        "observed": observed_value,
+                    }
+                )
+
+    if index_status.get("exists") is True and index_status.get("valid") is not True:
+        issues.append(
+            {
+                "code": "invalid_index",
+                "path": index_status.get("path"),
+            }
+        )
+    elif index_status.get("valid") is True and index_status.get("contains_bundle") is not True:
+        issues.append(
+            {
+                "code": "index_missing_bundle",
+                "path": index_status.get("path"),
+            }
+        )
+    return issues
+
+
+def _guide_bundle_inspection_payload(
+    *,
+    export_dir: Path,
+    corpus: dict[str, Any],
+    max_age_hours: int,
+) -> dict[str, Any]:
+    manifest = corpus["manifest"]
+    counts = manifest.get("counts") if isinstance(manifest.get("counts"), dict) else {}
+    entities_manifest = _load_bundle_entities_manifest(export_dir)
+    observed_counts = _bundle_observed_counts(corpus, entities_manifest)
+    file_details = _bundle_file_details(export_dir, manifest)
+    index_status = _bundle_index_status(export_dir.parent, export_dir=export_dir)
+    issues = _bundle_inspection_issues(
+        manifest=manifest,
+        file_details=file_details,
+        observed_counts=observed_counts,
+        index_status=index_status,
+    )
+    payload = {
+        "output_dir": str(export_dir),
+        "guide": manifest.get("guide"),
+        "page": manifest.get("page"),
+        "expansion": manifest.get("expansion"),
+        "export_version": manifest.get("export_version"),
+        "exported_at": manifest.get("exported_at"),
+        "guide_fetched_at": manifest.get("guide_fetched_at"),
+        "freshness": _bundle_freshness_summary(manifest, max_age_hours=max_age_hours),
+        "counts": {
+            "manifest": counts,
+            "observed": observed_counts,
+        },
+        "hydration": _bundle_hydration_summary(manifest, counts=counts),
+        "files": file_details,
+        "index": index_status,
+        "export_options": manifest.get("export_options") if isinstance(manifest.get("export_options"), dict) else {},
+        "issues": issues,
+    }
+    if isinstance(entities_manifest, dict):
+        payload["entities_manifest"] = {
+            "count": entities_manifest.get("count") if isinstance(entities_manifest.get("count"), int) else observed_counts["hydrated_entities"],
+            "hydrated_at": entities_manifest.get("hydrated_at") if isinstance(entities_manifest.get("hydrated_at"), str) else None,
+            "counts_by_type": entities_manifest.get("counts_by_type") if isinstance(entities_manifest.get("counts_by_type"), dict) else {},
+            "counts_by_storage_source": entities_manifest.get("counts_by_storage_source") if isinstance(entities_manifest.get("counts_by_storage_source"), dict) else {},
+        }
+    return payload
+
+
 def _write_guide_export_bundle(
     ctx: typer.Context,
     *,
@@ -3118,6 +3283,83 @@ def guide_bundle_list(
         "count": len(bundles),
         "max_age_hours": max_age_hours,
         "bundles": bundles,
+    }
+    _emit(ctx, payload)
+
+
+@app.command("guide-bundle-inspect")
+def guide_bundle_inspect(
+    ctx: typer.Context,
+    bundle_ref: str = typer.Argument(
+        ...,
+        help="Bundle directory path or selector (guide id, bundle dir name, or title match).",
+    ),
+    root: Path | None = typer.Option(
+        None,
+        "--root",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        help="Root directory used to resolve non-path bundle selectors. Defaults to ./wowhead_exports/.",
+    ),
+    max_age_hours: int = typer.Option(
+        24,
+        "--max-age-hours",
+        min=1,
+        max=24 * 30,
+        help="Freshness window in hours used for bundle and hydration freshness summaries.",
+    ),
+) -> None:
+    try:
+        export_dir = _resolve_corpus_ref(bundle_ref, root=root)
+        corpus = _load_guide_export(export_dir)
+    except (ValueError, json.JSONDecodeError) as exc:
+        _fail(ctx, "invalid_bundle", str(exc))
+    payload = _guide_bundle_inspection_payload(
+        export_dir=export_dir,
+        corpus=corpus,
+        max_age_hours=max_age_hours,
+    )
+    _emit(ctx, payload)
+
+
+@app.command("guide-bundle-index-rebuild")
+def guide_bundle_index_rebuild(
+    ctx: typer.Context,
+    root: Path | None = typer.Option(
+        None,
+        "--root",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        help="Root directory containing exported guide bundles. Defaults to ./wowhead_exports/.",
+    ),
+) -> None:
+    resolved_root = (root or _guide_export_root()).expanduser()
+    previous_rows = _load_guide_bundle_index(resolved_root)
+    index_path = _guide_bundle_index_path(resolved_root)
+    previous = {
+        "exists": index_path.exists(),
+        "valid": previous_rows is not None,
+        "count": len(previous_rows or []),
+    }
+    _write_guide_bundle_index(resolved_root)
+    current_rows = _load_guide_bundle_index(resolved_root)
+    if current_rows is None:
+        _fail(ctx, "index_rebuild_failed", f"Failed to rebuild bundle index under {resolved_root}.")
+    payload = {
+        "root": str(resolved_root),
+        "count": len(current_rows),
+        "index": {
+            "path": str(index_path),
+            "updated": True,
+            "previous": previous,
+            "current": {
+                "exists": True,
+                "valid": True,
+                "count": len(current_rows),
+            },
+        },
     }
     _emit(ctx, payload)
 
