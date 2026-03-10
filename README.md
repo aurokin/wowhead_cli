@@ -114,8 +114,8 @@ The cache now has two active layers:
 - transport cache for raw tooltip/page/search/comment responses
 - normalized `entity` response cache for repeated `entity` lookups with the same flags
 
-See `ROADMAP.md` for deferred multi-expansion/subdomain support planning.
-See `WOWHEAD_EXPANSION_RESEARCH.md` for routing/dataEnv findings used by the profile model.
+See `docs/ROADMAP.md` for current roadmap priorities.
+See `docs/WOWHEAD_EXPANSION_RESEARCH.md` for routing/dataEnv findings used by the profile model.
 
 ## Testing
 

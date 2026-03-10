@@ -1,15 +1,6 @@
-# Next Feature Plans
+# Roadmap
 
-## Status
-
-- Overall: in progress
-- Last updated: 2026-03-10
-
-## Purpose
-
-Track the main remaining product work for the Wowhead CLI at a high level.
-
-## Priority Areas
+## Current Priorities
 
 ### 1. Multi-Bundle Discovery And Query
 
@@ -19,7 +10,7 @@ Make exported guide bundles behave like a reusable local knowledge base instead 
 Open work:
 - add metadata search across all bundles under a root
 - add content query across multiple bundles in one command
-- add a compact bundle inspect/stats command for one bundle
+- add a compact bundle inspect or stats command for one bundle
 - add index maintenance and repair flows when `index.json` is missing or stale
 
 Why this matters:
@@ -50,8 +41,7 @@ Keep the cache and hydrated local data trustworthy and easy to inspect.
 
 Open work:
 - expose light cache or hydration inspection commands so agents can understand freshness without opening files directly
-- add manual cache or index rebuild / bust workflows for repair cases
-- record enough metadata to debug why a value came from live fetch, entity cache, or bundle reuse
+- add manual cache or index rebuild or bust workflows for repair cases
 - decide whether shared Redis deployments need extra visibility or stats commands
 
 Why this matters:
@@ -60,7 +50,7 @@ Why this matters:
 
 ## Additional Work Worth Considering
 
-These are not the top priority, but they are likely useful later:
+These are lower priority, but still likely useful:
 - bundle tagging or lightweight facets such as class/spec when we can derive them reliably
 - optional multi-bundle ranking improvements once cross-bundle query exists
 - manual guide refresh policies for larger roots with many bundles
@@ -70,7 +60,7 @@ These are not the top priority, but they are likely useful later:
 
 1. multi-bundle metadata search
 2. multi-bundle content query
-3. bundle inspect / index repair workflows
+3. bundle inspect and index repair workflows
 4. `search` ranking cleanup
 5. `resolve` command
 6. search narrowing and follow-up guidance
