@@ -1213,6 +1213,181 @@ def _guide_query_top_dedupe_key(row: dict[str, Any]) -> tuple[str, int] | None:
     return entity_type, entity_id
 
 
+def _guide_query_payload(
+    *,
+    export_dir: Path,
+    corpus: dict[str, Any],
+    query: str,
+    selected_kinds: tuple[str, ...],
+    section_title_filter: str | None,
+    selected_link_sources: tuple[str, ...],
+    limit: int,
+) -> dict[str, Any]:
+    def kind_enabled(value: str) -> bool:
+        if not selected_kinds:
+            return True
+        return value in selected_kinds
+
+    manifest = corpus["manifest"]
+    page = manifest.get("page") if isinstance(manifest, dict) else {}
+    guide = manifest.get("guide") if isinstance(manifest, dict) else {}
+    page_url = page.get("canonical_url") if isinstance(page, dict) else None
+
+    section_matches: list[dict[str, Any]] = []
+    if kind_enabled("sections"):
+        for row in corpus["sections"]:
+            if not isinstance(row, dict):
+                continue
+            title = row.get("title")
+            if section_title_filter and (
+                not isinstance(title, str) or section_title_filter not in title.lower()
+            ):
+                continue
+            score = _score_text_match(query, row.get("title"), row.get("content_text"))
+            if score <= 0:
+                continue
+            section_matches.append(
+                {
+                    "kind": "section",
+                    "score": score + _score_text_match(query, row.get("title")),
+                    "ordinal": row.get("ordinal"),
+                    "level": row.get("level"),
+                    "title": row.get("title"),
+                    "preview": _truncate_preview(row.get("content_text") or ""),
+                    "citation_url": page_url,
+                }
+            )
+    section_matches.sort(key=lambda row: (-row["score"], row.get("ordinal") or 0))
+
+    navigation_matches: list[dict[str, Any]] = []
+    if kind_enabled("navigation"):
+        for row in corpus["navigation_links"]:
+            if not isinstance(row, dict):
+                continue
+            score = _score_text_match(query, row.get("label"), row.get("url"))
+            if score <= 0:
+                continue
+            navigation_matches.append(
+                {
+                    "kind": "navigation",
+                    "score": score + _score_text_match(query, row.get("label")),
+                    "label": row.get("label"),
+                    "url": row.get("url"),
+                    "citation_url": row.get("source_url") or page_url,
+                }
+            )
+    navigation_matches.sort(key=lambda row: (-row["score"], row.get("label") or ""))
+
+    linked_entity_matches: list[dict[str, Any]] = []
+    if kind_enabled("linked_entities"):
+        for row in corpus["linked_entities"]:
+            if not isinstance(row, dict):
+                continue
+            if not _linked_source_filter_matches(row, selected_sources=selected_link_sources):
+                continue
+            score = _linked_entity_query_score(row, query=query)
+            if score <= 0:
+                continue
+            linked_entity_matches.append(
+                {
+                    "kind": "linked_entity",
+                    "score": score,
+                    "entity_type": row.get("entity_type"),
+                    "id": row.get("id"),
+                    "name": row.get("name"),
+                    "url": row.get("url"),
+                    "citation_url": row.get("citation_url"),
+                    "sources": _link_source_kinds(row),
+                }
+            )
+    linked_entity_matches.sort(key=_guide_query_match_sort_key)
+
+    gatherer_matches: list[dict[str, Any]] = []
+    if kind_enabled("gatherer_entities"):
+        for row in corpus["gatherer_entities"]:
+            if not isinstance(row, dict):
+                continue
+            score = _score_text_match(query, row.get("name"), row.get("entity_type"), row.get("url"))
+            if score <= 0:
+                continue
+            gatherer_matches.append(
+                {
+                    "kind": "gatherer_entity",
+                    "score": score + _score_text_match(query, row.get("name")),
+                    "entity_type": row.get("entity_type"),
+                    "id": row.get("id"),
+                    "name": row.get("name"),
+                    "url": row.get("url"),
+                    "citation_url": row.get("citation_url"),
+                }
+            )
+    gatherer_matches.sort(key=lambda row: (-row["score"], row.get("entity_type") or "", row.get("id") or 0))
+
+    comment_matches: list[dict[str, Any]] = []
+    if kind_enabled("comments"):
+        for row in corpus["comments"]:
+            if not isinstance(row, dict):
+                continue
+            score = _score_text_match(query, row.get("user"), row.get("body"))
+            if score <= 0:
+                continue
+            comment_matches.append(
+                {
+                    "kind": "comment",
+                    "score": score + _score_text_match(query, row.get("user")),
+                    "id": row.get("id"),
+                    "user": row.get("user"),
+                    "preview": _truncate_preview(row.get("body") or ""),
+                    "citation_url": row.get("citation_url"),
+                }
+            )
+    comment_matches.sort(key=lambda row: (-row["score"], row.get("id") or 0))
+
+    top_matches = (
+        section_matches[:limit]
+        + navigation_matches[:limit]
+        + linked_entity_matches[:limit]
+        + gatherer_matches[:limit]
+        + comment_matches[:limit]
+    )
+    top_matches.sort(key=_guide_query_match_sort_key)
+    deduped_top_matches: list[dict[str, Any]] = []
+    seen_top_keys: set[tuple[str, int]] = set()
+    for row in top_matches:
+        dedupe_key = _guide_query_top_dedupe_key(row)
+        if dedupe_key is not None:
+            if dedupe_key in seen_top_keys:
+                continue
+            seen_top_keys.add(dedupe_key)
+        deduped_top_matches.append(row)
+
+    return {
+        "output_dir": str(export_dir),
+        "guide": guide,
+        "page": page,
+        "filters": {
+            "kinds": list(selected_kinds),
+            "section_title": section_title_filter,
+            "linked_sources": list(selected_link_sources),
+        },
+        "matches": {
+            "sections": section_matches[:limit],
+            "navigation": navigation_matches[:limit],
+            "linked_entities": linked_entity_matches[:limit],
+            "gatherer_entities": gatherer_matches[:limit],
+            "comments": comment_matches[:limit],
+        },
+        "counts": {
+            "sections": len(section_matches),
+            "navigation": len(navigation_matches),
+            "linked_entities": len(linked_entity_matches),
+            "gatherer_entities": len(gatherer_matches),
+            "comments": len(comment_matches),
+        },
+        "top": deduped_top_matches[:limit],
+    }
+
+
 def _build_linked_entity_preview(
     links: list[dict[str, Any]],
     *,
@@ -2701,170 +2876,164 @@ def guide_query(
     except ValueError as exc:
         _fail(ctx, "invalid_argument", str(exc))
 
-    def kind_enabled(value: str) -> bool:
-        if not selected_kinds:
-            return True
-        return value in selected_kinds
-
-    manifest = corpus["manifest"]
-    page = manifest.get("page") if isinstance(manifest, dict) else {}
-    guide = manifest.get("guide") if isinstance(manifest, dict) else {}
-    page_url = page.get("canonical_url") if isinstance(page, dict) else None
     section_title_filter = section_title.strip().lower() if isinstance(section_title, str) and section_title.strip() else None
+    payload = {
+        "query": query,
+        **_guide_query_payload(
+            export_dir=export_dir,
+            corpus=corpus,
+            query=query,
+            selected_kinds=selected_kinds,
+            section_title_filter=section_title_filter,
+            selected_link_sources=selected_link_sources,
+            limit=limit,
+        ),
+    }
+    _emit(ctx, payload)
 
-    section_matches: list[dict[str, Any]] = []
-    if kind_enabled("sections"):
-        for row in corpus["sections"]:
-            if not isinstance(row, dict):
-                continue
-            title = row.get("title")
-            if section_title_filter and (
-                not isinstance(title, str) or section_title_filter not in title.lower()
-            ):
-                continue
-            score = _score_text_match(query, row.get("title"), row.get("content_text"))
-            if score <= 0:
-                continue
-            section_matches.append(
-                {
-                    "kind": "section",
-                    "score": score + _score_text_match(query, row.get("title")),
-                    "ordinal": row.get("ordinal"),
-                    "level": row.get("level"),
-                    "title": row.get("title"),
-                    "preview": _truncate_preview(row.get("content_text") or ""),
-                    "citation_url": page_url,
-                }
-            )
-    section_matches.sort(key=lambda row: (-row["score"], row.get("ordinal") or 0))
 
-    navigation_matches: list[dict[str, Any]] = []
-    if kind_enabled("navigation"):
-        for row in corpus["navigation_links"]:
-            if not isinstance(row, dict):
-                continue
-            score = _score_text_match(query, row.get("label"), row.get("url"))
-            if score <= 0:
-                continue
-            navigation_matches.append(
-                {
-                    "kind": "navigation",
-                    "score": score + _score_text_match(query, row.get("label")),
-                    "label": row.get("label"),
-                    "url": row.get("url"),
-                    "citation_url": row.get("source_url") or page_url,
-                }
-            )
-    navigation_matches.sort(key=lambda row: (-row["score"], row.get("label") or ""))
+@app.command("guide-bundle-query")
+def guide_bundle_query(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Query text to search across exported bundle content."),
+    root: Path | None = typer.Option(
+        None,
+        "--root",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        help="Root directory containing exported guide bundles. Defaults to ./wowhead_exports/.",
+    ),
+    limit: int = typer.Option(
+        5,
+        "--limit",
+        min=1,
+        max=50,
+        help="Maximum matches to return in the flattened top list and per bundle top results.",
+    ),
+    bundle_limit: int = typer.Option(
+        5,
+        "--bundle-limit",
+        min=1,
+        max=50,
+        help="Maximum matching bundles to return.",
+    ),
+    kind: list[str] = typer.Option(
+        [],
+        "--kind",
+        help="Restrict search kinds. Repeat or pass comma-separated values from: sections, navigation, linked_entities, gatherer_entities, comments.",
+    ),
+    section_title: str | None = typer.Option(
+        None,
+        "--section-title",
+        help="Restrict section searching to section titles containing this text.",
+    ),
+    linked_source: list[str] = typer.Option(
+        [],
+        "--linked-source",
+        help="Restrict merged linked-entity matches by provenance. Repeat or pass comma-separated values from: href, gatherer, multi.",
+    ),
+    max_age_hours: int = typer.Option(
+        24,
+        "--max-age-hours",
+        min=1,
+        max=24 * 30,
+        help="Freshness window in hours used for bundle freshness summaries.",
+    ),
+) -> None:
+    resolved_root = (root or _guide_export_root()).expanduser()
+    bundles = _discover_guide_corpora(resolved_root, max_age_hours=max_age_hours)
+    try:
+        selected_kinds = _normalize_query_kinds(kind)
+    except ValueError as exc:
+        _fail(ctx, "invalid_argument", str(exc))
+    try:
+        selected_link_sources = _normalize_link_source_filters(linked_source)
+    except ValueError as exc:
+        _fail(ctx, "invalid_argument", str(exc))
 
-    linked_entity_matches: list[dict[str, Any]] = []
-    if kind_enabled("linked_entities"):
-        for row in corpus["linked_entities"]:
-            if not isinstance(row, dict):
-                continue
-            if not _linked_source_filter_matches(row, selected_sources=selected_link_sources):
-                continue
-            score = _linked_entity_query_score(row, query=query)
-            if score <= 0:
-                continue
-            linked_entity_matches.append(
-                {
-                    "kind": "linked_entity",
-                    "score": score,
-                    "entity_type": row.get("entity_type"),
-                    "id": row.get("id"),
-                    "name": row.get("name"),
-                    "url": row.get("url"),
-                    "citation_url": row.get("citation_url"),
-                    "sources": _link_source_kinds(row),
-                }
-            )
-    linked_entity_matches.sort(key=_guide_query_match_sort_key)
+    section_title_filter = section_title.strip().lower() if isinstance(section_title, str) and section_title.strip() else None
+    aggregate_counts = {
+        "sections": 0,
+        "navigation": 0,
+        "linked_entities": 0,
+        "gatherer_entities": 0,
+        "comments": 0,
+    }
+    matched_bundles: list[dict[str, Any]] = []
+    top_matches: list[dict[str, Any]] = []
 
-    gatherer_matches: list[dict[str, Any]] = []
-    if kind_enabled("gatherer_entities"):
-        for row in corpus["gatherer_entities"]:
-            if not isinstance(row, dict):
-                continue
-            score = _score_text_match(query, row.get("name"), row.get("entity_type"), row.get("url"))
-            if score <= 0:
-                continue
-            gatherer_matches.append(
-                {
-                    "kind": "gatherer_entity",
-                    "score": score + _score_text_match(query, row.get("name")),
-                    "entity_type": row.get("entity_type"),
-                    "id": row.get("id"),
-                    "name": row.get("name"),
-                    "url": row.get("url"),
-                    "citation_url": row.get("citation_url"),
-                }
-            )
-    gatherer_matches.sort(key=lambda row: (-row["score"], row.get("entity_type") or "", row.get("id") or 0))
+    for bundle in bundles:
+        export_dir = Path(bundle["path"])
+        try:
+            corpus = _load_guide_export(export_dir)
+        except (ValueError, json.JSONDecodeError):
+            continue
+        result = _guide_query_payload(
+            export_dir=export_dir,
+            corpus=corpus,
+            query=query,
+            selected_kinds=selected_kinds,
+            section_title_filter=section_title_filter,
+            selected_link_sources=selected_link_sources,
+            limit=limit,
+        )
+        match_counts = result["counts"]
+        match_count = sum(value for value in match_counts.values() if isinstance(value, int))
+        if match_count <= 0:
+            continue
+        for key in aggregate_counts:
+            aggregate_counts[key] += int(match_counts.get(key) or 0)
+        best_score = max((int(row.get("score") or 0) for row in result["top"]), default=0)
+        bundle_result = dict(bundle)
+        bundle_result["match_count"] = match_count
+        bundle_result["match_counts"] = match_counts
+        bundle_result["best_score"] = best_score
+        bundle_result["top"] = result["top"]
+        bundle_result["suggested_query_command"] = _guide_bundle_query_command(bundle, query=query, root=resolved_root)
+        matched_bundles.append(bundle_result)
 
-    comment_matches: list[dict[str, Any]] = []
-    if kind_enabled("comments"):
-        for row in corpus["comments"]:
-            if not isinstance(row, dict):
-                continue
-            score = _score_text_match(query, row.get("user"), row.get("body"))
-            if score <= 0:
-                continue
-            comment_matches.append(
-                {
-                    "kind": "comment",
-                    "score": score + _score_text_match(query, row.get("user")),
-                    "id": row.get("id"),
-                    "user": row.get("user"),
-                    "preview": _truncate_preview(row.get("body") or ""),
-                    "citation_url": row.get("citation_url"),
-                }
-            )
-    comment_matches.sort(key=lambda row: (-row["score"], row.get("id") or 0))
+        bundle_meta = {
+            "path": bundle.get("path"),
+            "dir_name": bundle.get("dir_name"),
+            "guide_id": bundle.get("guide_id"),
+            "title": bundle.get("title"),
+            "canonical_url": bundle.get("canonical_url"),
+            "expansion": bundle.get("expansion"),
+            "freshness": bundle.get("freshness"),
+        }
+        for row in result["top"]:
+            top_row = dict(row)
+            top_row["bundle"] = bundle_meta
+            top_matches.append(top_row)
 
-    top_matches = (
-        section_matches[:limit]
-        + navigation_matches[:limit]
-        + linked_entity_matches[:limit]
-        + gatherer_matches[:limit]
-        + comment_matches[:limit]
+    matched_bundles.sort(
+        key=lambda row: (
+            -int(row.get("best_score") or 0),
+            -int(row.get("match_count") or 0),
+            (row.get("title") or "").lower(),
+            row.get("path") or "",
+        )
     )
-    top_matches.sort(key=_guide_query_match_sort_key)
-    deduped_top_matches: list[dict[str, Any]] = []
-    seen_top_keys: set[tuple[str, int]] = set()
-    for row in top_matches:
-        dedupe_key = _guide_query_top_dedupe_key(row)
-        if dedupe_key is not None:
-            if dedupe_key in seen_top_keys:
-                continue
-            seen_top_keys.add(dedupe_key)
-        deduped_top_matches.append(row)
+    top_matches.sort(
+        key=lambda row: _guide_query_match_sort_key(row)
+        + ((row.get("bundle") or {}).get("title") or "", (row.get("bundle") or {}).get("path") or "")
+    )
 
     payload = {
         "query": query,
-        "output_dir": str(export_dir),
-        "guide": guide,
-        "page": page,
+        "root": str(resolved_root),
+        "max_age_hours": max_age_hours,
+        "searched_bundle_count": len(bundles),
+        "count": len(matched_bundles),
         "filters": {
             "kinds": list(selected_kinds),
             "section_title": section_title_filter,
             "linked_sources": list(selected_link_sources),
         },
-        "matches": {
-            "sections": section_matches[:limit],
-            "navigation": navigation_matches[:limit],
-            "linked_entities": linked_entity_matches[:limit],
-            "gatherer_entities": gatherer_matches[:limit],
-            "comments": comment_matches[:limit],
-        },
-        "counts": {
-            "sections": len(section_matches),
-            "navigation": len(navigation_matches),
-            "linked_entities": len(linked_entity_matches),
-            "gatherer_entities": len(gatherer_matches),
-            "comments": len(comment_matches),
-        },
-        "top": deduped_top_matches[:limit],
+        "counts": aggregate_counts,
+        "bundles": matched_bundles[:bundle_limit],
+        "top": top_matches[:limit],
     }
     _emit(ctx, payload)
 

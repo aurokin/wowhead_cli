@@ -16,6 +16,7 @@ wowhead guide-export 3143 --out ./tmp/frost-dk-guide --hydrate-linked-entities -
 wowhead guide-bundle-list
 wowhead guide-bundle-list --max-age-hours 72
 wowhead guide-bundle-search "frost death knight"
+wowhead guide-bundle-query "obliterate"
 wowhead guide-bundle-refresh ./tmp/frost-dk-guide
 wowhead guide-bundle-refresh 3143 --root ./wowhead_exports --max-age-hours 6
 wowhead guide-query ./tmp/frost-dk-guide "bellamy"
@@ -119,6 +120,7 @@ Hydration behavior:
 Bundle discovery and refresh:
 - `guide-bundle-list` discovers bundles under `./wowhead_exports/` or another root
 - `guide-bundle-search` searches indexed bundle metadata across a root
+- `guide-bundle-query` searches exported bundle content across a root using the same match kinds and linked-source filters as `guide-query`
 - it includes `freshness` and `hydration` summaries
 - `--max-age-hours` changes the freshness threshold used by those summaries
 - bundle exports and refreshes maintain a root-level `index.json`

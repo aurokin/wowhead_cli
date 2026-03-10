@@ -21,6 +21,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 - Export local guide assets plus bounded linked-entity hydration: `wowhead guide-export <guide_id_or_url> --out <dir> --hydrate-linked-entities [--hydrate-type spell,item,npc]`
 - List exported guide bundles: `wowhead guide-bundle-list [--root <dir>] [--max-age-hours <n>]`
 - Search exported bundle metadata: `wowhead guide-bundle-search "<query>" [--root <dir>]`
+- Query exported bundle content across a root: `wowhead guide-bundle-query "<query>" [--root <dir>]`
 - Refresh an exported guide bundle in place: `wowhead guide-bundle-refresh <bundle-or-selector> [--root <dir>]`
 - Query exported guide assets: `wowhead guide-query <dir> "<query>"`
 - Multi-entity compare: `wowhead compare <type:id> <type:id> ...`
@@ -53,7 +54,8 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 18. `guide-export --hydrate-linked-entities` writes compact normalized entity payloads for selected linked entities under `entities/<type>/<id>.json`, plus `entities/manifest.json`. Default hydrated types are `spell,item,npc`; use `--hydrate-type` and `--hydrate-limit` to keep exports bounded. Hydration checks the normalized entity cache before live fetches, and the entity manifest also tracks per-entity `stored_at` timestamps plus `storage_source` for later selective refresh and traceability.
 19. `guide-bundle-list` now includes per-bundle `freshness` and `hydration` summaries so agents can see stale or fresh status, hydration settings, hydrated entity counts, and hydration provenance directly from discovery. It uses a default `24` hour threshold unless `--max-age-hours` is supplied, and it prefers a root-level `index.json` when available instead of rescanning bundle directories.
 20. `guide-bundle-search` searches indexed bundle metadata across a root and returns ranked matches, compact match reasons, and a suggested `guide-query` command for each hit.
-21. `guide-bundle-refresh` infers refresh settings from the stored bundle manifest. If `--max-age-hours` is omitted, the default freshness window is 24 hours, so agents can safely refresh without passing a threshold in the common case. For hydrated bundles, refresh reuses entity payloads whose `stored_at` timestamp is still fresh and only re-fetches stale ones unless `--force` is used.
+21. `guide-bundle-query` searches content across all bundles under a root and returns both matching bundles and a flattened cross-bundle `top` list. It reuses the same kinds, section-title filter, and linked-source filter behavior as `guide-query`, so agents can broaden from one bundle to many without changing query semantics.
+22. `guide-bundle-refresh` infers refresh settings from the stored bundle manifest. If `--max-age-hours` is omitted, the default freshness window is 24 hours, so agents can safely refresh without passing a threshold in the common case. For hydrated bundles, refresh reuses entity payloads whose `stored_at` timestamp is still fresh and only re-fetches stale ones unless `--force` is used.
 
 ## Required Usage Rules
 

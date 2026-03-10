@@ -60,6 +60,89 @@ SAMPLE_GUIDE_HTML = """
 </html>
 """
 
+def _write_bundle_fixture(
+    root: Path,
+    *,
+    dir_name: str,
+    guide_id: int,
+    title: str,
+    expansion: str = "retail",
+    sections: list[dict[str, object]] | None = None,
+    navigation_links: list[dict[str, object]] | None = None,
+    linked_entities: list[dict[str, object]] | None = None,
+    gatherer_entities: list[dict[str, object]] | None = None,
+    comments: list[dict[str, object]] | None = None,
+) -> Path:
+    bundle_dir = root / dir_name
+    bundle_dir.mkdir(parents=True)
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    sections = sections or []
+    navigation_links = navigation_links or []
+    linked_entities = linked_entities or []
+    gatherer_entities = gatherer_entities or []
+    comments = comments or []
+
+    files = {
+        "sections_jsonl": "sections.jsonl",
+        "navigation_links_jsonl": "navigation-links.jsonl",
+        "linked_entities_jsonl": "linked-entities.jsonl",
+        "gatherer_entities_jsonl": "gatherer-entities.jsonl",
+        "comments_jsonl": "comments.jsonl",
+    }
+    (bundle_dir / files["sections_jsonl"]).write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in sections),
+        encoding="utf-8",
+    )
+    (bundle_dir / files["navigation_links_jsonl"]).write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in navigation_links),
+        encoding="utf-8",
+    )
+    (bundle_dir / files["linked_entities_jsonl"]).write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in linked_entities),
+        encoding="utf-8",
+    )
+    (bundle_dir / files["gatherer_entities_jsonl"]).write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in gatherer_entities),
+        encoding="utf-8",
+    )
+    (bundle_dir / files["comments_jsonl"]).write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in comments),
+        encoding="utf-8",
+    )
+
+    manifest = {
+        "export_version": 2,
+        "output_dir": str(bundle_dir),
+        "exported_at": now,
+        "guide_fetched_at": now,
+        "expansion": expansion,
+        "guide": {"id": guide_id, "page_url": f"https://www.wowhead.com/guide={guide_id}"},
+        "page": {
+            "title": title,
+            "canonical_url": f"https://www.wowhead.com/guide/{guide_id}",
+        },
+        "counts": {
+            "sections": len(sections),
+            "navigation_links": len(navigation_links),
+            "linked_entities": len(linked_entities),
+            "gatherer_entities": len(gatherer_entities),
+            "hydrated_entities": 0,
+            "comments": len(comments),
+        },
+        "hydration": {
+            "enabled": False,
+            "types": [],
+            "limit": 0,
+            "hydrated_at": None,
+            "source_counts": {},
+        },
+        "files": files,
+    }
+    (bundle_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return bundle_dir
+
+
 
 def test_entity_page_command_returns_links_with_citations(monkeypatch) -> None:
     def fake_html(self, entity_type: str, entity_id: int):  # noqa: ANN001
@@ -1309,6 +1392,223 @@ def test_guide_bundle_search_uses_root_index_when_available(monkeypatch, tmp_pat
     payload = json.loads(result.stdout)
     assert payload["matches"][0]["guide_id"] == 3143
     assert "title" in payload["matches"][0]["match_reasons"]
+
+
+def test_guide_bundle_query_returns_cross_bundle_matches(tmp_path: Path) -> None:
+    root = tmp_path / "wowhead_exports"
+    _write_bundle_fixture(
+        root,
+        dir_name="guide-3143-frost",
+        guide_id=3143,
+        title="Frost Death Knight DPS Guide - Midnight",
+        sections=[
+            {
+                "ordinal": 1,
+                "level": 2,
+                "title": "Rotation",
+                "content_text": "Use Obliterate and Frost Strike in your rotation.",
+            }
+        ],
+        linked_entities=[
+            {
+                "entity_type": "spell",
+                "id": 49020,
+                "name": "Obliterate",
+                "url": "https://www.wowhead.com/spell=49020/obliterate",
+                "citation_url": "https://www.wowhead.com/spell=49020/obliterate",
+                "sources": ["href", "gatherer"],
+                "source_kind": "href",
+            }
+        ],
+    )
+    _write_bundle_fixture(
+        root,
+        dir_name="guide-42-arcane",
+        guide_id=42,
+        title="Arcane Mage Guide",
+        expansion="classic",
+        sections=[
+            {
+                "ordinal": 1,
+                "level": 2,
+                "title": "Rotation",
+                "content_text": "Use Arcane Blast and Arcane Missiles.",
+            }
+        ],
+        linked_entities=[
+            {
+                "entity_type": "spell",
+                "id": 30451,
+                "name": "Arcane Blast",
+                "url": "https://www.wowhead.com/spell=30451/arcane-blast",
+                "citation_url": "https://www.wowhead.com/spell=30451/arcane-blast",
+                "sources": ["href"],
+                "source_kind": "href",
+            }
+        ],
+    )
+
+    result = runner.invoke(app, ["guide-bundle-query", "obliterate", "--root", str(root)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["searched_bundle_count"] == 2
+    assert payload["count"] == 1
+    assert payload["counts"] == {
+        "sections": 1,
+        "navigation": 0,
+        "linked_entities": 1,
+        "gatherer_entities": 0,
+        "comments": 0,
+    }
+    assert payload["bundles"][0]["guide_id"] == 3143
+    assert payload["bundles"][0]["match_count"] == 2
+    assert payload["bundles"][0]["match_counts"]["linked_entities"] == 1
+    assert payload["bundles"][0]["suggested_query_command"] == (
+        f"wowhead guide-query 3143 obliterate --root {root}"
+    )
+    assert payload["top"][0]["kind"] == "linked_entity"
+    assert payload["top"][0]["bundle"]["guide_id"] == 3143
+
+
+
+def test_guide_bundle_query_uses_filters_and_root_index(monkeypatch, tmp_path: Path) -> None:
+    root = tmp_path / "wowhead_exports"
+    frost = _write_bundle_fixture(
+        root,
+        dir_name="guide-3143-frost",
+        guide_id=3143,
+        title="Frost Death Knight DPS Guide - Midnight",
+        linked_entities=[
+            {
+                "entity_type": "spell",
+                "id": 49020,
+                "name": "Obliterate",
+                "url": "https://www.wowhead.com/spell=49020/obliterate",
+                "citation_url": "https://www.wowhead.com/spell=49020/obliterate",
+                "sources": ["href", "gatherer"],
+                "source_kind": "href",
+            }
+        ],
+    )
+    _write_bundle_fixture(
+        root,
+        dir_name="guide-42-arcane",
+        guide_id=42,
+        title="Arcane Mage Guide",
+        linked_entities=[
+            {
+                "entity_type": "spell",
+                "id": 30451,
+                "name": "Obliterate Echo",
+                "url": "https://www.wowhead.com/spell=30451/obliterate-echo",
+                "citation_url": "https://www.wowhead.com/spell=30451/obliterate-echo",
+                "sources": ["href"],
+                "source_kind": "href",
+            }
+        ],
+    )
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    (root / "index.json").write_text(
+        json.dumps(
+            {
+                "index_version": 1,
+                "updated_at": now,
+                "root": str(root),
+                "count": 2,
+                "bundles": [
+                    {
+                        "path": str(frost),
+                        "dir_name": frost.name,
+                        "guide_id": 3143,
+                        "title": "Frost Death Knight DPS Guide - Midnight",
+                        "canonical_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                        "expansion": "retail",
+                        "export_version": 2,
+                        "counts": {
+                            "sections": 0,
+                            "navigation_links": 0,
+                            "linked_entities": 1,
+                            "gatherer_entities": 0,
+                            "hydrated_entities": 0,
+                            "comments": 0,
+                        },
+                        "exported_at": now,
+                        "guide_fetched_at": now,
+                        "hydration": {
+                            "enabled": False,
+                            "types": [],
+                            "limit": 0,
+                            "hydrated_at": None,
+                            "hydrated_entities": 0,
+                            "source_counts": {},
+                        },
+                    },
+                    {
+                        "path": str(root / "guide-42-arcane"),
+                        "dir_name": "guide-42-arcane",
+                        "guide_id": 42,
+                        "title": "Arcane Mage Guide",
+                        "canonical_url": "https://www.wowhead.com/guide/42",
+                        "expansion": "classic",
+                        "export_version": 2,
+                        "counts": {
+                            "sections": 0,
+                            "navigation_links": 0,
+                            "linked_entities": 1,
+                            "gatherer_entities": 0,
+                            "hydrated_entities": 0,
+                            "comments": 0,
+                        },
+                        "exported_at": now,
+                        "guide_fetched_at": now,
+                        "hydration": {
+                            "enabled": False,
+                            "types": [],
+                            "limit": 0,
+                            "hydrated_at": None,
+                            "hydrated_entities": 0,
+                            "source_counts": {},
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_scan(root_path: Path) -> list[dict[str, object]]:  # noqa: ANN202
+        raise AssertionError(f"scan should not be used when a valid index exists: {root_path}")
+
+    monkeypatch.setattr("wowhead_cli.main._scan_guide_bundle_rows", fail_scan)
+
+    result = runner.invoke(
+        app,
+        [
+            "guide-bundle-query",
+            "obliterate",
+            "--root",
+            str(root),
+            "--kind",
+            "linked_entities",
+            "--linked-source",
+            "multi",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 1
+    assert payload["filters"]["kinds"] == ["linked_entities"]
+    assert payload["filters"]["linked_sources"] == ["multi"]
+    assert payload["counts"] == {
+        "sections": 0,
+        "navigation": 0,
+        "linked_entities": 1,
+        "gatherer_entities": 0,
+        "comments": 0,
+    }
+    assert payload["bundles"][0]["guide_id"] == 3143
+    assert set(payload["top"][0]["sources"]) == {"href", "gatherer"}
+
 
 
 def test_entity_respects_expansion_flag(monkeypatch) -> None:
