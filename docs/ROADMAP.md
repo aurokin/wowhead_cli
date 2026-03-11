@@ -11,10 +11,16 @@ Evolve this repo from a single-service `wowhead` CLI into a Warcraft data monore
 The first new service after this restructure should be `method`.
 
 The structural rules for packaging, language choice, installation, storage, auth, and wrapper boundaries are defined in [REPO_STRUCTURE_AND_PACKAGING.md](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md).
+The concrete package tree is defined in [PACKAGE_LAYOUT.md](/home/auro/code/wowhead_cli/docs/PACKAGE_LAYOUT.md).
+The execution order is controlled by [MIGRATION_CHECKLIST.md](/home/auro/code/wowhead_cli/docs/MIGRATION_CHECKLIST.md).
+The wrapper/provider boundary is defined in [WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/wowhead_cli/docs/WRAPPER_PROVIDER_CONTRACT.md).
 
 ## Planning Documents
 
 - [Repo structure and packaging](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)
+- [Package layout](/home/auro/code/wowhead_cli/docs/PACKAGE_LAYOUT.md)
+- [Migration checklist](/home/auro/code/wowhead_cli/docs/MIGRATION_CHECKLIST.md)
+- [Wrapper provider contract](/home/auro/code/wowhead_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
 - [Warcraft wrapper plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md)
 - [Wowhead CLI plan](/home/auro/code/wowhead_cli/docs/WOWHEAD_CLI_PLAN.md)
 - [Method.gg CLI plan](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md)
