@@ -141,6 +141,29 @@ class FileCacheStore:
             return
 
 
+def _build_redis_client(
+    redis_url: str,
+    *,
+    import_module_func: Any = importlib.import_module,
+) -> Any:
+    if not redis_url:
+        raise ValueError("WOWHEAD_REDIS_URL is required when WOWHEAD_CACHE_BACKEND=redis.")
+    redis_module = import_module_func("redis")
+    client = None
+    from_url = getattr(redis_module, "from_url", None)
+    if callable(from_url):
+        client = from_url(redis_url, decode_responses=True)
+    else:
+        redis_cls = getattr(redis_module, "Redis", None)
+        if redis_cls is not None:
+            redis_cls_from_url = getattr(redis_cls, "from_url", None)
+            if callable(redis_cls_from_url):
+                client = redis_cls_from_url(redis_url, decode_responses=True)
+    if client is None:
+        raise ValueError("Redis backend requires the 'redis' package with from_url support.")
+    return client
+
+
 class RedisCacheStore:
     def __init__(
         self,
@@ -149,22 +172,7 @@ class RedisCacheStore:
         prefix: str,
         import_module_func: Any = importlib.import_module,
     ) -> None:
-        if not redis_url:
-            raise ValueError("WOWHEAD_REDIS_URL is required when WOWHEAD_CACHE_BACKEND=redis.")
-        redis_module = import_module_func("redis")
-        client = None
-        from_url = getattr(redis_module, "from_url", None)
-        if callable(from_url):
-            client = from_url(redis_url, decode_responses=True)
-        else:
-            redis_cls = getattr(redis_module, "Redis", None)
-            if redis_cls is not None:
-                redis_cls_from_url = getattr(redis_cls, "from_url", None)
-                if callable(redis_cls_from_url):
-                    client = redis_cls_from_url(redis_url, decode_responses=True)
-        if client is None:
-            raise ValueError("Redis backend requires the 'redis' package with from_url support.")
-        self._client = client
+        self._client = _build_redis_client(redis_url, import_module_func=import_module_func)
         self._prefix = prefix
 
     def _redis_key(self, key: str) -> str:
@@ -201,3 +209,171 @@ def build_cache_store(settings: CacheSettings) -> CacheStore | None:
     if settings.backend == "redis":
         return RedisCacheStore(redis_url=settings.redis_url or "", prefix=settings.prefix)
     raise ValueError(f"Unsupported cache backend: {settings.backend}")
+
+
+def _file_cache_namespace(cache_dir: Path, path: Path) -> str:
+    relative = path.relative_to(cache_dir)
+    if len(relative.parts) > 1:
+        return relative.parts[0]
+    return relative.stem
+
+
+def _iter_file_cache_entries(cache_dir: Path) -> list[dict[str, Any]]:
+    root = cache_dir.expanduser()
+    if not root.exists() or not root.is_dir():
+        return []
+    entries: list[dict[str, Any]] = []
+    now = time.time()
+    for path in sorted(root.rglob("*.json")):
+        if not path.is_file():
+            continue
+        status = "invalid"
+        expires_at: float | None = None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            payload = None
+        if isinstance(payload, dict):
+            raw_expires_at = payload.get("expires_at")
+            if isinstance(raw_expires_at, (int, float)):
+                expires_at = float(raw_expires_at)
+                status = "expired" if expires_at <= now else "active"
+        entries.append(
+            {
+                "path": path,
+                "namespace": _file_cache_namespace(root, path),
+                "status": status,
+                "expires_at": expires_at,
+            }
+        )
+    return entries
+
+
+def inspect_file_cache(cache_dir: Path) -> dict[str, Any]:
+    root = cache_dir.expanduser()
+    entries = _iter_file_cache_entries(root)
+    namespaces: dict[str, dict[str, int]] = {}
+    totals = {"total": 0, "active": 0, "expired": 0, "invalid": 0}
+    for entry in entries:
+        namespace = entry["namespace"]
+        status = entry["status"]
+        row = namespaces.setdefault(namespace, {"total": 0, "active": 0, "expired": 0, "invalid": 0})
+        row["total"] += 1
+        totals["total"] += 1
+        if status in {"active", "expired", "invalid"}:
+            row[status] += 1
+            totals[status] += 1
+    return {
+        "kind": "file",
+        "root": str(root),
+        "exists": root.exists(),
+        "totals": totals,
+        "namespaces": dict(sorted(namespaces.items())),
+    }
+
+
+def clear_file_cache(
+    cache_dir: Path,
+    *,
+    namespaces: tuple[str, ...] = (),
+    expired_only: bool = False,
+) -> dict[str, Any]:
+    selected = set(namespaces)
+    removed_by_namespace: dict[str, int] = {}
+    removed_total = 0
+    for entry in _iter_file_cache_entries(cache_dir.expanduser()):
+        namespace = entry["namespace"]
+        if selected and namespace not in selected:
+            continue
+        if expired_only and entry["status"] != "expired":
+            continue
+        path = entry["path"]
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        removed_total += 1
+        removed_by_namespace[namespace] = removed_by_namespace.get(namespace, 0) + 1
+    return {
+        "total": removed_total,
+        "namespaces": dict(sorted(removed_by_namespace.items())),
+    }
+
+
+def _redis_iter_keys(client: Any, pattern: str) -> list[str]:
+    scan_iter = getattr(client, "scan_iter", None)
+    if callable(scan_iter):
+        return [str(key) for key in scan_iter(match=pattern)]
+    keys = getattr(client, "keys", None)
+    if callable(keys):
+        return [str(key) for key in keys(pattern)]
+    raise ValueError("Redis cache inspection requires scan_iter or keys support.")
+
+
+def inspect_redis_cache(
+    redis_url: str | None,
+    *,
+    prefix: str,
+    import_module_func: Any = importlib.import_module,
+) -> dict[str, Any]:
+    if not redis_url:
+        return {
+            "kind": "redis",
+            "available": False,
+            "count": 0,
+            "namespaces": {},
+            "error": "WOWHEAD_REDIS_URL is required when WOWHEAD_CACHE_BACKEND=redis.",
+        }
+    try:
+        client = _build_redis_client(redis_url, import_module_func=import_module_func)
+        keys = _redis_iter_keys(client, f"{prefix}:*")
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "kind": "redis",
+            "available": False,
+            "count": 0,
+            "namespaces": {},
+            "error": str(exc),
+        }
+    namespaces: dict[str, int] = {}
+    for key in keys:
+        raw = key[len(prefix) + 1 :] if key.startswith(f"{prefix}:") else key
+        namespace = raw.split(":", 1)[0] if raw else "cache"
+        namespaces[namespace] = namespaces.get(namespace, 0) + 1
+    return {
+        "kind": "redis",
+        "available": True,
+        "count": len(keys),
+        "namespaces": dict(sorted(namespaces.items())),
+        "error": None,
+    }
+
+
+def clear_redis_cache(
+    redis_url: str | None,
+    *,
+    prefix: str,
+    namespaces: tuple[str, ...] = (),
+    import_module_func: Any = importlib.import_module,
+) -> dict[str, Any]:
+    client = _build_redis_client(redis_url or "", import_module_func=import_module_func)
+    removed_by_namespace: dict[str, int] = {}
+    patterns = [f"{prefix}:{namespace}:*" for namespace in namespaces] if namespaces else [f"{prefix}:*"]
+    seen: set[str] = set()
+    delete = getattr(client, "delete", None)
+    if not callable(delete):
+        raise ValueError("Redis cache clearing requires delete support.")
+    for pattern in patterns:
+        for key in _redis_iter_keys(client, pattern):
+            if key in seen:
+                continue
+            seen.add(key)
+            raw = key[len(prefix) + 1 :] if key.startswith(f"{prefix}:") else key
+            namespace = raw.split(":", 1)[0] if raw else "cache"
+            deleted = delete(key)
+            if deleted:
+                removed_by_namespace[namespace] = removed_by_namespace.get(namespace, 0) + int(deleted)
+    return {
+        "total": sum(removed_by_namespace.values()),
+        "namespaces": dict(sorted(removed_by_namespace.items())),
+    }

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from typer.testing import CliRunner
 
+from wowhead_cli.cache import FileCacheStore
 from wowhead_cli.main import app
 
 runner = CliRunner()
@@ -100,6 +102,51 @@ def test_fields_flag_supports_nested_paths(monkeypatch) -> None:
     assert payload["entity"]["name"] == "Thunderfury"
     assert payload["tooltip"]["quality"] == 5
     assert "summary" not in payload["tooltip"]
+
+
+def test_cache_inspect_reports_file_cache_stats(tmp_path: Path, monkeypatch) -> None:
+    cache_dir = tmp_path / "cache"
+    store = FileCacheStore(cache_dir)
+    now = 1000.0
+    monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "file")
+    monkeypatch.setenv("WOWHEAD_CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now)
+
+    store.set("search_suggestions:active", {"query": "thunderfury"}, ttl_seconds=60)
+    store.set("entity_response:expired", {"entity": {"id": 19019}}, ttl_seconds=10)
+
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now + 20)
+    result = runner.invoke(app, ["cache-inspect"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["settings"]["backend"] == "file"
+    assert payload["stats"]["totals"] == {"total": 2, "active": 1, "expired": 1, "invalid": 0}
+    assert payload["stats"]["namespaces"]["entity_response"]["expired"] == 1
+    assert payload["stats"]["namespaces"]["search_suggestions"]["active"] == 1
+
+
+
+def test_cache_clear_can_remove_expired_entries_by_namespace(tmp_path: Path, monkeypatch) -> None:
+    cache_dir = tmp_path / "cache"
+    store = FileCacheStore(cache_dir)
+    now = 1000.0
+    monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "file")
+    monkeypatch.setenv("WOWHEAD_CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now)
+
+    store.set("search_suggestions:active", {"query": "thunderfury"}, ttl_seconds=60)
+    store.set("entity_response:expired", {"entity": {"id": 19019}}, ttl_seconds=10)
+    store.set("entity_response:active", {"entity": {"id": 19020}}, ttl_seconds=60)
+
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now + 20)
+    result = runner.invoke(app, ["cache-clear", "--namespace", "entity_response", "--expired-only"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["removed"] == {"total": 1, "namespaces": {"entity_response": 1}}
+    assert payload["remaining"]["totals"] == {"total": 2, "active": 2, "expired": 0, "invalid": 0}
+
 
 
 def test_invalid_cache_config_returns_structured_error(monkeypatch) -> None:

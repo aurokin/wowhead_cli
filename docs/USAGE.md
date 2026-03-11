@@ -19,6 +19,8 @@ wowhead guide-bundle-search "frost death knight"
 wowhead guide-bundle-query "obliterate"
 wowhead guide-bundle-inspect 3143
 wowhead guide-bundle-index-rebuild
+wowhead cache-inspect
+wowhead cache-clear --namespace entity_response --expired-only
 wowhead guide-bundle-refresh ./tmp/frost-dk-guide
 wowhead guide-bundle-refresh 3143 --root ./wowhead_exports --max-age-hours 6
 wowhead guide-query ./tmp/frost-dk-guide "bellamy"
@@ -130,6 +132,8 @@ Bundle discovery and refresh:
 - bundle exports and refreshes maintain a root-level `index.json`
 - `guide-bundle-list`, `guide-bundle-search`, and `guide-bundle-query` prefer that index when it is present and valid
 - `guide-bundle-refresh` refreshes an existing bundle in place
+- `cache-inspect` shows current cache config plus namespace-level stats for the active file or Redis backend
+- `cache-clear` clears cache entries across all namespaces or selected namespaces, with `--expired-only` support for file-backed caches
 - if `--max-age-hours` is omitted on refresh, the default freshness window is `24`
 - refresh selectively rehydrates stale hydrated entity payloads unless `--force` is used
 

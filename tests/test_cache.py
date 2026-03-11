@@ -9,6 +9,10 @@ from wowhead_cli.cache import (
     CacheTTLConfig,
     FileCacheStore,
     RedisCacheStore,
+    clear_file_cache,
+    clear_redis_cache,
+    inspect_file_cache,
+    inspect_redis_cache,
     load_cache_settings_from_env,
 )
 from wowhead_cli.wowhead_client import WowheadClient
@@ -63,6 +67,114 @@ def test_redis_cache_store_uses_prefix_and_roundtrips() -> None:
         ("wowhead_cli:entity:abc123", json.dumps({"entity": {"id": 19019}}, separators=(",", ":")), 3600)
     ]
     assert store.get("entity:abc123") == {"entity": {"id": 19019}}
+
+
+def test_inspect_file_cache_summarizes_active_expired_and_invalid_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FileCacheStore(tmp_path)
+    now = 1000.0
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now)
+
+    store.set("search_suggestions:active", {"query": "thunderfury"}, ttl_seconds=60)
+    store.set("entity_response:expired", {"entity": {"id": 19019}}, ttl_seconds=10)
+    invalid_path = tmp_path / "tooltip_meta" / "broken.json"
+    invalid_path.parent.mkdir(parents=True)
+    invalid_path.write_text("not-json", encoding="utf-8")
+
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now + 20)
+    summary = inspect_file_cache(tmp_path)
+
+    assert summary["totals"] == {"total": 3, "active": 1, "expired": 1, "invalid": 1}
+    assert summary["namespaces"]["search_suggestions"] == {"total": 1, "active": 1, "expired": 0, "invalid": 0}
+    assert summary["namespaces"]["entity_response"] == {"total": 1, "active": 0, "expired": 1, "invalid": 0}
+    assert summary["namespaces"]["tooltip_meta"] == {"total": 1, "active": 0, "expired": 0, "invalid": 1}
+
+
+
+def test_clear_file_cache_supports_namespace_and_expired_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FileCacheStore(tmp_path)
+    now = 1000.0
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now)
+
+    store.set("search_suggestions:active", {"query": "thunderfury"}, ttl_seconds=60)
+    store.set("entity_response:expired", {"entity": {"id": 19019}}, ttl_seconds=10)
+    store.set("entity_response:active", {"entity": {"id": 19020}}, ttl_seconds=60)
+
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now + 20)
+    removed = clear_file_cache(tmp_path, namespaces=("entity_response",), expired_only=True)
+    assert removed == {"total": 1, "namespaces": {"entity_response": 1}}
+
+    summary = inspect_file_cache(tmp_path)
+    assert summary["totals"] == {"total": 2, "active": 2, "expired": 0, "invalid": 0}
+    assert summary["namespaces"]["entity_response"] == {"total": 1, "active": 1, "expired": 0, "invalid": 0}
+    assert summary["namespaces"]["search_suggestions"] == {"total": 1, "active": 1, "expired": 0, "invalid": 0}
+
+
+
+def test_inspect_and_clear_redis_cache_support_prefix_and_namespaces() -> None:
+    class FakeRedisClient:
+        def __init__(self) -> None:
+            self.values = {
+                "wowhead_cli:search_suggestions:a": "{}",
+                "wowhead_cli:entity_response:b": "{}",
+                "wowhead_cli:entity_response:c": "{}",
+                "other_app:entity_response:d": "{}",
+            }
+            self.deleted: list[str] = []
+
+        def scan_iter(self, match: str):  # noqa: ANN202
+            if match.endswith(":*") and match.count(":") == 1:
+                prefix = match[:-1]
+                return [key for key in self.values if key.startswith(prefix)]
+            prefix = match[:-1]
+            return [key for key in self.values if key.startswith(prefix)]
+
+        def delete(self, key: str) -> int:
+            if key in self.values:
+                self.deleted.append(key)
+                del self.values[key]
+                return 1
+            return 0
+
+    fake_client = FakeRedisClient()
+
+    class FakeRedisModule:
+        @staticmethod
+        def from_url(url: str, decode_responses: bool = True) -> FakeRedisClient:
+            assert url == "redis://cache.example:6379/3"
+            assert decode_responses is True
+            return fake_client
+
+    summary = inspect_redis_cache(
+        "redis://cache.example:6379/3",
+        prefix="wowhead_cli",
+        import_module_func=lambda name: FakeRedisModule,
+    )
+    assert summary == {
+        "kind": "redis",
+        "available": True,
+        "count": 3,
+        "namespaces": {"entity_response": 2, "search_suggestions": 1},
+        "error": None,
+    }
+
+    removed = clear_redis_cache(
+        "redis://cache.example:6379/3",
+        prefix="wowhead_cli",
+        namespaces=("entity_response",),
+        import_module_func=lambda name: FakeRedisModule,
+    )
+    assert removed == {"total": 2, "namespaces": {"entity_response": 2}}
+    assert fake_client.deleted == [
+        "wowhead_cli:entity_response:b",
+        "wowhead_cli:entity_response:c",
+    ]
+
 
 
 def test_load_cache_settings_from_env_supports_redis_and_ttl_overrides(

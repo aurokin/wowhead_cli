@@ -12,6 +12,13 @@ from urllib.parse import urlparse
 import httpx
 import typer
 
+from wowhead_cli.cache import (
+    clear_file_cache,
+    clear_redis_cache,
+    inspect_file_cache,
+    inspect_redis_cache,
+    load_cache_settings_from_env,
+)
 from wowhead_cli.expansion_profiles import ExpansionProfile, list_profiles, resolve_expansion
 from wowhead_cli.output import emit
 from wowhead_cli.page_parser import (
@@ -209,6 +216,49 @@ def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> No
     }
     _emit(ctx, payload, err=True)
     raise typer.Exit(status)
+
+
+def _load_cache_settings_or_fail(ctx: typer.Context):
+    try:
+        return load_cache_settings_from_env()
+    except ValueError as exc:
+        _fail(ctx, "invalid_cache_config", str(exc))
+        raise AssertionError("unreachable")
+
+
+def _normalize_cache_namespaces(values: list[str]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        for candidate in raw.split(","):
+            value = candidate.strip()
+            if not value:
+                continue
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+    return tuple(normalized)
+
+
+def _cache_settings_payload(settings: Any) -> dict[str, Any]:
+    ttls = settings.ttls
+    return {
+        "enabled": settings.enabled,
+        "backend": settings.backend,
+        "cache_dir": str(settings.cache_dir),
+        "redis_url": settings.redis_url,
+        "prefix": settings.prefix,
+        "ttls": {
+            "search_suggestions": ttls.search_suggestions,
+            "tooltip_meta": ttls.tooltip_meta,
+            "entity_page_html": ttls.entity_page_html,
+            "guide_page_html": ttls.guide_page_html,
+            "page_html": ttls.page_html,
+            "comment_replies": ttls.comment_replies,
+            "entity_response": ttls.entity_response,
+        },
+    }
 
 
 def _build_entity_access_plan(entity_type: str, entity_id: int) -> EntityAccessPlan:
@@ -2691,6 +2741,65 @@ def expansions(ctx: typer.Context) -> None:
             }
             for profile in profiles
         ],
+    }
+    _emit(ctx, payload)
+
+
+@app.command("cache-inspect")
+def cache_inspect(ctx: typer.Context) -> None:
+    settings = _load_cache_settings_or_fail(ctx)
+    if settings.backend == "file":
+        stats = inspect_file_cache(settings.cache_dir)
+    else:
+        stats = inspect_redis_cache(settings.redis_url, prefix=settings.prefix)
+    payload = {
+        "settings": _cache_settings_payload(settings),
+        "stats": stats,
+    }
+    _emit(ctx, payload)
+
+
+@app.command("cache-clear")
+def cache_clear(
+    ctx: typer.Context,
+    namespace: list[str] = typer.Option(
+        [],
+        "--namespace",
+        help="Restrict clearing to one or more cache namespaces. Repeat or pass comma-separated values.",
+    ),
+    expired_only: bool = typer.Option(
+        False,
+        "--expired-only/--all",
+        help="Only clear expired file-cache entries. Ignored by default when clearing all entries.",
+    ),
+) -> None:
+    settings = _load_cache_settings_or_fail(ctx)
+    selected_namespaces = _normalize_cache_namespaces(namespace)
+    if settings.backend == "file":
+        removed = clear_file_cache(
+            settings.cache_dir,
+            namespaces=selected_namespaces,
+            expired_only=expired_only,
+        )
+        remaining = inspect_file_cache(settings.cache_dir)
+    else:
+        if expired_only:
+            _fail(ctx, "invalid_argument", "--expired-only is only supported for file cache backends.")
+        try:
+            removed = clear_redis_cache(
+                settings.redis_url,
+                prefix=settings.prefix,
+                namespaces=selected_namespaces,
+            )
+        except ValueError as exc:
+            _fail(ctx, "invalid_cache_config", str(exc))
+        remaining = inspect_redis_cache(settings.redis_url, prefix=settings.prefix)
+    payload = {
+        "settings": _cache_settings_payload(settings),
+        "namespaces": list(selected_namespaces),
+        "expired_only": expired_only,
+        "removed": removed,
+        "remaining": remaining,
     }
     _emit(ctx, payload)
 

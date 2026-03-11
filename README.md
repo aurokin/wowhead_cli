@@ -38,6 +38,8 @@ wowhead guide-bundle-search "frost"
 wowhead guide-bundle-query "obliterate"
 wowhead guide-bundle-inspect 3143
 wowhead guide-bundle-index-rebuild
+wowhead cache-inspect
+wowhead cache-clear --namespace entity_response --expired-only
 wowhead entity item 19019
 wowhead comments item 19019 --limit 30 --sort rating
 wowhead compare item:19019 item:19351 --comment-sample 2

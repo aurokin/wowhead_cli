@@ -24,6 +24,8 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 - Query exported bundle content across a root: `wowhead guide-bundle-query "<query>" [--root <dir>]`
 - Inspect one exported guide bundle: `wowhead guide-bundle-inspect <bundle-or-selector> [--root <dir>]`
 - Rebuild a root bundle index explicitly: `wowhead guide-bundle-index-rebuild [--root <dir>]`
+- Inspect the active cache backend: `wowhead cache-inspect`
+- Clear cache entries: `wowhead cache-clear [--namespace entity_response] [--expired-only]`
 - Refresh an exported guide bundle in place: `wowhead guide-bundle-refresh <bundle-or-selector> [--root <dir>]`
 - Query exported guide assets: `wowhead guide-query <dir> "<query>"`
 - Multi-entity compare: `wowhead compare <type:id> <type:id> ...`
@@ -60,6 +62,8 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 22. `guide-bundle-inspect` is the trust-check command for one bundle. It compares manifest counts to observed local files, reports freshness and hydration state, and tells you whether the root `index.json` is valid and contains that bundle.
 23. `guide-bundle-index-rebuild` is the explicit repair path for root discovery. Use it when `index.json` is missing, broken, or out of sync with the actual bundle directories.
 24. `guide-bundle-refresh` infers refresh settings from the stored bundle manifest. If `--max-age-hours` is omitted, the default freshness window is 24 hours, so agents can safely refresh without passing a threshold in the common case. For hydrated bundles, refresh reuses entity payloads whose `stored_at` timestamp is still fresh and only re-fetches stale ones unless `--force` is used.
+25. `cache-inspect` reports the active cache settings and namespace-level cache stats, so agents can check whether transport and normalized entity caches are populated, expired, or empty before assuming anything about freshness.
+26. `cache-clear` is the repair command for the cache layer. It can clear everything or just a selected namespace such as `entity_response`, and for file-backed caches it supports `--expired-only` to prune stale entries without blowing away fresh ones.
 
 ## Required Usage Rules
 

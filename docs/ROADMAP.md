@@ -24,8 +24,6 @@ Goal:
 Keep the cache and hydrated local data trustworthy and easy to inspect.
 
 Open work:
-- expose light cache or hydration inspection commands so agents can understand freshness without opening files directly
-- add manual cache or index rebuild or bust workflows for repair cases
 - decide whether shared Redis deployments need extra visibility or stats commands
 
 Why this matters:
@@ -45,7 +43,7 @@ These are lower priority, but still likely useful:
 1. `search` ranking cleanup
 2. `resolve` command
 3. search narrowing and follow-up guidance
-4. cache and freshness inspection commands
+4. shared Redis visibility and stats commands
 
 ## Success Criteria
 
