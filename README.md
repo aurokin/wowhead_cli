@@ -19,6 +19,7 @@ pip install -e '.[dev,redis]'
 # setup/update editable install and link ~/.local/bin/wowhead
 make dev-deploy
 wowhead search "defias"
+wowhead resolve "fairbreeze favors"
 
 # optional: update venv only (no ~/.local/bin changes)
 make dev-deploy-no-link

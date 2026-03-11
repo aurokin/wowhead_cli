@@ -8,9 +8,6 @@ Goal:
 Make it easier for an agent to go from an ambiguous natural-language query to the correct next command.
 
 Open work:
-- add a `resolve` command that chooses the best candidate and next command
-- add narrowing controls such as preferred or required entity type
-- add compact reasoning fields like confidence or match reasons
 - add bounded follow-up guidance for when `entity`, `entity-page`, `guide`, or `comments` is the better next step
 
 Why this matters:
@@ -39,9 +36,8 @@ These are lower priority, but still likely useful:
 
 ## Recommended Order
 
-1. `resolve` command
-2. search narrowing and follow-up guidance
-3. shared Redis visibility and stats commands
+1. search follow-up guidance
+2. shared Redis visibility and stats commands
 
 ## Success Criteria
 

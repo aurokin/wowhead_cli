@@ -1205,6 +1205,139 @@ def _search_result_score_and_reasons(row: dict[str, Any], *, query: str) -> tupl
     return score, unique_reasons
 
 
+RESOLVE_ENTITY_TYPES = frozenset({
+    "achievement",
+    "battle-pet",
+    "currency",
+    "faction",
+    "guide",
+    "item",
+    "mount",
+    "npc",
+    "object",
+    "pet",
+    "quest",
+    "recipe",
+    "spell",
+    "transmog-set",
+    "zone",
+})
+
+
+def _normalize_resolve_entity_types(values: list[str]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        for candidate in raw.split(","):
+            value = candidate.strip().lower()
+            if not value:
+                continue
+            if value not in RESOLVE_ENTITY_TYPES:
+                raise ValueError(
+                    f"Unsupported resolve entity type {value!r}. Expected one of: {', '.join(sorted(RESOLVE_ENTITY_TYPES))}."
+                )
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+    return tuple(normalized)
+
+
+def _search_result_url(*, entity_type: str | None, entity_id: int | None, expansion: ExpansionProfile) -> str | None:
+    if not isinstance(entity_id, int):
+        return None
+    if entity_type == "guide":
+        return guide_url(entity_id, expansion=expansion)
+    if entity_type:
+        return entity_url(entity_type, entity_id, expansion=expansion)
+    return None
+
+
+def _normalize_search_results(
+    results: list[Any],
+    *,
+    query: str,
+    expansion: ExpansionProfile,
+    entity_types: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    selected_entity_types = set(entity_types)
+    normalized: list[dict[str, Any]] = []
+    for index, row in enumerate(results):
+        if not isinstance(row, dict):
+            continue
+        entity_type = suggestion_entity_type(row)
+        if selected_entity_types and entity_type not in selected_entity_types:
+            continue
+        entity_id = row.get("id")
+        popularity = row.get("popularity") if isinstance(row.get("popularity"), int) else 0
+        search_score, match_reasons = _search_result_score_and_reasons(row, query=query)
+        candidate = {
+            "id": entity_id,
+            "name": row.get("name"),
+            "type_id": row.get("type"),
+            "type_name": row.get("typeName"),
+            "entity_type": entity_type,
+            "url": _search_result_url(entity_type=entity_type, entity_id=entity_id if isinstance(entity_id, int) else None, expansion=expansion),
+            "ranking": {
+                "score": search_score,
+                "match_reasons": match_reasons,
+            },
+            "metadata": {
+                "popularity": popularity,
+                "icon": row.get("icon"),
+                "quality": row.get("quality"),
+                "side": row.get("side"),
+                "display_name": row.get("displayName"),
+            },
+            "_sort": (-search_score, -popularity, index),
+        }
+        normalized.append(candidate)
+    normalized.sort(key=lambda row: row["_sort"])
+    for row in normalized:
+        row.pop("_sort", None)
+    return normalized
+
+
+def _command_prefix_for_expansion(expansion: ExpansionProfile) -> str:
+    if expansion.key == resolve_expansion(None).key:
+        return "wowhead"
+    return f"wowhead --expansion {expansion.key}"
+
+
+def _resolve_next_command(candidate: dict[str, Any], *, expansion: ExpansionProfile) -> str | None:
+    entity_type = candidate.get("entity_type")
+    entity_id = candidate.get("id")
+    if not isinstance(entity_type, str) or not isinstance(entity_id, int):
+        return None
+    prefix = _command_prefix_for_expansion(expansion)
+    if entity_type == "guide":
+        return f"{prefix} guide {entity_id}"
+    if entity_type in RESOLVE_ENTITY_TYPES:
+        return f"{prefix} entity {entity_type} {entity_id}"
+    return None
+
+
+def _resolve_confidence(candidates: list[dict[str, Any]], *, entity_types: tuple[str, ...]) -> str:
+    if not candidates:
+        return "none"
+    top_score = int(candidates[0].get("ranking", {}).get("score") or 0)
+    second_score = int(candidates[1].get("ranking", {}).get("score") or 0) if len(candidates) > 1 else 0
+    margin = top_score - second_score
+    reasons = set(candidates[0].get("ranking", {}).get("match_reasons") or [])
+
+    if "exact_name" in reasons or "exact_display_name" in reasons:
+        if margin >= 4 or second_score == 0:
+            return "high"
+        return "medium"
+    if top_score >= 24 and margin >= 6:
+        return "high"
+    if entity_types and top_score >= 18 and margin >= 4:
+        return "high"
+    if top_score >= 18 and margin >= 4:
+        return "medium"
+    return "low"
+
+
 def _truncate_preview(value: str, *, max_chars: int = 220) -> str:
     text = " ".join(value.split())
     if len(text) <= max_chars:
@@ -2899,6 +3032,74 @@ def cache_clear(
     _emit(ctx, payload)
 
 
+@app.command("resolve")
+def resolve(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Natural-language query to resolve to the best next command."),
+    entity_type: list[str] = typer.Option(
+        [],
+        "--entity-type",
+        help="Restrict resolution to one or more entity types. Repeat or pass comma-separated values.",
+    ),
+    limit: int = typer.Option(
+        5,
+        "--limit",
+        min=1,
+        max=20,
+        help="Maximum fallback candidates to return.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    client = _client(ctx)
+    try:
+        selected_entity_types = _normalize_resolve_entity_types(entity_type)
+    except ValueError as exc:
+        _fail(ctx, "invalid_argument", str(exc))
+    try:
+        response = client.search_suggestions(query)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+    except ValueError as exc:
+        _fail(ctx, "parse_error", str(exc))
+
+    results = response.get("results")
+    if not isinstance(results, list):
+        _fail(ctx, "unexpected_response", "Missing or invalid 'results' payload from Wowhead.")
+
+    candidates = _normalize_search_results(
+        results,
+        query=query,
+        expansion=cfg.expansion,
+        entity_types=selected_entity_types,
+    )
+    confidence = _resolve_confidence(candidates, entity_types=selected_entity_types)
+    top_candidate = candidates[0] if candidates else None
+    next_command = (
+        _resolve_next_command(top_candidate, expansion=cfg.expansion)
+        if isinstance(top_candidate, dict) and confidence == "high"
+        else None
+    )
+    search_command = f"{_command_prefix_for_expansion(cfg.expansion)} search {shlex.quote(query)}"
+    payload = {
+        "query": query,
+        "expansion": cfg.expansion.key,
+        "search_url": search_url(query, expansion=cfg.expansion),
+        "filters": {
+            "entity_types": list(selected_entity_types),
+        },
+        "resolved": next_command is not None,
+        "confidence": confidence,
+        "match": top_candidate,
+        "next_command": next_command,
+        "fallback_search_command": None if next_command is not None else search_command,
+        "count": len(candidates),
+        "candidates": candidates[:limit],
+    }
+    _emit(ctx, payload)
+
+
 @app.command("search")
 def search(
     ctx: typer.Context,
@@ -2926,45 +3127,7 @@ def search(
     if not isinstance(results, list):
         _fail(ctx, "unexpected_response", "Missing or invalid 'results' payload from Wowhead.")
 
-    normalized = []
-    for index, row in enumerate(results):
-        if not isinstance(row, dict):
-            continue
-        entity_type = suggestion_entity_type(row)
-        entity_id = row.get("id")
-        candidate_url: str | None = None
-        if isinstance(entity_id, int):
-            if entity_type == "guide":
-                candidate_url = guide_url(entity_id, expansion=cfg.expansion)
-            elif entity_type:
-                candidate_url = entity_url(entity_type, entity_id, expansion=cfg.expansion)
-        search_score, match_reasons = _search_result_score_and_reasons(row, query=query)
-        popularity = row.get("popularity") if isinstance(row.get("popularity"), int) else 0
-        candidate = {
-            "id": entity_id,
-            "name": row.get("name"),
-            "type_id": row.get("type"),
-            "type_name": row.get("typeName"),
-            "entity_type": entity_type,
-            "url": candidate_url,
-            "ranking": {
-                "score": search_score,
-                "match_reasons": match_reasons,
-            },
-            "metadata": {
-                "popularity": popularity,
-                "icon": row.get("icon"),
-                "quality": row.get("quality"),
-                "side": row.get("side"),
-                "display_name": row.get("displayName"),
-            },
-            "_sort": (-search_score, -popularity, index),
-        }
-        normalized.append(candidate)
-
-    normalized.sort(key=lambda row: row["_sort"])
-    for row in normalized:
-        row.pop("_sort", None)
+    normalized = _normalize_search_results(results, query=query, expansion=cfg.expansion)
 
     payload: dict[str, Any] = {
         "query": query,

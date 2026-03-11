@@ -8,6 +8,7 @@ The goal is to keep the README short and keep detailed usage notes close to actu
 
 ```bash
 wowhead search "defias"
+wowhead resolve "fairbreeze favors"
 wowhead --expansion wotlk search "thunderfury"
 wowhead guide 3143
 wowhead guide-full 3143
@@ -121,6 +122,11 @@ Hydration behavior:
 - hydrated entity manifests track `stored_at` and `storage_source`
 - bundle manifests expose `hydration.source_counts`
 
+Search and resolve:
+- use `search` when you want to browse candidates or the query is likely ambiguous
+- use `resolve` when you want the CLI to choose the best next command conservatively
+- `resolve --entity-type guide` or similar can safely narrow ambiguous queries when the caller already knows the target class of thing
+
 Bundle discovery and refresh:
 - `guide-bundle-list` discovers bundles under `./wowhead_exports/` or another root
 - `guide-bundle-search` searches indexed bundle metadata across a root
@@ -135,6 +141,7 @@ Bundle discovery and refresh:
 - `cache-inspect` shows current cache config plus namespace-level stats for the active file or Redis backend
 - `cache-clear` clears cache entries across all namespaces or selected namespaces, with `--expired-only` support for file-backed caches
 - `search` now reranks upstream suggestions locally and includes lightweight `ranking.score` plus `ranking.match_reasons` per result
+- `resolve` is the conservative one-shot discovery path: it picks a best match and returns a runnable `next_command` only when confidence is high, otherwise it falls back to `search`
 - if `--max-age-hours` is omitted on refresh, the default freshness window is `24`
 - refresh selectively rehydrates stale hydrated entity payloads unless `--force` is used
 
