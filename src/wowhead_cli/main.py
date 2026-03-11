@@ -3088,12 +3088,31 @@ def expansions(ctx: typer.Context) -> None:
 
 
 @app.command("cache-inspect")
-def cache_inspect(ctx: typer.Context) -> None:
+def cache_inspect(
+    ctx: typer.Context,
+    show_redis_prefixes: bool = typer.Option(
+        False,
+        "--show-redis-prefixes",
+        help="For Redis backends, include a bounded summary of other prefixes in the same Redis.",
+    ),
+    redis_prefix_limit: int = typer.Option(
+        10,
+        "--redis-prefix-limit",
+        min=1,
+        max=100,
+        help="Maximum number of Redis prefixes to include when --show-redis-prefixes is used.",
+    ),
+) -> None:
     settings = _load_cache_settings_or_fail(ctx)
     if settings.backend == "file":
         stats = inspect_file_cache(settings.cache_dir)
     else:
-        stats = inspect_redis_cache(settings.redis_url, prefix=settings.prefix)
+        stats = inspect_redis_cache(
+            settings.redis_url,
+            prefix=settings.prefix,
+            include_prefix_visibility=show_redis_prefixes,
+            prefix_limit=redis_prefix_limit,
+        )
     payload = {
         "settings": _cache_settings_payload(settings),
         "stats": stats,

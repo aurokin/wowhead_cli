@@ -314,6 +314,8 @@ def inspect_redis_cache(
     redis_url: str | None,
     *,
     prefix: str,
+    include_prefix_visibility: bool = False,
+    prefix_limit: int = 10,
     import_module_func: Any = importlib.import_module,
 ) -> dict[str, Any]:
     if not redis_url:
@@ -340,13 +342,41 @@ def inspect_redis_cache(
         raw = key[len(prefix) + 1 :] if key.startswith(f"{prefix}:") else key
         namespace = raw.split(":", 1)[0] if raw else "cache"
         namespaces[namespace] = namespaces.get(namespace, 0) + 1
-    return {
+    summary = {
         "kind": "redis",
         "available": True,
         "count": len(keys),
         "namespaces": dict(sorted(namespaces.items())),
         "error": None,
     }
+    if not include_prefix_visibility:
+        return summary
+
+    all_keys = _redis_iter_keys(client, "*")
+    prefix_counts: dict[str, int] = {}
+    for key in all_keys:
+        key_prefix = key.split(":", 1)[0] if ":" in key else key
+        prefix_counts[key_prefix] = prefix_counts.get(key_prefix, 0) + 1
+    ordered_prefixes = sorted(prefix_counts.items(), key=lambda item: (-item[1], item[0]))
+    other_prefix_count = sum(count for name, count in ordered_prefixes if name != prefix)
+    summary["prefix_visibility"] = {
+        "current_prefix": prefix,
+        "current_prefix_count": prefix_counts.get(prefix, 0),
+        "other_prefix_count": other_prefix_count,
+        "other_prefixes_present": other_prefix_count > 0,
+        "isolated": other_prefix_count == 0,
+        "total_prefixes": len(prefix_counts),
+        "prefixes": [
+            {
+                "prefix": name,
+                "count": count,
+                "current": name == prefix,
+            }
+            for name, count in ordered_prefixes[:prefix_limit]
+        ],
+        "truncated": len(ordered_prefixes) > prefix_limit,
+    }
+    return summary
 
 
 def clear_redis_cache(

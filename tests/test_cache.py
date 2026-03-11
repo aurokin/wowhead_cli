@@ -128,6 +128,8 @@ def test_inspect_and_clear_redis_cache_support_prefix_and_namespaces() -> None:
             self.deleted: list[str] = []
 
         def scan_iter(self, match: str):  # noqa: ANN202
+            if match == "*":
+                return list(self.values)
             if match.endswith(":*") and match.count(":") == 1:
                 prefix = match[:-1]
                 return [key for key in self.values if key.startswith(prefix)]
@@ -161,6 +163,27 @@ def test_inspect_and_clear_redis_cache_support_prefix_and_namespaces() -> None:
         "count": 3,
         "namespaces": {"entity_response": 2, "search_suggestions": 1},
         "error": None,
+    }
+
+    visibility_summary = inspect_redis_cache(
+        "redis://cache.example:6379/3",
+        prefix="wowhead_cli",
+        include_prefix_visibility=True,
+        prefix_limit=2,
+        import_module_func=lambda name: FakeRedisModule,
+    )
+    assert visibility_summary["prefix_visibility"] == {
+        "current_prefix": "wowhead_cli",
+        "current_prefix_count": 3,
+        "other_prefix_count": 1,
+        "other_prefixes_present": True,
+        "isolated": False,
+        "total_prefixes": 2,
+        "prefixes": [
+            {"prefix": "wowhead_cli", "count": 3, "current": True},
+            {"prefix": "other_app", "count": 1, "current": False},
+        ],
+        "truncated": False,
     }
 
     removed = clear_redis_cache(

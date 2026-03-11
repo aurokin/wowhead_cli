@@ -21,6 +21,7 @@ wowhead guide-bundle-query "obliterate"
 wowhead guide-bundle-inspect 3143
 wowhead guide-bundle-index-rebuild
 wowhead cache-inspect
+wowhead cache-inspect --show-redis-prefixes
 wowhead cache-clear --namespace entity_response --expired-only
 wowhead guide-bundle-refresh ./tmp/frost-dk-guide
 wowhead guide-bundle-refresh 3143 --root ./wowhead_exports --max-age-hours 6
@@ -206,6 +207,10 @@ Current active cache layers:
 - normalized `entity` response cache for repeated `entity` lookups with the same flags
 
 The normalized entity cache is expansion-scoped.
+
+Redis visibility:
+- `cache-inspect --show-redis-prefixes` adds a bounded `prefix_visibility` summary for shared Redis deployments
+- it shows whether the configured prefix appears isolated, how many keys live under other prefixes, and a capped list of visible prefixes in the same Redis
 
 ## Related Docs
 

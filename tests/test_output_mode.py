@@ -162,6 +162,47 @@ def test_cache_inspect_reports_file_cache_stats(tmp_path: Path, monkeypatch) -> 
     assert payload["stats"]["namespaces"]["search_suggestions"]["active"] == 1
 
 
+def test_cache_inspect_can_request_redis_prefix_visibility(monkeypatch) -> None:
+    monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "redis")
+    monkeypatch.setenv("WOWHEAD_REDIS_URL", "redis://cache.example:6379/3")
+    monkeypatch.setenv("WOWHEAD_REDIS_PREFIX", "wowhead_cli")
+
+    def fake_inspect(redis_url: str | None, *, prefix: str, include_prefix_visibility: bool = False, prefix_limit: int = 10, import_module_func=None):  # noqa: ANN001
+        assert redis_url == "redis://cache.example:6379/3"
+        assert prefix == "wowhead_cli"
+        assert include_prefix_visibility is True
+        assert prefix_limit == 4
+        return {
+            "kind": "redis",
+            "available": True,
+            "count": 2,
+            "namespaces": {"entity_response": 2},
+            "error": None,
+            "prefix_visibility": {
+                "current_prefix": "wowhead_cli",
+                "current_prefix_count": 2,
+                "other_prefix_count": 1,
+                "other_prefixes_present": True,
+                "isolated": False,
+                "total_prefixes": 2,
+                "prefixes": [
+                    {"prefix": "wowhead_cli", "count": 2, "current": True},
+                    {"prefix": "other_app", "count": 1, "current": False},
+                ],
+                "truncated": False,
+            },
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.inspect_redis_cache", fake_inspect)
+    result = runner.invoke(app, ["cache-inspect", "--show-redis-prefixes", "--redis-prefix-limit", "4"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["settings"]["backend"] == "redis"
+    assert payload["stats"]["prefix_visibility"]["other_prefix_count"] == 1
+    assert payload["stats"]["prefix_visibility"]["prefixes"][1]["prefix"] == "other_app"
+
+
 
 def test_cache_clear_can_remove_expired_entries_by_namespace(tmp_path: Path, monkeypatch) -> None:
     cache_dir = tmp_path / "cache"
