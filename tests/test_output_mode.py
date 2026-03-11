@@ -43,6 +43,25 @@ def test_pretty_flag_emits_indented_json(monkeypatch) -> None:
     assert '  "query": "thunderfury",' in result.stdout
 
 
+def test_search_results_include_ranking_metadata(monkeypatch) -> None:
+    def fake_search(self, query: str):  # noqa: ANN001
+        return {
+            "search": query,
+            "results": [
+                {"type": 3, "id": 19019, "name": "Thunderfury", "typeName": "Item", "popularity": 5},
+            ],
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
+    result = runner.invoke(app, ["search", "thunderfury", "--limit", "1"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["ranking"]["score"] > 0
+    assert "match_reasons" in payload["results"][0]["ranking"]
+
+
+
 def test_compact_flag_truncates_long_string_fields(monkeypatch) -> None:
     def fake_tooltip(self, entity_type: str, entity_id: int, data_env=None):  # noqa: ANN001, ANN202
         return {

@@ -64,6 +64,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 24. `guide-bundle-refresh` infers refresh settings from the stored bundle manifest. If `--max-age-hours` is omitted, the default freshness window is 24 hours, so agents can safely refresh without passing a threshold in the common case. For hydrated bundles, refresh reuses entity payloads whose `stored_at` timestamp is still fresh and only re-fetches stale ones unless `--force` is used.
 25. `cache-inspect` reports the active cache settings and namespace-level cache stats, so agents can check whether transport and normalized entity caches are populated, expired, or empty before assuming anything about freshness.
 26. `cache-clear` is the repair command for the cache layer. It can clear everything or just a selected namespace such as `entity_response`, and for file-backed caches it supports `--expired-only` to prune stale entries without blowing away fresh ones.
+27. `search` no longer trusts upstream ordering blindly. It reranks suggestions locally using exact-name matches, full-term matches, type hints from the query, and popularity, and each result includes a compact `ranking` object so agents can see why it surfaced.
 
 ## Required Usage Rules
 

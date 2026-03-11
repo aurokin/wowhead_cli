@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
+import math
 import shlex
 from pathlib import Path
 import re
@@ -1108,6 +1109,100 @@ def _score_text_match(query: str, *values: Any) -> int:
     if query_normalized and query_normalized in joined:
         score += max(2, len(terms))
     return score
+
+
+SEARCH_TYPE_HINTS = {
+    "achievement": {"achievement", "achievements"},
+    "currency": {"currency", "currencies", "token", "tokens"},
+    "faction": {"faction", "factions", "reputation", "rep"},
+    "guide": {"guide", "guides"},
+    "item": {"item", "items", "gear"},
+    "npc": {"npc", "npcs", "mob", "mobs"},
+    "object": {"object", "objects"},
+    "pet": {"pet", "pets", "hunter pet", "hunter pets"},
+    "quest": {"quest", "quests"},
+    "recipe": {"recipe", "recipes"},
+    "spell": {"spell", "spells", "ability", "abilities", "talent", "talents"},
+    "transmog-set": {"transmog", "transmog set", "transmog sets", "set", "sets"},
+    "zone": {"zone", "zones"},
+}
+
+
+def _search_type_hints(query: str) -> set[str]:
+    normalized = " ".join(query.lower().split())
+    if not normalized:
+        return set()
+    hinted: set[str] = set()
+    for entity_type, phrases in SEARCH_TYPE_HINTS.items():
+        for phrase in phrases:
+            if phrase in normalized:
+                hinted.add(entity_type)
+                break
+    return hinted
+
+
+def _search_result_score_and_reasons(row: dict[str, Any], *, query: str) -> tuple[int, list[str]]:
+    normalized_query = " ".join(query.lower().split())
+    terms = _query_terms(query)
+    name = row.get("name") if isinstance(row.get("name"), str) else ""
+    display_name = row.get("displayName") if isinstance(row.get("displayName"), str) else ""
+    type_name = row.get("typeName") if isinstance(row.get("typeName"), str) else ""
+    entity_type = suggestion_entity_type(row)
+    popularity = row.get("popularity") if isinstance(row.get("popularity"), int) else 0
+
+    haystacks = [value.lower() for value in (name, display_name, type_name) if value]
+    name_normalized = name.lower().strip()
+    display_normalized = display_name.lower().strip()
+    reasons: list[str] = []
+    score = 0
+
+    if normalized_query and name_normalized == normalized_query:
+        score += 30
+        reasons.append("exact_name")
+    elif normalized_query and display_normalized == normalized_query:
+        score += 26
+        reasons.append("exact_display_name")
+
+    if normalized_query and name_normalized.startswith(normalized_query):
+        score += 10
+        reasons.append("name_prefix")
+    elif normalized_query and display_normalized.startswith(normalized_query):
+        score += 8
+        reasons.append("display_name_prefix")
+
+    if normalized_query and name_normalized and normalized_query in name_normalized:
+        score += 14
+        reasons.append("name_contains_query")
+    elif normalized_query and display_normalized and normalized_query in display_normalized:
+        score += 12
+        reasons.append("display_name_contains_query")
+
+    if terms and haystacks:
+        joined = " ".join(haystacks)
+        if all(term in joined for term in terms):
+            score += len(terms) * 3
+            reasons.append("all_terms_match")
+
+    hinted_types = _search_type_hints(query)
+    if entity_type in hinted_types:
+        score += 9
+        reasons.append("type_hint")
+
+    if popularity > 0:
+        score += min(6, int(math.log10(popularity + 1) * 2))
+        reasons.append("popularity")
+
+    if entity_type is not None:
+        score += 1
+
+    unique_reasons: list[str] = []
+    seen: set[str] = set()
+    for reason in reasons:
+        if reason in seen:
+            continue
+        seen.add(reason)
+        unique_reasons.append(reason)
+    return score, unique_reasons
 
 
 def _truncate_preview(value: str, *, max_chars: int = 220) -> str:
@@ -2832,7 +2927,7 @@ def search(
         _fail(ctx, "unexpected_response", "Missing or invalid 'results' payload from Wowhead.")
 
     normalized = []
-    for row in results[:limit]:
+    for index, row in enumerate(results):
         if not isinstance(row, dict):
             continue
         entity_type = suggestion_entity_type(row)
@@ -2843,6 +2938,8 @@ def search(
                 candidate_url = guide_url(entity_id, expansion=cfg.expansion)
             elif entity_type:
                 candidate_url = entity_url(entity_type, entity_id, expansion=cfg.expansion)
+        search_score, match_reasons = _search_result_score_and_reasons(row, query=query)
+        popularity = row.get("popularity") if isinstance(row.get("popularity"), int) else 0
         candidate = {
             "id": entity_id,
             "name": row.get("name"),
@@ -2850,22 +2947,31 @@ def search(
             "type_name": row.get("typeName"),
             "entity_type": entity_type,
             "url": candidate_url,
+            "ranking": {
+                "score": search_score,
+                "match_reasons": match_reasons,
+            },
             "metadata": {
-                "popularity": row.get("popularity"),
+                "popularity": popularity,
                 "icon": row.get("icon"),
                 "quality": row.get("quality"),
                 "side": row.get("side"),
                 "display_name": row.get("displayName"),
             },
+            "_sort": (-search_score, -popularity, index),
         }
         normalized.append(candidate)
+
+    normalized.sort(key=lambda row: row["_sort"])
+    for row in normalized:
+        row.pop("_sort", None)
 
     payload: dict[str, Any] = {
         "query": query,
         "expansion": cfg.expansion.key,
         "search_url": search_url(query, expansion=cfg.expansion),
         "count": len(normalized),
-        "results": normalized,
+        "results": normalized[:limit],
     }
     _emit(ctx, payload)
 

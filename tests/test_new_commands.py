@@ -301,6 +301,71 @@ def test_search_faction_result_includes_faction_url(monkeypatch) -> None:
     assert payload["results"][0]["url"] == "https://www.wowhead.com/faction=529"
 
 
+def test_search_reranks_exact_name_match_ahead_of_noisy_popular_result(monkeypatch) -> None:
+    def fake_search(self, query: str):  # noqa: ANN001
+        return {
+            "search": query,
+            "results": [
+                {
+                    "type": 3,
+                    "id": 2,
+                    "name": "Thunderfury Replica",
+                    "typeName": "Item",
+                    "popularity": 999999,
+                },
+                {
+                    "type": 3,
+                    "id": 19019,
+                    "name": "Thunderfury",
+                    "typeName": "Item",
+                    "popularity": 5,
+                },
+            ],
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
+    result = runner.invoke(app, ["search", "thunderfury", "--limit", "2"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert [row["id"] for row in payload["results"]] == [19019, 2]
+    assert "exact_name" in payload["results"][0]["ranking"]["match_reasons"]
+    assert payload["results"][0]["ranking"]["score"] > payload["results"][1]["ranking"]["score"]
+
+
+
+def test_search_type_hint_promotes_guides_for_guide_queries(monkeypatch) -> None:
+    def fake_search(self, query: str):  # noqa: ANN001
+        return {
+            "search": query,
+            "results": [
+                {
+                    "type": 3,
+                    "id": 19019,
+                    "name": "Frost Death Knight",
+                    "typeName": "Item",
+                    "popularity": 50,
+                },
+                {
+                    "type": 100,
+                    "id": 3143,
+                    "name": "Frost Death Knight DPS Guide - Midnight",
+                    "typeName": "Guide",
+                    "popularity": 1,
+                },
+            ],
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
+    result = runner.invoke(app, ["search", "frost death knight guide", "--limit", "2"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert [row["entity_type"] for row in payload["results"]] == ["guide", "item"]
+    assert "type_hint" in payload["results"][0]["ranking"]["match_reasons"]
+
+
+
 def test_search_pet_result_includes_pet_url(monkeypatch) -> None:
     def fake_search(self, query: str):  # noqa: ANN001
         return {

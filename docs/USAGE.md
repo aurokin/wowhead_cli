@@ -134,6 +134,7 @@ Bundle discovery and refresh:
 - `guide-bundle-refresh` refreshes an existing bundle in place
 - `cache-inspect` shows current cache config plus namespace-level stats for the active file or Redis backend
 - `cache-clear` clears cache entries across all namespaces or selected namespaces, with `--expired-only` support for file-backed caches
+- `search` now reranks upstream suggestions locally and includes lightweight `ranking.score` plus `ranking.match_reasons` per result
 - if `--max-age-hours` is omitted on refresh, the default freshness window is `24`
 - refresh selectively rehydrates stale hydrated entity payloads unless `--force` is used
 
