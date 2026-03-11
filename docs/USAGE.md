@@ -22,6 +22,8 @@ wowhead guide-bundle-inspect 3143
 wowhead guide-bundle-index-rebuild
 wowhead cache-inspect
 wowhead cache-inspect --show-redis-prefixes
+wowhead cache-inspect --summary --hide-zero
+wowhead cache-repair
 wowhead cache-clear --namespace entity_response --expired-only
 wowhead guide-bundle-refresh ./tmp/frost-dk-guide
 wowhead guide-bundle-refresh 3143 --root ./wowhead_exports --max-age-hours 6
@@ -132,6 +134,7 @@ Search and resolve:
 - `resolve --entity-type guide` or similar can safely narrow ambiguous queries when the caller already knows the target class of thing
 
 Bundle discovery and refresh:
+- bundle freshness summaries now include reason fields such as `bundle_reasons` and `hydration_reasons`, so stale bundles can be triaged without opening the manifest
 - `guide-bundle-list` discovers bundles under `./wowhead_exports/` or another root
 - `guide-bundle-search` searches indexed bundle metadata across a root
 - `guide-bundle-query` searches exported bundle content across a root using the same match kinds and linked-source filters as `guide-query`
@@ -211,6 +214,11 @@ The normalized entity cache is expansion-scoped.
 Redis visibility:
 - `cache-inspect --show-redis-prefixes` adds a bounded `prefix_visibility` summary for shared Redis deployments
 - it shows whether the configured prefix appears isolated, how many keys live under other prefixes, and a capped list of visible prefixes in the same Redis
+
+Cache cleanup and compact inspection:
+- `cache-inspect --summary` returns a compact top-namespace view instead of the full namespace listing
+- `cache-inspect --hide-zero` removes zero-valued count fields from cache stats
+- `cache-repair` reports legacy unscoped file-cache entries; `cache-repair --apply` prunes them
 
 ## Related Docs
 

@@ -14,6 +14,7 @@ from wowhead_cli.cache import (
     inspect_file_cache,
     inspect_redis_cache,
     load_cache_settings_from_env,
+    repair_file_cache,
 )
 from wowhead_cli.wowhead_client import WowheadClient
 
@@ -107,6 +108,32 @@ def test_inspect_file_cache_groups_root_level_hashed_entries_under_legacy_namesp
         "legacy_unscoped": {"total": 1, "active": 0, "expired": 1, "invalid": 0}
     }
     assert summary["totals"] == {"total": 1, "active": 0, "expired": 1, "invalid": 0}
+
+
+def test_repair_file_cache_prunes_legacy_unscoped_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    now = 1000.0
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now + 20)
+    legacy_path = tmp_path / ("a" * 64 + ".json")
+    legacy_path.write_text(json.dumps({"expires_at": now + 10, "payload": {}}), encoding="utf-8")
+    namespaced_path = tmp_path / "search_suggestions" / "active.json"
+    namespaced_path.parent.mkdir(parents=True)
+    namespaced_path.write_text(json.dumps({"expires_at": now + 120, "payload": {}}), encoding="utf-8")
+
+    dry_run = repair_file_cache(tmp_path, apply=False, sample_limit=5)
+    assert dry_run == {
+        "mode": "legacy_unscoped",
+        "apply": False,
+        "candidates": 1,
+        "removed": 0,
+        "sample_paths": [str(legacy_path)],
+        "truncated": False,
+    }
+    assert legacy_path.exists() is True
+
+    applied = repair_file_cache(tmp_path, apply=True, sample_limit=5)
+    assert applied["removed"] == 1
+    assert legacy_path.exists() is False
+    assert namespaced_path.exists() is True
 
 
 

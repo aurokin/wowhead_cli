@@ -19,6 +19,7 @@ from wowhead_cli.cache import (
     inspect_file_cache,
     inspect_redis_cache,
     load_cache_settings_from_env,
+    repair_file_cache,
 )
 from wowhead_cli.expansion_profiles import ExpansionProfile, list_profiles, resolve_expansion
 from wowhead_cli.output import emit
@@ -260,6 +261,57 @@ def _cache_settings_payload(settings: Any) -> dict[str, Any]:
             "entity_response": ttls.entity_response,
         },
     }
+
+
+def _prune_zero_counts(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    filtered: dict[str, Any] = {}
+    for key, raw in value.items():
+        if isinstance(raw, dict):
+            nested = _prune_zero_counts(raw)
+            filtered[key] = nested
+            continue
+        if isinstance(raw, int) and raw == 0 and key in {"active", "expired", "invalid", "total"}:
+            continue
+        filtered[key] = raw
+    return filtered
+
+
+def _cache_namespace_sort_key(item: tuple[str, Any]) -> tuple[int, str]:
+    name, counts = item
+    total = counts.get("total") if isinstance(counts, dict) else 0
+    return (-int(total or 0), name)
+
+
+def _cache_stats_payload(stats: dict[str, Any], *, summary: bool, namespace_limit: int, hide_zero: bool) -> dict[str, Any]:
+    payload = dict(stats)
+    totals = payload.get("totals")
+    namespaces = payload.get("namespaces")
+    if isinstance(totals, dict) and hide_zero:
+        payload["totals"] = _prune_zero_counts(totals)
+    if not isinstance(namespaces, dict):
+        return payload
+
+    sorted_namespaces = sorted(namespaces.items(), key=_cache_namespace_sort_key)
+    if summary:
+        top_namespaces: list[dict[str, Any]] = []
+        for name, counts in sorted_namespaces[:namespace_limit]:
+            row = {"namespace": name}
+            if isinstance(counts, dict):
+                row.update(_prune_zero_counts(counts) if hide_zero else counts)
+            top_namespaces.append(row)
+        payload.pop("namespaces", None)
+        payload["namespace_count"] = len(namespaces)
+        payload["top_namespaces"] = top_namespaces
+        payload["truncated_namespaces"] = len(sorted_namespaces) > namespace_limit
+        return payload
+
+    payload["namespaces"] = {
+        name: (_prune_zero_counts(counts) if hide_zero and isinstance(counts, dict) else counts)
+        for name, counts in sorted_namespaces
+    }
+    return payload
 
 
 def _build_entity_access_plan(entity_type: str, entity_id: int) -> EntityAccessPlan:
@@ -2371,24 +2423,49 @@ def _bundle_hydration_summary(manifest: dict[str, Any], *, counts: dict[str, Any
 
 
 def _bundle_freshness_summary(manifest: dict[str, Any], *, max_age_hours: int) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
     exported_at_raw = manifest.get("exported_at")
-    exported_at = exported_at_raw if isinstance(exported_at_raw, str) else None
+    exported_at = _parse_iso8601_utc(exported_at_raw if isinstance(exported_at_raw, str) else None)
     hydration = manifest.get("hydration")
     hydrated_at_raw = hydration.get("hydrated_at") if isinstance(hydration, dict) else None
-    hydrated_at = hydrated_at_raw if isinstance(hydrated_at_raw, str) else None
+    hydrated_at = _parse_iso8601_utc(hydrated_at_raw if isinstance(hydrated_at_raw, str) else None)
 
-    bundle_status = "fresh" if _guide_bundle_is_fresh({"exported_at": exported_at}, max_age_hours=max_age_hours) else "stale"
+    bundle_reasons: list[str] = []
+    bundle_age_hours: float | None = None
+    if exported_at is None:
+        bundle_status = "stale"
+        bundle_reasons.append("missing_exported_at")
+    else:
+        bundle_age_hours = round((now - exported_at).total_seconds() / 3600, 2)
+        if bundle_age_hours > max_age_hours:
+            bundle_status = "stale"
+            bundle_reasons.append("max_age_exceeded")
+        else:
+            bundle_status = "fresh"
+
     hydration_status = "disabled"
+    hydration_reasons = ["disabled"]
+    hydration_age_hours: float | None = None
     if isinstance(hydration, dict) and hydration.get("enabled") is True:
-        hydration_status = (
-            "fresh"
-            if _guide_bundle_is_fresh({"exported_at": exported_at, "hydration": {"enabled": True, "hydrated_at": hydrated_at}}, max_age_hours=max_age_hours)
-            else "stale"
-        )
+        hydration_reasons = []
+        if bundle_status != "fresh":
+            hydration_reasons.append("bundle_stale")
+        if hydrated_at is None:
+            hydration_reasons.append("missing_hydrated_at")
+        else:
+            hydration_age_hours = round((now - hydrated_at).total_seconds() / 3600, 2)
+            if hydration_age_hours > max_age_hours:
+                hydration_reasons.append("max_age_exceeded")
+        hydration_status = "fresh" if not hydration_reasons else "stale"
+
     return {
         "max_age_hours": max_age_hours,
         "bundle": bundle_status,
+        "bundle_reasons": bundle_reasons,
+        "bundle_age_hours": bundle_age_hours,
         "hydration": hydration_status,
+        "hydration_reasons": hydration_reasons,
+        "hydration_age_hours": hydration_age_hours,
     }
 
 
@@ -3102,6 +3179,23 @@ def cache_inspect(
         max=100,
         help="Maximum number of Redis prefixes to include when --show-redis-prefixes is used.",
     ),
+    summary: bool = typer.Option(
+        False,
+        "--summary",
+        help="Return a compact cache summary instead of the full namespace listing.",
+    ),
+    namespace_limit: int = typer.Option(
+        10,
+        "--namespace-limit",
+        min=1,
+        max=100,
+        help="Maximum namespaces to include in summary mode.",
+    ),
+    hide_zero: bool = typer.Option(
+        False,
+        "--hide-zero",
+        help="Omit zero-valued count fields from cache stats.",
+    ),
 ) -> None:
     settings = _load_cache_settings_or_fail(ctx)
     if settings.backend == "file":
@@ -3115,8 +3209,37 @@ def cache_inspect(
         )
     payload = {
         "settings": _cache_settings_payload(settings),
-        "stats": stats,
+        "stats": _cache_stats_payload(stats, summary=summary, namespace_limit=namespace_limit, hide_zero=hide_zero),
     }
+    _emit(ctx, payload)
+
+
+@app.command("cache-repair")
+def cache_repair(
+    ctx: typer.Context,
+    apply: bool = typer.Option(
+        False,
+        "--apply/--dry-run",
+        help="Apply the repair instead of only reporting candidates.",
+    ),
+    sample_limit: int = typer.Option(
+        10,
+        "--sample-limit",
+        min=1,
+        max=100,
+        help="Maximum legacy cache paths to sample in the repair report.",
+    ),
+) -> None:
+    settings = _load_cache_settings_or_fail(ctx)
+    if settings.backend != "file":
+        _fail(ctx, "invalid_argument", "cache-repair is currently only supported for file cache backends.")
+    result = repair_file_cache(settings.cache_dir, apply=apply, sample_limit=sample_limit)
+    payload = {
+        "settings": _cache_settings_payload(settings),
+        "repair": result,
+    }
+    if apply:
+        payload["remaining"] = inspect_file_cache(settings.cache_dir)
     _emit(ctx, payload)
 
 

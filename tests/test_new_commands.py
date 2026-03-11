@@ -1401,11 +1401,11 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
     assert [row["guide_id"] for row in payload["bundles"]] == [42, 3143]
     assert payload["bundles"][0]["dir_name"] == "guide-42-other"
     assert payload["bundles"][0]["title"] == "Arcane Mage Guide"
-    assert payload["bundles"][0]["freshness"] == {
-        "max_age_hours": 24,
-        "bundle": "fresh",
-        "hydration": "disabled",
-    }
+    assert payload["bundles"][0]["freshness"]["max_age_hours"] == 24
+    assert payload["bundles"][0]["freshness"]["bundle"] == "fresh"
+    assert payload["bundles"][0]["freshness"]["bundle_reasons"] == []
+    assert payload["bundles"][0]["freshness"]["hydration"] == "disabled"
+    assert payload["bundles"][0]["freshness"]["hydration_reasons"] == ["disabled"]
     assert payload["bundles"][0]["hydration"] == {
         "enabled": False,
         "types": [],
@@ -1415,11 +1415,12 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
         "source_counts": {},
     }
     assert payload["bundles"][1]["counts"]["linked_entities"] == 27
-    assert payload["bundles"][1]["freshness"] == {
-        "max_age_hours": 24,
-        "bundle": "stale",
-        "hydration": "stale",
-    }
+    assert payload["bundles"][1]["freshness"]["max_age_hours"] == 24
+    assert payload["bundles"][1]["freshness"]["bundle"] == "stale"
+    assert payload["bundles"][1]["freshness"]["bundle_reasons"] == ["max_age_exceeded"]
+    assert payload["bundles"][1]["freshness"]["hydration"] == "stale"
+    assert "bundle_stale" in payload["bundles"][1]["freshness"]["hydration_reasons"]
+    assert "max_age_exceeded" in payload["bundles"][1]["freshness"]["hydration_reasons"]
     assert payload["bundles"][1]["hydration"] == {
         "enabled": True,
         "types": ["spell", "item"],
@@ -1433,11 +1434,11 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["max_age_hours"] == 72
-    assert payload["bundles"][1]["freshness"] == {
-        "max_age_hours": 72,
-        "bundle": "fresh",
-        "hydration": "fresh",
-    }
+    assert payload["bundles"][1]["freshness"]["max_age_hours"] == 72
+    assert payload["bundles"][1]["freshness"]["bundle"] == "fresh"
+    assert payload["bundles"][1]["freshness"]["bundle_reasons"] == []
+    assert payload["bundles"][1]["freshness"]["hydration"] == "fresh"
+    assert payload["bundles"][1]["freshness"]["hydration_reasons"] == []
 
 
 def test_guide_bundle_list_uses_root_index_when_available(monkeypatch, tmp_path: Path) -> None:
@@ -1501,11 +1502,11 @@ def test_guide_bundle_list_uses_root_index_when_available(monkeypatch, tmp_path:
     payload = json.loads(result.stdout)
     assert payload["bundles"][0]["guide_id"] == 3143
     assert payload["bundles"][0]["hydration"]["source_counts"] == {"entity_cache": 1}
-    assert payload["bundles"][0]["freshness"] == {
-        "max_age_hours": 24,
-        "bundle": "fresh",
-        "hydration": "fresh",
-    }
+    assert payload["bundles"][0]["freshness"]["max_age_hours"] == 24
+    assert payload["bundles"][0]["freshness"]["bundle"] == "fresh"
+    assert payload["bundles"][0]["freshness"]["bundle_reasons"] == []
+    assert payload["bundles"][0]["freshness"]["hydration"] == "fresh"
+    assert payload["bundles"][0]["freshness"]["hydration_reasons"] == []
 
 
 def test_guide_bundle_search_returns_ranked_matches_and_follow_up_commands(tmp_path: Path) -> None:
@@ -1932,7 +1933,9 @@ def test_guide_bundle_inspect_reports_counts_and_index_status(tmp_path: Path) ->
     payload = json.loads(result.stdout)
     assert payload["guide"]["id"] == 3143
     assert payload["freshness"]["bundle"] == "fresh"
+    assert payload["freshness"]["bundle_reasons"] == []
     assert payload["freshness"]["hydration"] == "fresh"
+    assert payload["freshness"]["hydration_reasons"] == []
     assert payload["counts"]["manifest"] == payload["counts"]["observed"]
     assert payload["hydration"]["enabled"] is True
     assert payload["entities_manifest"]["count"] == 1

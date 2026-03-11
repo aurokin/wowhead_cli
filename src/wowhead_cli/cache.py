@@ -252,6 +252,15 @@ def _iter_file_cache_entries(cache_dir: Path) -> list[dict[str, Any]]:
     return entries
 
 
+def _ordered_file_counts(*, total: int, active: int, expired: int, invalid: int) -> dict[str, int]:
+    return {
+        "active": active,
+        "expired": expired,
+        "invalid": invalid,
+        "total": total,
+    }
+
+
 def inspect_file_cache(cache_dir: Path) -> dict[str, Any]:
     root = cache_dir.expanduser()
     entries = _iter_file_cache_entries(root)
@@ -270,8 +279,11 @@ def inspect_file_cache(cache_dir: Path) -> dict[str, Any]:
         "kind": "file",
         "root": str(root),
         "exists": root.exists(),
-        "totals": totals,
-        "namespaces": dict(sorted(namespaces.items())),
+        "totals": _ordered_file_counts(**totals),
+        "namespaces": {
+            namespace: _ordered_file_counts(**counts)
+            for namespace, counts in sorted(namespaces.items())
+        },
     }
 
 
@@ -300,6 +312,35 @@ def clear_file_cache(
     return {
         "total": removed_total,
         "namespaces": dict(sorted(removed_by_namespace.items())),
+    }
+
+
+def repair_file_cache(
+    cache_dir: Path,
+    *,
+    apply: bool = False,
+    sample_limit: int = 10,
+) -> dict[str, Any]:
+    legacy_entries = [
+        entry
+        for entry in _iter_file_cache_entries(cache_dir.expanduser())
+        if entry["namespace"] == "legacy_unscoped"
+    ]
+    removed = 0
+    if apply:
+        for entry in legacy_entries:
+            try:
+                entry["path"].unlink()
+            except OSError:
+                continue
+            removed += 1
+    return {
+        "mode": "legacy_unscoped",
+        "apply": apply,
+        "candidates": len(legacy_entries),
+        "removed": removed,
+        "sample_paths": [str(entry["path"]) for entry in legacy_entries[:sample_limit]],
+        "truncated": len(legacy_entries) > sample_limit,
     }
 
 

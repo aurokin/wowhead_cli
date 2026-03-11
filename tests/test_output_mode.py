@@ -162,6 +162,59 @@ def test_cache_inspect_reports_file_cache_stats(tmp_path: Path, monkeypatch) -> 
     assert payload["stats"]["namespaces"]["search_suggestions"]["active"] == 1
 
 
+def test_cache_inspect_summary_hides_zero_value_fields(tmp_path: Path, monkeypatch) -> None:
+    cache_dir = tmp_path / "cache"
+    store = FileCacheStore(cache_dir)
+    now = 1000.0
+    monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "file")
+    monkeypatch.setenv("WOWHEAD_CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now)
+
+    store.set("search_suggestions:active", {"query": "thunderfury"}, ttl_seconds=60)
+    store.set("entity_response:expired", {"entity": {"id": 19019}}, ttl_seconds=10)
+
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now + 20)
+    result = runner.invoke(app, ["cache-inspect", "--summary", "--namespace-limit", "1", "--hide-zero"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["stats"]["totals"] == {"active": 1, "expired": 1, "total": 2}
+    assert payload["stats"]["namespace_count"] == 2
+    assert payload["stats"]["top_namespaces"] == [
+        {"namespace": "entity_response", "expired": 1, "total": 1}
+    ]
+    assert payload["stats"]["truncated_namespaces"] is True
+    assert "namespaces" not in payload["stats"]
+
+
+
+def test_cache_repair_reports_and_prunes_legacy_unscoped_entries(tmp_path: Path, monkeypatch) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True)
+    now = 1000.0
+    monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "file")
+    monkeypatch.setenv("WOWHEAD_CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now + 20)
+
+    legacy_path = cache_dir / ("a" * 64 + ".json")
+    legacy_path.write_text(json.dumps({"expires_at": now + 10, "payload": {}}), encoding="utf-8")
+
+    dry_run = runner.invoke(app, ["cache-repair"])
+    assert dry_run.exit_code == 0
+    dry_payload = json.loads(dry_run.stdout)
+    assert dry_payload["repair"]["apply"] is False
+    assert dry_payload["repair"]["candidates"] == 1
+    assert dry_payload["repair"]["removed"] == 0
+    assert legacy_path.exists() is True
+
+    apply_result = runner.invoke(app, ["cache-repair", "--apply"])
+    assert apply_result.exit_code == 0
+    apply_payload = json.loads(apply_result.stdout)
+    assert apply_payload["repair"]["removed"] == 1
+    assert apply_payload["remaining"]["totals"] == {"active": 0, "expired": 0, "invalid": 0, "total": 0}
+    assert legacy_path.exists() is False
+
+
 def test_cache_inspect_can_request_redis_prefix_visibility(monkeypatch) -> None:
     monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "redis")
     monkeypatch.setenv("WOWHEAD_REDIS_URL", "redis://cache.example:6379/3")
