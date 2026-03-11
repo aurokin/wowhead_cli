@@ -19,7 +19,10 @@ It should keep its current command surface stable while shared infrastructure is
 The first shared extractions should be infrastructure that is already generic:
 
 - output shaping and `--fields` projection
+- structured error helpers
 - cache backends and TTL/config plumbing
+- shared config and environment handling
+- HTTP transport and retry primitives
 - bundle index, freshness, and local query primitives
 - command routing helpers for root-level `search` and `resolve`
 
@@ -30,6 +33,14 @@ The first shared extractions should be infrastructure that is already generic:
 - entity routing quirks
 - guide-body extraction
 - Wowhead-specific ranking and link normalization
+
+## What Should Wait For A Second Consumer
+
+- article-level content abstractions beyond raw bundle storage
+- search and resolve provider interfaces
+- follow-up recommendation models
+
+Those should move only after `method` proves they are not just Wowhead behavior with different names.
 
 ## Why Wowhead Matters To The Restructure
 

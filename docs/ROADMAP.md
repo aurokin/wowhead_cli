@@ -85,17 +85,29 @@ The important split is conceptual, not naming. Shared code should live in explic
 
 The wrapper-specific behavior is described in [WARCRAFT_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md).
 
-## Shared Code That Probably Belongs In Core
+## Shared Now
 
 - output shaping, field projection, and pretty-print behavior
+- structured error contracts
 - cache backends, TTL policy, and cache inspection/repair
-- HTTP client primitives, retries, throttling, and headers
-- local bundle/index storage, freshness tracking, and query helpers
-- common search/resolve patterns where the concept is shared
-- auth/session helpers for API-backed services
+- HTTP client primitives, retries, throttling hooks, and headers
+- local bundle/index storage, freshness tracking, and query scaffolding
 - root command routing for the `warcraft` wrapper
+- shared config and environment handling
 
-## Code That Should Stay Service-Specific
+These should move first because the current `wowhead` CLI already proves them and multiple future services will need them quickly.
+
+## Shared After `method`
+
+- article and content primitives that survive a second article-style service
+- shared search/resolve provider interfaces
+- ranking explanation shapes for discovery commands
+- follow-up command suggestion shapes
+- auth/session persistence for API-first services
+
+These should move only after `method` exists and validates that the abstractions are real instead of Wowhead-specific.
+
+## Service-Specific
 
 - HTML parsing rules and page-model extraction
 - API schemas, query builders, and endpoint contracts
@@ -103,6 +115,14 @@ The wrapper-specific behavior is described in [WARCRAFT_CLI_PLAN.md](/home/auro/
 - service-specific ranking heuristics
 - SimulationCraft build/run logic
 - service-specific auth flows and operational constraints
+
+## Do Not Generalize Yet
+
+- one universal entity model across all services
+- one universal article or guide parser
+- one universal search ranking algorithm
+- one universal command grammar beyond wrapper routing
+- one universal response model for API, article, and local-tool services
 
 ## Root Skill Strategy
 
@@ -131,15 +151,17 @@ The wrapper should not erase source identity. Agents still need to know whether 
 
 ## Recommended Migration Order
 
-1. Extract shared libraries from the current `wowhead` package without changing the existing `wowhead` command surface.
-2. Introduce a minimal `warcraft` wrapper that can proxy `wowhead` and expose shared discovery later.
-3. Move the current root skill layout to service-agnostic root-level skills.
-4. Add `method` as the first article-style service on top of the shared content/bundle pieces. See [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
-5. Add `icy-veins` next if the shared article abstractions hold up. See [ICY_VEINS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/ICY_VEINS_CLI_PLAN.md).
-6. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
-7. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
-8. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
-9. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
+1. Extract `warcraft-core` from the current `wowhead` package without changing the `wowhead` command surface.
+2. Extract `warcraft-api` for shared HTTP transport, retry, throttling hooks, and config handling.
+3. Extract `warcraft-content` for bundle/index/freshness/query primitives.
+4. Introduce a minimal `warcraft` wrapper that can proxy `wowhead` and expose shared discovery later.
+5. Move the current root skill layout to service-agnostic root-level skills.
+6. Add `method` as the first article-style service on top of the shared content/bundle pieces. See [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
+7. Re-evaluate which article-level abstractions are actually shared, then add `icy-veins` if they hold up. See [ICY_VEINS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/ICY_VEINS_CLI_PLAN.md).
+8. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
+9. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
+10. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
+11. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
 
 ## Research Anchors
 
@@ -155,11 +177,12 @@ These are the high-level sources used to shape the plan:
 
 When implementation starts, the first restructure pass should stay narrow:
 
-1. Create the shared package skeleton and move only obviously shared infrastructure out of `wowhead`.
-2. Add a minimal `warcraft` CLI that can proxy `wowhead` without changing existing behavior.
-3. Move skills to root-level service directories and add `skills/warcraft/SKILL.md`.
-4. Add a `method` package that proves the shared article and bundle abstractions. The target scope is in [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
-5. Re-evaluate the package boundaries before adding the next service.
+1. Create `warcraft-core`, `warcraft-api`, and `warcraft-content` with only the shared-now pieces.
+2. Move only obviously generic infrastructure out of `wowhead`.
+3. Add a minimal `warcraft` CLI that can proxy `wowhead` without changing existing behavior.
+4. Move skills to root-level service directories and add `skills/warcraft/SKILL.md`.
+5. Add a `method` package that proves the shared article and bundle abstractions. The target scope is in [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
+6. Re-evaluate the package boundaries before adding the next service.
 
 ## Immediate Planning Priorities
 

@@ -38,8 +38,18 @@ This should be treated as an article-first service:
 - bundle storage and indexing
 - local query and ranking scaffolding
 - cache backends and TTL handling
+- HTTP transport and retry primitives
 - shared output shaping
 - search and resolve interfaces
+
+## What Should Only Be Shared After `method`
+
+If `method` and `wowhead` both need the same shapes, these become good candidates for `warcraft-content`:
+
+- article metadata contracts
+- section and navigation models
+- article bundle export/query contracts
+- article-oriented resolve and follow-up guidance
 
 ## What Should Stay Method-Specific
 

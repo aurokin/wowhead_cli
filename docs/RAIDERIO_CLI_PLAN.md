@@ -40,6 +40,11 @@ This should be an API-first service:
 - output shaping
 - auth/config handling where needed
 
+## What Should Not Be Forced Into Shared Models
+
+- Raider.IO endpoint shapes should not be turned into a universal Warcraft entity contract
+- Raider.IO ranking logic should not be treated as the generic search ranking layer for the repo
+
 ## What Should Stay Raider.IO-Specific
 
 - endpoint catalog

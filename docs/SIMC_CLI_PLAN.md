@@ -38,6 +38,12 @@ This should be a local-tool service:
 - bundle/report indexing if result storage becomes useful
 - wrapper routing from `warcraft`
 
+## What This Service Should Validate
+
+`simc` is the test for whether the monorepo abstractions work for local tools as well as network services.
+
+If a shared layer assumes HTTP everywhere, it is the wrong layer.
+
 ## What Should Stay SimC-Specific
 
 - git sync policy

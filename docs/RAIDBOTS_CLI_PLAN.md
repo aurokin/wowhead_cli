@@ -36,6 +36,14 @@ Submission automation should be a later phase, not the first milestone.
 - cache and local report storage
 - wrapper routing
 
+## What Should Depend On Earlier Work
+
+This service should come after:
+- shared output and cache layers
+- the `simc` local-tool path
+
+It should not drive the first round of shared abstractions.
+
 ## What Should Stay Raidbots-Specific
 
 - result parsing rules

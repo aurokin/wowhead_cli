@@ -38,12 +38,14 @@ This should be an API-first, auth-heavy service:
 - HTTP transport and retry behavior
 - output shaping
 
-## What Should Stay Service-Specific
+## What Should Stay Deeply Service-Specific
 
-- GraphQL schema handling
-- saved query catalog
-- report/fight/actor domain models
-- access-scope handling
+This service is a good reason not to over-generalize:
+
+- GraphQL query shape
+- report/fight/actor vocabulary
+- auth scopes and access levels
+- saved-query ergonomics
 
 ## First Useful Slice
 

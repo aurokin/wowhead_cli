@@ -41,6 +41,15 @@ This should also be treated as an article-first service:
 - cache and output infrastructure
 - search and resolve interfaces
 
+## What This Service Should Validate
+
+`icy-veins` is the check on whether the article abstractions proven by `method` are actually reusable:
+
+- article metadata contracts
+- section models
+- navigation models
+- bundle export/query behavior
+
 ## What Should Stay Service-Specific
 
 - parsing rules

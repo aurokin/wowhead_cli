@@ -42,6 +42,15 @@ That is enough to validate:
 - shared cache/environment inspection
 - shared search and resolve interfaces
 
+## Shared Code It Should Not Own
+
+The wrapper should consume shared libraries, not become one:
+
+- no service parsers
+- no API schema logic
+- no SimC execution logic
+- no service-specific ranking logic
+
 ## Risks
 
 - putting too much real business logic in the wrapper
