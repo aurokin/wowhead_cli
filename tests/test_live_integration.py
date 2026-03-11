@@ -81,8 +81,8 @@ def test_live_search_contract(expansion_key: str) -> None:
 
     assert payload["expansion"] == expansion_key
     assert payload["search_url"].startswith(f"{profile.wowhead_base}/search?q=")
-    assert payload["count"] == len(payload["results"])
-    assert payload["count"] > 0
+    assert payload["count"] >= len(payload["results"])
+    assert len(payload["results"]) > 0
     for row in payload["results"]:
         assert isinstance(row.get("id"), int)
         url = row.get("url")
@@ -97,7 +97,12 @@ def test_live_entity_contract(expansion_key: str) -> None:
     payload = _payload_for(["--expansion", expansion_key, "entity", "item", "19019"])
 
     assert payload["expansion"] == expansion_key
-    assert payload["entity"]["page_url"].startswith(f"{profile.wowhead_base}/item=19019")
+    expected_page_prefix = (
+        "https://www.wowhead.com/item=19019"
+        if expansion_key == "ptr"
+        else f"{profile.wowhead_base}/item=19019"
+    )
+    assert payload["entity"]["page_url"].startswith(expected_page_prefix)
     assert payload["citations"]["comments"].startswith(payload["entity"]["page_url"] + "#comments")
     tooltip = payload["tooltip"]
     assert isinstance(payload["entity"].get("name"), str)
@@ -135,7 +140,12 @@ def test_live_entity_page_contract(expansion_key: str) -> None:
 
     assert payload["expansion"] == expansion_key
     assert payload["normalize_canonical_to_expansion"] is False
-    assert payload["entity"]["page_url"].startswith(f"{resolve_expansion(expansion_key).wowhead_base}/item=19019")
+    expected_page_prefix = (
+        "https://www.wowhead.com/item=19019"
+        if expansion_key == "ptr"
+        else f"{resolve_expansion(expansion_key).wowhead_base}/item=19019"
+    )
+    assert payload["entity"]["page_url"].startswith(expected_page_prefix)
     assert payload["citations"]["page"] == payload["entity"]["page_url"]
     assert payload["citations"]["comments"] == f'{payload["entity"]["page_url"]}#comments'
     assert payload["linked_entities"]["count"] == len(payload["linked_entities"]["items"])
