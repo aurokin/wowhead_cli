@@ -157,7 +157,8 @@ def test_cache_inspect_reports_file_cache_stats(tmp_path: Path, monkeypatch) -> 
 
     payload = json.loads(result.stdout)
     assert payload["settings"]["backend"] == "file"
-    assert payload["stats"]["totals"] == {"total": 2, "active": 1, "expired": 1, "invalid": 0}
+    assert payload["stats"]["totals"] == {"active": 1, "expired": 1, "invalid": 0, "total": 2}
+    assert payload["stats"]["age_summary"]["oldest_entry_age_hours"] >= 0
     assert payload["stats"]["namespaces"]["entity_response"]["expired"] == 1
     assert payload["stats"]["namespaces"]["search_suggestions"]["active"] == 1
 
@@ -184,6 +185,7 @@ def test_cache_inspect_summary_hides_zero_value_fields(tmp_path: Path, monkeypat
         {"namespace": "entity_response", "expired": 1, "total": 1}
     ]
     assert payload["stats"]["truncated_namespaces"] is True
+    assert payload["stats"]["age_summary"]["oldest_entry_age_hours"] >= 0
     assert "namespaces" not in payload["stats"]
 
 
@@ -203,6 +205,7 @@ def test_cache_repair_reports_and_prunes_legacy_unscoped_entries(tmp_path: Path,
     assert dry_run.exit_code == 0
     dry_payload = json.loads(dry_run.stdout)
     assert dry_payload["repair"]["apply"] is False
+    assert dry_payload["repair"]["expired_only"] is False
     assert dry_payload["repair"]["candidates"] == 1
     assert dry_payload["repair"]["removed"] == 0
     assert legacy_path.exists() is True
@@ -211,8 +214,31 @@ def test_cache_repair_reports_and_prunes_legacy_unscoped_entries(tmp_path: Path,
     assert apply_result.exit_code == 0
     apply_payload = json.loads(apply_result.stdout)
     assert apply_payload["repair"]["removed"] == 1
+    assert apply_payload["repair"]["expired_only"] is False
     assert apply_payload["remaining"]["totals"] == {"active": 0, "expired": 0, "invalid": 0, "total": 0}
     assert legacy_path.exists() is False
+
+
+def test_cache_repair_can_limit_to_expired_legacy_entries(tmp_path: Path, monkeypatch) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True)
+    now = 1000.0
+    monkeypatch.setenv("WOWHEAD_CACHE_BACKEND", "file")
+    monkeypatch.setenv("WOWHEAD_CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now + 20)
+
+    expired_path = cache_dir / ("a" * 64 + ".json")
+    expired_path.write_text(json.dumps({"expires_at": now + 10, "payload": {}}), encoding="utf-8")
+    active_path = cache_dir / ("b" * 64 + ".json")
+    active_path.write_text(json.dumps({"expires_at": now + 120, "payload": {}}), encoding="utf-8")
+
+    result = runner.invoke(app, ["cache-repair", "--apply", "--expired-only"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["repair"]["expired_only"] is True
+    assert payload["repair"]["removed"] == 1
+    assert expired_path.exists() is False
+    assert active_path.exists() is True
 
 
 def test_cache_inspect_can_request_redis_prefix_visibility(monkeypatch) -> None:

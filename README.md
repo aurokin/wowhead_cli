@@ -42,7 +42,8 @@ wowhead guide-bundle-index-rebuild
 wowhead cache-inspect
 wowhead cache-inspect --show-redis-prefixes
 wowhead cache-inspect --summary --hide-zero
-wowhead cache-repair
+wowhead cache-repair --expired-only
+wowhead guide-bundle-inspect 3143 --summary
 wowhead cache-clear --namespace entity_response --expired-only
 wowhead entity item 19019
 wowhead comments item 19019 --limit 30 --sort rating

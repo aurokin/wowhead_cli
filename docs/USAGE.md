@@ -23,7 +23,8 @@ wowhead guide-bundle-index-rebuild
 wowhead cache-inspect
 wowhead cache-inspect --show-redis-prefixes
 wowhead cache-inspect --summary --hide-zero
-wowhead cache-repair
+wowhead cache-repair --expired-only
+wowhead guide-bundle-inspect 3143 --summary
 wowhead cache-clear --namespace entity_response --expired-only
 wowhead guide-bundle-refresh ./tmp/frost-dk-guide
 wowhead guide-bundle-refresh 3143 --root ./wowhead_exports --max-age-hours 6
@@ -135,6 +136,8 @@ Search and resolve:
 
 Bundle discovery and refresh:
 - bundle freshness summaries now include reason fields such as `bundle_reasons` and `hydration_reasons`, so stale bundles can be triaged without opening the manifest
+- `guide-bundle-list`, `guide-bundle-search`, and `guide-bundle-query` now expose root-level `stale_reason_counts` rollups
+- `guide-bundle-inspect --summary` returns a compact trust-check payload focused on freshness and issues
 - `guide-bundle-list` discovers bundles under `./wowhead_exports/` or another root
 - `guide-bundle-search` searches indexed bundle metadata across a root
 - `guide-bundle-query` searches exported bundle content across a root using the same match kinds and linked-source filters as `guide-query`
@@ -218,7 +221,9 @@ Redis visibility:
 Cache cleanup and compact inspection:
 - `cache-inspect --summary` returns a compact top-namespace view instead of the full namespace listing
 - `cache-inspect --hide-zero` removes zero-valued count fields from cache stats
+- summary-mode file cache inspection now includes `age_summary` with oldest/newest entry timestamps and ages
 - `cache-repair` reports legacy unscoped file-cache entries; `cache-repair --apply` prunes them
+- `cache-repair --expired-only` limits that repair to expired legacy entries
 
 ## Related Docs
 

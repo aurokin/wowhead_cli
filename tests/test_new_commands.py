@@ -1434,6 +1434,7 @@ def test_guide_bundle_list_discovers_exported_bundles(tmp_path) -> None:
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["max_age_hours"] == 72
+    assert payload["stale_reason_counts"] == {"bundle": {}, "hydration": {}}
     assert payload["bundles"][1]["freshness"]["max_age_hours"] == 72
     assert payload["bundles"][1]["freshness"]["bundle"] == "fresh"
     assert payload["bundles"][1]["freshness"]["bundle_reasons"] == []
@@ -1501,6 +1502,7 @@ def test_guide_bundle_list_uses_root_index_when_available(monkeypatch, tmp_path:
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["bundles"][0]["guide_id"] == 3143
+    assert payload["stale_reason_counts"] == {"bundle": {}, "hydration": {}}
     assert payload["bundles"][0]["hydration"]["source_counts"] == {"entity_cache": 1}
     assert payload["bundles"][0]["freshness"]["max_age_hours"] == 24
     assert payload["bundles"][0]["freshness"]["bundle"] == "fresh"
@@ -1559,6 +1561,7 @@ def test_guide_bundle_search_returns_ranked_matches_and_follow_up_commands(tmp_p
     payload = json.loads(result.stdout)
     assert payload["query"] == "frost death knight"
     assert payload["count"] == 1
+    assert payload["stale_reason_counts"] == {"bundle": {}, "hydration": {}}
     assert payload["matches"][0]["guide_id"] == 3143
     assert "title" in payload["matches"][0]["match_reasons"]
     assert payload["matches"][0]["suggested_query_command"] == (
@@ -1942,6 +1945,14 @@ def test_guide_bundle_inspect_reports_counts_and_index_status(tmp_path: Path) ->
     assert payload["index"]["valid"] is True
     assert payload["index"]["contains_bundle"] is True
     assert payload["issues"] == []
+
+    summary_result = runner.invoke(app, ["guide-bundle-inspect", "3143", "--root", str(root), "--summary"])
+    assert summary_result.exit_code == 0
+    summary_payload = json.loads(summary_result.stdout)
+    assert summary_payload["issue_count"] == 0
+    assert summary_payload["issue_codes"] == []
+    assert summary_payload["missing_files"] == []
+    assert summary_payload["count_mismatches"] == []
 
 
 

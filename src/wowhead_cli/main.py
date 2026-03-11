@@ -2651,6 +2651,27 @@ def _discover_guide_corpora(root: Path, *, max_age_hours: int) -> list[dict[str,
     return [_bundle_row_with_freshness(row, max_age_hours=max_age_hours) for row in base_rows]
 
 
+def _bundle_freshness_rollups(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    bundle_counts: dict[str, int] = {}
+    hydration_counts: dict[str, int] = {}
+    for row in rows:
+        freshness = row.get("freshness") if isinstance(row.get("freshness"), dict) else None
+        if not isinstance(freshness, dict):
+            continue
+        if freshness.get("bundle") == "stale":
+            for reason in freshness.get("bundle_reasons") or []:
+                if isinstance(reason, str):
+                    bundle_counts[reason] = bundle_counts.get(reason, 0) + 1
+        if freshness.get("hydration") == "stale":
+            for reason in freshness.get("hydration_reasons") or []:
+                if isinstance(reason, str):
+                    hydration_counts[reason] = hydration_counts.get(reason, 0) + 1
+    return {
+        "bundle": dict(sorted(bundle_counts.items())),
+        "hydration": dict(sorted(hydration_counts.items())),
+    }
+
+
 def _bundle_file_details(export_dir: Path, manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     files = manifest.get("files")
     if not isinstance(files, dict):
@@ -2767,6 +2788,32 @@ def _bundle_inspection_issues(
             }
         )
     return issues
+
+
+def _guide_bundle_inspection_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    missing_files = [row.get("file") for row in payload.get("issues") or [] if row.get("code") == "missing_file"]
+    count_mismatches = [
+        {
+            "field": row.get("field"),
+            "manifest": row.get("manifest"),
+            "observed": row.get("observed"),
+        }
+        for row in payload.get("issues") or []
+        if row.get("code") == "count_mismatch"
+    ]
+    return {
+        "output_dir": payload.get("output_dir"),
+        "guide": payload.get("guide"),
+        "page": payload.get("page"),
+        "expansion": payload.get("expansion"),
+        "freshness": payload.get("freshness"),
+        "hydration": payload.get("hydration"),
+        "index": payload.get("index"),
+        "issue_count": len(payload.get("issues") or []),
+        "issue_codes": sorted({row.get("code") for row in payload.get("issues") or [] if isinstance(row.get("code"), str)}),
+        "missing_files": sorted(file_name for file_name in missing_files if isinstance(file_name, str)),
+        "count_mismatches": count_mismatches,
+    }
 
 
 def _guide_bundle_inspection_payload(
@@ -3222,6 +3269,11 @@ def cache_repair(
         "--apply/--dry-run",
         help="Apply the repair instead of only reporting candidates.",
     ),
+    expired_only: bool = typer.Option(
+        False,
+        "--expired-only/--all",
+        help="Restrict legacy file-cache repair to expired entries only.",
+    ),
     sample_limit: int = typer.Option(
         10,
         "--sample-limit",
@@ -3233,7 +3285,7 @@ def cache_repair(
     settings = _load_cache_settings_or_fail(ctx)
     if settings.backend != "file":
         _fail(ctx, "invalid_argument", "cache-repair is currently only supported for file cache backends.")
-    result = repair_file_cache(settings.cache_dir, apply=apply, sample_limit=sample_limit)
+    result = repair_file_cache(settings.cache_dir, apply=apply, expired_only=expired_only, sample_limit=sample_limit)
     payload = {
         "settings": _cache_settings_payload(settings),
         "repair": result,
@@ -3829,6 +3881,7 @@ def guide_bundle_query(
         "max_age_hours": max_age_hours,
         "searched_bundle_count": len(bundles),
         "count": len(matched_bundles),
+        "stale_reason_counts": _bundle_freshness_rollups(bundles),
         "filters": {
             "kinds": list(selected_kinds),
             "section_title": section_title_filter,
@@ -3890,6 +3943,7 @@ def guide_bundle_search(
         "root": str(resolved_root),
         "max_age_hours": max_age_hours,
         "count": len(matches),
+        "stale_reason_counts": _bundle_freshness_rollups(bundles),
         "matches": matches[:limit],
     }
     _emit(ctx, payload)
@@ -3920,6 +3974,7 @@ def guide_bundle_list(
         "root": str(resolved_root),
         "count": len(bundles),
         "max_age_hours": max_age_hours,
+        "stale_reason_counts": _bundle_freshness_rollups(bundles),
         "bundles": bundles,
     }
     _emit(ctx, payload)
@@ -3947,6 +4002,11 @@ def guide_bundle_inspect(
         max=24 * 30,
         help="Freshness window in hours used for bundle and hydration freshness summaries.",
     ),
+    summary: bool = typer.Option(
+        False,
+        "--summary",
+        help="Return a compact inspection payload focused on freshness and issues.",
+    ),
 ) -> None:
     try:
         export_dir = _resolve_corpus_ref(bundle_ref, root=root)
@@ -3958,7 +4018,7 @@ def guide_bundle_inspect(
         corpus=corpus,
         max_age_hours=max_age_hours,
     )
-    _emit(ctx, payload)
+    _emit(ctx, _guide_bundle_inspection_summary(payload) if summary else payload)
 
 
 @app.command("guide-bundle-index-rebuild")

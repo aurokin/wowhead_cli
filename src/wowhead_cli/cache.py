@@ -241,12 +241,17 @@ def _iter_file_cache_entries(cache_dir: Path) -> list[dict[str, Any]]:
             if isinstance(raw_expires_at, (int, float)):
                 expires_at = float(raw_expires_at)
                 status = "expired" if expires_at <= now else "active"
+        try:
+            modified_at = path.stat().st_mtime
+        except OSError:
+            modified_at = None
         entries.append(
             {
                 "path": path,
                 "namespace": _file_cache_namespace(root, path),
                 "status": status,
                 "expires_at": expires_at,
+                "modified_at": modified_at,
             }
         )
     return entries
@@ -266,6 +271,7 @@ def inspect_file_cache(cache_dir: Path) -> dict[str, Any]:
     entries = _iter_file_cache_entries(root)
     namespaces: dict[str, dict[str, int]] = {}
     totals = {"total": 0, "active": 0, "expired": 0, "invalid": 0}
+    modified_values = [float(entry["modified_at"]) for entry in entries if isinstance(entry.get("modified_at"), (int, float))]
     for entry in entries:
         namespace = entry["namespace"]
         status = entry["status"]
@@ -275,7 +281,7 @@ def inspect_file_cache(cache_dir: Path) -> dict[str, Any]:
         if status in {"active", "expired", "invalid"}:
             row[status] += 1
             totals[status] += 1
-    return {
+    payload = {
         "kind": "file",
         "root": str(root),
         "exists": root.exists(),
@@ -285,6 +291,17 @@ def inspect_file_cache(cache_dir: Path) -> dict[str, Any]:
             for namespace, counts in sorted(namespaces.items())
         },
     }
+    if modified_values:
+        now = time.time()
+        oldest = min(modified_values)
+        newest = max(modified_values)
+        payload["age_summary"] = {
+            "oldest_entry_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(oldest)),
+            "oldest_entry_age_hours": round(max(0.0, now - oldest) / 3600, 2),
+            "newest_entry_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(newest)),
+            "newest_entry_age_hours": round(max(0.0, now - newest) / 3600, 2),
+        }
+    return payload
 
 
 def clear_file_cache(
@@ -319,12 +336,13 @@ def repair_file_cache(
     cache_dir: Path,
     *,
     apply: bool = False,
+    expired_only: bool = False,
     sample_limit: int = 10,
 ) -> dict[str, Any]:
     legacy_entries = [
         entry
         for entry in _iter_file_cache_entries(cache_dir.expanduser())
-        if entry["namespace"] == "legacy_unscoped"
+        if entry["namespace"] == "legacy_unscoped" and (not expired_only or entry["status"] == "expired")
     ]
     removed = 0
     if apply:
@@ -337,6 +355,7 @@ def repair_file_cache(
     return {
         "mode": "legacy_unscoped",
         "apply": apply,
+        "expired_only": expired_only,
         "candidates": len(legacy_entries),
         "removed": removed,
         "sample_paths": [str(entry["path"]) for entry in legacy_entries[:sample_limit]],

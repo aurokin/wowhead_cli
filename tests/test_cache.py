@@ -87,8 +87,10 @@ def test_inspect_file_cache_summarizes_active_expired_and_invalid_entries(
     monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now + 20)
     summary = inspect_file_cache(tmp_path)
 
-    assert summary["totals"] == {"total": 3, "active": 1, "expired": 1, "invalid": 1}
-    assert summary["namespaces"]["search_suggestions"] == {"total": 1, "active": 1, "expired": 0, "invalid": 0}
+    assert summary["totals"] == {"active": 1, "expired": 1, "invalid": 1, "total": 3}
+    assert summary["age_summary"]["oldest_entry_age_hours"] >= 0
+    assert summary["age_summary"]["newest_entry_age_hours"] >= 0
+    assert summary["namespaces"]["search_suggestions"] == {"active": 1, "expired": 0, "invalid": 0, "total": 1}
     assert summary["namespaces"]["entity_response"] == {"total": 1, "active": 0, "expired": 1, "invalid": 0}
     assert summary["namespaces"]["tooltip_meta"] == {"total": 1, "active": 0, "expired": 0, "invalid": 1}
 
@@ -105,9 +107,9 @@ def test_inspect_file_cache_groups_root_level_hashed_entries_under_legacy_namesp
     summary = inspect_file_cache(tmp_path)
 
     assert summary["namespaces"] == {
-        "legacy_unscoped": {"total": 1, "active": 0, "expired": 1, "invalid": 0}
+        "legacy_unscoped": {"active": 0, "expired": 1, "invalid": 0, "total": 1}
     }
-    assert summary["totals"] == {"total": 1, "active": 0, "expired": 1, "invalid": 0}
+    assert summary["totals"] == {"active": 0, "expired": 1, "invalid": 0, "total": 1}
 
 
 def test_repair_file_cache_prunes_legacy_unscoped_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,6 +125,7 @@ def test_repair_file_cache_prunes_legacy_unscoped_entries(tmp_path: Path, monkey
     assert dry_run == {
         "mode": "legacy_unscoped",
         "apply": False,
+        "expired_only": False,
         "candidates": 1,
         "removed": 0,
         "sample_paths": [str(legacy_path)],
@@ -130,7 +133,8 @@ def test_repair_file_cache_prunes_legacy_unscoped_entries(tmp_path: Path, monkey
     }
     assert legacy_path.exists() is True
 
-    applied = repair_file_cache(tmp_path, apply=True, sample_limit=5)
+    applied = repair_file_cache(tmp_path, apply=True, expired_only=True, sample_limit=5)
+    assert applied["expired_only"] is True
     assert applied["removed"] == 1
     assert legacy_path.exists() is False
     assert namespaced_path.exists() is True
@@ -154,8 +158,8 @@ def test_clear_file_cache_supports_namespace_and_expired_only(
     assert removed == {"total": 1, "namespaces": {"entity_response": 1}}
 
     summary = inspect_file_cache(tmp_path)
-    assert summary["totals"] == {"total": 2, "active": 2, "expired": 0, "invalid": 0}
-    assert summary["namespaces"]["entity_response"] == {"total": 1, "active": 1, "expired": 0, "invalid": 0}
+    assert summary["totals"] == {"active": 2, "expired": 0, "invalid": 0, "total": 2}
+    assert summary["namespaces"]["entity_response"] == {"active": 1, "expired": 0, "invalid": 0, "total": 1}
     assert summary["namespaces"]["search_suggestions"] == {"total": 1, "active": 1, "expired": 0, "invalid": 0}
 
 
