@@ -92,6 +92,23 @@ def test_inspect_file_cache_summarizes_active_expired_and_invalid_entries(
     assert summary["namespaces"]["tooltip_meta"] == {"total": 1, "active": 0, "expired": 0, "invalid": 1}
 
 
+def test_inspect_file_cache_groups_root_level_hashed_entries_under_legacy_namespace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = 1000.0
+    monkeypatch.setattr("wowhead_cli.cache.time.time", lambda: now + 20)
+    legacy_path = tmp_path / ("a" * 64 + ".json")
+    legacy_path.write_text(json.dumps({"expires_at": now + 10, "payload": {}}), encoding="utf-8")
+
+    summary = inspect_file_cache(tmp_path)
+
+    assert summary["namespaces"] == {
+        "legacy_unscoped": {"total": 1, "active": 0, "expired": 1, "invalid": 0}
+    }
+    assert summary["totals"] == {"total": 1, "active": 0, "expired": 1, "invalid": 0}
+
+
 
 def test_clear_file_cache_supports_namespace_and_expired_only(
     tmp_path: Path,

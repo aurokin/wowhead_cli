@@ -215,7 +215,10 @@ def _file_cache_namespace(cache_dir: Path, path: Path) -> str:
     relative = path.relative_to(cache_dir)
     if len(relative.parts) > 1:
         return relative.parts[0]
-    return relative.stem
+    stem = relative.stem
+    if len(stem) == 64 and all(ch in "0123456789abcdef" for ch in stem.lower()):
+        return "legacy_unscoped"
+    return stem
 
 
 def _iter_file_cache_entries(cache_dir: Path) -> list[dict[str, Any]]:
