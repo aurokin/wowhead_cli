@@ -2,19 +2,7 @@
 
 ## Current Priorities
 
-### 1. Cross-Entity Discovery And Resolution
-
-Goal:
-Make it easier for an agent to go from an ambiguous natural-language query to the correct next command.
-
-Open work:
-- add bounded follow-up guidance for when `entity`, `entity-page`, `guide`, or `comments` is the better next step
-
-Why this matters:
-- agents still spend work interpreting raw search result lists
-- the CLI already has good retrieval surfaces, but the discovery step is still weaker than it should be
-
-### 2. Cache And Freshness Operations
+### 1. Cache And Freshness Operations
 
 Goal:
 Keep the cache and hydrated local data trustworthy and easy to inspect.
@@ -36,8 +24,7 @@ These are lower priority, but still likely useful:
 
 ## Recommended Order
 
-1. search follow-up guidance
-2. shared Redis visibility and stats commands
+1. shared Redis visibility and stats commands
 
 ## Success Criteria
 

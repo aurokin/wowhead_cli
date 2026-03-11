@@ -46,7 +46,7 @@ wowhead comments item 19019 --limit 30 --sort rating
 wowhead compare item:19019 item:19351 --comment-sample 2
 ```
 
-The CLI defaults to compact JSON for machine use. Use `--pretty` for readable output and `--fields` when you only want selected paths from the response.
+The CLI defaults to compact JSON for machine use. Use `--pretty` for readable output and `--fields` when you only want selected paths from the response. Use `search` when you want to inspect multiple candidates, and `resolve` when you want the CLI to recommend one next command conservatively.
 
 ## Docs
 

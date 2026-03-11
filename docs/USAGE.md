@@ -124,7 +124,10 @@ Hydration behavior:
 
 Search and resolve:
 - use `search` when you want to browse candidates or the query is likely ambiguous
+- `search` results now include `ranking` plus `follow_up`, so each candidate carries a suggested next command such as `entity`, `entity-page`, `guide`, `guide-full`, or `comments`
+- when the query contains follow-up words like `comments`, `links`, or `full`, the CLI strips those from the upstream Wowhead lookup and exposes the actual request text as `search_query`
 - use `resolve` when you want the CLI to choose the best next command conservatively
+- `resolve` reuses the same follow-up guidance, but only emits `next_command` when confidence is high
 - `resolve --entity-type guide` or similar can safely narrow ambiguous queries when the caller already knows the target class of thing
 
 Bundle discovery and refresh:

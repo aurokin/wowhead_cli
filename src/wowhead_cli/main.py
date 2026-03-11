@@ -1111,6 +1111,27 @@ def _score_text_match(query: str, *values: Any) -> int:
     return score
 
 
+FOLLOW_UP_COMMENT_TERMS = {"comment", "comments", "discussion", "discussions"}
+FOLLOW_UP_RELATION_TERMS = {
+    "body",
+    "detail",
+    "details",
+    "entities",
+    "full",
+    "link",
+    "linked",
+    "links",
+    "markup",
+    "reference",
+    "references",
+    "related",
+    "relation",
+    "relations",
+    "source",
+    "sources",
+}
+
+
 SEARCH_TYPE_HINTS = {
     "achievement": {"achievement", "achievements"},
     "currency": {"currency", "currencies", "token", "tokens"},
@@ -1141,9 +1162,89 @@ def _search_type_hints(query: str) -> set[str]:
     return hinted
 
 
-def _search_result_score_and_reasons(row: dict[str, Any], *, query: str) -> tuple[int, list[str]]:
-    normalized_query = " ".join(query.lower().split())
-    terms = _query_terms(query)
+def _search_ranking_query(query: str) -> str:
+    filtered_terms = [
+        term
+        for term in _query_terms(query)
+        if term not in FOLLOW_UP_COMMENT_TERMS and term not in FOLLOW_UP_RELATION_TERMS
+    ]
+    if filtered_terms:
+        return " ".join(filtered_terms)
+    return " ".join(query.lower().split())
+
+
+def _search_follow_up_kind(query: str) -> str:
+    terms = set(_query_terms(query))
+    if terms & FOLLOW_UP_COMMENT_TERMS:
+        return "comments"
+    if terms & FOLLOW_UP_RELATION_TERMS:
+        return "relations"
+    return "summary"
+
+
+def _search_follow_up(candidate: dict[str, Any], *, query: str, expansion: ExpansionProfile) -> dict[str, Any] | None:
+    entity_type = candidate.get("entity_type")
+    entity_id = candidate.get("id")
+    if not isinstance(entity_type, str) or not isinstance(entity_id, int):
+        return None
+
+    prefix = _command_prefix_for_expansion(expansion)
+    intent = _search_follow_up_kind(query)
+    if entity_type == "guide":
+        guide_command = f"{prefix} guide {entity_id}"
+        guide_full_command = f"{prefix} guide-full {entity_id}"
+        recommended_command = guide_command
+        recommended_surface = "guide"
+        reason = "guide_summary"
+        alternatives = [guide_full_command]
+        if intent == "relations":
+            recommended_command = guide_full_command
+            recommended_surface = "guide-full"
+            reason = "guide_relation_intent"
+            alternatives = [guide_command]
+        elif intent == "comments":
+            reason = "guide_comment_intent"
+            alternatives = [guide_full_command]
+        return {
+            "recommended_surface": recommended_surface,
+            "recommended_command": recommended_command,
+            "reason": reason,
+            "alternatives": alternatives,
+        }
+
+    if entity_type not in RESOLVE_ENTITY_TYPES:
+        return None
+
+    entity_command = f"{prefix} entity {entity_type} {entity_id}"
+    entity_page_command = f"{prefix} entity-page {entity_type} {entity_id}"
+    comments_command = f"{prefix} comments {entity_type} {entity_id}"
+    recommended_command = entity_command
+    recommended_surface = "entity"
+    reason = "entity_summary"
+    alternatives = [entity_page_command, comments_command]
+    if intent == "relations":
+        recommended_command = entity_page_command
+        recommended_surface = "entity-page"
+        reason = "entity_relation_intent"
+        alternatives = [entity_command, comments_command]
+    elif intent == "comments":
+        recommended_command = comments_command
+        recommended_surface = "comments"
+        reason = "entity_comment_intent"
+        alternatives = [entity_command, entity_page_command]
+    return {
+        "recommended_surface": recommended_surface,
+        "recommended_command": recommended_command,
+        "reason": reason,
+        "alternatives": alternatives,
+    }
+
+
+def _search_result_score_and_reasons(
+    row: dict[str, Any], *, query: str, ranking_query: str
+) -> tuple[int, list[str]]:
+    normalized_query = " ".join(ranking_query.lower().split())
+    terms = _query_terms(ranking_query)
     name = row.get("name") if isinstance(row.get("name"), str) else ""
     display_name = row.get("displayName") if isinstance(row.get("displayName"), str) else ""
     type_name = row.get("typeName") if isinstance(row.get("typeName"), str) else ""
@@ -1261,6 +1362,7 @@ def _normalize_search_results(
     entity_types: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     selected_entity_types = set(entity_types)
+    ranking_query = _search_ranking_query(query)
     normalized: list[dict[str, Any]] = []
     for index, row in enumerate(results):
         if not isinstance(row, dict):
@@ -1270,7 +1372,11 @@ def _normalize_search_results(
             continue
         entity_id = row.get("id")
         popularity = row.get("popularity") if isinstance(row.get("popularity"), int) else 0
-        search_score, match_reasons = _search_result_score_and_reasons(row, query=query)
+        search_score, match_reasons = _search_result_score_and_reasons(
+            row,
+            query=query,
+            ranking_query=ranking_query,
+        )
         candidate = {
             "id": entity_id,
             "name": row.get("name"),
@@ -1291,6 +1397,9 @@ def _normalize_search_results(
             },
             "_sort": (-search_score, -popularity, index),
         }
+        follow_up = _search_follow_up(candidate, query=query, expansion=expansion)
+        if follow_up is not None:
+            candidate["follow_up"] = follow_up
         normalized.append(candidate)
     normalized.sort(key=lambda row: row["_sort"])
     for row in normalized:
@@ -1305,6 +1414,11 @@ def _command_prefix_for_expansion(expansion: ExpansionProfile) -> str:
 
 
 def _resolve_next_command(candidate: dict[str, Any], *, expansion: ExpansionProfile) -> str | None:
+    follow_up = candidate.get("follow_up") if isinstance(candidate, dict) else None
+    if isinstance(follow_up, dict):
+        command = follow_up.get("recommended_command")
+        if isinstance(command, str) and command:
+            return command
     entity_type = candidate.get("entity_type")
     entity_id = candidate.get("id")
     if not isinstance(entity_type, str) or not isinstance(entity_id, int):
@@ -3055,8 +3169,9 @@ def resolve(
         selected_entity_types = _normalize_resolve_entity_types(entity_type)
     except ValueError as exc:
         _fail(ctx, "invalid_argument", str(exc))
+    search_query_text = _search_ranking_query(query)
     try:
-        response = client.search_suggestions(query)
+        response = client.search_suggestions(search_query_text)
     except httpx.HTTPStatusError as exc:
         _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
     except httpx.HTTPError as exc:
@@ -3084,8 +3199,9 @@ def resolve(
     search_command = f"{_command_prefix_for_expansion(cfg.expansion)} search {shlex.quote(query)}"
     payload = {
         "query": query,
+        "search_query": search_query_text,
         "expansion": cfg.expansion.key,
-        "search_url": search_url(query, expansion=cfg.expansion),
+        "search_url": search_url(search_query_text, expansion=cfg.expansion),
         "filters": {
             "entity_types": list(selected_entity_types),
         },
@@ -3114,8 +3230,9 @@ def search(
 ) -> None:
     cfg = _cfg(ctx)
     client = _client(ctx)
+    search_query_text = _search_ranking_query(query)
     try:
-        response = client.search_suggestions(query)
+        response = client.search_suggestions(search_query_text)
     except httpx.HTTPStatusError as exc:
         _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
     except httpx.HTTPError as exc:
@@ -3131,8 +3248,9 @@ def search(
 
     payload: dict[str, Any] = {
         "query": query,
+        "search_query": search_query_text,
         "expansion": cfg.expansion.key,
-        "search_url": search_url(query, expansion=cfg.expansion),
+        "search_url": search_url(search_query_text, expansion=cfg.expansion),
         "count": len(normalized),
         "results": normalized[:limit],
     }
