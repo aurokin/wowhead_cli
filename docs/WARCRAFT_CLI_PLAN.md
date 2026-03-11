@@ -29,11 +29,15 @@ Start narrow:
 - `warcraft wowhead ...`
 - `warcraft search ...`
 - `warcraft resolve ...`
+- `warcraft doctor`
 
 That is enough to validate:
 - command routing
 - service discovery
 - agent-facing ergonomics
+- shared environment inspection
+
+The packaging and language boundaries for the wrapper are defined in [REPO_STRUCTURE_AND_PACKAGING.md](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md).
 
 ## Shared Code It Should Reuse
 

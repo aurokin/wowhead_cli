@@ -6,6 +6,8 @@
 
 It should be planned as a dedicated API client with typed query helpers rather than as a generic HTTP integration.
 
+This is the strongest candidate for a language exception if one becomes necessary. A TypeScript package is acceptable here if it stays isolated behind the service CLI boundary described in [REPO_STRUCTURE_AND_PACKAGING.md](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md).
+
 ## Research Summary
 
 Observed from official documentation entry points:

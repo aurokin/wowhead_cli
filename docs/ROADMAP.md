@@ -10,8 +10,11 @@ Evolve this repo from a single-service `wowhead` CLI into a Warcraft data monore
 
 The first new service after this restructure should be `method`.
 
+The structural rules for packaging, language choice, installation, storage, auth, and wrapper boundaries are defined in [REPO_STRUCTURE_AND_PACKAGING.md](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md).
+
 ## Planning Documents
 
+- [Repo structure and packaging](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)
 - [Warcraft wrapper plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md)
 - [Wowhead CLI plan](/home/auro/code/wowhead_cli/docs/WOWHEAD_CLI_PLAN.md)
 - [Method.gg CLI plan](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md)
@@ -84,6 +87,7 @@ A good end state is:
 The important split is conceptual, not naming. Shared code should live in explicit libraries, and each service CLI should remain individually runnable.
 
 The wrapper-specific behavior is described in [WARCRAFT_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md).
+The package and language rules for that shape are defined in [REPO_STRUCTURE_AND_PACKAGING.md](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md).
 
 ## Shared Now
 
@@ -130,8 +134,8 @@ Add repo-level skills that mirror the service layout rather than nesting the gui
 
 Recommended direction:
 - `skills/warcraft/SKILL.md`: orchestration skill for deciding which service or wrapper command to use
-- one root skill per service for service-specific workflows
-- keep service skills concise and route agents toward the right CLI and follow-up commands
+- keep the root `warcraft` skill progressive-disclosure-first for now
+- add service-specific root skills later only if they prove useful
 
 Agents should prefer `warcraft` when the service is unclear, then drop to `wowhead`, `method`, `warcraftlogs`, and so on once the source is known.
 
@@ -186,6 +190,7 @@ When implementation starts, the first restructure pass should stay narrow:
 
 ## Immediate Planning Priorities
 
+- define the repo and package layout in detail before moving code
 - define the shared package boundaries before adding `method`
 - define the root skill structure before adding another service-specific skill
 - define the minimum viable `warcraft` wrapper contract

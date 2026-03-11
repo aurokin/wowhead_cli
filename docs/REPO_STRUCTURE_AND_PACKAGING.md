@@ -1,0 +1,233 @@
+# Repo Structure And Packaging
+
+## Purpose
+
+This document defines the structural rules for the Warcraft monorepo.
+
+It exists to keep future changes aligned with the intended architecture:
+- separate service CLIs
+- shared libraries with clear boundaries
+- a thin `warcraft` wrapper
+- isolated service packages
+- purpose-driven exceptions instead of accidental coupling
+
+## Core Decisions
+
+### Monorepo Shape
+
+This should be a monorepo with multiple package-level projects.
+
+Each service package should be buildable from:
+- its own source
+- shared source
+
+It should not depend on other service packages just because they live in the same repo.
+
+### Install Model
+
+Support both:
+- one umbrella install for normal users
+- service-specific installs for focused users or development workflows
+
+That means:
+- `warcraft` should be the umbrella package
+- `wowhead`, `method`, `icy-veins`, `raiderio`, `simc`, `raidbots`, and `warcraftlogs` should also be independently installable
+
+### Wrapper Model
+
+`warcraft` is a routing and orchestration layer.
+
+It should:
+- proxy to service CLIs
+- offer shared search and resolve
+- offer shared environment diagnostics
+
+It should not:
+- own service parsers
+- own API schemas
+- own SimC execution logic
+- become a second implementation layer for every service
+
+### Backward Compatibility
+
+The current `wowhead` release should be tagged before the migration starts.
+
+After that:
+- the old implementation does not need to remain frozen internally
+- the end state does need to reach at least feature parity for `wowhead`
+
+## Language Policy
+
+### Default Language
+
+Python is the default language for this monorepo.
+
+Reasons:
+- existing codebase is already Python
+- Python is a strong fit for HTML extraction, HTTP clients, CLI work, local tooling orchestration, and file-backed data workflows
+- the wrapper and shared layers benefit more from iteration speed and maintainability than from raw runtime performance
+
+### TypeScript Exception
+
+A service-specific package may use TypeScript if there is a strong service-specific reason.
+
+`warcraftlogs` is the best candidate for this exception because:
+- it is API-first
+- it is GraphQL-heavy
+- it may benefit from schema-driven typed tooling
+
+### Rules For Mixed-Language Packages
+
+If a service uses TypeScript:
+- it must remain isolated to that service package
+- it must not force the wrapper to move out of Python
+- it must not become the implementation language for shared core libraries unless that decision is revisited explicitly
+- communication with `warcraft` should be through a stable CLI contract, not in-process imports
+
+For now, the intended baseline is:
+- shared libraries: Python
+- wrapper: Python
+- most services: Python
+- TypeScript allowed by exception for individual service packages
+
+## Package Boundaries
+
+### Shared Packages
+
+These are the first shared package targets:
+
+- `warcraft-core`
+  - output shaping
+  - field projection
+  - structured errors
+  - config loading
+  - environment inspection helpers
+- `warcraft-api`
+  - HTTP client primitives
+  - retries and backoff
+  - throttling hooks
+  - auth/config persistence helpers
+- `warcraft-content`
+  - bundle storage
+  - index management
+  - freshness tracking
+  - local query scaffolding
+
+These shared packages should stay narrow and infrastructure-focused.
+
+### Service Packages
+
+Each service package owns:
+- parsing rules
+- API contracts
+- service-specific identifiers
+- service-specific ranking behavior
+- service-specific operational constraints
+
+Examples:
+- `wowhead` owns Wowhead entity/page parsing
+- `method` owns Method guide parsing
+- `raiderio` owns Raider.IO endpoint and profile logic
+- `simc` owns local repo/build/run orchestration
+- `warcraftlogs` owns GraphQL query catalogs and auth scope handling
+
+### Dependency Direction
+
+Allowed:
+- service package -> shared package
+- umbrella package -> shared package
+- umbrella package -> service CLI invocation
+
+Not allowed:
+- service package -> another service package
+- shared package -> service package
+
+## Auth Policy
+
+Auth is not required for the initial implementation phase, but the structure should be planned now.
+
+Preferred order:
+- OS keychain when available
+- file-based secret storage with strict permissions as fallback
+- env vars for CI and headless usage
+
+Rules:
+- store secrets per service
+- keep shared config separate from secrets
+- do not write secrets into bundles, manifests, or shared cache entries
+- let each service own its own auth logic even if storage helpers are shared
+
+## Search Policy
+
+`warcraft search` should query all services available to the user.
+
+That includes:
+- unauthenticated services by default
+- authenticated services when the user has configured auth for them
+
+This means provider discovery must be auth-aware and capability-aware.
+
+## Storage Policy
+
+Use one common root with service-specific subdirectories and a separate shared directory.
+
+High-level shape:
+- `shared/`
+- `wowhead/`
+- `method/`
+- `icy-veins/`
+- `raiderio/`
+- `simc/`
+- `raidbots/`
+- `warcraftlogs/`
+
+Use the shared directory only for data that is actually shared. Do not use it as a dumping ground.
+
+## Platform Policy
+
+Plan Linux first.
+
+Cross-platform support can come later, but the structure should avoid making Linux-first assumptions impossible to revisit.
+
+`simc` is the biggest reason this needs to be explicit.
+
+## Release Policy
+
+Use one release pipeline for the monorepo for now.
+
+That does not require one combined CLI. It only means release management stays centralized until there is a reason to split it.
+
+## Recommended Initial Layout
+
+A good initial target is:
+
+- `packages/warcraft-core/`
+- `packages/warcraft-api/`
+- `packages/warcraft-content/`
+- `packages/warcraft-cli/`
+- `packages/wowhead-cli/`
+- `packages/method-cli/`
+- `packages/icy-veins-cli/`
+- `packages/raiderio-cli/`
+- `packages/simc-cli/`
+- `packages/raidbots-cli/`
+- `packages/warcraftlogs-cli/`
+- `skills/warcraft/`
+
+Service-specific root skills can be added later if they prove useful. For now, the root `warcraft` skill should use progressive disclosure and route agents to the right service plan and CLI.
+
+## Questions This Doc Resolves
+
+- Should this be one big CLI? No.
+- Should this be one repo? Yes.
+- Should packages be isolated? Yes.
+- Should users be able to install one umbrella package? Yes.
+- Should users be able to install one service package? Yes.
+- Should Python remain the default? Yes.
+- Can `warcraftlogs` use TypeScript if justified? Yes.
+
+## Linked Planning Docs
+
+- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
+- [Warcraft wrapper plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md)
+- [Warcraft Logs CLI plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md)
