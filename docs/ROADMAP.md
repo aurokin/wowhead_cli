@@ -10,6 +10,17 @@ Evolve this repo from a single-service `wowhead` CLI into a Warcraft data monore
 
 The first new service after this restructure should be `method`.
 
+## Planning Documents
+
+- [Warcraft wrapper plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md)
+- [Wowhead CLI plan](/home/auro/code/wowhead_cli/docs/WOWHEAD_CLI_PLAN.md)
+- [Method.gg CLI plan](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md)
+- [Icy Veins CLI plan](/home/auro/code/wowhead_cli/docs/ICY_VEINS_CLI_PLAN.md)
+- [Raider.IO CLI plan](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md)
+- [SimulationCraft CLI plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md)
+- [Raidbots CLI plan](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md)
+- [Warcraft Logs CLI plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md)
+
 ## Planning Principles
 
 - Keep service boundaries explicit. Do not hide very different access models behind one giant code path.
@@ -22,13 +33,13 @@ The first new service after this restructure should be `method`.
 
 | Service | Access model | High-level implementation direction | Notes |
 | --- | --- | --- | --- |
-| Wowhead | HTML pages plus embedded page data | Keep as a page-extraction and bundle-oriented CLI | Already implemented; becomes the first consumer of shared core libraries |
-| Method.gg | Server-rendered article/guide pages with visible section nav and metadata | Build as an article extraction CLI with guide bundles and section query | Good first expansion target; close to Wowhead guide workflows without pretending the markup is the same |
-| Icy Veins | Server-rendered article pages with guide metadata and nav links | Build as an article extraction CLI with search/resolve and section query | Similar family to Method.gg; likely shares article and bundle primitives |
-| Raider.IO | Public API with documented schema and rate limits | Build as an API-first CLI with typed endpoints and cached profile/leaderboard lookups | Do not scrape beyond published endpoints; shared HTTP/cache code is useful, article tooling is not |
-| SimulationCraft | Local Git repo, local builds, local command execution | Build as a local-tool CLI with sync, build, inspect, and run workflows | This should shape the monorepo abstractions because it is not a network service |
-| Raidbots | Web workflow built around SimulationCraft input and result pages | Start with result/report parsing and workflow helpers, then evaluate deeper automation carefully | Should likely depend on local `simc` support rather than acting as a standalone data source |
-| Warcraft Logs | Authenticated API with complex query workflows | Build as an API-first CLI with typed query helpers, auth management, and reusable report patterns | This is likely the most complex service and should stay strongly isolated |
+| Wowhead | HTML pages plus embedded page data | Keep as a page-extraction and bundle-oriented CLI | [Plan](/home/auro/code/wowhead_cli/docs/WOWHEAD_CLI_PLAN.md) |
+| Method.gg | Server-rendered article/guide pages with visible section nav and metadata | Build as an article extraction CLI with guide bundles and section query | [Plan](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md) |
+| Icy Veins | Server-rendered article pages with guide metadata and nav links | Build as an article extraction CLI with search/resolve and section query | [Plan](/home/auro/code/wowhead_cli/docs/ICY_VEINS_CLI_PLAN.md) |
+| Raider.IO | Public API with documented schema and rate limits | Build as an API-first CLI with typed endpoints and cached profile/leaderboard lookups | [Plan](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md) |
+| SimulationCraft | Local Git repo, local builds, local command execution | Build as a local-tool CLI with sync, build, inspect, and run workflows | [Plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md) |
+| Raidbots | Web workflow built around SimulationCraft input and result pages | Start with result/report parsing and workflow helpers, then evaluate deeper automation carefully | [Plan](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md) |
+| Warcraft Logs | Authenticated API with complex query workflows | Build as an API-first CLI with typed query helpers, auth management, and reusable report patterns | [Plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md) |
 
 ## What The Research Suggests
 
@@ -37,6 +48,14 @@ The first new service after this restructure should be `method`.
 - `Warcraft Logs` should be treated as API-first and auth-heavy rather than a scraping target.
 - `SimulationCraft` is fundamentally a local-repo integration, not a site integration.
 - `Raidbots` should be approached as a workflow layer around SimulationCraft inputs and simulation results, not as the primary source of character truth.
+
+Read the service-specific detail in:
+- [Method.gg plan](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md)
+- [Icy Veins plan](/home/auro/code/wowhead_cli/docs/ICY_VEINS_CLI_PLAN.md)
+- [Raider.IO plan](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md)
+- [SimulationCraft plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md)
+- [Raidbots plan](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md)
+- [Warcraft Logs plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md)
 
 ## Target Repo Shape
 
@@ -63,6 +82,8 @@ A good end state is:
 - `skills/warcraftlogs/`
 
 The important split is conceptual, not naming. Shared code should live in explicit libraries, and each service CLI should remain individually runnable.
+
+The wrapper-specific behavior is described in [WARCRAFT_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md).
 
 ## Shared Code That Probably Belongs In Core
 
@@ -94,6 +115,8 @@ Recommended direction:
 
 Agents should prefer `warcraft` when the service is unclear, then drop to `wowhead`, `method`, `warcraftlogs`, and so on once the source is known.
 
+See the dedicated wrapper plan in [WARCRAFT_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md).
+
 ## `warcraft` Wrapper Strategy
 
 The wrapper should be a router and orchestration layer, not the only place business logic lives.
@@ -111,12 +134,12 @@ The wrapper should not erase source identity. Agents still need to know whether 
 1. Extract shared libraries from the current `wowhead` package without changing the existing `wowhead` command surface.
 2. Introduce a minimal `warcraft` wrapper that can proxy `wowhead` and expose shared discovery later.
 3. Move the current root skill layout to service-agnostic root-level skills.
-4. Add `method` as the first article-style service on top of the shared content/bundle pieces.
-5. Add `icy-veins` next if the shared article abstractions hold up.
-6. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers.
-7. Add `simc` as the first local-tool integration and use it to validate non-network abstractions.
-8. Add `raidbots` after `simc`, likely as a workflow-oriented companion.
-9. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere.
+4. Add `method` as the first article-style service on top of the shared content/bundle pieces. See [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
+5. Add `icy-veins` next if the shared article abstractions hold up. See [ICY_VEINS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/ICY_VEINS_CLI_PLAN.md).
+6. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
+7. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
+8. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
+9. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
 
 ## Research Anchors
 
@@ -135,7 +158,7 @@ When implementation starts, the first restructure pass should stay narrow:
 1. Create the shared package skeleton and move only obviously shared infrastructure out of `wowhead`.
 2. Add a minimal `warcraft` CLI that can proxy `wowhead` without changing existing behavior.
 3. Move skills to root-level service directories and add `skills/warcraft/SKILL.md`.
-4. Add a `method` package that proves the shared article and bundle abstractions.
+4. Add a `method` package that proves the shared article and bundle abstractions. The target scope is in [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
 5. Re-evaluate the package boundaries before adding the next service.
 
 ## Immediate Planning Priorities
