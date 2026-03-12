@@ -15,6 +15,27 @@ The concrete package tree is defined in [PACKAGE_LAYOUT.md](/home/auro/code/wowh
 The execution order is controlled by [MIGRATION_CHECKLIST.md](/home/auro/code/wowhead_cli/docs/MIGRATION_CHECKLIST.md).
 The wrapper/provider boundary is defined in [WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/wowhead_cli/docs/WRAPPER_PROVIDER_CONTRACT.md).
 
+## Current Status
+
+Completed:
+- shared package split into `warcraft-core`, `warcraft-api`, and `warcraft-content`
+- working `warcraft` wrapper
+- working `wowhead` provider in package form
+- working `method` provider
+- working `icy-veins` provider
+- root `warcraft` skill
+
+Validated shared so far:
+- output/error shaping
+- cache and HTTP infrastructure
+- bundle/index/query scaffolding
+- wrapper routing
+- article bundle export/load/query
+
+Active next step:
+- review the article abstractions that now have two real consumers
+- start `raiderio` as the first API-first provider
+
 ## Planning Documents
 
 - [Repo structure and packaging](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)
@@ -120,6 +141,7 @@ These should move only after `method` exists and validates that the abstractions
 Current validated subset:
 - article bundle export/load/query is proven shared across `method` and `icy-veins` and now lives in [warcraft_content.article_bundle](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py)
 - article parsing and navigation extraction are still provider-specific
+- provider-local ranking remains provider-specific
 
 ## Service-Specific
 
@@ -165,17 +187,21 @@ The wrapper should not erase source identity. Agents still need to know whether 
 
 ## Recommended Migration Order
 
+Completed:
 1. Extract `warcraft-core` from the current `wowhead` package without changing the `wowhead` command surface.
 2. Extract `warcraft-api` for shared HTTP transport, retry, throttling hooks, and config handling.
 3. Extract `warcraft-content` for bundle/index/freshness/query primitives.
 4. Introduce a minimal `warcraft` wrapper that can proxy `wowhead` and expose shared discovery later.
 5. Move the current root skill layout to service-agnostic root-level skills.
 6. Add `method` as the first article-style service on top of the shared content/bundle pieces. See [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
-7. Re-evaluate which article-level abstractions are actually shared now that both `method` and `icy-veins` exist.
-8. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
-9. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
-10. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
-11. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
+7. Validate those article abstractions against `icy-veins`.
+
+Next:
+8. Re-evaluate which article-level abstractions are actually shared now that both `method` and `icy-veins` exist.
+9. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
+10. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
+11. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
+12. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
 
 ## Research Anchors
 
@@ -187,20 +213,9 @@ These are the high-level sources used to shape the plan:
 - Raidbots support guidance around the SimulationCraft addon: `https://support.raidbots.com/article/54-installing-and-using-the-simulationcraft-addon`
 - Warcraft Logs official API docs entry points: `https://www.warcraftlogs.com/api/docs` and `https://classic.warcraftlogs.com/v2-api-docs/warcraft`
 
-## First Execution Slice
-
-When implementation starts, the first restructure pass should stay narrow:
-
-1. Create `warcraft-core`, `warcraft-api`, and `warcraft-content` with only the shared-now pieces.
-2. Move only obviously generic infrastructure out of `wowhead`.
-3. Add a minimal `warcraft` CLI that can proxy `wowhead` without changing existing behavior.
-4. Move skills to root-level service directories and add `skills/warcraft/SKILL.md`.
-5. Add a `method` package that proves the shared article and bundle abstractions. The target scope is in [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
-6. Validate those abstractions against `icy-veins`, but keep parsing and navigation extraction provider-specific.
-7. Re-evaluate the package boundaries before adding the next service.
-
 ## Immediate Planning Priorities
 
+- re-evaluate shared article abstractions now that both `method` and `icy-veins` are working
 - start `raiderio` on top of the validated shared HTTP/cache layer
 - keep package boundaries and wrapper/provider contracts aligned with real code as the monorepo grows
 - continue extracting only genuinely shared infrastructure as new providers prove the abstraction

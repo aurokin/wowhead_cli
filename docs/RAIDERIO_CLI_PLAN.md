@@ -1,5 +1,9 @@
 # Raider.IO CLI Plan
 
+## Status
+
+`raiderio` is the next active provider after `method` and `icy-veins`.
+
 ## Why Raider.IO Is Different
 
 `raiderio` should be treated as an API-first integration, not a scraping project.
