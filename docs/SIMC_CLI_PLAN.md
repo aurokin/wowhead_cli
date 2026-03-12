@@ -170,4 +170,5 @@ That is a strong use case for the monorepo because it is a different kind of pro
 - `https://github.com/simulationcraft/simc`
 - `/home/auro/code/simc_exp`
 - [SimulationCraft migration inventory](/home/auro/code/wowhead_cli/docs/SIMC_MIGRATION_INVENTORY.md)
+- [SimulationCraft implementation plan](/home/auro/code/wowhead_cli/docs/SIMC_IMPLEMENTATION_PLAN.md)
 - [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
