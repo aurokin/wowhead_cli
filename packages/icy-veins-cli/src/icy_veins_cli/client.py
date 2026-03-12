@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import os
-from pathlib import Path
 from typing import Any
 
 import httpx
 
 from icy_veins_cli.page_parser import guide_ref_parts, guide_url, parse_guide_page, parse_sitemap_guides
-from warcraft_api.cache import CacheSettings, CacheTTLConfig, build_cache_store
+from warcraft_api.cache import CacheSettings, CacheTTLConfig, build_cache_store, load_prefixed_cache_settings_from_env
 from warcraft_api.http import DEFAULT_RETRY_ATTEMPTS, request_with_retries
 from warcraft_content.paths import provider_cache_root
 
@@ -16,52 +14,19 @@ ICY_VEINS_BASE_URL = "https://www.icy-veins.com"
 ICY_VEINS_SITEMAP_URL = f"{ICY_VEINS_BASE_URL}/sitemap.xml"
 DEFAULT_CACHE_DIR = provider_cache_root("icy-veins") / "http"
 
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        value = int(raw.strip())
-    except ValueError as exc:
-        raise ValueError(f"{name} must be an integer.") from exc
-    if value < 0:
-        raise ValueError(f"{name} must be >= 0.")
-    return value
-
-
 def load_icy_veins_cache_settings_from_env() -> tuple[CacheSettings, int, int]:
-    backend = os.getenv("ICY_VEINS_CACHE_BACKEND", "file").strip().lower()
-    if backend in {"none", "off", "disabled"}:
-        enabled = False
-        backend = "file"
-    elif backend in {"file", "redis"}:
-        enabled = True
-    else:
-        raise ValueError("ICY_VEINS_CACHE_BACKEND must be one of: file, redis, none.")
-
-    cache_dir = Path(os.getenv("ICY_VEINS_CACHE_DIR", str(DEFAULT_CACHE_DIR))).expanduser()
-    prefix = os.getenv("ICY_VEINS_REDIS_PREFIX", "icy_veins_cli").strip()
-    if not prefix:
-        raise ValueError("ICY_VEINS_REDIS_PREFIX cannot be empty.")
-    redis_url = os.getenv("ICY_VEINS_REDIS_URL")
-    if redis_url is not None:
-        redis_url = redis_url.strip() or None
-    sitemap_ttl = _env_int("ICY_VEINS_SITEMAP_CACHE_TTL_SECONDS", 86400)
-    page_ttl = _env_int("ICY_VEINS_PAGE_CACHE_TTL_SECONDS", 3600)
-    settings = CacheSettings(
-        enabled=enabled,
-        backend=backend,
-        cache_dir=cache_dir,
-        redis_url=redis_url,
-        prefix=prefix,
-        ttls=CacheTTLConfig(
-            search_suggestions=sitemap_ttl,
-            guide_page_html=page_ttl,
-            page_html=page_ttl,
-        ),
+    settings = load_prefixed_cache_settings_from_env(
+        env_prefix="ICY_VEINS",
+        default_cache_dir=DEFAULT_CACHE_DIR,
+        default_redis_prefix="icy_veins_cli",
+        ttl_defaults=CacheTTLConfig(search_suggestions=86400, guide_page_html=3600, page_html=3600),
+        ttl_env_overrides={
+            "search_suggestions": "ICY_VEINS_SITEMAP_CACHE_TTL_SECONDS",
+            "guide_page_html": "ICY_VEINS_PAGE_CACHE_TTL_SECONDS",
+            "page_html": "ICY_VEINS_PAGE_CACHE_TTL_SECONDS",
+        },
     )
-    return settings, sitemap_ttl, page_ttl
+    return settings, settings.ttls.search_suggestions, settings.ttls.page_html
 
 
 class IcyVeinsClient:

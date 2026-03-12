@@ -31,6 +31,12 @@ def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def load_json_or_default(path: Path, default: Any) -> Any:
+    if not path.exists():
+        return default
+    return load_json(path)
+
+
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     if not path.exists():
@@ -112,6 +118,7 @@ def write_article_bundle(
         },
         "files": {
             "guide_json": "guide.json",
+            "page_files_json": "page-files.json",
             "pages_jsonl": "pages.jsonl",
             "sections_jsonl": "sections.jsonl",
             "navigation_links_jsonl": "navigation-links.jsonl",
@@ -133,8 +140,10 @@ def write_article_bundle(
 def load_article_bundle(export_dir: Path) -> dict[str, Any]:
     manifest = load_json(export_dir / "manifest.json")
     files = manifest.get("files") or {}
+    page_files = load_json_or_default(export_dir / files.get("page_files_json", "page-files.json"), {"pages": []})
     return {
         "manifest": manifest,
+        "page_files": list(page_files.get("pages") or []) if isinstance(page_files, dict) else [],
         "pages": load_jsonl(export_dir / files.get("pages_jsonl", "pages.jsonl")),
         "sections": load_jsonl(export_dir / files.get("sections_jsonl", "sections.jsonl")),
         "navigation": load_jsonl(export_dir / files.get("navigation_links_jsonl", "navigation-links.jsonl")),
@@ -167,11 +176,12 @@ def query_article_bundle(
     section_title_filter: str | None,
 ) -> dict[str, Any]:
     normalized_query = query.lower().strip()
+    normalized_section_title_filter = section_title_filter.lower().strip() if section_title_filter else None
     results_by_kind: dict[str, list[dict[str, Any]]] = {"sections": [], "navigation": [], "linked_entities": []}
     if "sections" in kinds:
         for row in bundle["sections"]:
             title = str(row.get("title") or "")
-            if section_title_filter and section_title_filter not in title.lower():
+            if normalized_section_title_filter and normalized_section_title_filter not in title.lower():
                 continue
             haystack = f"{title} {row.get('text') or ''}"
             score = _query_score(normalized_query, haystack)

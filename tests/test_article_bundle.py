@@ -147,7 +147,9 @@ def test_write_and_query_article_bundle_for_method_shape(tmp_path: Path) -> None
     export_dir = tmp_path / "method-guide"
     manifest = write_article_bundle(_method_like_payload(), provider="method", export_dir=export_dir)
     assert manifest["counts"] == {"pages": 2, "sections": 2, "navigation_links": 2, "linked_entities": 1}
+    assert manifest["files"]["page_files_json"] == "page-files.json"
     bundle = load_article_bundle(export_dir)
+    assert bundle["page_files"][0]["section_slug"] == "introduction"
     result = query_article_bundle(bundle, query="tea serenity", limit=5, kinds={"sections", "navigation", "linked_entities"}, section_title_filter=None)
     assert result["match_counts"]["linked_entities"] == 1
     assert result["top"][0]["name"] == "Tea of Serenity"
@@ -162,3 +164,30 @@ def test_write_and_query_article_bundle_for_icy_shape(tmp_path: Path) -> None:
     result = query_article_bundle(bundle, query="builds talents", limit=5, kinds={"navigation", "linked_entities"}, section_title_filter=None)
     assert result["match_counts"]["navigation"] >= 1
     assert result["matches"]["navigation"][0]["title"] == "Builds and Talents"
+
+
+def test_query_article_bundle_normalizes_section_title_filter(tmp_path: Path) -> None:
+    export_dir = tmp_path / "method-guide"
+    write_article_bundle(_method_like_payload(), provider="method", export_dir=export_dir)
+    bundle = load_article_bundle(export_dir)
+
+    result = query_article_bundle(
+        bundle,
+        query="tea serenity",
+        limit=5,
+        kinds={"sections"},
+        section_title_filter="TALENTS",
+    )
+
+    assert result["match_counts"]["sections"] == 1
+    assert result["top"][0]["title"] == "Talents"
+
+
+def test_load_article_bundle_tolerates_missing_page_files_metadata(tmp_path: Path) -> None:
+    export_dir = tmp_path / "icy-guide"
+    write_article_bundle(_icy_like_payload(), provider="icy-veins", export_dir=export_dir)
+    (export_dir / "page-files.json").unlink()
+
+    bundle = load_article_bundle(export_dir)
+
+    assert bundle["page_files"] == []

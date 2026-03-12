@@ -53,41 +53,71 @@ def _env_int(name: str, default: int) -> int:
     return value
 
 
-def load_cache_settings_from_env() -> CacheSettings:
-    backend = os.getenv("WOWHEAD_CACHE_BACKEND", "file").strip().lower()
+def load_prefixed_cache_settings_from_env(
+    *,
+    env_prefix: str,
+    default_cache_dir: Path,
+    default_redis_prefix: str,
+    ttl_env_overrides: dict[str, str] | None = None,
+    ttl_defaults: CacheTTLConfig | None = None,
+) -> CacheSettings:
+    backend_var = f"{env_prefix}_CACHE_BACKEND"
+    cache_dir_var = f"{env_prefix}_CACHE_DIR"
+    redis_prefix_var = f"{env_prefix}_REDIS_PREFIX"
+    redis_url_var = f"{env_prefix}_REDIS_URL"
+
+    backend = os.getenv(backend_var, "file").strip().lower()
     if backend in {"none", "off", "disabled"}:
         enabled = False
         backend = "file"
     elif backend in {"file", "redis"}:
         enabled = True
     else:
-        raise ValueError("WOWHEAD_CACHE_BACKEND must be one of: file, redis, none.")
+        raise ValueError(f"{backend_var} must be one of: file, redis, none.")
 
-    cache_dir = Path(os.getenv("WOWHEAD_CACHE_DIR", str(DEFAULT_HTTP_CACHE_DIR))).expanduser()
-    prefix = os.getenv("WOWHEAD_REDIS_PREFIX", DEFAULT_CACHE_PREFIX).strip()
+    cache_dir = Path(os.getenv(cache_dir_var, str(default_cache_dir))).expanduser()
+    prefix = os.getenv(redis_prefix_var, default_redis_prefix).strip()
     if not prefix:
-        raise ValueError("WOWHEAD_REDIS_PREFIX cannot be empty.")
+        raise ValueError(f"{redis_prefix_var} cannot be empty.")
 
-    redis_url = os.getenv("WOWHEAD_REDIS_URL")
+    redis_url = os.getenv(redis_url_var)
     if redis_url is not None:
         redis_url = redis_url.strip() or None
 
-    ttls = CacheTTLConfig(
-        search_suggestions=_env_int("WOWHEAD_SEARCH_CACHE_TTL_SECONDS", 900),
-        tooltip_meta=_env_int("WOWHEAD_TOOLTIP_CACHE_TTL_SECONDS", 3600),
-        entity_page_html=_env_int("WOWHEAD_ENTITY_PAGE_CACHE_TTL_SECONDS", 3600),
-        guide_page_html=_env_int("WOWHEAD_GUIDE_PAGE_CACHE_TTL_SECONDS", 3600),
-        page_html=_env_int("WOWHEAD_PAGE_CACHE_TTL_SECONDS", 3600),
-        comment_replies=_env_int("WOWHEAD_COMMENT_REPLIES_CACHE_TTL_SECONDS", 1800),
-        entity_response=_env_int("WOWHEAD_ENTITY_CACHE_TTL_SECONDS", 3600),
-    )
+    defaults = ttl_defaults if ttl_defaults is not None else CacheTTLConfig()
+    ttl_values = {
+        field_name: getattr(defaults, field_name)
+        for field_name in defaults.__dataclass_fields__
+    }
+    for field_name, env_name in (ttl_env_overrides or {}).items():
+        if field_name not in ttl_values:
+            raise ValueError(f"Unknown cache TTL field: {field_name}")
+        ttl_values[field_name] = _env_int(env_name, ttl_values[field_name])
+
     return CacheSettings(
         enabled=enabled,
         backend=backend,
         cache_dir=cache_dir,
         redis_url=redis_url,
         prefix=prefix,
-        ttls=ttls,
+        ttls=CacheTTLConfig(**ttl_values),
+    )
+
+
+def load_cache_settings_from_env() -> CacheSettings:
+    return load_prefixed_cache_settings_from_env(
+        env_prefix="WOWHEAD",
+        default_cache_dir=DEFAULT_HTTP_CACHE_DIR,
+        default_redis_prefix=DEFAULT_CACHE_PREFIX,
+        ttl_env_overrides={
+            "search_suggestions": "WOWHEAD_SEARCH_CACHE_TTL_SECONDS",
+            "tooltip_meta": "WOWHEAD_TOOLTIP_CACHE_TTL_SECONDS",
+            "entity_page_html": "WOWHEAD_ENTITY_PAGE_CACHE_TTL_SECONDS",
+            "guide_page_html": "WOWHEAD_GUIDE_PAGE_CACHE_TTL_SECONDS",
+            "page_html": "WOWHEAD_PAGE_CACHE_TTL_SECONDS",
+            "comment_replies": "WOWHEAD_COMMENT_REPLIES_CACHE_TTL_SECONDS",
+            "entity_response": "WOWHEAD_ENTITY_CACHE_TTL_SECONDS",
+        },
     )
 
 
