@@ -22,6 +22,9 @@ warcraft warcraft-wiki search "world of warcraft api"
 warcraft warcraft-wiki article "World of Warcraft API"
 warcraft wowprogress guild us illidan Liquid
 warcraft wowprogress leaderboard pve us --limit 10
+warcraft simc doctor
+warcraft simc version
+warcraft simc spec-files mistweaver
 ```
 
 ## Wrapper Conventions
@@ -37,6 +40,8 @@ warcraft wowprogress leaderboard pve us --limit 10
 - `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, article export, and local query.
 - `wowprogress` is now a real phase-1 rankings provider for direct guild, character, and PvE leaderboard lookups.
 - `wowprogress` search and resolve currently return structured `coming_soon` payloads in phase 1.
+- `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
+- `simc` search and resolve currently return structured `coming_soon` payloads in phase 1.
 - the flattened `warcraft search` result list is globally sorted by provider-reported ranking score
 - `warcraft resolve` prefers the strongest resolved provider result instead of whichever provider happens to be registered first
 
@@ -185,6 +190,30 @@ WowProgress phase-1 behavior:
 - `character` returns a compact character profile with item-level, SimDPS, and PvE raid-history context
 - `leaderboard pve` returns the current PvE progression leaderboard for a region, optionally narrowed to a realm
 - `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until WowProgress discovery is implemented
+
+## SimulationCraft Commands
+
+```bash
+simc doctor
+simc version
+simc inspect
+simc inspect /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+simc spec-files mistweaver
+simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123 --actor-class monk --spec mistweaver
+simc run ./profile.simc --arg iterations=1 --arg desired_targets=1
+simc sync
+simc build
+```
+
+SimulationCraft phase-1 behavior:
+- `doctor` reports repo path, git status, binary presence, and phase-1 capability state
+- `version` probes the local `simc` binary and extracts the printed SimulationCraft version line
+- `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
+- `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
+- `decode-build` uses the local `simc` binary to decode talent strings into enabled talents and tree-grouped talent rows
+- `run` executes the local `simc` binary against a profile and returns bounded stdout/stderr previews
+- `sync` and `build` are conservative local repo helpers; `sync` skips dirty worktrees unless `--allow-dirty` is set
+- `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until SimC discovery is implemented
 
 ## Output Conventions
 

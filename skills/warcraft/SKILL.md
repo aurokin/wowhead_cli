@@ -18,6 +18,7 @@ Use the local `warcraft` command as the root entrypoint when the caller does not
 - `warcraft raiderio ...`
 - `warcraft warcraft-wiki ...`
 - `warcraft wowprogress ...`
+- `warcraft simc ...`
 
 Current provider state:
 - `wowhead`: ready
@@ -26,6 +27,7 @@ Current provider state:
 - `raiderio`: ready for direct character, guild, and Mythic+ runs lookups; `search` and `resolve` are structured `coming_soon` in phase 1
 - `warcraft-wiki`: ready for article search, resolve, fetch, export, and local query
 - `wowprogress`: ready for direct guild, character, and PvE leaderboard lookups; `search` and `resolve` are structured `coming_soon` in phase 1
+- `simc`: ready for local repo inspection, version, spec-files, decode-build, sync/build/run, with `search` and `resolve` structured `coming_soon` in phase 1
 
 ## Standard Workflow
 
@@ -33,7 +35,7 @@ Current provider state:
 - `warcraft resolve "<query>"`
 - If unresolved, `warcraft search "<query>"`
 2. Source known:
-- `warcraft wowhead ...`, `warcraft method ...`, `warcraft icy-veins ...`, `warcraft raiderio ...`, `warcraft warcraft-wiki ...`, or `warcraft wowprogress ...`
+- `warcraft wowhead ...`, `warcraft method ...`, `warcraft icy-veins ...`, `warcraft raiderio ...`, `warcraft warcraft-wiki ...`, `warcraft wowprogress ...`, or `warcraft simc ...`
 3. Provider confirmed and you need deeper provider behavior:
 - use the provider CLI directly, such as `wowhead ...`
 
@@ -49,6 +51,7 @@ Current provider state:
 - Use `raiderio` when you already know the region, realm, and character or guild you want, and need direct profile or Mythic+ run data.
 - Use `warcraft-wiki` when you need general reference material, lore, systems pages, or addon/API documentation.
 - Use `wowprogress` when you already know the region, realm, and guild or character you want, and need progression, roster, or leaderboard context rather than guide content.
+- Use `simc` when you need local SimulationCraft repo inspection, build decoding, or direct binary execution against a local profile.
 - `warcraft search` now globally sorts the flattened result list by provider-reported ranking score.
 - `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result.
 
@@ -66,6 +69,8 @@ warcraft icy-veins guide mistweaver-monk-pve-healing-guide
 warcraft raiderio character us illidan Roguecane
 warcraft warcraft-wiki article "World of Warcraft API"
 warcraft wowprogress guild us illidan Liquid
+warcraft simc doctor
+warcraft simc spec-files mistweaver
 ```
 
 ## Provider Handoff

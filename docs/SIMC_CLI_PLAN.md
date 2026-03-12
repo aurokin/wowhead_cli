@@ -2,7 +2,20 @@
 
 ## Status
 
-`simc` is not implemented yet, but the design should now be informed by the existing exploration work in `/home/auro/code/simc_exp`.
+`simc` phase 1 is implemented.
+
+Current commands:
+- `simc doctor`
+- `simc version`
+- `simc inspect`
+- `simc spec-files`
+- `simc decode-build`
+- `simc sync`
+- `simc build`
+- `simc run`
+- `simc search` and `simc resolve` as structured `coming_soon` stubs for wrapper stability
+
+The design for later phases is still informed by the existing exploration work in `/home/auro/code/simc_exp`.
 
 That matters because `simc_exp` already proves a substantial second-layer command family on top of a local SimulationCraft checkout:
 - repo and binary health checks
@@ -54,21 +67,23 @@ It should also support a readonly analysis mode against a local SimulationCraft 
 
 ### Phase 1: Local Tool Foundation
 
+Implemented:
+
 - `simc doctor`
 - `simc sync`
 - `simc build`
 - `simc version`
 - `simc run <profile-or-file>`
 - `simc inspect <profile-or-result>`
+- `simc spec-files`
+- `simc decode-build`
 
 This is the minimal operational layer.
 
 ### Phase 2: Readonly Source Analysis
 
-This is where `simc_exp` is directly relevant.
+This is where `simc_exp` is directly relevant next.
 
-- `simc spec-files`
-- `simc decode-build`
 - `simc apl-lists`
 - `simc apl-graph`
 - `simc apl-talents`

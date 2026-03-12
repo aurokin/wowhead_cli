@@ -26,6 +26,7 @@ Completed:
 - working `raiderio` phase-1 provider
 - working `warcraft-wiki` provider
 - working `wowprogress` phase-1 provider
+- working `simc` phase-1 provider
 - root `warcraft` skill
 
 Validated shared so far:
@@ -39,7 +40,7 @@ Validated shared so far:
 - article/reference bundle export/query outside class guides
 
 Active next step:
-- start `simc` as the next non-auth provider and use it to validate readonly local-source analysis plus local-tool execution
+- expand `simc` into its readonly-analysis phase and use that work to validate which local-tool abstractions should remain provider-local versus shared
 
 ## Planning Documents
 
@@ -80,7 +81,7 @@ Active next step:
 | WowProgress | Server-rendered rankings and profile pages | Build as a rankings/profile CLI with guild, character, and progress lookups plus cached leaderboard slices | [Plan](/home/auro/code/wowhead_cli/docs/WOWPROGRESS_CLI_PLAN.md) |
 | Warcraft Wiki | Server-rendered MediaWiki pages plus wiki metadata | Build as a reference CLI for lore, systems, and addon/API documentation with article export/query | [Plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_WIKI_CLI_PLAN.md) |
 | Blizzard API | Official authenticated game-data and profile APIs | Build as an API-first CLI for canonical game data, profile data, and auth-aware official lookups | [Plan](/home/auro/code/wowhead_cli/docs/BLIZZARD_API_CLI_PLAN.md) |
-| SimulationCraft | Local Git repo, readonly source inspection, local builds, local command execution | Build as a local-tool CLI with readonly source analysis, sync/build/run workflows, and agent-facing APL reasoning helpers | [Plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md) |
+| SimulationCraft | Local Git repo, readonly source inspection, local builds, local command execution | Build as a local-tool CLI with readonly source analysis, sync/build/run workflows, build decoding, and agent-facing APL reasoning helpers | [Plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md) |
 | Raidbots | Web workflow built around SimulationCraft input and result pages | Start with result/report parsing and workflow helpers, then evaluate deeper automation carefully | [Plan](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md) |
 | Warcraft Logs | Authenticated API with complex query workflows | Build as an API-first CLI with typed query helpers, auth management, and reusable report patterns | [Plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md) |
 

@@ -6,6 +6,7 @@ from typing import Any
 
 from icy_veins_cli.main import app as icy_veins_app
 from raiderio_cli.main import app as raiderio_app
+from simc_cli.main import app as simc_app
 from warcraft_wiki_cli.main import app as warcraft_wiki_app
 from wowprogress_cli.main import app as wowprogress_app
 from typer.testing import CliRunner
@@ -81,6 +82,15 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         status="partial",
         description="WowProgress rankings provider with direct guild, character, and PvE leaderboard lookups.",
         app=wowprogress_app,
+        doctor_args=("doctor",),
+    ),
+    ProviderRegistration(
+        name="simc",
+        command="simc",
+        language="python",
+        status="partial",
+        description="SimulationCraft local provider with repo inspection, build decoding, and local run workflows.",
+        app=simc_app,
         doctor_args=("doctor",),
     ),
 )

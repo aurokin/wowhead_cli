@@ -8,6 +8,7 @@ METHOD := $(VENV)/bin/method
 RAIDERIO := $(VENV)/bin/raiderio
 WARCRAFT_WIKI := $(VENV)/bin/warcraft-wiki
 WOWPROGRESS := $(VENV)/bin/wowprogress
+SIMC := $(VENV)/bin/simc
 
 .PHONY: dev-deploy dev-deploy-no-link test test-live fmt-check run
 

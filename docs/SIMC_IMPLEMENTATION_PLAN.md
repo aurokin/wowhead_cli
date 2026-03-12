@@ -2,23 +2,27 @@
 
 ## Purpose
 
-This document is the file-level implementation plan for the future `simc` provider.
+This document is the file-level implementation plan for the `simc` provider.
 
 It is the bridge between:
 - the high-level [SimulationCraft CLI plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md)
 - the module inventory in [SIMC_MIGRATION_INVENTORY.md](/home/auro/code/wowhead_cli/docs/SIMC_MIGRATION_INVENTORY.md)
 - actual code creation under `packages/simc-cli/`
 
-This is intentionally more concrete than the roadmap. It should be used when work begins on the package.
+This is intentionally more concrete than the roadmap.
+
+Current status:
+- phase 1 package and command surface are implemented
+- the remaining purpose of this document is to guide phase 2 and phase 3 work
 
 ## Package Shape
 
-Create:
+Created in phase 1:
 - `packages/simc-cli/pyproject.toml`
 - `packages/simc-cli/src/simc_cli/__init__.py`
 - `packages/simc-cli/src/simc_cli/main.py`
 
-Initial provider-local modules:
+Created provider-local modules:
 - `packages/simc-cli/src/simc_cli/repo.py`
 - `packages/simc-cli/src/simc_cli/build_input.py`
 - `packages/simc-cli/src/simc_cli/search.py`
@@ -48,7 +52,7 @@ Reason:
 
 ## Phase 1 Scope
 
-Ship first:
+Shipped in phase 1:
 - `simc doctor`
 - `simc version`
 - `simc sync`
@@ -200,7 +204,7 @@ Do not front-load every `simc_exp` command into the first provider milestone.
 
 ### Phase 1 tests
 
-Create:
+Created in phase 1:
 - `tests/test_simc_repo.py`
 - `tests/test_simc_build_input.py`
 - `tests/test_simc_cli.py`

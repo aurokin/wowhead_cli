@@ -5,6 +5,7 @@ from typing import Any
 import typer
 from icy_veins_cli.main import app as icy_veins_app
 from raiderio_cli.main import app as raiderio_app
+from simc_cli.main import app as simc_app
 from typer.main import get_command
 from warcraft_wiki_cli.main import app as warcraft_wiki_app
 from wowprogress_cli.main import app as wowprogress_app
@@ -169,6 +170,14 @@ def warcraft_wiki_passthrough(ctx: typer.Context) -> None:
 )
 def wowprogress_passthrough(ctx: typer.Context) -> None:
     _invoke_sub_app(wowprogress_app, args=list(ctx.args), prog_name="wowprogress")
+
+
+@app.command(
+    "simc",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def simc_passthrough(ctx: typer.Context) -> None:
+    _invoke_sub_app(simc_app, args=list(ctx.args), prog_name="simc")
 
 
 def run() -> None:

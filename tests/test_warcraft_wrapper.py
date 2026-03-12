@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 from icy_veins_cli.main import app as icy_veins_app
 from raiderio_cli.main import app as raiderio_app
 from method_cli.main import app as method_app
+from simc_cli.main import app as simc_app
 from warcraft_cli.main import app as warcraft_app
 from wowprogress_cli.main import app as wowprogress_app
 
@@ -29,7 +30,7 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["wrapper"]["provider_count"] == 6
+    assert payload["wrapper"]["provider_count"] == 7
     providers = {row["provider"]: row for row in payload["providers"]}
     assert providers["wowhead"]["status"] == "ready"
     assert providers["method"]["status"] == "ready"
@@ -37,11 +38,13 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert providers["raiderio"]["status"] == "ready"
     assert providers["warcraft-wiki"]["status"] == "ready"
     assert providers["wowprogress"]["status"] == "ready"
+    assert providers["simc"]["status"] == "ready"
     assert providers["method"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["icy-veins"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["raiderio"]["details"]["capabilities"]["search"] == "coming_soon"
     assert providers["warcraft-wiki"]["details"]["capabilities"]["article"] == "ready"
     assert providers["wowprogress"]["details"]["capabilities"]["leaderboard"] == "ready"
+    assert providers["simc"]["details"]["capabilities"]["decode_build"] == "ready"
 
 
 def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
@@ -64,7 +67,7 @@ def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["provider_count"] == 6
+    assert payload["provider_count"] == 7
     assert payload["count"] == 1
     assert payload["results"][0]["provider"] == "wowhead"
     providers = {row["provider"]: row for row in payload["providers"]}
@@ -73,6 +76,7 @@ def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
     assert providers["raiderio"]["payload"]["coming_soon"] is True
     assert providers["warcraft-wiki"]["payload"]["count"] == 0
     assert providers["wowprogress"]["payload"]["coming_soon"] is True
+    assert providers["simc"]["payload"]["coming_soon"] is True
     assert providers["wowhead"]["payload"]["results"][0]["name"] == "Thunderfury"
 
 
@@ -247,6 +251,28 @@ def test_warcraft_passthrough_to_icy_veins(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-guide"
     assert payload["guide"]["author"] == "Dhaubbs"
+
+
+def test_warcraft_passthrough_to_simc(monkeypatch, tmp_path) -> None:
+    profile = tmp_path / "example.simc"
+    profile.write_text('monk="example"\n')
+
+    monkeypatch.setattr(
+        "simc_cli.main.run_profile",
+        lambda paths, profile_path, simc_args: type("Result", (), {"command": [str(paths.build_simc), str(profile_path)], "returncode": 0, "stdout": "Iterations: 1\n", "stderr": ""})(),
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.binary_version",
+        lambda paths: type("VersionInfo", (), {"binary_path": paths.build_simc, "available": True, "version_line": "SimulationCraft 1201", "returncode": 1})(),
+    )
+
+    result = runner.invoke(warcraft_app, ["simc", "run", str(profile)])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "simc"
+    assert payload["status"] == "completed"
+    assert payload["version"] == "SimulationCraft 1201"
 
 
 def test_warcraft_passthrough_to_raiderio(monkeypatch) -> None:

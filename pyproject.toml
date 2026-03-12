@@ -32,6 +32,7 @@ icy-veins = "icy_veins_cli.main:run"
 raiderio = "raiderio_cli.main:run"
 warcraft-wiki = "warcraft_wiki_cli.main:run"
 wowprogress = "wowprogress_cli.main:run"
+simc = "simc_cli.main:run"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -51,4 +52,5 @@ packages = [
   "packages/raiderio-cli/src/raiderio_cli",
   "packages/warcraft-wiki-cli/src/warcraft_wiki_cli",
   "packages/wowprogress-cli/src/wowprogress_cli",
+  "packages/simc-cli/src/simc_cli",
 ]
