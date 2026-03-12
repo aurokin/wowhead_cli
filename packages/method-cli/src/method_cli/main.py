@@ -1,20 +1,24 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-import json
+from dataclasses import dataclass
 from pathlib import Path
 import re
 from typing import Any
 
 import typer
 
-from method_cli.client import MethodClient, guide_ref_parts, guide_url, load_method_cache_settings_from_env
+from method_cli.client import MethodClient, guide_ref_parts, load_method_cache_settings_from_env
 from warcraft_core.output import emit
+from warcraft_content.article_bundle import (
+    default_article_export_dir,
+    load_article_bundle,
+    query_article_bundle,
+    write_article_bundle,
+)
 
 app = typer.Typer(add_completion=False, help="Method.gg guide CLI.")
 
 SEARCH_TYPE_NAME = "Guide"
-DEFAULT_EXPORT_ROOT = Path.cwd() / "method_exports"
 
 
 @dataclass(slots=True)
@@ -229,195 +233,7 @@ def _fetch_guide_pages(client: MethodClient, guide_ref: str) -> dict[str, Any]:
 
 
 def _default_export_dir(guide_slug: str) -> Path:
-    return DEFAULT_EXPORT_ROOT / f"guide-{guide_slug}"
-
-
-def _write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-
-
-def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, sort_keys=True))
-            handle.write("\n")
-
-
-def _load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    if not path.exists():
-        return rows
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        value = json.loads(line)
-        if isinstance(value, dict):
-            rows.append(value)
-    return rows
-
-
-def _write_bundle(full_payload: dict[str, Any], *, export_dir: Path) -> dict[str, Any]:
-    guide = dict(full_payload["guide"])
-    navigation = list(full_payload["navigation"]["items"])
-    pages = list(full_payload["pages"])
-    linked_entities = list(full_payload["linked_entities"]["items"])
-    sections: list[dict[str, Any]] = []
-    page_rows: list[dict[str, Any]] = []
-    page_files: list[dict[str, Any]] = []
-    html_dir = export_dir / "pages"
-    for page in pages:
-        page_guide = dict(page["guide"])
-        page_meta = dict(page["page"])
-        article = dict(page["article"])
-        page_slug = page_guide["section_slug"]
-        html_path = html_dir / f"{page_slug}.html"
-        html_path.parent.mkdir(parents=True, exist_ok=True)
-        html_path.write_text(article["html"], encoding="utf-8")
-        page_files.append(
-            {
-                "section_slug": page_slug,
-                "path": str(html_path.relative_to(export_dir)),
-                "page_url": page_guide["page_url"],
-            }
-        )
-        page_rows.append(
-            {
-                "section_slug": page_slug,
-                "section_title": page_guide["section_title"],
-                "page_url": page_guide["page_url"],
-                "title": page_meta["title"],
-                "description": page_meta["description"],
-                "text": article["text"],
-                "heading_count": len(article["headings"]),
-            }
-        )
-        for section in article["sections"]:
-            sections.append(
-                {
-                    "page_url": page_guide["page_url"],
-                    "section_slug": page_slug,
-                    "page_title": page_meta["title"],
-                    "title": section["title"],
-                    "level": section["level"],
-                    "ordinal": section["ordinal"],
-                    "text": section["text"],
-                    "html": section["html"],
-                }
-            )
-
-    manifest = {
-        "export_version": 1,
-        "provider": "method",
-        "output_dir": str(export_dir),
-        "guide": guide,
-        "counts": {
-            "pages": len(page_rows),
-            "sections": len(sections),
-            "navigation_links": len(navigation),
-            "linked_entities": len(linked_entities),
-        },
-        "files": {
-            "guide_json": "guide.json",
-            "pages_jsonl": "pages.jsonl",
-            "sections_jsonl": "sections.jsonl",
-            "navigation_links_jsonl": "navigation-links.jsonl",
-            "linked_entities_jsonl": "linked-entities.jsonl",
-            "page_html_dir": "pages",
-        },
-    }
-    export_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(export_dir / "guide.json", full_payload)
-    _write_json(export_dir / "manifest.json", manifest)
-    _write_json(export_dir / "page-files.json", {"pages": page_files})
-    _write_jsonl(export_dir / "pages.jsonl", page_rows)
-    _write_jsonl(export_dir / "sections.jsonl", sections)
-    _write_jsonl(export_dir / "navigation-links.jsonl", navigation)
-    _write_jsonl(export_dir / "linked-entities.jsonl", linked_entities)
-    return manifest
-
-
-def _load_bundle(export_dir: Path) -> dict[str, Any]:
-    manifest = _load_json(export_dir / "manifest.json")
-    files = manifest.get("files") or {}
-    return {
-        "manifest": manifest,
-        "pages": _load_jsonl(export_dir / files.get("pages_jsonl", "pages.jsonl")),
-        "sections": _load_jsonl(export_dir / files.get("sections_jsonl", "sections.jsonl")),
-        "navigation": _load_jsonl(export_dir / files.get("navigation_links_jsonl", "navigation-links.jsonl")),
-        "linked_entities": _load_jsonl(export_dir / files.get("linked_entities_jsonl", "linked-entities.jsonl")),
-    }
-
-
-def _query_score(query: str, text: str) -> int:
-    if not query or not text:
-        return 0
-    normalized_text = text.lower()
-    score = 0
-    if query in normalized_text:
-        score += 10
-    terms = [term for term in query.split() if term]
-    if terms and all(term in normalized_text for term in terms):
-        score += 6
-    for term in terms:
-        if term in normalized_text:
-            score += 2
-    return score
-
-
-def _query_bundle(
-    bundle: dict[str, Any],
-    *,
-    query: str,
-    limit: int,
-    kinds: set[str],
-    section_title_filter: str | None,
-) -> dict[str, Any]:
-    normalized_query = query.lower().strip()
-    results_by_kind: dict[str, list[dict[str, Any]]] = {"sections": [], "navigation": [], "linked_entities": []}
-    if "sections" in kinds:
-        for row in bundle["sections"]:
-            title = str(row.get("title") or "")
-            if section_title_filter and section_title_filter not in title.lower():
-                continue
-            haystack = f"{title} {row.get('text') or ''}"
-            score = _query_score(normalized_query, haystack)
-            if score <= 0:
-                continue
-            results_by_kind["sections"].append({"kind": "section", "score": score, **row})
-    if "navigation" in kinds:
-        for row in bundle["navigation"]:
-            haystack = f"{row.get('title') or ''} {row.get('section_slug') or ''}"
-            score = _query_score(normalized_query, haystack)
-            if score <= 0:
-                continue
-            results_by_kind["navigation"].append({"kind": "navigation", "score": score, **row})
-    if "linked_entities" in kinds:
-        for row in bundle["linked_entities"]:
-            haystack = f"{row.get('name') or ''} {row.get('type') or ''} {row.get('id') or ''}"
-            score = _query_score(normalized_query, haystack)
-            if score <= 0:
-                continue
-            results_by_kind["linked_entities"].append({"kind": "linked_entity", "score": score, **row})
-    for rows in results_by_kind.values():
-        rows.sort(key=lambda row: (-row["score"], str(row.get("title") or row.get("name") or "")))
-    top: list[dict[str, Any]] = []
-    for rows in results_by_kind.values():
-        top.extend(rows[:limit])
-    top.sort(key=lambda row: (-row["score"], row["kind"], str(row.get("title") or row.get("name") or "")))
-    return {
-        "query": query,
-        "count": sum(len(rows) for rows in results_by_kind.values()),
-        "match_counts": {kind: len(rows) for kind, rows in results_by_kind.items()},
-        "matches": {kind: rows[:limit] for kind, rows in results_by_kind.items()},
-        "top": top[:limit],
-    }
+    return default_article_export_dir("method", guide_slug)
 
 
 @app.callback()
@@ -507,7 +323,7 @@ def resolve(
             "confidence": "high" if resolved else ("medium" if top else "none"),
             "match": top if top else None,
             "next_command": top["follow_up"]["recommended_command"] if resolved and top else None,
-            "fallback_search_command": None if resolved else f"method search {json.dumps(query)}",
+            "fallback_search_command": None if resolved else f"method search {query!r}",
             "count": total_count,
             "candidates": results,
         },
@@ -538,7 +354,7 @@ def guide_export(
     export_dir = out.expanduser() if out is not None else _default_export_dir(slug)
     with _client(ctx) as client:
         payload = _fetch_guide_pages(client, guide_ref)
-    manifest = _write_bundle(payload, export_dir=export_dir)
+    manifest = write_article_bundle(payload, provider="method", export_dir=export_dir)
     _emit(
         ctx,
         {
@@ -570,7 +386,7 @@ def guide_query(
     export_dir = Path(bundle_ref).expanduser()
     if not export_dir.exists():
         _fail(ctx, "invalid_bundle", f"Bundle directory not found: {export_dir}")
-    bundle = _load_bundle(export_dir)
+    bundle = load_article_bundle(export_dir)
     selected_kinds = {item.strip() for raw in kind for item in raw.split(",") if item.strip()} or {
         "sections",
         "navigation",
@@ -579,7 +395,7 @@ def guide_query(
     invalid = sorted(selected_kinds - {"sections", "navigation", "linked_entities"})
     if invalid:
         _fail(ctx, "invalid_kind", f"Unsupported guide-query kinds: {', '.join(invalid)}")
-    payload = _query_bundle(
+    payload = query_article_bundle(
         bundle,
         query=query,
         limit=limit,

@@ -42,6 +42,9 @@ This should be treated as an article-first service:
 - shared output shaping
 - search and resolve interfaces
 
+Validated after milestone 2:
+- article bundle export/load/query helpers are now shared in [warcraft_content.article_bundle](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py)
+
 ## What Should Only Be Shared After `method`
 
 If `method` and `wowhead` both need the same shapes, these become good candidates for `warcraft-content`:
@@ -50,6 +53,10 @@ If `method` and `wowhead` both need the same shapes, these become good candidate
 - section and navigation models
 - article bundle export/query contracts
 - article-oriented resolve and follow-up guidance
+
+Current conclusion:
+- only the bundle export/load/query contract is proven shared
+- parsing, nav extraction, section extraction, and discovery remain provider-specific
 
 ## What Should Stay Method-Specific
 

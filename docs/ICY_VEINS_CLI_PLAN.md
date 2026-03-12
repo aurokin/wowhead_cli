@@ -12,6 +12,8 @@ Observed from live guide pages:
 - a `page_type: 'guides'` marker appears in the page source
 - visible last-updated and author metadata are present
 - the page exposes a table of contents for guide navigation
+- guide-family navigation is page-to-page rather than purely section-anchor-based
+- the main page also exposes an in-page table of contents anchored to headings
 
 Sample observations from `https://www.icy-veins.com/wow/healing-guide`:
 - title is visible in HTML
@@ -41,6 +43,10 @@ This should also be treated as an article-first service:
 - cache and output infrastructure
 - search and resolve interfaces
 
+Validated against the current shared layer:
+- the shared article bundle export/load/query contract in [warcraft_content.article_bundle](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py) fits Icy Veins page groups cleanly
+- provider-specific parsing is still required before those helpers can be used
+
 ## What This Service Should Validate
 
 `icy-veins` is the check on whether the article abstractions proven by `method` are actually reusable:
@@ -49,6 +55,10 @@ This should also be treated as an article-first service:
 - section models
 - navigation models
 - bundle export/query behavior
+
+Current conclusion from live validation:
+- bundle export/query behavior is reusable
+- parsing and normalization are not yet shared and should stay local to the future `icy-veins` package
 
 ## What Should Stay Service-Specific
 
@@ -66,6 +76,7 @@ This should also be treated as an article-first service:
 
 - guide layouts may differ more between summary pages and spec pages than on Method
 - Icy Veins navigation structure may need more normalization than Method
+- discovery may need a site-specific strategy because the page exposes multiple related guide families, not just one clean slug graph
 
 ## Source Links
 

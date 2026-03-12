@@ -117,6 +117,10 @@ These should move first because the current `wowhead` CLI already proves them an
 
 These should move only after `method` exists and validates that the abstractions are real instead of Wowhead-specific.
 
+Current validated subset:
+- article bundle export/load/query is proven shared and now lives in [warcraft_content.article_bundle](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py)
+- article parsing and navigation extraction are still provider-specific
+
 ## Service-Specific
 
 - HTML parsing rules and page-model extraction
@@ -196,7 +200,7 @@ When implementation starts, the first restructure pass should stay narrow:
 
 ## Immediate Planning Priorities
 
-- validate Method-backed article abstractions against `icy-veins`
+- start `icy-veins` on top of the validated shared article bundle layer
 - keep package boundaries and wrapper/provider contracts aligned with real code as the monorepo grows
 - continue extracting only genuinely shared infrastructure as new providers prove the abstraction
 
