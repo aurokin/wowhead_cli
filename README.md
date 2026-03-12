@@ -6,6 +6,7 @@ Current state:
 - `warcraft` as the root wrapper
 - `wowhead` as the working provider CLI
 - `method` as a working guide provider
+- `icy-veins` as a working guide provider
 
 ## Install
 
@@ -21,7 +22,7 @@ pip install -e '.[dev,redis]'
 ## Local Dev Deploy
 
 ```bash
-# setup/update editable install and link ~/.local/bin/{warcraft,wowhead,method}
+# setup/update editable install and link ~/.local/bin/{warcraft,wowhead,method,icy-veins}
 make dev-deploy
 warcraft doctor
 warcraft search "defias"
@@ -43,13 +44,15 @@ warcraft search "defias"
 warcraft resolve "fairbreeze favors"
 warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
+warcraft icy-veins search "mistweaver monk guide"
 method guide mistweaver-monk
+icy-veins guide mistweaver-monk-pve-healing-guide
 method guide-export mistweaver-monk --out ./tmp/method-mistweaver
 wowhead search "defias"
 wowhead guide 3143
 ```
 
-Use `warcraft` when the source is unclear. Use `wowhead` or `method` directly once you know the provider you need.
+Use `warcraft` when the source is unclear. Use `wowhead`, `method`, or `icy-veins` directly once you know the provider you need.
 
 ## Docs
 

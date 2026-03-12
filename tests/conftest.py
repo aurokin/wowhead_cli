@@ -14,6 +14,7 @@ PACKAGE_SRC_DIRS = (
     ROOT / "packages" / "warcraft-cli" / "src",
     ROOT / "packages" / "wowhead-cli" / "src",
     ROOT / "packages" / "method-cli" / "src",
+    ROOT / "packages" / "icy-veins-cli" / "src",
 )
 
 for package_src in reversed(PACKAGE_SRC_DIRS):

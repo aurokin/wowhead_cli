@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import typer
+from icy_veins_cli.main import app as icy_veins_app
 from typer.main import get_command
 
 from method_cli.main import app as method_app
@@ -124,6 +125,14 @@ def wowhead_passthrough(ctx: typer.Context) -> None:
 
 
 @app.command(
+    "icy-veins",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def icy_veins_passthrough(ctx: typer.Context) -> None:
+    _invoke_sub_app(icy_veins_app, args=list(ctx.args), prog_name="icy-veins")
+
+
+@app.command(
     "method",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )
@@ -137,4 +146,3 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
-

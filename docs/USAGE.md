@@ -14,6 +14,8 @@ warcraft wowhead search "defias"
 warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
 warcraft method guide mistweaver-monk
+warcraft icy-veins search "mistweaver monk guide"
+warcraft icy-veins guide mistweaver-monk-pve-healing-guide
 ```
 
 ## Wrapper Conventions
@@ -23,6 +25,7 @@ warcraft method guide mistweaver-monk
 - Use `warcraft search` when you want to inspect candidates across providers.
 - Use `warcraft <provider> ...` when you already know which service you need.
 - `method` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
+- `icy-veins` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
 
 `warcraft doctor` reports:
 - wrapper health
@@ -94,6 +97,25 @@ Method guide behavior:
 - `guide-full` walks the guide navigation and returns all discovered guide pages
 - `guide-export` writes a local guide bundle under `./method_exports/` by default
 - `guide-query` searches exported Method bundles across sections, navigation links, and linked entities
+
+## Icy Veins Commands
+
+```bash
+icy-veins doctor
+icy-veins search "mistweaver monk guide"
+icy-veins resolve "mistweaver monk guide"
+icy-veins guide "mistweaver-monk-pve-healing-guide"
+icy-veins guide-full "mistweaver-monk-pve-healing-guide"
+icy-veins guide-export "mistweaver-monk-pve-healing-guide" --out ./tmp/icy-mistweaver
+icy-veins guide-query ./tmp/icy-mistweaver "vivify"
+```
+
+Icy Veins guide behavior:
+- `search` and `resolve` work against the Icy Veins sitemap for WoW guide-like pages
+- `guide` returns the requested page summary with guide-family navigation, page TOC, and linked-entity preview
+- `guide-full` walks the guide-family navigation and returns all discovered guide pages
+- `guide-export` writes a local guide bundle under `./icy-veins_exports/` by default
+- `guide-query` searches exported Icy Veins bundles across sections, navigation links, and linked entities
 
 ## Output Conventions
 

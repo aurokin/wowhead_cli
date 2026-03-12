@@ -1,5 +1,18 @@
 # Icy Veins CLI Plan
 
+## Status
+
+`icy-veins` is now implemented as a working provider on top of the shared article bundle layer.
+
+Current command surface:
+- `icy-veins doctor`
+- `icy-veins search`
+- `icy-veins resolve`
+- `icy-veins guide`
+- `icy-veins guide-full`
+- `icy-veins guide-export`
+- `icy-veins guide-query`
+
 ## Why It Matters
 
 `icy-veins` is another article-first source and should be the next validation point after `method` if the shared article abstractions hold up.
@@ -66,11 +79,10 @@ Current conclusion from live validation:
 - guide-family discovery
 - ranking heuristics for articles and specs
 
-## First Useful Slice
+## What It Has Validated
 
-1. support direct guide fetch by URL or slug
-2. extract metadata, table of contents, and sections
-3. export/query local bundles
+- the shared article bundle export/load/query contract is reusable across a second article-first provider
+- provider-specific parsing and navigation extraction should still stay local
 
 ## Risks
 

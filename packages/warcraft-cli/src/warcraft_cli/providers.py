@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 from typing import Any
 
+from icy_veins_cli.main import app as icy_veins_app
 from typer.testing import CliRunner
 
 from method_cli.main import app as method_app
@@ -37,6 +38,13 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         status="ready",
         description="Method.gg article provider with sitemap-backed search and guide bundle export/query.",
     ),
+    ProviderRegistration(
+        name="icy-veins",
+        command="icy-veins",
+        language="python",
+        status="ready",
+        description="Icy Veins article provider with sitemap-backed search, resolve, and guide bundle export/query.",
+    ),
 )
 
 
@@ -63,6 +71,8 @@ def provider_search(provider: str, query: str, *, limit: int = 5) -> dict[str, A
         code, payload, _stdout = _invoke_provider_app(wowhead_app, ["search", query, "--limit", str(limit)])
     elif provider == "method":
         code, payload, _stdout = _invoke_provider_app(method_app, ["search", query, "--limit", str(limit)])
+    elif provider == "icy-veins":
+        code, payload, _stdout = _invoke_provider_app(icy_veins_app, ["search", query, "--limit", str(limit)])
     else:
         raise ValueError(f"Unknown provider: {provider}")
     return {
@@ -77,6 +87,8 @@ def provider_resolve(provider: str, query: str, *, limit: int = 5) -> dict[str, 
         code, payload, _stdout = _invoke_provider_app(wowhead_app, ["resolve", query, "--limit", str(limit)])
     elif provider == "method":
         code, payload, _stdout = _invoke_provider_app(method_app, ["resolve", query, "--limit", str(limit)])
+    elif provider == "icy-veins":
+        code, payload, _stdout = _invoke_provider_app(icy_veins_app, ["resolve", query, "--limit", str(limit)])
     else:
         raise ValueError(f"Unknown provider: {provider}")
     return {
@@ -103,6 +115,16 @@ def provider_doctor(provider: str) -> dict[str, Any]:
             "provider": provider,
             "status": "ready" if code == 0 else "error",
             "command": "method",
+            "language": "python",
+            "installed": True,
+            "details": payload,
+        }
+    if provider == "icy-veins":
+        code, payload, _stdout = _invoke_provider_app(icy_veins_app, ["doctor"])
+        return {
+            "provider": provider,
+            "status": "ready" if code == 0 else "error",
+            "command": "icy-veins",
             "language": "python",
             "installed": True,
             "details": payload,

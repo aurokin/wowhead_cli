@@ -118,7 +118,7 @@ These should move first because the current `wowhead` CLI already proves them an
 These should move only after `method` exists and validates that the abstractions are real instead of Wowhead-specific.
 
 Current validated subset:
-- article bundle export/load/query is proven shared and now lives in [warcraft_content.article_bundle](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py)
+- article bundle export/load/query is proven shared across `method` and `icy-veins` and now lives in [warcraft_content.article_bundle](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py)
 - article parsing and navigation extraction are still provider-specific
 
 ## Service-Specific
@@ -171,7 +171,7 @@ The wrapper should not erase source identity. Agents still need to know whether 
 4. Introduce a minimal `warcraft` wrapper that can proxy `wowhead` and expose shared discovery later.
 5. Move the current root skill layout to service-agnostic root-level skills.
 6. Add `method` as the first article-style service on top of the shared content/bundle pieces. See [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
-7. Re-evaluate which article-level abstractions are actually shared, then add `icy-veins` if they hold up. See [ICY_VEINS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/ICY_VEINS_CLI_PLAN.md).
+7. Re-evaluate which article-level abstractions are actually shared now that both `method` and `icy-veins` exist.
 8. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
 9. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
 10. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
@@ -196,11 +196,12 @@ When implementation starts, the first restructure pass should stay narrow:
 3. Add a minimal `warcraft` CLI that can proxy `wowhead` without changing existing behavior.
 4. Move skills to root-level service directories and add `skills/warcraft/SKILL.md`.
 5. Add a `method` package that proves the shared article and bundle abstractions. The target scope is in [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
-6. Re-evaluate the package boundaries before adding the next service.
+6. Validate those abstractions against `icy-veins`, but keep parsing and navigation extraction provider-specific.
+7. Re-evaluate the package boundaries before adding the next service.
 
 ## Immediate Planning Priorities
 
-- start `icy-veins` on top of the validated shared article bundle layer
+- start `raiderio` on top of the validated shared HTTP/cache layer
 - keep package boundaries and wrapper/provider contracts aligned with real code as the monorepo grows
 - continue extracting only genuinely shared infrastructure as new providers prove the abstraction
 

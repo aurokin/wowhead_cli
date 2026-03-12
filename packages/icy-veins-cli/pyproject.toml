@@ -3,23 +3,22 @@ requires = ["hatchling>=1.24.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "warcraft-cli"
+name = "icy-veins-cli"
 version = "0.1.0"
-description = "Umbrella Warcraft CLI"
+description = "Icy Veins CLI"
 readme = "../../README.md"
 requires-python = ">=3.12"
 dependencies = [
-  "icy-veins-cli>=0.1.0",
+  "beautifulsoup4>=4.13.0,<5.0.0",
   "orjson>=3.10.16,<4.0.0",
   "typer>=0.12.5,<1.0.0",
-  "method-cli>=0.1.0",
-  "warcraft-content-cli>=0.1.0",
+  "warcraft-api-cli>=0.1.0",
   "warcraft-core-cli>=0.1.0",
-  "wowhead-cli>=0.1.0",
+  "warcraft-content-cli>=0.1.0",
 ]
 
 [project.scripts]
-warcraft = "warcraft_cli.main:run"
+icy-veins = "icy_veins_cli.main:run"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/warcraft_cli"]
+packages = ["src/icy_veins_cli"]

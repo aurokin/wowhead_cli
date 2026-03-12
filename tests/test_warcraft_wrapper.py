@@ -4,6 +4,7 @@ import json
 
 from typer.testing import CliRunner
 
+from icy_veins_cli.main import app as icy_veins_app
 from method_cli.main import app as method_app
 from warcraft_cli.main import app as warcraft_app
 
@@ -26,11 +27,13 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["wrapper"]["provider_count"] == 2
+    assert payload["wrapper"]["provider_count"] == 3
     providers = {row["provider"]: row for row in payload["providers"]}
     assert providers["wowhead"]["status"] == "ready"
     assert providers["method"]["status"] == "ready"
+    assert providers["icy-veins"]["status"] == "ready"
     assert providers["method"]["details"]["capabilities"]["guide"] == "ready"
+    assert providers["icy-veins"]["details"]["capabilities"]["guide"] == "ready"
 
 
 def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
@@ -46,16 +49,18 @@ def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
         "method_cli.main.MethodClient.sitemap_guides",
         lambda self: [{"slug": "mistweaver-monk", "name": "Mistweaver Monk", "url": "https://www.method.gg/guides/mistweaver-monk"}],
     )
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: [])
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
     result = runner.invoke(warcraft_app, ["search", "thunderfury", "--limit", "3"])
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["provider_count"] == 2
+    assert payload["provider_count"] == 3
     assert payload["count"] == 1
     assert payload["results"][0]["provider"] == "wowhead"
     providers = {row["provider"]: row for row in payload["providers"]}
     assert providers["method"]["payload"]["count"] == 0
+    assert providers["icy-veins"]["payload"]["count"] == 0
     assert providers["wowhead"]["payload"]["results"][0]["name"] == "Thunderfury"
 
 
@@ -72,6 +77,7 @@ def test_warcraft_resolve_prefers_ready_provider(monkeypatch) -> None:
         "method_cli.main.MethodClient.sitemap_guides",
         lambda self: [{"slug": "mistweaver-monk", "name": "Mistweaver Monk", "url": "https://www.method.gg/guides/mistweaver-monk"}],
     )
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: [])
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
     result = runner.invoke(warcraft_app, ["resolve", "fairbreeze favors"])
     assert result.exit_code == 0
@@ -100,7 +106,7 @@ def test_warcraft_passthrough_to_wowhead(monkeypatch) -> None:
     assert payload["results"][0]["name"] == "Thunderfury"
 
 
-def test_warcraft_passthrough_to_method_stub(monkeypatch) -> None:
+def test_warcraft_passthrough_to_method(monkeypatch) -> None:
     def fake_fetch(self, guide_ref):  # noqa: ANN001
         return {
             "guide": {
@@ -129,3 +135,37 @@ def test_warcraft_passthrough_to_method_stub(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["guide"]["slug"] == "mistweaver-monk"
     assert payload["guide"]["author"] == "Tincell"
+
+
+def test_warcraft_passthrough_to_icy_veins(monkeypatch) -> None:
+    def fake_fetch(self, guide_ref):  # noqa: ANN001
+        return {
+            "guide": {
+                "slug": "mistweaver-monk-pve-healing-guide",
+                "page_url": "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide",
+                "section_slug": "mistweaver-monk-pve-healing-guide",
+                "section_title": "Mistweaver Monk Guide",
+                "author": "Dhaubbs",
+                "last_updated": "2026-03-05T05:19:00+00:00",
+                "published_at": "2012-09-13T02:17:00+00:00",
+            },
+            "page": {
+                "title": "Mistweaver Monk Healing Guide - Midnight (12.0.1)",
+                "description": "This guide contains everything you need to know to be an excellent Mistweaver Monk.",
+                "canonical_url": "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide",
+                "page_type": "guides",
+            },
+            "navigation": [],
+            "page_toc": [],
+            "article": {"html": "<p>Intro</p>", "text": "Intro", "intro_text": "General Information", "headings": [], "sections": []},
+            "linked_entities": [],
+            "citations": {"page": "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide"},
+        }
+
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.fetch_guide_page", fake_fetch)
+    result = runner.invoke(warcraft_app, ["icy-veins", "guide", "mistweaver-monk-pve-healing-guide"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-guide"
+    assert payload["guide"]["author"] == "Dhaubbs"

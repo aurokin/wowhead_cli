@@ -14,10 +14,12 @@ Use the local `warcraft` command as the root entrypoint when the caller does not
 - `warcraft resolve "<query>"`
 - `warcraft wowhead ...`
 - `warcraft method ...`
+- `warcraft icy-veins ...`
 
 Current provider state:
 - `wowhead`: ready
 - `method`: ready for guide search, resolve, fetch, export, and local query
+- `icy-veins`: ready for guide search, resolve, fetch, export, and local query
 
 ## Standard Workflow
 
@@ -25,7 +27,7 @@ Current provider state:
 - `warcraft resolve "<query>"`
 - If unresolved, `warcraft search "<query>"`
 2. Source known:
-- `warcraft wowhead ...` or `warcraft method ...`
+- `warcraft wowhead ...`, `warcraft method ...`, or `warcraft icy-veins ...`
 3. Provider confirmed and you need deeper provider behavior:
 - use the provider CLI directly, such as `wowhead ...`
 
@@ -37,6 +39,7 @@ Current provider state:
 - Use `doctor` to confirm provider readiness before relying on a provider.
 - Preserve provider provenance in your reasoning. Do not describe `warcraft` results as source-neutral.
 - Use `method` when you need article-style guide content that is easier to traverse than the equivalent Wowhead guide surface.
+- Use `icy-veins` when you need article-style guide content with page-family navigation and table-of-contents structure that may be easier to traverse than the equivalent Wowhead guide surface.
 
 ## Examples
 
@@ -47,6 +50,8 @@ warcraft resolve "fairbreeze favors"
 warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
 warcraft method guide mistweaver-monk
+warcraft icy-veins search "mistweaver monk guide"
+warcraft icy-veins guide mistweaver-monk-pve-healing-guide
 ```
 
 ## Provider Handoff
