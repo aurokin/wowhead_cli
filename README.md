@@ -9,6 +9,7 @@ Current state:
 - `icy-veins` as a working guide provider
 - `raiderio` as a working phase-1 API provider
 - `warcraft-wiki` as a working reference/article provider
+- `wowprogress` as a working phase-1 rankings/profile provider
 
 ## Install
 
@@ -24,7 +25,7 @@ pip install -e '.[dev,redis]'
 ## Local Dev Deploy
 
 ```bash
-# setup/update editable install and link ~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki}
+# setup/update editable install and link ~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki,wowprogress}
 make dev-deploy
 warcraft doctor
 warcraft search "defias"
@@ -49,16 +50,18 @@ warcraft method search "mistweaver monk"
 warcraft icy-veins search "mistweaver monk guide"
 warcraft raiderio character us illidan Roguecane
 warcraft warcraft-wiki article "World of Warcraft API"
+warcraft wowprogress guild us illidan Liquid
 method guide mistweaver-monk
 icy-veins guide mistweaver-monk-pve-healing-guide
 raiderio guild us illidan Liquid
 warcraft-wiki search "world of warcraft api"
+wowprogress leaderboard pve us --limit 10
 method guide-export mistweaver-monk --out ./tmp/method-mistweaver
 wowhead search "defias"
 wowhead guide 3143
 ```
 
-Use `warcraft` when the source is unclear. Use `wowhead`, `method`, `icy-veins`, `raiderio`, or `warcraft-wiki` directly once you know the provider you need.
+Use `warcraft` when the source is unclear. Use `wowhead`, `method`, `icy-veins`, `raiderio`, `warcraft-wiki`, or `wowprogress` directly once you know the provider you need.
 
 ## Docs
 

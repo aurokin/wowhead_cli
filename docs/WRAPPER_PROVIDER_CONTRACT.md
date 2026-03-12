@@ -160,6 +160,7 @@ Current state:
 - `icy-veins` is ready
 - `raiderio` is ready for direct phase-1 retrieval, with `search` and `resolve` intentionally returning structured `coming_soon` payloads
 - `warcraft-wiki` is ready
+- `wowprogress` is ready for direct phase-1 retrieval, with `search` and `resolve` intentionally returning structured `coming_soon` payloads
 
 ## Documentation Rule
 

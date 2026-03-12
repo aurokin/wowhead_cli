@@ -7,6 +7,7 @@ from typing import Any
 from icy_veins_cli.main import app as icy_veins_app
 from raiderio_cli.main import app as raiderio_app
 from warcraft_wiki_cli.main import app as warcraft_wiki_app
+from wowprogress_cli.main import app as wowprogress_app
 from typer.testing import CliRunner
 
 from method_cli.main import app as method_app
@@ -71,6 +72,15 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         status="ready",
         description="Warcraft Wiki reference provider with MediaWiki-backed search, resolve, article export, and local query.",
         app=warcraft_wiki_app,
+        doctor_args=("doctor",),
+    ),
+    ProviderRegistration(
+        name="wowprogress",
+        command="wowprogress",
+        language="python",
+        status="partial",
+        description="WowProgress rankings provider with direct guild, character, and PvE leaderboard lookups.",
+        app=wowprogress_app,
         doctor_args=("doctor",),
     ),
 )

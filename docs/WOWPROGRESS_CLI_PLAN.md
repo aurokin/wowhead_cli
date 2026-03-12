@@ -1,5 +1,17 @@
 # WowProgress CLI Plan
 
+## Status
+
+`wowprogress` is now implemented as a working phase-1 provider.
+
+Current command surface:
+- `wowprogress doctor`
+- `wowprogress search`
+- `wowprogress resolve`
+- `wowprogress guild`
+- `wowprogress character`
+- `wowprogress leaderboard`
+
 ## Why Add It
 
 `wowprogress` adds a different kind of value from guide and wiki sources: guild progression, character rankings, roster context, and recruitment-style profile discovery.
@@ -21,19 +33,20 @@ Sample observations from `https://www.wowprogress.com/` and `https://www.wowprog
 
 ## Access Model
 
-This should be treated as a rankings/profile service:
-- fetch leaderboard and profile HTML
+This is now treated as a rankings/profile service using browser-fingerprint HTTP fetches:
+- fetch guild, character, and leaderboard HTML directly
 - extract guild, character, realm, and progression context
-- cache leaderboard slices because the pages are expensive and fast-moving
+- cache leaderboard and profile pages because the pages are expensive and fast-moving
+- defer free-text discovery until a trustworthy site-native search path is available
 
-## Likely CLI Shape
+## Current CLI Shape
 
 - `wowprogress doctor`
 - `wowprogress search "<query>"`
 - `wowprogress resolve "<query>"`
-- `wowprogress guild <name-or-url>`
-- `wowprogress character <name-or-url>`
-- `wowprogress leaderboard <kind> [filters]`
+- `wowprogress guild <region> <realm> <name>`
+- `wowprogress character <region> <realm> <name>`
+- `wowprogress leaderboard pve <region> [--realm <realm>]`
 
 ## What Can Reuse Shared Code
 
@@ -49,16 +62,18 @@ This should be treated as a rankings/profile service:
 - guild/character identifier resolution
 - site-specific leaderboard normalization
 
-## What This Service Should Validate
+## What This Service Has Validated
 
 - whether profile and leaderboard payloads can share any contract with `raiderio`
 - whether cross-source guild/character resolution belongs in shared code or only in the wrapper
+- that a browser-fingerprint HTTP transport is enough for a real no-auth WowProgress provider without adding a browser-runtime dependency
 
 ## Risks
 
 - the site is old and filter-heavy, so HTML stability may be inconsistent
 - rankings are time-sensitive and may need careful cache policy
 - some useful pages may not map cleanly to stable identifiers
+- free-text search/resolve are intentionally deferred because the site search surface is less reliable than the direct profile and leaderboard pages
 
 ## Source Links
 

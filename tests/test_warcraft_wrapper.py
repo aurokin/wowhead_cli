@@ -8,6 +8,7 @@ from icy_veins_cli.main import app as icy_veins_app
 from raiderio_cli.main import app as raiderio_app
 from method_cli.main import app as method_app
 from warcraft_cli.main import app as warcraft_app
+from wowprogress_cli.main import app as wowprogress_app
 
 runner = CliRunner()
 
@@ -28,17 +29,19 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["wrapper"]["provider_count"] == 5
+    assert payload["wrapper"]["provider_count"] == 6
     providers = {row["provider"]: row for row in payload["providers"]}
     assert providers["wowhead"]["status"] == "ready"
     assert providers["method"]["status"] == "ready"
     assert providers["icy-veins"]["status"] == "ready"
     assert providers["raiderio"]["status"] == "ready"
     assert providers["warcraft-wiki"]["status"] == "ready"
+    assert providers["wowprogress"]["status"] == "ready"
     assert providers["method"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["icy-veins"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["raiderio"]["details"]["capabilities"]["search"] == "coming_soon"
     assert providers["warcraft-wiki"]["details"]["capabilities"]["article"] == "ready"
+    assert providers["wowprogress"]["details"]["capabilities"]["leaderboard"] == "ready"
 
 
 def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
@@ -61,7 +64,7 @@ def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["provider_count"] == 5
+    assert payload["provider_count"] == 6
     assert payload["count"] == 1
     assert payload["results"][0]["provider"] == "wowhead"
     providers = {row["provider"]: row for row in payload["providers"]}
@@ -69,6 +72,7 @@ def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
     assert providers["icy-veins"]["payload"]["count"] == 0
     assert providers["raiderio"]["payload"]["coming_soon"] is True
     assert providers["warcraft-wiki"]["payload"]["count"] == 0
+    assert providers["wowprogress"]["payload"]["coming_soon"] is True
     assert providers["wowhead"]["payload"]["results"][0]["name"] == "Thunderfury"
 
 
@@ -301,3 +305,28 @@ def test_warcraft_passthrough_to_warcraft_wiki(monkeypatch) -> None:
 
     payload = json.loads(result.stdout)
     assert payload["article"]["title"] == "World of Warcraft API"
+
+
+def test_warcraft_passthrough_to_wowprogress(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "wowprogress_cli.main.WowProgressClient.fetch_guild_page",
+        lambda self, *, region, realm, name: {
+            "guild": {
+                "name": "Liquid",
+                "region": "us",
+                "realm": "US-Illidan",
+                "faction": "Horde",
+                "page_url": "https://www.wowprogress.com/guild/us/illidan/Liquid",
+                "armory_url": "https://worldofwarcraft.com/en-us/guild/illidan/liquid",
+            },
+            "progress": {"summary": "8/8 (M)", "ranks": {"world": "1", "region": "1", "realm": "1"}},
+            "item_level": {"average": 724.51, "group_size": "20-man", "ranks": {"world": "9026", "region": "4149", "realm": "238"}},
+            "encounters": {"count": 0, "items": []},
+            "citations": {"page": "https://www.wowprogress.com/guild/us/illidan/Liquid"},
+        },
+    )
+    result = runner.invoke(warcraft_app, ["wowprogress", "guild", "us", "illidan", "Liquid"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["guild"]["name"] == "Liquid"

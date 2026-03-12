@@ -20,6 +20,8 @@ warcraft raiderio character us illidan Roguecane
 warcraft raiderio guild us illidan Liquid
 warcraft warcraft-wiki search "world of warcraft api"
 warcraft warcraft-wiki article "World of Warcraft API"
+warcraft wowprogress guild us illidan Liquid
+warcraft wowprogress leaderboard pve us --limit 10
 ```
 
 ## Wrapper Conventions
@@ -33,6 +35,8 @@ warcraft warcraft-wiki article "World of Warcraft API"
 - `raiderio` is now a real phase-1 API provider for direct character, guild, and Mythic+ runs lookups.
 - `raiderio` search and resolve currently return structured `coming_soon` payloads in phase 1.
 - `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, article export, and local query.
+- `wowprogress` is now a real phase-1 rankings provider for direct guild, character, and PvE leaderboard lookups.
+- `wowprogress` search and resolve currently return structured `coming_soon` payloads in phase 1.
 - the flattened `warcraft search` result list is globally sorted by provider-reported ranking score
 - `warcraft resolve` prefers the strongest resolved provider result instead of whichever provider happens to be registered first
 
@@ -162,6 +166,25 @@ Warcraft Wiki behavior:
 - `article-full` returns the parsed article payload used for local export
 - `article-export` writes a local article bundle under `./warcraft-wiki_exports/` by default
 - `article-query` searches exported wiki bundles across sections, navigation links, and linked entities
+
+## WowProgress Commands
+
+```bash
+wowprogress doctor
+wowprogress search "liquid"
+wowprogress resolve "liquid"
+wowprogress guild us illidan Liquid
+wowprogress character us illidan Imonthegcd
+wowprogress leaderboard pve us --limit 10
+wowprogress leaderboard pve us --realm illidan --limit 10
+```
+
+WowProgress phase-1 behavior:
+- `doctor` reports cache config and the browser-fingerprint HTTP transport used for live fetches
+- `guild` returns a compact guild profile with progression, item-level rank context, and encounter history
+- `character` returns a compact character profile with item-level, SimDPS, and PvE raid-history context
+- `leaderboard pve` returns the current PvE progression leaderboard for a region, optionally narrowed to a realm
+- `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until WowProgress discovery is implemented
 
 ## Output Conventions
 

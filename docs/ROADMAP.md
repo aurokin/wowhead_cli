@@ -25,6 +25,7 @@ Completed:
 - working `icy-veins` provider
 - working `raiderio` phase-1 provider
 - working `warcraft-wiki` provider
+- working `wowprogress` phase-1 provider
 - root `warcraft` skill
 
 Validated shared so far:
@@ -38,7 +39,7 @@ Validated shared so far:
 - article/reference bundle export/query outside class guides
 
 Active next step:
-- start `wowprogress` as the next no-auth rankings/profile provider
+- prepare the next provider after `wowprogress`; the current recommendation remains `blizzard-api` once auth work is in scope
 
 ## Planning Documents
 
@@ -216,9 +217,9 @@ Completed:
 7. Validate those article abstractions against `icy-veins`.
 8. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers, with auth deferred and search/resolve stubbed in phase 1. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
 9. Add `warcraft-wiki` as a working reference/documentation provider and validate the shared article layer outside class guides. See [WARCRAFT_WIKI_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFT_WIKI_CLI_PLAN.md).
+10. Add `wowprogress` as a working rankings/profile provider adjacent to `raiderio`, while keeping its HTML parsing and discovery constraints provider-specific. See [WOWPROGRESS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WOWPROGRESS_CLI_PLAN.md).
 
 Next:
-10. Add `wowprogress` as a rankings/profile source adjacent to `raiderio`, but keep it provider-specific until we know which leaderboard/profile abstractions are actually shared. See [WOWPROGRESS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WOWPROGRESS_CLI_PLAN.md).
 11. Add `blizzard-api` as the canonical official data provider for supported game-data and profile lookups once we are ready to tackle auth. Use it to validate OAuth, region handling, and namespace-aware API patterns. See [BLIZZARD_API_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/BLIZZARD_API_CLI_PLAN.md).
 12. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
 13. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
@@ -236,7 +237,6 @@ These are the high-level sources used to shape the plan:
 
 ## Immediate Planning Priorities
 
-- add `wowprogress` as a second rankings/profile source after `raiderio`
 - add `blizzard-api` as the official canonical data source for supported game-data and profile lookups once auth work is in scope
 - keep package boundaries and wrapper/provider contracts aligned with real code as the monorepo grows
 - continue extracting only genuinely shared infrastructure as new providers prove the abstraction
