@@ -10,6 +10,11 @@ Current commands:
 - `simc inspect`
 - `simc spec-files`
 - `simc decode-build`
+- `simc apl-lists`
+- `simc apl-graph`
+- `simc apl-talents`
+- `simc find-action`
+- `simc trace-action`
 - `simc sync`
 - `simc build`
 - `simc run`
@@ -82,7 +87,7 @@ This is the minimal operational layer.
 
 ### Phase 2: Readonly Source Analysis
 
-This is where `simc_exp` is directly relevant next.
+The first readonly-analysis slice is now implemented.
 
 - `simc apl-lists`
 - `simc apl-graph`

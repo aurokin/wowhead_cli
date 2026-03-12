@@ -6,10 +6,11 @@ from typing import Any
 
 import typer
 
+from simc_cli.apl import action_counts, group_entries, mermaid_graph, parse_apl, talent_refs, trace_action_entries
 from simc_cli.build_input import decode_build, extract_build_spec_from_text, infer_actor_and_spec_from_apl, load_build_spec
 from simc_cli.repo import RepoPaths, discover_repo, validate_build, validate_repo
 from simc_cli.run import binary_version, build_repo, repo_git_status, run_profile, sync_repo
-from simc_cli.search import spec_file_search
+from simc_cli.search import find_action, spec_file_search
 from warcraft_core.output import emit
 
 app = typer.Typer(add_completion=False, help="SimulationCraft local workflow CLI.")
@@ -102,6 +103,13 @@ def _serialize_build_spec(spec: Any) -> dict[str, Any]:
     }
 
 
+def _resolve_path(paths: RepoPaths, value: str) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = paths.root / path
+    return path.resolve()
+
+
 @app.callback()
 def main_callback(
     ctx: typer.Context,
@@ -139,6 +147,11 @@ def doctor(ctx: typer.Context) -> None:
                 "inspect": "ready",
                 "spec_files": "ready",
                 "decode_build": "ready",
+                "apl_lists": "ready",
+                "apl_graph": "ready",
+                "apl_talents": "ready",
+                "find_action": "ready",
+                "trace_action": "ready",
             },
             "repo": repo,
         },
@@ -308,6 +321,206 @@ def decode_build_command(
                 },
                 "source_notes": resolution.source_notes,
             },
+        },
+    )
+
+
+@app.command("apl-lists")
+def apl_lists(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    list_name: str | None = typer.Option(None, "--list", help="Only return one action list."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    entries = parse_apl(resolved)
+    grouped = group_entries(entries)
+    selected_names = [list_name] if list_name else sorted(grouped)
+    lists_payload: list[dict[str, Any]] = []
+    for current in selected_names:
+        current_entries = grouped.get(current, [])
+        lists_payload.append(
+            {
+                "list_name": current,
+                "count": len(current_entries),
+                "entries": [
+                    {
+                        "line_no": entry.line_no,
+                        "action": entry.action,
+                        "kind": entry.kind,
+                        "target_list": entry.target_list,
+                        "condition": entry.condition,
+                        "raw": entry.raw,
+                    }
+                    for entry in current_entries
+                ],
+            }
+        )
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+                "entry_count": len(entries),
+                "list_count": len(grouped),
+            },
+            "lists": lists_payload,
+        },
+    )
+
+
+@app.command("apl-graph")
+def apl_graph_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    entries = parse_apl(resolved)
+    grouped = group_entries(entries)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+                "list_count": len(grouped),
+            },
+            "graph": {
+                "format": "mermaid",
+                "text": mermaid_graph(entries),
+            },
+        },
+    )
+
+
+@app.command("apl-talents")
+def apl_talents_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    entries = parse_apl(resolved)
+    refs = talent_refs(entries)
+    counts = action_counts(entries)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+            },
+            "count": len(refs),
+            "talents": [{"token": token, "lines": lines} for token, lines in refs.items()],
+            "action_counts": [{"name": name, "count": count} for name, count in counts.most_common(25)],
+        },
+    )
+
+
+@app.command("find-action")
+def find_action_command(
+    ctx: typer.Context,
+    action: str = typer.Argument(..., help="Action, buff, or token to search for."),
+    wow_class: str | None = typer.Option(None, "--class", help="Optional class name to narrow code and spell dumps."),
+    limit: int = typer.Option(25, "--limit", min=1, max=200, help="Maximum hits to return per bucket."),
+) -> None:
+    paths = _repo_paths(ctx)
+    results = find_action(paths, action, wow_class)
+    buckets: dict[str, Any] = {}
+    total = 0
+    for bucket, hits in results.items():
+        items = [
+            {
+                "path": str(hit.path),
+                "relative_to_repo": str(hit.path.relative_to(paths.root)) if hit.path.is_relative_to(paths.root) else str(hit.path),
+                "line_no": hit.line_no,
+                "text": hit.text,
+            }
+            for hit in hits[:limit]
+        ]
+        buckets[bucket] = {
+            "count": len(hits),
+            "items": items,
+            "truncated": len(hits) > limit,
+        }
+        total += len(hits)
+    _emit(ctx, {"provider": "simc", "action": action, "class_filter": wow_class, "count": total, "buckets": buckets})
+
+
+@app.command("trace-action")
+def trace_action_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    action: str = typer.Argument(..., help="Action name to trace."),
+    wow_class: str | None = typer.Option(None, "--class", help="Optional class name to narrow code and spell dumps."),
+    limit: int = typer.Option(25, "--limit", min=1, max=200, help="Maximum non-APL hits to return per bucket."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    entries = trace_action_entries(parse_apl(resolved), action)
+    search_hits = find_action(paths, action, wow_class)
+    buckets: dict[str, Any] = {}
+    total = 0
+    for bucket, hits in search_hits.items():
+        items = [
+            {
+                "path": str(hit.path),
+                "relative_to_repo": str(hit.path.relative_to(paths.root)) if hit.path.is_relative_to(paths.root) else str(hit.path),
+                "line_no": hit.line_no,
+                "text": hit.text,
+            }
+            for hit in hits[:limit]
+        ]
+        buckets[bucket] = {
+            "count": len(hits),
+            "items": items,
+            "truncated": len(hits) > limit,
+        }
+        total += len(hits)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "action": action,
+            "class_filter": wow_class,
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+            },
+            "apl_hits": {
+                "count": len(entries),
+                "items": [
+                    {
+                        "line_no": entry.line_no,
+                        "list_name": entry.list_name,
+                        "action": entry.action,
+                        "kind": entry.kind,
+                        "target_list": entry.target_list,
+                        "condition": entry.condition,
+                        "raw": entry.raw,
+                    }
+                    for entry in entries
+                ],
+            },
+            "external_hit_count": total,
+            "buckets": buckets,
         },
     )
 

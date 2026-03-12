@@ -25,6 +25,7 @@ warcraft wowprogress leaderboard pve us --limit 10
 warcraft simc doctor
 warcraft simc version
 warcraft simc spec-files mistweaver
+warcraft simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 ```
 
 ## Wrapper Conventions
@@ -41,6 +42,7 @@ warcraft simc spec-files mistweaver
 - `wowprogress` is now a real phase-1 rankings provider for direct guild, character, and PvE leaderboard lookups.
 - `wowprogress` search and resolve currently return structured `coming_soon` payloads in phase 1.
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
+- `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` search and resolve currently return structured `coming_soon` payloads in phase 1.
 - the flattened `warcraft search` result list is globally sorted by provider-reported ranking score
 - `warcraft resolve` prefers the strongest resolved provider result instead of whichever provider happens to be registered first
@@ -200,6 +202,11 @@ simc inspect
 simc inspect /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 simc spec-files mistweaver
 simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123 --actor-class monk --spec mistweaver
+simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+simc apl-graph /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+simc apl-talents /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+simc find-action rising_sun_kick --class monk
+simc trace-action /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc rising_sun_kick --class monk
 simc run ./profile.simc --arg iterations=1 --arg desired_targets=1
 simc sync
 simc build
@@ -211,6 +218,11 @@ SimulationCraft phase-1 behavior:
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
 - `decode-build` uses the local `simc` binary to decode talent strings into enabled talents and tree-grouped talent rows
+- `apl-lists` returns parsed action lists and their entries from a local `.simc` file
+- `apl-graph` emits a Mermaid action-list call graph from a local `.simc` file
+- `apl-talents` returns talent gate references and a compact action frequency summary for a local `.simc` file
+- `find-action` searches local APLs, class modules, and spell dumps for an action token
+- `trace-action` combines local APL hits with broader repo search hits for one action token
 - `run` executes the local `simc` binary against a profile and returns bounded stdout/stderr previews
 - `sync` and `build` are conservative local repo helpers; `sync` skips dirty worktrees unless `--allow-dirty` is set
 - `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until SimC discovery is implemented

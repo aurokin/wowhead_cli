@@ -37,6 +37,7 @@ def test_simc_doctor_reports_phase_one_capabilities(monkeypatch, tmp_path: Path)
     assert payload["status"] == "ready"
     assert payload["capabilities"]["version"] == "ready"
     assert payload["capabilities"]["search"] == "coming_soon"
+    assert payload["capabilities"]["apl_lists"] == "ready"
 
 
 def test_simc_search_is_structured_coming_soon() -> None:
@@ -109,6 +110,66 @@ def test_simc_decode_build_outputs_decoded_talents(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["decoded"]["actor_class"] == "monk"
     assert payload["decoded"]["enabled_talents"] == ["ancient_teachings", "jadefire_stomp"]
+
+
+def test_simc_apl_lists_graph_talents_and_trace(monkeypatch, tmp_path: Path) -> None:
+    apl = tmp_path / "monk_mistweaver.simc"
+    apl.write_text(
+        "\n".join(
+            [
+                "actions=auto_attack",
+                "actions+=/run_action_list,name=aoe,if=active_enemies>2",
+                "actions+=/rising_sun_kick,if=talent.rising_mist.enabled",
+                "actions.aoe=spinning_crane_kick",
+            ]
+        )
+        + "\n"
+    )
+
+    result_lists = runner.invoke(simc_app, ["apl-lists", str(apl)])
+    assert result_lists.exit_code == 0
+    payload_lists = json.loads(result_lists.stdout)
+    assert payload_lists["apl"]["list_count"] == 2
+    assert payload_lists["lists"][0]["count"] >= 1
+
+    result_graph = runner.invoke(simc_app, ["apl-graph", str(apl)])
+    assert result_graph.exit_code == 0
+    payload_graph = json.loads(result_graph.stdout)
+    assert payload_graph["graph"]["format"] == "mermaid"
+    assert "flowchart TD" in payload_graph["graph"]["text"]
+
+    result_talents = runner.invoke(simc_app, ["apl-talents", str(apl)])
+    assert result_talents.exit_code == 0
+    payload_talents = json.loads(result_talents.stdout)
+    assert payload_talents["count"] == 1
+    assert payload_talents["talents"][0]["token"] == "rising_mist"
+
+    monkeypatch.setattr(
+        "simc_cli.main.find_action",
+        lambda paths, action, wow_class: {"apl_default": [], "apl_assisted": [], "class_modules": [], "spell_dump": []},
+    )
+    result_trace = runner.invoke(simc_app, ["trace-action", str(apl), "rising_sun_kick"])
+    assert result_trace.exit_code == 0
+    payload_trace = json.loads(result_trace.stdout)
+    assert payload_trace["apl_hits"]["count"] == 1
+    assert payload_trace["apl_hits"]["items"][0]["list_name"] == "default"
+
+
+def test_simc_find_action_groups_hits(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "simc_cli.main.find_action",
+        lambda paths, action, wow_class: {
+            "apl_default": [],
+            "apl_assisted": [],
+            "class_modules": [type("Hit", (), {"path": Path("/tmp/sc_monk.cpp"), "line_no": 42, "text": "if ( action == rising_sun_kick )"})()],
+            "spell_dump": [],
+        },
+    )
+    result = runner.invoke(simc_app, ["find-action", "rising_sun_kick"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 1
+    assert payload["buckets"]["class_modules"]["items"][0]["line_no"] == 42
 
 
 def test_simc_sync_skips_dirty_repo(monkeypatch) -> None:

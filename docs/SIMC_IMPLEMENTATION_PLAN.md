@@ -146,19 +146,16 @@ Do:
 ## Phase 2 Scope
 
 Ship next:
-- `simc apl-lists`
-- `simc apl-graph`
-- `simc apl-talents`
-- `simc find-action`
-- `simc trace-action`
+- deeper APL reasoning on top of the new readonly slice
+- likely `find-action` refinement before phase-3 runtime helpers
 
 Primary source modules:
 - `/home/auro/code/simc_exp/simc_exp/apl.py`
 - `/home/auro/code/simc_exp/simc_exp/search.py`
 
-Suggested package layout change:
-- add `apl.py`
-- expand `search.py`
+Implemented package layout change:
+- added `apl.py`
+- expanded `search.py`
 
 ## Phase 3 Scope
 

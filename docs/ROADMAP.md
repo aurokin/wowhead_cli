@@ -40,7 +40,7 @@ Validated shared so far:
 - article/reference bundle export/query outside class guides
 
 Active next step:
-- expand `simc` into its readonly-analysis phase and use that work to validate which local-tool abstractions should remain provider-local versus shared
+- push `simc` beyond its first readonly slice into deeper APL reasoning and action-trace workflows, then use that work to decide whether any local-tool analysis helpers should be shared later
 
 ## Planning Documents
 
