@@ -2,10 +2,10 @@
 
 Warcraft data CLI monorepo.
 
-Milestone 1 includes:
+Current state:
 - `warcraft` as the root wrapper
 - `wowhead` as the working provider CLI
-- `method` as a registered stub provider
+- `method` as a working guide provider
 
 ## Install
 
@@ -25,6 +25,7 @@ pip install -e '.[dev,redis]'
 make dev-deploy
 warcraft doctor
 warcraft search "defias"
+warcraft search "mistweaver monk guide"
 wowhead search "defias"
 
 # optional: update venv only (no ~/.local/bin changes)
@@ -42,11 +43,13 @@ warcraft search "defias"
 warcraft resolve "fairbreeze favors"
 warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
+method guide mistweaver-monk
+method guide-export mistweaver-monk --out ./tmp/method-mistweaver
 wowhead search "defias"
 wowhead guide 3143
 ```
 
-Use `warcraft` when the source is unclear. Use `wowhead` directly once you know you need Wowhead behavior. `method` is intentionally stubbed in milestone 1.
+Use `warcraft` when the source is unclear. Use `wowhead` or `method` directly once you know the provider you need.
 
 ## Docs
 

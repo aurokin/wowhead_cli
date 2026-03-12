@@ -98,6 +98,11 @@ Checklist:
 3. Move only validated article abstractions into `warcraft-content`.
 4. Re-run verification gates.
 
+Current status:
+- completed
+- `method` now provides sitemap-backed `search` / `resolve`, real guide fetch, multi-page `guide-full`, bundle export, and local bundle query
+- verification gate passed after the Method implementation
+
 ## What Moves First From `wowhead`
 
 - output shaping and projection

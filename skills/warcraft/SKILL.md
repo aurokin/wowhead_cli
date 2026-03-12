@@ -7,7 +7,7 @@ description: Route Warcraft data requests through the local `warcraft` wrapper w
 
 Use the local `warcraft` command as the root entrypoint when the caller does not already know which provider they need.
 
-## Milestone 1 Scope
+## Current Scope
 
 - `warcraft doctor`
 - `warcraft search "<query>"`
@@ -17,7 +17,7 @@ Use the local `warcraft` command as the root entrypoint when the caller does not
 
 Current provider state:
 - `wowhead`: ready
-- `method`: registered but intentionally stubbed with `coming_soon`
+- `method`: ready for guide search, resolve, fetch, export, and local query
 
 ## Standard Workflow
 
@@ -36,7 +36,7 @@ Current provider state:
 - Prefer `search` when you want to inspect candidates across providers.
 - Use `doctor` to confirm provider readiness before relying on a provider.
 - Preserve provider provenance in your reasoning. Do not describe `warcraft` results as source-neutral.
-- `method` responses are placeholders in milestone 1. Do not present them as real Method.gg retrieval.
+- Use `method` when you need article-style guide content that is easier to traverse than the equivalent Wowhead guide surface.
 
 ## Examples
 
@@ -46,6 +46,7 @@ warcraft search "frost death knight"
 warcraft resolve "fairbreeze favors"
 warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
+warcraft method guide mistweaver-monk
 ```
 
 ## Provider Handoff

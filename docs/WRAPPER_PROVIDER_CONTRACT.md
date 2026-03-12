@@ -143,6 +143,10 @@ Milestone 1:
 Milestone 2:
 - `method` becomes a real provider behind the same contract
 
+Current state:
+- `wowhead` is ready
+- `method` is ready
+
 ## Documentation Rule
 
 Whenever provider capabilities, provider readiness rules, or wrapper/provider boundaries change:

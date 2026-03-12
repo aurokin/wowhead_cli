@@ -13,6 +13,7 @@ warcraft resolve "fairbreeze favors"
 warcraft wowhead search "defias"
 warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
+warcraft method guide mistweaver-monk
 ```
 
 ## Wrapper Conventions
@@ -21,7 +22,7 @@ warcraft method search "mistweaver monk"
 - Use `warcraft resolve` for a conservative next-command recommendation across providers.
 - Use `warcraft search` when you want to inspect candidates across providers.
 - Use `warcraft <provider> ...` when you already know which service you need.
-- In milestone 1, `method` is registered but still returns structured `coming_soon` payloads.
+- `method` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
 
 `warcraft doctor` reports:
 - wrapper health
@@ -77,14 +78,22 @@ wowhead expansions
 
 ## Method Commands
 
-Milestone 1 includes the `method` command surface, but it is intentionally stubbed:
-
 ```bash
 method doctor
 method search "mistweaver monk"
 method resolve "mistweaver monk guide"
 method guide "mistweaver-monk"
+method guide-full "mistweaver-monk"
+method guide-export "mistweaver-monk" --out ./tmp/method-mistweaver
+method guide-query ./tmp/method-mistweaver "tea serenity"
 ```
+
+Method guide behavior:
+- `search` and `resolve` work against the Method guide sitemap
+- `guide` returns the requested page summary with navigation and linked-entity preview
+- `guide-full` walks the guide navigation and returns all discovered guide pages
+- `guide-export` writes a local guide bundle under `./method_exports/` by default
+- `guide-query` searches exported Method bundles across sections, navigation links, and linked entities
 
 ## Output Conventions
 

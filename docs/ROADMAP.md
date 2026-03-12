@@ -196,7 +196,7 @@ When implementation starts, the first restructure pass should stay narrow:
 
 ## Immediate Planning Priorities
 
-- replace stubbed `method` commands with a real provider in milestone 2
+- validate Method-backed article abstractions against `icy-veins`
 - keep package boundaries and wrapper/provider contracts aligned with real code as the monorepo grows
 - continue extracting only genuinely shared infrastructure as new providers prove the abstraction
 

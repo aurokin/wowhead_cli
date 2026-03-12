@@ -34,8 +34,8 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         name="method",
         command="method",
         language="python",
-        status="coming_soon",
-        description="Method.gg article provider. Commands are stubbed in milestone 1.",
+        status="ready",
+        description="Method.gg article provider with sitemap-backed search and guide bundle export/query.",
     ),
 )
 
@@ -101,7 +101,7 @@ def provider_doctor(provider: str) -> dict[str, Any]:
         code, payload, _stdout = _invoke_provider_app(method_app, ["doctor"])
         return {
             "provider": provider,
-            "status": "coming_soon" if code == 0 else "error",
+            "status": "ready" if code == 0 else "error",
             "command": "method",
             "language": "python",
             "installed": True,
@@ -124,4 +124,3 @@ def global_doctor_payload() -> dict[str, Any]:
         },
         "providers": [provider_doctor(provider.name) for provider in PROVIDERS],
     }
-
