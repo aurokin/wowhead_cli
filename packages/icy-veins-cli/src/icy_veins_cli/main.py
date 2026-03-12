@@ -121,7 +121,7 @@ def _search_results(client: IcyVeinsClient, query: str, *, limit: int) -> tuple[
             continue
         matches.append(
             article_candidate(
-                slug=slug,
+                ref=slug,
                 name=name,
                 url=row["url"],
                 score=score,

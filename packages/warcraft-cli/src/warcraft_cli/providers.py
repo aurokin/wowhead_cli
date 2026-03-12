@@ -6,6 +6,7 @@ from typing import Any
 
 from icy_veins_cli.main import app as icy_veins_app
 from raiderio_cli.main import app as raiderio_app
+from warcraft_wiki_cli.main import app as warcraft_wiki_app
 from typer.testing import CliRunner
 
 from method_cli.main import app as method_app
@@ -61,6 +62,15 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         status="partial",
         description="Raider.IO API provider with direct character, guild, and mythic-plus runs lookups.",
         app=raiderio_app,
+        doctor_args=("doctor",),
+    ),
+    ProviderRegistration(
+        name="warcraft-wiki",
+        command="warcraft-wiki",
+        language="python",
+        status="ready",
+        description="Warcraft Wiki reference provider with MediaWiki-backed search, resolve, article export, and local query.",
+        app=warcraft_wiki_app,
         doctor_args=("doctor",),
     ),
 )

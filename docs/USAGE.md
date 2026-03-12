@@ -18,6 +18,8 @@ warcraft icy-veins search "mistweaver monk guide"
 warcraft icy-veins guide mistweaver-monk-pve-healing-guide
 warcraft raiderio character us illidan Roguecane
 warcraft raiderio guild us illidan Liquid
+warcraft warcraft-wiki search "world of warcraft api"
+warcraft warcraft-wiki article "World of Warcraft API"
 ```
 
 ## Wrapper Conventions
@@ -30,6 +32,7 @@ warcraft raiderio guild us illidan Liquid
 - `icy-veins` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
 - `raiderio` is now a real phase-1 API provider for direct character, guild, and Mythic+ runs lookups.
 - `raiderio` search and resolve currently return structured `coming_soon` payloads in phase 1.
+- `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, article export, and local query.
 - the flattened `warcraft search` result list is globally sorted by provider-reported ranking score
 - `warcraft resolve` prefers the strongest resolved provider result instead of whichever provider happens to be registered first
 
@@ -140,6 +143,25 @@ Raider.IO phase-1 behavior:
 - `guild` returns a compact guild profile with raid progression, raid rankings, and roster preview
 - `mythic-plus-runs` returns ranked Mythic+ run summaries from the documented API endpoint
 - `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until Raider.IO discovery is implemented
+
+## Warcraft Wiki Commands
+
+```bash
+warcraft-wiki doctor
+warcraft-wiki search "world of warcraft api"
+warcraft-wiki resolve "world of warcraft api"
+warcraft-wiki article "World of Warcraft API"
+warcraft-wiki article-full "World of Warcraft API"
+warcraft-wiki article-export "World of Warcraft API" --out ./tmp/wiki-api
+warcraft-wiki article-query ./tmp/wiki-api "framexml"
+```
+
+Warcraft Wiki behavior:
+- `search` and `resolve` use the MediaWiki search API
+- `article` returns a compact article summary with section navigation and linked wiki-article preview
+- `article-full` returns the parsed article payload used for local export
+- `article-export` writes a local article bundle under `./warcraft-wiki_exports/` by default
+- `article-query` searches exported wiki bundles across sections, navigation links, and linked entities
 
 ## Output Conventions
 

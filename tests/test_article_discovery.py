@@ -24,9 +24,23 @@ def test_article_follow_up_uses_provider_command() -> None:
     }
 
 
+def test_article_follow_up_supports_article_surfaces_and_quotes() -> None:
+    follow_up = article_follow_up("warcraft-wiki", "World of Warcraft API", surface="article")
+
+    assert follow_up == {
+        "recommended_surface": "article",
+        "recommended_command": "warcraft-wiki article 'World of Warcraft API'",
+        "reason": "article_summary",
+        "alternatives": [
+            "warcraft-wiki article-full 'World of Warcraft API'",
+            "warcraft-wiki article-export 'World of Warcraft API'",
+        ],
+    }
+
+
 def test_article_candidate_builds_shared_shape() -> None:
     row = article_candidate(
-        slug="mistweaver-monk",
+        ref="mistweaver-monk",
         name="Mistweaver Monk",
         url="https://www.method.gg/guides/mistweaver-monk",
         score=33,
@@ -42,7 +56,7 @@ def test_article_candidate_builds_shared_shape() -> None:
 def test_sort_article_candidates_orders_by_score_then_name() -> None:
     rows = [
         article_candidate(
-            slug="b",
+            ref="b",
             name="B Guide",
             url="https://example.invalid/b",
             score=10,
@@ -50,7 +64,7 @@ def test_sort_article_candidates_orders_by_score_then_name() -> None:
             provider_command="method",
         ),
         article_candidate(
-            slug="a",
+            ref="a",
             name="A Guide",
             url="https://example.invalid/a",
             score=30,
@@ -67,7 +81,7 @@ def test_sort_article_candidates_orders_by_score_then_name() -> None:
 def test_article_search_and_resolve_payloads_keep_contract_shape() -> None:
     rows = [
         article_candidate(
-            slug="mistweaver-monk",
+            ref="mistweaver-monk",
             name="Mistweaver Monk",
             url="https://www.method.gg/guides/mistweaver-monk",
             score=33,
@@ -127,3 +141,18 @@ def test_merge_article_linked_entities_dedupes_and_preserves_source_urls() -> No
             ],
         }
     ]
+
+
+def test_merge_article_linked_entities_supports_custom_page_key() -> None:
+    pages = [
+        {
+            "article_meta": {"page_url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API"},
+            "linked_entities": [
+                {"type": "wiki_article", "id": "UIOBJECT_Frame", "name": "UIOBJECT Frame", "url": "https://warcraft.wiki.gg/wiki/UIOBJECT_Frame"},
+            ],
+        }
+    ]
+
+    merged = merge_article_linked_entities(pages, page_key="article_meta")
+
+    assert merged[0]["source_urls"] == ["https://warcraft.wiki.gg/wiki/World_of_Warcraft_API"]

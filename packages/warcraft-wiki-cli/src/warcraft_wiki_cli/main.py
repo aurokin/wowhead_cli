@@ -1,0 +1,368 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+import re
+from typing import Any
+
+import httpx
+import typer
+
+from warcraft_content.article_bundle import (
+    default_article_export_dir,
+    load_article_bundle,
+    query_article_bundle,
+    write_article_bundle,
+)
+from warcraft_content.article_discovery import (
+    article_candidate,
+    article_resolve_payload,
+    article_search_payload,
+)
+from warcraft_core.output import emit
+from warcraft_wiki_cli.client import WarcraftWikiAPIError, WarcraftWikiClient, load_warcraft_wiki_cache_settings_from_env
+from warcraft_wiki_cli.page_parser import article_slug, normalize_article_ref
+
+app = typer.Typer(add_completion=False, help="Warcraft Wiki reference CLI.")
+
+
+@dataclass(slots=True)
+class RuntimeConfig:
+    pretty: bool = False
+
+
+def _cfg(ctx: typer.Context) -> RuntimeConfig:
+    obj = ctx.obj
+    if isinstance(obj, RuntimeConfig):
+        return obj
+    return RuntimeConfig()
+
+
+def _emit(ctx: typer.Context, payload: dict[str, Any], *, err: bool = False) -> None:
+    emit(payload, pretty=_cfg(ctx).pretty, err=err)
+
+
+def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> None:
+    _emit(ctx, {"ok": False, "error": {"code": code, "message": message}}, err=True)
+    raise typer.Exit(status)
+
+
+def _client(ctx: typer.Context) -> WarcraftWikiClient:
+    try:
+        return WarcraftWikiClient()
+    except ValueError as exc:
+        _fail(ctx, "invalid_cache_config", str(exc))
+        raise AssertionError("unreachable")
+
+
+def _handle_api_error(ctx: typer.Context, exc: WarcraftWikiAPIError) -> None:
+    status = 1
+    code = exc.code
+    if code == "missingtitle":
+        code = "not_found"
+    _fail(ctx, code, exc.message, status=status)
+
+
+def _normalize_query(query: str) -> str:
+    normalized = re.sub(r"\b(wiki|article|articles)\b", " ", query.lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized or query.strip().lower()
+
+
+def _score_text_match(query: str, title: str, snippet: str, *, ordinal: int) -> tuple[int, list[str]]:
+    haystack = f"{title.lower()} {snippet.lower()}".strip()
+    score = max(0, 40 - ordinal * 2)
+    reasons: list[str] = []
+    if title.lower() == query:
+        score += 50
+        reasons.append("exact_title")
+    if title.lower().startswith(query):
+        score += 20
+        reasons.append("title_prefix")
+    if query in title.lower():
+        score += 12
+        reasons.append("title_contains_query")
+    terms = [term for term in query.split() if term]
+    if terms and all(term in haystack for term in terms):
+        score += 10
+        reasons.append("all_terms_match")
+    if snippet and any(term in snippet.lower() for term in terms):
+        score += 4
+        reasons.append("snippet_match")
+    return score, reasons
+
+
+def _search_results(client: WarcraftWikiClient, query: str, *, limit: int) -> tuple[str, list[dict[str, Any]], int]:
+    normalized_query = _normalize_query(query)
+    total_count, rows = client.search_articles(normalized_query, limit=limit)
+    matches: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        title = row["title"]
+        score, reasons = _score_text_match(normalized_query, title, row.get("snippet") or "", ordinal=index)
+        if score <= 0:
+            continue
+        matches.append(
+            article_candidate(
+                ref=title,
+                name=title,
+                url=row["url"],
+                score=score,
+                reasons=reasons,
+                provider_command="warcraft-wiki",
+                surface="article",
+                type_name="Article",
+                entity_type="article",
+                metadata_key="title",
+            )
+        )
+    matches.sort(key=lambda row: (-int(row["ranking"]["score"]), row["name"], row["id"]))
+    return normalized_query, matches[:limit], total_count
+
+
+def _build_article_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
+    article = dict(page_payload["article"])
+    page = dict(page_payload["page"])
+    navigation = list((page_payload.get("navigation") or {}).get("items") or [])
+    content = dict(page_payload["article_content"])
+    linked_entities = list(page_payload["linked_entities"])
+    return {
+        "article": article,
+        "page": page,
+        "navigation": {
+            "count": len(navigation),
+            "items": navigation[:25],
+        },
+        "content": {
+            "text": content["text"],
+            "headings": content["headings"],
+            "section_count": len(content["sections"]),
+            "section_preview": [
+                {
+                    "title": section["title"],
+                    "level": section["level"],
+                    "ordinal": section["ordinal"],
+                }
+                for section in content["sections"][:10]
+            ],
+        },
+        "linked_entities": {
+            "count": len(linked_entities),
+            "items": linked_entities[:10],
+            "more_available": len(linked_entities) > 10,
+            "fetch_more_command": f"warcraft-wiki article-full {article['title']!r}",
+        },
+        "citations": {
+            "page": article["page_url"],
+        },
+    }
+
+
+def _fetch_article_payload(client: WarcraftWikiClient, article_ref: str) -> dict[str, Any]:
+    initial = client.fetch_article_page(article_ref)
+    article = dict(initial["article"])
+    article["page_count"] = 1
+    return {
+        "article": article,
+        "page": dict(initial["page"]),
+        "navigation": dict(initial["navigation"]),
+        "pages": [
+            {
+                "article_meta": dict(initial["article"]),
+                "page": dict(initial["page"]),
+                "article": dict(initial["article_content"]),
+            }
+        ],
+        "linked_entities": {
+            "count": len(initial["linked_entities"]),
+            "items": list(initial["linked_entities"]),
+        },
+        "citations": dict(initial["citations"]),
+    }
+
+
+def _default_export_dir(article_title: str) -> Path:
+    return default_article_export_dir("warcraft-wiki", article_slug(article_title), prefix="article")
+
+
+@app.callback()
+def main_callback(
+    ctx: typer.Context,
+    pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON output."),
+) -> None:
+    ctx.obj = RuntimeConfig(pretty=pretty)
+
+
+@app.command("doctor")
+def doctor(ctx: typer.Context) -> None:
+    try:
+        settings, search_ttl, page_ttl = load_warcraft_wiki_cache_settings_from_env()
+    except ValueError as exc:
+        _fail(ctx, "invalid_cache_config", str(exc))
+        return
+    _emit(
+        ctx,
+        {
+            "provider": "warcraft-wiki",
+            "status": "ready",
+            "command": "doctor",
+            "installed": True,
+            "language": "python",
+            "capabilities": {
+                "search": "ready",
+                "resolve": "ready",
+                "article": "ready",
+                "article_full": "ready",
+                "article_export": "ready",
+                "article_query": "ready",
+            },
+            "cache": {
+                "enabled": settings.enabled,
+                "backend": settings.backend,
+                "cache_dir": str(settings.cache_dir),
+                "redis_url": settings.redis_url,
+                "prefix": settings.prefix,
+                "ttls": {
+                    "search": search_ttl,
+                    "page_html": page_ttl,
+                },
+            },
+        },
+    )
+
+
+@app.command("search")
+def search(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Query text to match against Warcraft Wiki article titles."),
+    limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum results to return."),
+) -> None:
+    with _client(ctx) as client:
+        normalized_query, results, total_count = _search_results(client, query, limit=limit)
+    _emit(ctx, article_search_payload(query=query, search_query=normalized_query, results=results, total_count=total_count))
+
+
+@app.command("resolve")
+def resolve(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Resolve a free-text query to the best Warcraft Wiki article match."),
+    limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum candidates to inspect."),
+) -> None:
+    with _client(ctx) as client:
+        normalized_query, results, total_count = _search_results(client, query, limit=limit)
+    top = results[0] if results else None
+    second = results[1] if len(results) > 1 else None
+    top_score = top["ranking"]["score"] if top else 0
+    second_score = second["ranking"]["score"] if second else 0
+    resolved = top is not None and (top_score >= 70 or top_score >= second_score + 18)
+    _emit(
+        ctx,
+        article_resolve_payload(
+            provider_command="warcraft-wiki",
+            query=query,
+            search_query=normalized_query,
+            results=results,
+            total_count=total_count,
+            resolved=resolved,
+        ),
+    )
+
+
+@app.command("article")
+def article(ctx: typer.Context, article_ref: str = typer.Argument(..., help="Wiki article title or URL.")) -> None:
+    try:
+        with _client(ctx) as client:
+            payload = _build_article_summary(client.fetch_article_page(article_ref))
+    except WarcraftWikiAPIError as exc:
+        _handle_api_error(ctx, exc)
+        return
+    _emit(ctx, payload)
+
+
+@app.command("article-full")
+def article_full(ctx: typer.Context, article_ref: str = typer.Argument(..., help="Wiki article title or URL.")) -> None:
+    try:
+        with _client(ctx) as client:
+            payload = _fetch_article_payload(client, article_ref)
+    except WarcraftWikiAPIError as exc:
+        _handle_api_error(ctx, exc)
+        return
+    _emit(ctx, payload)
+
+
+@app.command("article-export")
+def article_export(
+    ctx: typer.Context,
+    article_ref: str = typer.Argument(..., help="Wiki article title or URL."),
+    out: Path | None = typer.Option(None, "--out", help="Output directory. Defaults to ./warcraft-wiki_exports/article-<slug>."),
+) -> None:
+    article_title = normalize_article_ref(article_ref)
+    export_dir = out.expanduser() if out is not None else _default_export_dir(article_title)
+    try:
+        with _client(ctx) as client:
+            payload = _fetch_article_payload(client, article_ref)
+    except WarcraftWikiAPIError as exc:
+        _handle_api_error(ctx, exc)
+        return
+    manifest = write_article_bundle(
+        payload,
+        provider="warcraft-wiki",
+        export_dir=export_dir,
+        resource_key="article",
+        page_resource_key="article_meta",
+    )
+    _emit(
+        ctx,
+        {
+            "provider": "warcraft-wiki",
+            "article": payload["article"],
+            "output_dir": str(export_dir),
+            "counts": manifest["counts"],
+            "files": manifest["files"],
+        },
+    )
+
+
+@app.command("article-query")
+def article_query(
+    ctx: typer.Context,
+    bundle: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=False),
+    query: str = typer.Argument(..., help="Query text to match against the exported article bundle."),
+    limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum matches to return per kind."),
+    kind: list[str] | None = typer.Option(
+        None,
+        "--kind",
+        help="Kinds to search. Repeat for multiple values. Defaults to sections,navigation,linked_entities.",
+    ),
+    section_title: str | None = typer.Option(None, "--section-title", help="Restrict section matches to a title substring."),
+) -> None:
+    selected_kinds = set(kind or ["sections", "navigation", "linked_entities"])
+    allowed_kinds = {"sections", "navigation", "linked_entities"}
+    invalid = sorted(selected_kinds - allowed_kinds)
+    if invalid:
+        _fail(ctx, "invalid_query_kind", f"Unsupported query kinds: {', '.join(invalid)}")
+    bundle_payload = load_article_bundle(bundle.expanduser())
+    result = query_article_bundle(
+        bundle_payload,
+        query=query,
+        limit=limit,
+        kinds=selected_kinds,
+        section_title_filter=section_title.lower() if section_title else None,
+    )
+    resource_key = str(bundle_payload["manifest"].get("resource_key") or "guide")
+    _emit(
+        ctx,
+        {
+            "provider": "warcraft-wiki",
+            resource_key: bundle_payload["manifest"].get(resource_key),
+            "bundle": str(bundle),
+            **result,
+        },
+    )
+
+
+def run() -> None:
+    app()
+
+
+if __name__ == "__main__":
+    run()

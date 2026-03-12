@@ -99,7 +99,7 @@ def _search_results(client: MethodClient, query: str, *, limit: int) -> tuple[st
             continue
         matches.append(
             article_candidate(
-                slug=slug,
+                ref=slug,
                 name=name,
                 url=row["url"],
                 score=score,

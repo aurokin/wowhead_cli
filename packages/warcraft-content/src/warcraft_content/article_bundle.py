@@ -10,8 +10,8 @@ def default_article_export_root(provider: str, *, cwd: Path | None = None) -> Pa
     return base / f"{provider}_exports"
 
 
-def default_article_export_dir(provider: str, guide_slug: str, *, cwd: Path | None = None) -> Path:
-    return default_article_export_root(provider, cwd=cwd) / f"guide-{guide_slug}"
+def default_article_export_dir(provider: str, ref_slug: str, *, prefix: str = "guide", cwd: Path | None = None) -> Path:
+    return default_article_export_root(provider, cwd=cwd) / f"{prefix}-{ref_slug}"
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -56,8 +56,12 @@ def write_article_bundle(
     *,
     provider: str,
     export_dir: Path,
+    resource_key: str = "guide",
+    page_resource_key: str | None = None,
+    content_key: str = "article",
 ) -> dict[str, Any]:
-    guide = dict(full_payload["guide"])
+    resource = dict(full_payload[resource_key])
+    normalized_page_resource_key = page_resource_key or resource_key
     navigation = list((full_payload.get("navigation") or {}).get("items") or [])
     pages = list(full_payload.get("pages") or [])
     linked_entities = list((full_payload.get("linked_entities") or {}).get("items") or [])
@@ -66,10 +70,10 @@ def write_article_bundle(
     page_files: list[dict[str, Any]] = []
     html_dir = export_dir / "pages"
     for page in pages:
-        page_guide = dict(page["guide"])
+        page_resource = dict(page[normalized_page_resource_key])
         page_meta = dict(page["page"])
-        article = dict(page["article"])
-        page_slug = page_guide["section_slug"]
+        article = dict(page[content_key])
+        page_slug = page_resource["section_slug"]
         html_path = html_dir / f"{page_slug}.html"
         html_path.parent.mkdir(parents=True, exist_ok=True)
         html_path.write_text(article["html"], encoding="utf-8")
@@ -77,14 +81,14 @@ def write_article_bundle(
             {
                 "section_slug": page_slug,
                 "path": str(html_path.relative_to(export_dir)),
-                "page_url": page_guide["page_url"],
+                "page_url": page_resource["page_url"],
             }
         )
         page_rows.append(
             {
                 "section_slug": page_slug,
-                "section_title": page_guide["section_title"],
-                "page_url": page_guide["page_url"],
+                "section_title": page_resource["section_title"],
+                "page_url": page_resource["page_url"],
                 "title": page_meta["title"],
                 "description": page_meta.get("description"),
                 "text": article["text"],
@@ -94,7 +98,7 @@ def write_article_bundle(
         for section in article.get("sections") or []:
             sections.append(
                 {
-                    "page_url": page_guide["page_url"],
+                    "page_url": page_resource["page_url"],
                     "section_slug": page_slug,
                     "page_title": page_meta["title"],
                     "title": section["title"],
@@ -108,8 +112,11 @@ def write_article_bundle(
     manifest = {
         "export_version": 1,
         "provider": provider,
+        "resource_key": resource_key,
+        "page_resource_key": normalized_page_resource_key,
+        "content_key": content_key,
         "output_dir": str(export_dir),
-        "guide": guide,
+        resource_key: resource,
         "counts": {
             "pages": len(page_rows),
             "sections": len(sections),

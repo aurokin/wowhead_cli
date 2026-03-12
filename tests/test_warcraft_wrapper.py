@@ -28,15 +28,17 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["wrapper"]["provider_count"] == 4
+    assert payload["wrapper"]["provider_count"] == 5
     providers = {row["provider"]: row for row in payload["providers"]}
     assert providers["wowhead"]["status"] == "ready"
     assert providers["method"]["status"] == "ready"
     assert providers["icy-veins"]["status"] == "ready"
     assert providers["raiderio"]["status"] == "ready"
+    assert providers["warcraft-wiki"]["status"] == "ready"
     assert providers["method"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["icy-veins"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["raiderio"]["details"]["capabilities"]["search"] == "coming_soon"
+    assert providers["warcraft-wiki"]["details"]["capabilities"]["article"] == "ready"
 
 
 def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
@@ -53,18 +55,20 @@ def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
         lambda self: [{"slug": "mistweaver-monk", "name": "Mistweaver Monk", "url": "https://www.method.gg/guides/mistweaver-monk"}],
     )
     monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("warcraft_wiki_cli.main.WarcraftWikiClient.search_articles", lambda self, query, limit: (0, []))
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
     result = runner.invoke(warcraft_app, ["search", "thunderfury", "--limit", "3"])
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["provider_count"] == 4
+    assert payload["provider_count"] == 5
     assert payload["count"] == 1
     assert payload["results"][0]["provider"] == "wowhead"
     providers = {row["provider"]: row for row in payload["providers"]}
     assert providers["method"]["payload"]["count"] == 0
     assert providers["icy-veins"]["payload"]["count"] == 0
     assert providers["raiderio"]["payload"]["coming_soon"] is True
+    assert providers["warcraft-wiki"]["payload"]["count"] == 0
     assert providers["wowhead"]["payload"]["results"][0]["name"] == "Thunderfury"
 
 
@@ -91,6 +95,7 @@ def test_warcraft_search_sorts_results_globally_by_ranking(monkeypatch) -> None:
         "icy_veins_cli.main.IcyVeinsClient.sitemap_guides",
         lambda self: [{"slug": "frost-death-knight-pve-dps-guide", "name": "Frost Death Knight PvE DPS Guide", "url": "https://www.icy-veins.com/wow/frost-death-knight-pve-dps-guide"}],
     )
+    monkeypatch.setattr("warcraft_wiki_cli.main.WarcraftWikiClient.search_articles", lambda self, query, limit: (0, []))
 
     result = runner.invoke(warcraft_app, ["search", "mistweaver monk guide", "--limit", "5"])
     assert result.exit_code == 0
@@ -117,6 +122,10 @@ def test_warcraft_resolve_prefers_stronger_later_provider(monkeypatch) -> None:
         "icy_veins_cli.main.IcyVeinsClient.sitemap_guides",
         lambda self: [{"slug": "mistweaver-monk-pve-healing-guide", "name": "Mistweaver Monk PvE Healing Guide", "url": "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide"}],
     )
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (1, [{"title": "Mistweaver Monk", "pageid": 1, "snippet": "Reference page", "url": "https://warcraft.wiki.gg/wiki/Mistweaver_Monk"}]),
+    )
 
     result = runner.invoke(warcraft_app, ["resolve", "mistweaver monk guide"])
     assert result.exit_code == 0
@@ -142,6 +151,7 @@ def test_warcraft_resolve_prefers_ready_provider(monkeypatch) -> None:
         lambda self: [{"slug": "mistweaver-monk", "name": "Mistweaver Monk", "url": "https://www.method.gg/guides/mistweaver-monk"}],
     )
     monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("warcraft_wiki_cli.main.WarcraftWikiClient.search_articles", lambda self, query, limit: (0, []))
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
     result = runner.invoke(warcraft_app, ["resolve", "fairbreeze favors"])
     assert result.exit_code == 0
@@ -260,3 +270,34 @@ def test_warcraft_passthrough_to_raiderio(monkeypatch) -> None:
 
     payload = json.loads(result.stdout)
     assert payload["character"]["name"] == "Roguecane"
+
+
+def test_warcraft_passthrough_to_warcraft_wiki(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.fetch_article_page",
+        lambda self, article_ref: {
+            "article": {
+                "title": "World of Warcraft API",
+                "slug": "world-of-warcraft-api",
+                "display_title": "World of Warcraft API",
+                "page_url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API",
+                "section_slug": "world-of-warcraft-api",
+                "section_title": "World of Warcraft API",
+                "page_count": 1,
+            },
+            "page": {
+                "title": "World of Warcraft API",
+                "description": "Programming reference",
+                "canonical_url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API",
+            },
+            "navigation": {"count": 0, "items": []},
+            "article_content": {"html": "<p>FrameXML</p>", "text": "FrameXML", "headings": [], "sections": []},
+            "linked_entities": [],
+            "citations": {"page": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API"},
+        },
+    )
+    result = runner.invoke(warcraft_app, ["warcraft-wiki", "article", "World of Warcraft API"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["article"]["title"] == "World of Warcraft API"

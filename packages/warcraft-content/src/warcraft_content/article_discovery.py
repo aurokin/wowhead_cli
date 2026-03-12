@@ -1,43 +1,60 @@
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 
-def article_follow_up(provider_command: str, slug: str) -> dict[str, Any]:
+def article_follow_up(
+    provider_command: str,
+    ref: str,
+    *,
+    surface: str = "guide",
+    full_surface: str | None = None,
+    export_surface: str | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    normalized_full_surface = full_surface or f"{surface}-full"
+    normalized_export_surface = export_surface or f"{surface}-export"
+    normalized_reason = reason or f"{surface}_summary"
+    quoted_ref = shlex.quote(ref)
     return {
-        "recommended_surface": "guide",
-        "recommended_command": f"{provider_command} guide {slug}",
-        "reason": "guide_summary",
+        "recommended_surface": surface,
+        "recommended_command": f"{provider_command} {surface} {quoted_ref}",
+        "reason": normalized_reason,
         "alternatives": [
-            f"{provider_command} guide-full {slug}",
-            f"{provider_command} guide-export {slug}",
+            f"{provider_command} {normalized_full_surface} {quoted_ref}",
+            f"{provider_command} {normalized_export_surface} {quoted_ref}",
         ],
     }
 
 
 def article_candidate(
     *,
-    slug: str,
+    ref: str,
     name: str,
     url: str,
     score: int,
     reasons: list[str],
     provider_command: str,
+    surface: str = "guide",
+    type_name: str = "Guide",
+    entity_type: str = "guide",
+    metadata_key: str = "slug",
 ) -> dict[str, Any]:
     return {
-        "id": slug,
+        "id": ref,
         "name": name,
-        "type_name": "Guide",
-        "entity_type": "guide",
+        "type_name": type_name,
+        "entity_type": entity_type,
         "url": url,
         "ranking": {
             "score": score,
             "match_reasons": reasons,
         },
         "metadata": {
-            "slug": slug,
+            metadata_key: ref,
         },
-        "follow_up": article_follow_up(provider_command, slug),
+        "follow_up": article_follow_up(provider_command, ref, surface=surface),
     }
 
 
@@ -83,10 +100,10 @@ def article_resolve_payload(
     }
 
 
-def merge_article_linked_entities(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def merge_article_linked_entities(pages: list[dict[str, Any]], *, page_key: str = "guide") -> list[dict[str, Any]]:
     merged: dict[tuple[str, str], dict[str, Any]] = {}
     for page in pages:
-        page_url = page["guide"]["page_url"]
+        page_url = page[page_key]["page_url"]
         for row in page["linked_entities"]:
             key = (str(row["type"]), str(row["id"]))
             record = merged.get(key)

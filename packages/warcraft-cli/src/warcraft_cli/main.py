@@ -6,6 +6,7 @@ import typer
 from icy_veins_cli.main import app as icy_veins_app
 from raiderio_cli.main import app as raiderio_app
 from typer.main import get_command
+from warcraft_wiki_cli.main import app as warcraft_wiki_app
 
 from method_cli.main import app as method_app
 from warcraft_core.output import emit
@@ -151,6 +152,14 @@ def method_passthrough(ctx: typer.Context) -> None:
 )
 def raiderio_passthrough(ctx: typer.Context) -> None:
     _invoke_sub_app(raiderio_app, args=list(ctx.args), prog_name="raiderio")
+
+
+@app.command(
+    "warcraft-wiki",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def warcraft_wiki_passthrough(ctx: typer.Context) -> None:
+    _invoke_sub_app(warcraft_wiki_app, args=list(ctx.args), prog_name="warcraft-wiki")
 
 
 def run() -> None:

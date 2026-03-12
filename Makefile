@@ -6,6 +6,7 @@ WOWHEAD := $(VENV)/bin/wowhead
 WARCRAFT := $(VENV)/bin/warcraft
 METHOD := $(VENV)/bin/method
 RAIDERIO := $(VENV)/bin/raiderio
+WARCRAFT_WIKI := $(VENV)/bin/warcraft-wiki
 
 .PHONY: dev-deploy dev-deploy-no-link test test-live fmt-check run
 

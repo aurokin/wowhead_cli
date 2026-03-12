@@ -159,6 +159,7 @@ Current state:
 - `method` is ready
 - `icy-veins` is ready
 - `raiderio` is ready for direct phase-1 retrieval, with `search` and `resolve` intentionally returning structured `coming_soon` payloads
+- `warcraft-wiki` is ready
 
 ## Documentation Rule
 

@@ -1,0 +1,1 @@
+"""Warcraft Wiki CLI package."""

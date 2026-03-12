@@ -8,6 +8,7 @@ Current state:
 - `method` as a working guide provider
 - `icy-veins` as a working guide provider
 - `raiderio` as a working phase-1 API provider
+- `warcraft-wiki` as a working reference/article provider
 
 ## Install
 
@@ -23,7 +24,7 @@ pip install -e '.[dev,redis]'
 ## Local Dev Deploy
 
 ```bash
-# setup/update editable install and link ~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio}
+# setup/update editable install and link ~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki}
 make dev-deploy
 warcraft doctor
 warcraft search "defias"
@@ -47,15 +48,17 @@ warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
 warcraft icy-veins search "mistweaver monk guide"
 warcraft raiderio character us illidan Roguecane
+warcraft warcraft-wiki article "World of Warcraft API"
 method guide mistweaver-monk
 icy-veins guide mistweaver-monk-pve-healing-guide
 raiderio guild us illidan Liquid
+warcraft-wiki search "world of warcraft api"
 method guide-export mistweaver-monk --out ./tmp/method-mistweaver
 wowhead search "defias"
 wowhead guide 3143
 ```
 
-Use `warcraft` when the source is unclear. Use `wowhead`, `method`, `icy-veins`, or `raiderio` directly once you know the provider you need.
+Use `warcraft` when the source is unclear. Use `wowhead`, `method`, `icy-veins`, `raiderio`, or `warcraft-wiki` directly once you know the provider you need.
 
 ## Docs
 

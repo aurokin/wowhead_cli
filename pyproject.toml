@@ -29,6 +29,7 @@ wowhead = "wowhead_cli.main:run"
 method = "method_cli.main:run"
 icy-veins = "icy_veins_cli.main:run"
 raiderio = "raiderio_cli.main:run"
+warcraft-wiki = "warcraft_wiki_cli.main:run"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -46,4 +47,5 @@ packages = [
   "packages/method-cli/src/method_cli",
   "packages/icy-veins-cli/src/icy_veins_cli",
   "packages/raiderio-cli/src/raiderio_cli",
+  "packages/warcraft-wiki-cli/src/warcraft_wiki_cli",
 ]

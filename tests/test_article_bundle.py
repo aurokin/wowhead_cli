@@ -166,6 +166,65 @@ def test_write_and_query_article_bundle_for_icy_shape(tmp_path: Path) -> None:
     assert result["matches"]["navigation"][0]["title"] == "Builds and Talents"
 
 
+def test_write_article_bundle_supports_article_resource_key(tmp_path: Path) -> None:
+    export_dir = tmp_path / "wiki-article"
+    payload = {
+        "article": {
+            "title": "World of Warcraft API",
+            "page_url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API",
+            "section_slug": "world-of-warcraft-api",
+            "section_title": "World of Warcraft API",
+            "page_count": 1,
+        },
+        "navigation": {
+            "count": 1,
+            "items": [
+                {"title": "API systems", "url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API#API_systems", "section_slug": "API_systems", "active": True, "ordinal": 1},
+            ],
+        },
+        "pages": [
+            {
+                "article_meta": {
+                    "title": "World of Warcraft API",
+                    "page_url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API",
+                    "section_slug": "world-of-warcraft-api",
+                    "section_title": "World of Warcraft API",
+                },
+                "page": {
+                    "title": "World of Warcraft API",
+                    "description": "Warcraft Wiki API reference",
+                    "canonical_url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API",
+                },
+                "article": {
+                    "html": "<h2>API systems</h2><p>FrameXML</p>",
+                    "text": "API systems FrameXML",
+                    "headings": [{"title": "API systems", "level": 2, "ordinal": 1}],
+                    "sections": [{"title": "API systems", "level": 2, "ordinal": 1, "text": "FrameXML", "html": "<p>FrameXML</p>"}],
+                },
+            }
+        ],
+        "linked_entities": {
+            "count": 1,
+            "items": [
+                {"type": "wiki_article", "id": "UIOBJECT_Frame", "name": "UIOBJECT Frame", "url": "https://warcraft.wiki.gg/wiki/UIOBJECT_Frame", "source_urls": ["https://warcraft.wiki.gg/wiki/World_of_Warcraft_API"]},
+            ],
+        },
+    }
+    manifest = write_article_bundle(
+        payload,
+        provider="warcraft-wiki",
+        export_dir=export_dir,
+        resource_key="article",
+        page_resource_key="article_meta",
+    )
+    assert manifest["resource_key"] == "article"
+    assert manifest["page_resource_key"] == "article_meta"
+    assert manifest["article"]["title"] == "World of Warcraft API"
+    bundle = load_article_bundle(export_dir)
+    assert bundle["manifest"]["article"]["title"] == "World of Warcraft API"
+    assert bundle["sections"][0]["title"] == "API systems"
+
+
 def test_query_article_bundle_normalizes_section_title_filter(tmp_path: Path) -> None:
     export_dir = tmp_path / "method-guide"
     write_article_bundle(_method_like_payload(), provider="method", export_dir=export_dir)

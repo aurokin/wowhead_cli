@@ -1,5 +1,18 @@
 # Warcraft Wiki CLI Plan
 
+## Status
+
+`warcraft-wiki` is now implemented as a working provider.
+
+Current command surface:
+- `warcraft-wiki doctor`
+- `warcraft-wiki search`
+- `warcraft-wiki resolve`
+- `warcraft-wiki article`
+- `warcraft-wiki article-full`
+- `warcraft-wiki article-export`
+- `warcraft-wiki article-query`
+
 ## Why Add It
 
 `warcraft-wiki` fills a gap that guide and ranking sites do not: broad reference material, lore, systems documentation, and addon/API documentation.
@@ -21,9 +34,9 @@ Sample observations from `https://warcraft.wiki.gg/wiki/Main_Page` and the API h
 
 ## Access Model
 
-This should be treated as a reference/documentation service:
-- fetch article HTML
-- extract page metadata, section headings, body content, and related links
+This is now treated as a reference/documentation service backed by the MediaWiki API:
+- use the built-in search API for article discovery
+- fetch parsed article HTML and section metadata via the MediaWiki parse API
 - support local article export/query for repeated lookups
 
 ## Likely CLI Shape
@@ -42,6 +55,7 @@ This should be treated as a reference/documentation service:
 - cache and HTTP infrastructure
 - shared output shaping
 - search and resolve payload contracts
+- article follow-up and linked-entity merge helpers
 
 ## What Should Stay Service-Specific
 
@@ -50,10 +64,15 @@ This should be treated as a reference/documentation service:
 - reference and infobox extraction
 - wiki-specific search ranking
 
-## What This Service Should Validate
+## What It Has Validated
 
-- whether the shared article bundle layer works for reference material, not just class guides
-- whether documentation-oriented follow-up guidance should become distinct from guide-oriented follow-up guidance
+- the shared article bundle layer works for reference material, not just class guides
+- the shared article discovery/follow-up layer can support `article` surfaces in addition to `guide` surfaces
+
+## What This Service Still Leaves Open
+
+- whether documentation-oriented follow-up guidance should diverge further from guide-oriented follow-up guidance
+- whether any MediaWiki-specific extraction belongs in shared code
 
 ## Risks
 
