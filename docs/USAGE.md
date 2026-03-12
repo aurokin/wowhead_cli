@@ -26,6 +26,7 @@ warcraft simc doctor
 warcraft simc version
 warcraft simc spec-files mistweaver
 warcraft simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+warcraft simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 ```
 
 ## Wrapper Conventions
@@ -43,6 +44,7 @@ warcraft simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mi
 - `wowprogress` search and resolve currently return structured `coming_soon` payloads in phase 1.
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
+- `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
 - `simc` search and resolve currently return structured `coming_soon` payloads in phase 1.
 - the flattened `warcraft search` result list is globally sorted by provider-reported ranking score
 - `warcraft resolve` prefers the strongest resolved provider result instead of whichever provider happens to be registered first
@@ -207,6 +209,9 @@ simc apl-graph /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.
 simc apl-talents /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 simc find-action rising_sun_kick --class monk
 simc trace-action /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc rising_sun_kick --class monk
+simc apl-prune /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc apl-branch-trace /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 simc run ./profile.simc --arg iterations=1 --arg desired_targets=1
 simc sync
 simc build
@@ -223,6 +228,9 @@ SimulationCraft phase-1 behavior:
 - `apl-talents` returns talent gate references and a compact action frequency summary for a local `.simc` file
 - `find-action` searches local APLs, class modules, and spell dumps for an action token
 - `trace-action` combines local APL hits with broader repo search hits for one action token
+- `apl-prune` classifies APL lines conservatively as `eligible`, `dead`, or `unknown` using decoded talents plus target count
+- `apl-branch-trace` traces likely `run_action_list` and `call_action_list` flow through one APL
+- `apl-intent` summarizes the early likely priorities in the selected focus list after branch evaluation
 - `run` executes the local `simc` binary against a profile and returns bounded stdout/stderr previews
 - `sync` and `build` are conservative local repo helpers; `sync` skips dirty worktrees unless `--allow-dirty` is set
 - `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until SimC discovery is implemented

@@ -12,6 +12,7 @@ Current state:
 - `wowprogress` as a working phase-1 rankings/profile provider
 - `simc` as a working phase-1 local SimulationCraft provider
   - phase-2 readonly analysis commands are now in place
+  - early phase-3 prune, branch trace, and intent commands are now in place
 
 ## Install
 
@@ -62,6 +63,7 @@ wowprogress leaderboard pve us --limit 10
 simc version
 simc spec-files mistweaver
 simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 method guide-export mistweaver-monk --out ./tmp/method-mistweaver
 wowhead search "defias"
 wowhead guide 3143

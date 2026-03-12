@@ -15,6 +15,9 @@ Current commands:
 - `simc apl-talents`
 - `simc find-action`
 - `simc trace-action`
+- `simc apl-prune`
+- `simc apl-branch-trace`
+- `simc apl-intent`
 - `simc sync`
 - `simc build`
 - `simc run`
@@ -99,9 +102,12 @@ These commands should work against a local checkout without requiring a full sim
 
 ### Phase 3: Runtime-Aware Reasoning
 
+Early phase-3 slice implemented:
 - `simc apl-prune`
 - `simc apl-branch-trace`
 - `simc apl-intent`
+
+Still next:
 - `simc apl-intent-explain`
 - `simc apl-branch-compare`
 - `simc analysis-packet`

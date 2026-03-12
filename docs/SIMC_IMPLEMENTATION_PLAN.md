@@ -13,7 +13,8 @@ This is intentionally more concrete than the roadmap.
 
 Current status:
 - phase 1 package and command surface are implemented
-- the remaining purpose of this document is to guide phase 2 and phase 3 work
+- phase 2 readonly analysis commands are implemented
+- the remaining purpose of this document is to guide the rest of phase 3 work
 
 ## Package Shape
 
@@ -143,11 +144,14 @@ Do:
 - use shared output helpers
 - keep error payloads aligned with the rest of the repo
 
-## Phase 2 Scope
+## Readonly Analysis Status
 
-Ship next:
-- deeper APL reasoning on top of the new readonly slice
-- likely `find-action` refinement before phase-3 runtime helpers
+Implemented on top of the phase-1 base:
+- `apl.py`
+- readonly `find-action` / `trace-action`
+- `apl-lists`
+- `apl-graph`
+- `apl-talents`
 
 Primary source modules:
 - `/home/auro/code/simc_exp/simc_exp/apl.py`
@@ -160,9 +164,6 @@ Implemented package layout change:
 ## Phase 3 Scope
 
 Ship after the base provider is trusted:
-- `simc apl-prune`
-- `simc apl-branch-trace`
-- `simc apl-intent`
 - `simc apl-intent-explain`
 - `simc apl-branch-compare`
 - `simc analysis-packet`

@@ -27,7 +27,7 @@ Current provider state:
 - `raiderio`: ready for direct character, guild, and Mythic+ runs lookups; `search` and `resolve` are structured `coming_soon` in phase 1
 - `warcraft-wiki`: ready for article search, resolve, fetch, export, and local query
 - `wowprogress`: ready for direct guild, character, and PvE leaderboard lookups; `search` and `resolve` are structured `coming_soon` in phase 1
-- `simc`: ready for local repo inspection, version, spec-files, decode-build, APL list/graph/talent inspection, action tracing, and sync/build/run, with `search` and `resolve` structured `coming_soon`
+- `simc`: ready for local repo inspection, version, spec-files, decode-build, APL list/graph/talent inspection, action tracing, prune/branch/intent analysis, and sync/build/run, with `search` and `resolve` structured `coming_soon`
 
 ## Standard Workflow
 
@@ -53,6 +53,7 @@ Current provider state:
 - Use `wowprogress` when you already know the region, realm, and guild or character you want, and need progression, roster, or leaderboard context rather than guide content.
 - Use `simc` when you need local SimulationCraft repo inspection, build decoding, or direct binary execution against a local profile.
 - Use `simc` for readonly APL inspection questions before escalating to a real sim run.
+- Use `simc apl-prune`, `apl-branch-trace`, and `apl-intent` when you need conservative reasoning about likely list flow without running the simulation.
 - `warcraft search` now globally sorts the flattened result list by provider-reported ranking score.
 - `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result.
 
@@ -73,6 +74,7 @@ warcraft wowprogress guild us illidan Liquid
 warcraft simc doctor
 warcraft simc spec-files mistweaver
 warcraft simc apl-talents /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+warcraft simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 ```
 
 ## Provider Handoff

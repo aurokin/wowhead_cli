@@ -38,6 +38,7 @@ def test_simc_doctor_reports_phase_one_capabilities(monkeypatch, tmp_path: Path)
     assert payload["capabilities"]["version"] == "ready"
     assert payload["capabilities"]["search"] == "coming_soon"
     assert payload["capabilities"]["apl_lists"] == "ready"
+    assert payload["capabilities"]["apl_prune"] == "ready"
 
 
 def test_simc_search_is_structured_coming_soon() -> None:
@@ -170,6 +171,45 @@ def test_simc_find_action_groups_hits(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["count"] == 1
     assert payload["buckets"]["class_modules"]["items"][0]["line_no"] == 42
+
+
+def test_simc_apl_prune_branch_trace_and_intent(monkeypatch, tmp_path: Path) -> None:
+    apl = tmp_path / "evoker_devastation.simc"
+    apl.write_text(
+        "\n".join(
+            [
+                "actions+=/run_action_list,name=aoe,if=active_enemies>=3",
+                "actions+=/run_action_list,name=st,if=active_enemies<3",
+                "actions.aoe+=/fire_breath",
+                "actions.st+=/disintegrate,if=talent.mass_disintegrate",
+            ]
+        )
+        + "\n"
+    )
+    monkeypatch.setattr(
+        "simc_cli.main._resolve_prune_context",
+        lambda paths, apl_path, option_values, targets: (
+            type("Context", (), {"enabled_talents": {"mass_disintegrate"}, "disabled_talents": set(), "targets": targets, "talent_sources": {"mass_disintegrate": "spec"}})(),
+            type("Resolution", (), {"actor_class": "evoker", "spec": "devastation", "source_notes": ["decoded via /tmp/simc"]})(),
+        ),
+    )
+
+    prune_result = runner.invoke(simc_app, ["apl-prune", str(apl), "--targets", "3"])
+    assert prune_result.exit_code == 0
+    prune_payload = json.loads(prune_result.stdout)
+    assert prune_payload["lists"][0]["items"][0]["state"] == "eligible"
+
+    trace_result = runner.invoke(simc_app, ["apl-branch-trace", str(apl), "--targets", "3"])
+    assert trace_result.exit_code == 0
+    trace_payload = json.loads(trace_result.stdout)
+    assert trace_payload["summary"]["guaranteed_dispatch"] == "aoe"
+    assert trace_payload["trace"][0]["text"] == "[default]"
+
+    intent_result = runner.invoke(simc_app, ["apl-intent", str(apl), "--targets", "1"])
+    assert intent_result.exit_code == 0
+    intent_payload = json.loads(intent_result.stdout)
+    assert intent_payload["focus_list"] == "st"
+    assert intent_payload["intent"]
 
 
 def test_simc_sync_skips_dirty_repo(monkeypatch) -> None:

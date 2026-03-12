@@ -7,7 +7,9 @@ from typing import Any
 import typer
 
 from simc_cli.apl import action_counts, group_entries, mermaid_graph, parse_apl, talent_refs, trace_action_entries
+from simc_cli.branch import summarize_branches, summarize_intent, trace_apl
 from simc_cli.build_input import decode_build, extract_build_spec_from_text, infer_actor_and_spec_from_apl, load_build_spec
+from simc_cli.prune import PruneContext, TruthValue, prune_entries, split_csv_values
 from simc_cli.repo import RepoPaths, discover_repo, validate_build, validate_repo
 from simc_cli.run import binary_version, build_repo, repo_git_status, run_profile, sync_repo
 from simc_cli.search import find_action, spec_file_search
@@ -110,6 +112,68 @@ def _resolve_path(paths: RepoPaths, value: str) -> Path:
     return path.resolve()
 
 
+def _build_option_values(
+    *,
+    profile_path: str | None,
+    build_file: str | None,
+    build_text: str | None,
+    talents: str | None,
+    class_talents: str | None,
+    spec_talents: str | None,
+    hero_talents: str | None,
+    actor_class: str | None,
+    spec_name: str | None,
+    enable: list[str],
+    disable: list[str],
+) -> dict[str, Any]:
+    return {
+        "profile_path": profile_path,
+        "build_file": build_file,
+        "build_text": build_text,
+        "talents": talents,
+        "class_talents": class_talents,
+        "spec_talents": spec_talents,
+        "hero_talents": hero_talents,
+        "actor_class": actor_class,
+        "spec_name": spec_name,
+        "enable": enable,
+        "disable": disable,
+    }
+
+
+def _resolve_prune_context(paths: RepoPaths, apl_path: Path, option_values: dict[str, Any], targets: int) -> tuple[PruneContext, Any]:
+    build_spec = load_build_spec(
+        apl_path=apl_path,
+        profile_path=option_values["profile_path"],
+        build_file=option_values["build_file"],
+        build_text=option_values["build_text"],
+        talents=option_values["talents"],
+        class_talents=option_values["class_talents"],
+        spec_talents=option_values["spec_talents"],
+        hero_talents=option_values["hero_talents"],
+        actor_class=option_values["actor_class"],
+        spec_name=option_values["spec_name"],
+    )
+    resolution = decode_build(paths, build_spec)
+    enabled = set(resolution.enabled_talents)
+    enabled.update(split_csv_values(option_values["enable"]))
+    disabled = split_csv_values(option_values["disable"])
+    talent_sources = {
+        talent.token: talent.tree
+        for tree in ("class", "spec", "hero")
+        for talent in resolution.talents_by_tree.get(tree, [])
+    }
+    for token in split_csv_values(option_values["enable"]):
+        talent_sources[token] = "manual"
+    context = PruneContext(
+        enabled_talents=enabled,
+        disabled_talents=disabled,
+        targets=targets,
+        talent_sources=talent_sources,
+    )
+    return context, resolution
+
+
 @app.callback()
 def main_callback(
     ctx: typer.Context,
@@ -152,6 +216,9 @@ def doctor(ctx: typer.Context) -> None:
                 "apl_talents": "ready",
                 "find_action": "ready",
                 "trace_action": "ready",
+                "apl_prune": "ready",
+                "apl_branch_trace": "ready",
+                "apl_intent": "ready",
             },
             "repo": repo,
         },
@@ -521,6 +588,242 @@ def trace_action_command(
             },
             "external_hit_count": total,
             "buckets": buckets,
+        },
+    )
+
+
+@app.command("apl-prune")
+def apl_prune_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    targets: int = typer.Option(1, "--targets", min=1, help="Active target count."),
+    list_name: str | None = typer.Option(None, "--list", help="Only return one action list."),
+    show: str = typer.Option("all", "--show", help="One of all, eligible, dead, or unknown."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
+    enable: list[str] = typer.Option([], "--enable", help="Enabled talent names. Repeat or pass comma-separated values."),
+    disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
+) -> None:
+    if show not in {"all", "eligible", "dead", "unknown"}:
+        _fail(ctx, "invalid_query", "--show must be one of: all, eligible, dead, unknown")
+        return
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    option_values = _build_option_values(
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+        enable=enable,
+        disable=disable,
+    )
+    try:
+        context, resolution = _resolve_prune_context(paths, resolved, option_values, targets)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "prune_context_failed", str(exc))
+        return
+    grouped: dict[str, list[Any]] = {}
+    for pruned in prune_entries(parse_apl(resolved), context):
+        grouped.setdefault(pruned.entry.list_name, []).append(pruned)
+    selected_names = [list_name] if list_name else sorted(grouped)
+    lists_payload: list[dict[str, Any]] = []
+    for current in selected_names:
+        current_entries = grouped.get(current, [])
+        items = []
+        for pruned in current_entries:
+            if show != "all" and pruned.state.value != show:
+                continue
+            items.append(
+                {
+                    "line_no": pruned.entry.line_no,
+                    "action": pruned.entry.action,
+                    "target_list": pruned.entry.target_list,
+                    "condition": pruned.entry.condition,
+                    "state": pruned.state.value,
+                    "reason": pruned.reason,
+                    "raw": pruned.entry.raw,
+                }
+            )
+        lists_payload.append({"list_name": current, "count": len(items), "items": items})
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+            },
+            "build": {
+                "actor_class": resolution.actor_class,
+                "spec": resolution.spec,
+                "targets": context.targets,
+                "enabled_talents": len(context.enabled_talents),
+                "source_notes": resolution.source_notes,
+            },
+            "show": show,
+            "lists": lists_payload,
+        },
+    )
+
+
+@app.command("apl-branch-trace")
+def apl_branch_trace_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    targets: int = typer.Option(1, "--targets", min=1, help="Active target count."),
+    list_name: str = typer.Option("default", "--list", help="Starting action list."),
+    max_depth: int = typer.Option(6, "--max-depth", min=1, max=20, help="Maximum recursive trace depth."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
+    enable: list[str] = typer.Option([], "--enable", help="Enabled talent names. Repeat or pass comma-separated values."),
+    disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    option_values = _build_option_values(
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+        enable=enable,
+        disable=disable,
+    )
+    try:
+        context, resolution = _resolve_prune_context(paths, resolved, option_values, targets)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "branch_trace_failed", str(exc))
+        return
+    summary = summarize_branches(resolved, context, start_list=list_name)
+    trace_lines = trace_apl(resolved, context, start_list=list_name, max_depth=max_depth)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+            },
+            "build": {
+                "actor_class": resolution.actor_class,
+                "spec": resolution.spec,
+                "targets": context.targets,
+                "enabled_talents": len(context.enabled_talents),
+                "source_notes": resolution.source_notes,
+            },
+            "summary": {
+                "start_list": summary.start_list,
+                "guaranteed_dispatch": summary.guaranteed_dispatch,
+                "guaranteed_dispatch_line": summary.guaranteed_dispatch_line,
+                "guaranteed_dispatch_reason": summary.guaranteed_dispatch_reason,
+                "dead_branches": summary.dead_branches,
+                "unresolved_branches": summary.unresolved_branches,
+                "shadowed_lines": summary.shadowed_lines,
+            },
+            "trace": [{"depth": line.depth, "text": line.text} for line in trace_lines],
+        },
+    )
+
+
+@app.command("apl-intent")
+def apl_intent_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    targets: int = typer.Option(1, "--targets", min=1, help="Active target count."),
+    list_name: str = typer.Option("default", "--list", help="Starting action list."),
+    limit: int = typer.Option(6, "--limit", min=1, max=50, help="Number of intent lines to return."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
+    enable: list[str] = typer.Option([], "--enable", help="Enabled talent names. Repeat or pass comma-separated values."),
+    disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    option_values = _build_option_values(
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+        enable=enable,
+        disable=disable,
+    )
+    try:
+        context, resolution = _resolve_prune_context(paths, resolved, option_values, targets)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "intent_failed", str(exc))
+        return
+    summary = summarize_branches(resolved, context, start_list=list_name)
+    focus_list = summary.guaranteed_dispatch or list_name
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+            },
+            "build": {
+                "actor_class": resolution.actor_class,
+                "spec": resolution.spec,
+                "targets": context.targets,
+                "enabled_talents": len(context.enabled_talents),
+                "source_notes": resolution.source_notes,
+            },
+            "focus_list": focus_list,
+            "summary": {
+                "start_list": summary.start_list,
+                "guaranteed_dispatch": summary.guaranteed_dispatch,
+                "guaranteed_dispatch_line": summary.guaranteed_dispatch_line,
+                "guaranteed_dispatch_reason": summary.guaranteed_dispatch_reason,
+                "dead_branches": summary.dead_branches,
+                "unresolved_branches": summary.unresolved_branches,
+                "shadowed_lines": summary.shadowed_lines,
+            },
+            "intent": summarize_intent(resolved, context, focus_list, limit=limit),
         },
     )
 
