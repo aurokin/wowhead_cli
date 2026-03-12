@@ -14,7 +14,8 @@ This is intentionally more concrete than the roadmap.
 Current status:
 - phase 1 package and command surface are implemented
 - phase 2 readonly analysis commands are implemented
-- the remaining purpose of this document is to guide the rest of phase 3 work
+- most of phase 3 is implemented
+- the remaining purpose of this document is to guide the runtime-helper tail of phase 3 work
 
 ## Package Shape
 
@@ -164,9 +165,6 @@ Implemented package layout change:
 ## Phase 3 Scope
 
 Ship after the base provider is trusted:
-- `simc apl-intent-explain`
-- `simc apl-branch-compare`
-- `simc analysis-packet`
 - `simc first-cast`
 - `simc log-actions`
 

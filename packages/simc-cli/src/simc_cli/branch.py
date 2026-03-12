@@ -24,6 +24,12 @@ TOKEN_ALIASES = {
     "fb": "fire breath",
 }
 
+ACTION_ROLE_ALIASES = {
+    "metamorphosis": "burst",
+    "dragonrage": "burst",
+    "tip_the_scales": "burst_setup",
+}
+
 
 @dataclass(slots=True)
 class TraceLine:
@@ -60,6 +66,32 @@ class ListDecision:
     target_list: str | None
     status: str
     reason: str
+
+
+@dataclass(slots=True)
+class IntentExplanation:
+    focus_list: str
+    setup: list[str]
+    helpers: list[str]
+    burst: list[str]
+    priorities: list[str]
+
+
+@dataclass(slots=True)
+class BranchComparison:
+    start_list: str
+    left_dispatch: str | None
+    right_dispatch: str | None
+    dispatch_changed: bool
+    decision_changes: list[str]
+    left_focus_list: str
+    right_focus_list: str
+    focus_list_same: bool
+    focus_changes: list[str]
+    left_focus_preview: list[str]
+    right_focus_preview: list[str]
+    left_focus_intent: list[str]
+    right_focus_intent: list[str]
 
 
 def trace_apl(apl_path, context: PruneContext, start_list: str = "default", max_depth: int = 6) -> list[TraceLine]:
@@ -181,6 +213,109 @@ def summarize_intent(apl_path, context: PruneContext, list_name: str, limit: int
     return lines
 
 
+def explain_intent(apl_path, context: PruneContext, list_name: str, limit: int = 8) -> IntentExplanation:
+    decisions = summarize_list_decisions(apl_path, context, list_name)
+    setup: list[str] = []
+    helpers: list[str] = []
+    burst: list[str] = []
+    priorities: list[str] = []
+    seen: set[str] = set()
+
+    for decision in decisions:
+        if decision.status == "dead":
+            continue
+        line = intent_line_for_decision(decision)
+        if line in seen:
+            continue
+        seen.add(line)
+
+        role = classify_decision_role(decision)
+        if role == "setup" and len(setup) < limit:
+            setup.append(line)
+        elif role in {"helper", "burst_helper"} and len(helpers) < limit:
+            helpers.append(line)
+        elif role in {"burst", "burst_setup"} and len(burst) < limit:
+            burst.append(line)
+        elif len(priorities) < limit:
+            priorities.append(line)
+
+    return IntentExplanation(
+        focus_list=list_name,
+        setup=setup[:limit],
+        helpers=helpers[:limit],
+        burst=burst[:limit],
+        priorities=priorities[:limit],
+    )
+
+
+def compare_branch_summaries(left: BranchSummary, right: BranchSummary) -> BranchComparison:
+    targets = sorted(set(left.branch_decisions) | set(right.branch_decisions))
+    decision_changes: list[str] = []
+    for target in targets:
+        left_decision = left.branch_decisions.get(target)
+        right_decision = right.branch_decisions.get(target)
+        if left_decision and right_decision:
+            if left_decision.status != right_decision.status or left_decision.reason != right_decision.reason:
+                decision_changes.append(
+                    f"{target}: {left_decision.status} -> {right_decision.status}"
+                    f" | left={left_decision.reason}"
+                    f" | right={right_decision.reason}"
+                )
+        elif left_decision:
+            decision_changes.append(f"{target}: only in left ({left_decision.status})")
+        elif right_decision:
+            decision_changes.append(f"{target}: only in right ({right_decision.status})")
+
+    left_focus_list = left.guaranteed_dispatch or left.start_list
+    right_focus_list = right.guaranteed_dispatch or right.start_list
+    return BranchComparison(
+        start_list=left.start_list,
+        left_dispatch=left.guaranteed_dispatch,
+        right_dispatch=right.guaranteed_dispatch,
+        dispatch_changed=left.guaranteed_dispatch != right.guaranteed_dispatch,
+        decision_changes=decision_changes,
+        left_focus_list=left_focus_list,
+        right_focus_list=right_focus_list,
+        focus_list_same=left_focus_list == right_focus_list,
+        focus_changes=[],
+        left_focus_preview=[],
+        right_focus_preview=[],
+        left_focus_intent=[],
+        right_focus_intent=[],
+    )
+
+
+def attach_focus_comparison(comparison: BranchComparison, apl_path, left_context: PruneContext, right_context: PruneContext, max_changes: int = 8) -> BranchComparison:
+    left_decisions = summarize_list_decisions(apl_path, left_context, comparison.left_focus_list)
+    right_decisions = summarize_list_decisions(apl_path, right_context, comparison.right_focus_list)
+    left_preview = [format_list_decision(decision) for decision in left_decisions[:max_changes]]
+    right_preview = [format_list_decision(decision) for decision in right_decisions[:max_changes]]
+
+    focus_changes: list[str] = []
+    if comparison.focus_list_same:
+        right_by_line = {decision.line_no: decision for decision in right_decisions}
+        for left_decision in left_decisions:
+            right_decision = right_by_line.get(left_decision.line_no)
+            if not right_decision:
+                continue
+            if left_decision.status != right_decision.status or left_decision.reason != right_decision.reason:
+                focus_changes.append(
+                    f"L{left_decision.line_no} {left_decision.action_label}: "
+                    f"{left_decision.status} -> {right_decision.status}"
+                    f" | left={left_decision.reason}"
+                    f" | right={right_decision.reason}"
+                )
+            if len(focus_changes) >= max_changes:
+                break
+
+    comparison.focus_changes = focus_changes
+    comparison.left_focus_preview = left_preview
+    comparison.right_focus_preview = right_preview
+    comparison.left_focus_intent = summarize_intent(apl_path, left_context, comparison.left_focus_list)
+    comparison.right_focus_intent = summarize_intent(apl_path, right_context, comparison.right_focus_list)
+    return comparison
+
+
 def humanize_action_label(label: str) -> str:
     if " -> " in label:
         action, target = label.split(" -> ", 1)
@@ -207,6 +342,27 @@ def is_helper_decision(decision: ListDecision) -> bool:
     if action != "call_action_list":
         return False
     return target in LIST_NAME_ALIASES or target.endswith("_variables") or target.endswith("_helper")
+
+
+def intent_line_for_decision(decision: ListDecision) -> str:
+    qualifier = "always" if decision.status == "guaranteed" else "situational"
+    label = humanize_action_label(decision.action_label)
+    if decision.reason in {"no condition", "depends on runtime-only state"}:
+        return f"{qualifier}: {label}"
+    return f"{qualifier}: {label} [{decision.reason}]"
+
+
+def classify_decision_role(decision: ListDecision) -> str | None:
+    if decision.action_name == "call_action_list" and decision.target_list:
+        if decision.target_list in LIST_NAME_ALIASES:
+            return "helper"
+        if decision.target_list.endswith("_variables") or decision.target_list.endswith("_helper"):
+            return "helper"
+    return ACTION_ROLE_ALIASES.get(decision.action_name)
+
+
+def format_list_decision(decision: ListDecision) -> str:
+    return f"L{decision.line_no} {decision.action_label}: {decision.status} ({decision.reason})"
 
 
 def _trace_list(grouped, list_name: str, context: PruneContext, lines: list[TraceLine], depth: int, max_depth: int, visited: list[str]) -> None:

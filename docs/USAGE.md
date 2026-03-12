@@ -27,6 +27,7 @@ warcraft simc version
 warcraft simc spec-files mistweaver
 warcraft simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 warcraft simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+warcraft simc analysis-packet /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 ```
 
 ## Wrapper Conventions
@@ -45,6 +46,7 @@ warcraft simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_m
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
+- `simc` now includes comparison and packet commands built on the same conservative reasoning layer.
 - `simc` search and resolve currently return structured `coming_soon` payloads in phase 1.
 - the flattened `warcraft search` result list is globally sorted by provider-reported ranking score
 - `warcraft resolve` prefers the strongest resolved provider result instead of whichever provider happens to be registered first
@@ -212,6 +214,9 @@ simc trace-action /home/auro/code/simc/ActionPriorityLists/default/monk_mistweav
 simc apl-prune /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 simc apl-branch-trace /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc apl-intent-explain /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc apl-branch-compare /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --left-targets 3 --right-targets 1
+simc analysis-packet /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 simc run ./profile.simc --arg iterations=1 --arg desired_targets=1
 simc sync
 simc build
@@ -231,6 +236,9 @@ SimulationCraft phase-1 behavior:
 - `apl-prune` classifies APL lines conservatively as `eligible`, `dead`, or `unknown` using decoded talents plus target count
 - `apl-branch-trace` traces likely `run_action_list` and `call_action_list` flow through one APL
 - `apl-intent` summarizes the early likely priorities in the selected focus list after branch evaluation
+- `apl-intent-explain` groups the early likely priorities into setup, helper, burst, and remaining priority buckets
+- `apl-branch-compare` compares branch and focus-list changes between two target/build contexts
+- `analysis-packet` emits an agent-facing summary with branch certainty, intent lines, explained intent, escalation reasons, and recommended next steps
 - `run` executes the local `simc` binary against a profile and returns bounded stdout/stderr previews
 - `sync` and `build` are conservative local repo helpers; `sync` skips dirty worktrees unless `--allow-dirty` is set
 - `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until SimC discovery is implemented

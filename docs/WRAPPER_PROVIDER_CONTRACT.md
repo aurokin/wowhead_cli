@@ -161,7 +161,7 @@ Current state:
 - `raiderio` is ready for direct phase-1 retrieval, with `search` and `resolve` intentionally returning structured `coming_soon` payloads
 - `warcraft-wiki` is ready
 - `wowprogress` is ready for direct phase-1 retrieval, with `search` and `resolve` intentionally returning structured `coming_soon` payloads
-- `simc` is ready for direct local repo workflows plus readonly APL inspection and early conservative reasoning, with `search` and `resolve` intentionally returning structured `coming_soon` payloads
+- `simc` is ready for direct local repo workflows plus readonly APL inspection, conservative reasoning, comparison, and analysis packets, with `search` and `resolve` intentionally returning structured `coming_soon` payloads
 
 ## Documentation Rule
 

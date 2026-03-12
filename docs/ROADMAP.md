@@ -40,7 +40,7 @@ Validated shared so far:
 - article/reference bundle export/query outside class guides
 
 Active next step:
-- continue `simc` phase 3 with explained intent, branch comparison, and agent-facing analysis packets, then use that work to decide whether any local-tool analysis helpers should be shared later
+- finish the remaining `simc` runtime-aware helpers like `first-cast` and `log-actions`, then decide whether any local-tool analysis helpers should be shared later
 
 ## Planning Documents
 

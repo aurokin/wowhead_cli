@@ -18,6 +18,9 @@ Current commands:
 - `simc apl-prune`
 - `simc apl-branch-trace`
 - `simc apl-intent`
+- `simc apl-intent-explain`
+- `simc apl-branch-compare`
+- `simc analysis-packet`
 - `simc sync`
 - `simc build`
 - `simc run`
@@ -106,11 +109,11 @@ Early phase-3 slice implemented:
 - `simc apl-prune`
 - `simc apl-branch-trace`
 - `simc apl-intent`
-
-Still next:
 - `simc apl-intent-explain`
 - `simc apl-branch-compare`
 - `simc analysis-packet`
+
+Still next:
 - `simc first-cast`
 - `simc log-actions`
 

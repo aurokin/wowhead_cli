@@ -7,8 +7,9 @@ from typing import Any
 import typer
 
 from simc_cli.apl import action_counts, group_entries, mermaid_graph, parse_apl, talent_refs, trace_action_entries
-from simc_cli.branch import summarize_branches, summarize_intent, trace_apl
+from simc_cli.branch import attach_focus_comparison, compare_branch_summaries, explain_intent, summarize_branches, summarize_intent, trace_apl
 from simc_cli.build_input import decode_build, extract_build_spec_from_text, infer_actor_and_spec_from_apl, load_build_spec
+from simc_cli.packet import build_analysis_packet
 from simc_cli.prune import PruneContext, TruthValue, prune_entries, split_csv_values
 from simc_cli.repo import RepoPaths, discover_repo, validate_build, validate_repo
 from simc_cli.run import binary_version, build_repo, repo_git_status, run_profile, sync_repo
@@ -219,6 +220,9 @@ def doctor(ctx: typer.Context) -> None:
                 "apl_prune": "ready",
                 "apl_branch_trace": "ready",
                 "apl_intent": "ready",
+                "apl_intent_explain": "ready",
+                "apl_branch_compare": "ready",
+                "analysis_packet": "ready",
             },
             "repo": repo,
         },
@@ -824,6 +828,299 @@ def apl_intent_command(
                 "shadowed_lines": summary.shadowed_lines,
             },
             "intent": summarize_intent(resolved, context, focus_list, limit=limit),
+        },
+    )
+
+
+@app.command("apl-intent-explain")
+def apl_intent_explain_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    targets: int = typer.Option(1, "--targets", min=1, help="Active target count."),
+    list_name: str = typer.Option("default", "--list", help="Starting action list."),
+    limit: int = typer.Option(8, "--limit", min=1, max=50, help="Maximum items per bucket."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
+    enable: list[str] = typer.Option([], "--enable", help="Enabled talent names. Repeat or pass comma-separated values."),
+    disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    option_values = _build_option_values(
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+        enable=enable,
+        disable=disable,
+    )
+    try:
+        context, resolution = _resolve_prune_context(paths, resolved, option_values, targets)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "intent_explain_failed", str(exc))
+        return
+    summary = summarize_branches(resolved, context, start_list=list_name)
+    focus_list = summary.guaranteed_dispatch or list_name
+    explanation = explain_intent(resolved, context, focus_list, limit=limit)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+            },
+            "build": {
+                "actor_class": resolution.actor_class,
+                "spec": resolution.spec,
+                "targets": context.targets,
+                "enabled_talents": len(context.enabled_talents),
+                "source_notes": resolution.source_notes,
+            },
+            "focus_list": focus_list,
+            "summary": {
+                "start_list": summary.start_list,
+                "guaranteed_dispatch": summary.guaranteed_dispatch,
+                "guaranteed_dispatch_line": summary.guaranteed_dispatch_line,
+                "guaranteed_dispatch_reason": summary.guaranteed_dispatch_reason,
+                "dead_branches": summary.dead_branches,
+                "unresolved_branches": summary.unresolved_branches,
+                "shadowed_lines": summary.shadowed_lines,
+            },
+            "explained_intent": {
+                "setup": explanation.setup,
+                "helpers": explanation.helpers,
+                "burst": explanation.burst,
+                "priorities": explanation.priorities,
+            },
+        },
+    )
+
+
+@app.command("apl-branch-compare")
+def apl_branch_compare_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    left_targets: int = typer.Option(1, "--left-targets", min=1, help="Target count for the left context."),
+    right_targets: int = typer.Option(1, "--right-targets", min=1, help="Target count for the right context."),
+    list_name: str = typer.Option("default", "--list", help="Starting action list."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional left profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional left build file."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline left build text or talent hash."),
+    talents: str | None = typer.Option(None, "--talents", help="Left SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Left split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Left split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Left split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Left actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Left spec name such as mistweaver."),
+    enable: list[str] = typer.Option([], "--enable", help="Enabled left talent names. Repeat or pass comma-separated values."),
+    disable: list[str] = typer.Option([], "--disable", help="Disabled left talent names. Repeat or pass comma-separated values."),
+    right_profile_path: str | None = typer.Option(None, "--right-profile-path", help="Optional right profile path containing build lines."),
+    right_build_file: str | None = typer.Option(None, "--right-build-file", help="Optional right build file."),
+    right_build_text: str | None = typer.Option(None, "--right-build-text", help="Inline right build text or talent hash."),
+    right_talents: str | None = typer.Option(None, "--right-talents", help="Right SimC talents string or talents=... line."),
+    right_class_talents: str | None = typer.Option(None, "--right-class-talents", help="Right split class talents string."),
+    right_spec_talents: str | None = typer.Option(None, "--right-spec-talents", help="Right split spec talents string."),
+    right_hero_talents: str | None = typer.Option(None, "--right-hero-talents", help="Right split hero talents string."),
+    right_actor_class: str | None = typer.Option(None, "--right-actor-class", help="Right actor class such as monk or evoker."),
+    right_spec_name: str | None = typer.Option(None, "--right-spec", help="Right spec name such as mistweaver."),
+    right_enable: list[str] = typer.Option([], "--right-enable", help="Enabled right talent names. Repeat or pass comma-separated values."),
+    right_disable: list[str] = typer.Option([], "--right-disable", help="Disabled right talent names. Repeat or pass comma-separated values."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    left_values = _build_option_values(
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+        enable=enable,
+        disable=disable,
+    )
+    right_values = _build_option_values(
+        profile_path=right_profile_path if right_profile_path is not None else profile_path,
+        build_file=right_build_file if right_build_file is not None else build_file,
+        build_text=right_build_text if right_build_text is not None else build_text,
+        talents=right_talents if right_talents is not None else talents,
+        class_talents=right_class_talents if right_class_talents is not None else class_talents,
+        spec_talents=right_spec_talents if right_spec_talents is not None else spec_talents,
+        hero_talents=right_hero_talents if right_hero_talents is not None else hero_talents,
+        actor_class=right_actor_class if right_actor_class is not None else actor_class,
+        spec_name=right_spec_name if right_spec_name is not None else spec_name,
+        enable=[*enable, *right_enable],
+        disable=[*disable, *right_disable],
+    )
+    try:
+        left_context, left_resolution = _resolve_prune_context(paths, resolved, left_values, left_targets)
+        right_context, right_resolution = _resolve_prune_context(paths, resolved, right_values, right_targets)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "branch_compare_failed", str(exc))
+        return
+    comparison = attach_focus_comparison(
+        compare_branch_summaries(
+            summarize_branches(resolved, left_context, start_list=list_name),
+            summarize_branches(resolved, right_context, start_list=list_name),
+        ),
+        resolved,
+        left_context,
+        right_context,
+    )
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+            },
+            "left": {
+                "actor_class": left_resolution.actor_class,
+                "spec": left_resolution.spec,
+                "targets": left_context.targets,
+                "enabled_talents": len(left_context.enabled_talents),
+                "source_notes": left_resolution.source_notes,
+            },
+            "right": {
+                "actor_class": right_resolution.actor_class,
+                "spec": right_resolution.spec,
+                "targets": right_context.targets,
+                "enabled_talents": len(right_context.enabled_talents),
+                "source_notes": right_resolution.source_notes,
+            },
+            "comparison": {
+                "start_list": comparison.start_list,
+                "left_dispatch": comparison.left_dispatch,
+                "right_dispatch": comparison.right_dispatch,
+                "dispatch_changed": comparison.dispatch_changed,
+                "decision_changes": comparison.decision_changes,
+                "left_focus_list": comparison.left_focus_list,
+                "right_focus_list": comparison.right_focus_list,
+                "focus_list_same": comparison.focus_list_same,
+                "focus_changes": comparison.focus_changes,
+                "left_focus_preview": comparison.left_focus_preview,
+                "right_focus_preview": comparison.right_focus_preview,
+                "left_focus_intent": comparison.left_focus_intent,
+                "right_focus_intent": comparison.right_focus_intent,
+            },
+        },
+    )
+
+
+@app.command("analysis-packet")
+def analysis_packet_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    targets: int = typer.Option(1, "--targets", min=1, help="Active target count."),
+    list_name: str = typer.Option("default", "--list", help="Starting action list."),
+    intent_limit: int = typer.Option(6, "--intent-limit", min=1, max=50, help="Number of intent lines to return."),
+    explain_limit: int = typer.Option(8, "--explain-limit", min=1, max=50, help="Maximum items per explanation bucket."),
+    runtime_scan_limit: int = typer.Option(8, "--runtime-scan-limit", min=1, max=50, help="How many early runtime-sensitive lines to report."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
+    enable: list[str] = typer.Option([], "--enable", help="Enabled talent names. Repeat or pass comma-separated values."),
+    disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    option_values = _build_option_values(
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+        enable=enable,
+        disable=disable,
+    )
+    try:
+        context, resolution = _resolve_prune_context(paths, resolved, option_values, targets)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "analysis_packet_failed", str(exc))
+        return
+    packet = build_analysis_packet(
+        resolved,
+        context,
+        start_list=list_name,
+        intent_limit=intent_limit,
+        explain_limit=explain_limit,
+        runtime_scan_limit=runtime_scan_limit,
+    )
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(packet.apl_path),
+                "relative_to_repo": str(packet.apl_path.relative_to(paths.root)) if packet.apl_path.is_relative_to(paths.root) else None,
+            },
+            "build": {
+                "actor_class": resolution.actor_class,
+                "spec": resolution.spec,
+                "targets": context.targets,
+                "enabled_talents": len(context.enabled_talents),
+                "source_notes": resolution.source_notes,
+            },
+            "packet": {
+                "start_list": packet.start_list,
+                "focus_list": packet.focus_list,
+                "dispatch_certainty": packet.dispatch_certainty,
+                "top_level_runtime_unresolved": packet.top_level_runtime_unresolved,
+                "runtime_sensitive_priorities": packet.runtime_sensitive_priorities,
+                "escalation_reasons": packet.escalation_reasons,
+                "next_steps": packet.next_steps,
+                "intent_lines": packet.intent_lines,
+                "explained_intent": {
+                    "setup": packet.explained_intent.setup,
+                    "helpers": packet.explained_intent.helpers,
+                    "burst": packet.explained_intent.burst,
+                    "priorities": packet.explained_intent.priorities,
+                },
+                "branch_summary": {
+                    "start_list": packet.branch_summary.start_list,
+                    "guaranteed_dispatch": packet.branch_summary.guaranteed_dispatch,
+                    "guaranteed_dispatch_line": packet.branch_summary.guaranteed_dispatch_line,
+                    "guaranteed_dispatch_reason": packet.branch_summary.guaranteed_dispatch_reason,
+                    "dead_branches": packet.branch_summary.dead_branches,
+                    "unresolved_branches": packet.branch_summary.unresolved_branches,
+                    "shadowed_lines": packet.branch_summary.shadowed_lines,
+                },
+            },
         },
     )
 
