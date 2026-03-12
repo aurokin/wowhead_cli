@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="$ROOT_DIR/.venv"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 LINK_BIN=true
-BIN_NAME="${WOWHEAD_BIN_NAME:-wowhead}"
+BIN_NAMES="${WARCRAFT_BIN_NAMES:-warcraft wowhead method}"
 
 while (($#)); do
   case "$1" in
@@ -21,7 +21,7 @@ while (($#)); do
         echo "--bin-name requires a value" >&2
         exit 2
       fi
-      BIN_NAME="$1"
+      BIN_NAMES="$1"
       ;;
     *)
       echo "Unknown argument: $1" >&2
@@ -46,14 +46,16 @@ fi
 if [[ "$LINK_BIN" == "true" ]]; then
   LOCAL_BIN_DIR="$HOME/.local/bin"
   mkdir -p "$LOCAL_BIN_DIR"
-  WRAPPER_PATH="$LOCAL_BIN_DIR/$BIN_NAME"
-  cat > "$WRAPPER_PATH" <<WRAP
+  for BIN_NAME in $BIN_NAMES; do
+    WRAPPER_PATH="$LOCAL_BIN_DIR/$BIN_NAME"
+    cat > "$WRAPPER_PATH" <<WRAP
 #!/usr/bin/env bash
-exec "$VENV_DIR/bin/wowhead" "\$@"
+exec "$VENV_DIR/bin/$BIN_NAME" "\$@"
 WRAP
-  chmod +x "$WRAPPER_PATH"
-  echo "Linked $WRAPPER_PATH -> $VENV_DIR/bin/wowhead"
+    chmod +x "$WRAPPER_PATH"
+    echo "Linked $WRAPPER_PATH -> $VENV_DIR/bin/$BIN_NAME"
+  done
 fi
 
 echo "Dev deploy complete."
-echo "Run with: wowhead search \"defias\""
+echo "Run with: warcraft search \"defias\""

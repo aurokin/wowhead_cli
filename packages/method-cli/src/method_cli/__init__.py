@@ -1,0 +1,2 @@
+"""method_cli package."""
+

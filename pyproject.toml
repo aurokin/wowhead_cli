@@ -3,9 +3,9 @@ requires = ["hatchling>=1.24.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "wowhead-cli"
+name = "warcraft"
 version = "0.1.0"
-description = "Agent-first CLI for querying Wowhead"
+description = "Umbrella Warcraft CLI with shared packages and service-specific commands"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -23,7 +23,9 @@ redis = [
 ]
 
 [project.scripts]
+warcraft = "warcraft_cli.main:run"
 wowhead = "wowhead_cli.main:run"
+method = "method_cli.main:run"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -32,4 +34,11 @@ markers = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/wowhead_cli"]
+packages = [
+  "packages/warcraft-core/src/warcraft_core",
+  "packages/warcraft-api/src/warcraft_api",
+  "packages/warcraft-content/src/warcraft_content",
+  "packages/warcraft-cli/src/warcraft_cli",
+  "packages/wowhead-cli/src/wowhead_cli",
+  "packages/method-cli/src/method_cli",
+]

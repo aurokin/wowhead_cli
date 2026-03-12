@@ -1,10 +1,34 @@
 # Usage
 
-This document is the command-oriented reference for the local `wowhead` CLI.
+This document is the command-oriented reference for the local Warcraft CLI workspace.
 
 The goal is to keep the README short and keep detailed usage notes close to actual CLI behavior.
 
-## Common Commands
+## Wrapper Commands
+
+```bash
+warcraft doctor
+warcraft search "defias"
+warcraft resolve "fairbreeze favors"
+warcraft wowhead search "defias"
+warcraft wowhead guide 3143
+warcraft method search "mistweaver monk"
+```
+
+## Wrapper Conventions
+
+- Use `warcraft` when the provider is unclear.
+- Use `warcraft resolve` for a conservative next-command recommendation across providers.
+- Use `warcraft search` when you want to inspect candidates across providers.
+- Use `warcraft <provider> ...` when you already know which service you need.
+- In milestone 1, `method` is registered but still returns structured `coming_soon` payloads.
+
+`warcraft doctor` reports:
+- wrapper health
+- shared XDG-style config/data/cache roots
+- registered provider readiness
+
+## Wowhead Commands
 
 ```bash
 wowhead search "defias"
@@ -51,6 +75,17 @@ wowhead compare item:19019 item:19351 --comment-sample 2
 wowhead expansions
 ```
 
+## Method Commands
+
+Milestone 1 includes the `method` command surface, but it is intentionally stubbed:
+
+```bash
+method doctor
+method search "mistweaver monk"
+method resolve "mistweaver monk guide"
+method guide "mistweaver-monk"
+```
+
 ## Output Conventions
 
 - Default output is compact JSON for machine consumption.
@@ -59,6 +94,7 @@ wowhead expansions
 - Structured failures return `ok: false` with an `error` object.
 - Use `--fields` to project only selected dot-paths from the JSON payload.
 - Use `--compact` to truncate long string fields such as tooltip HTML blobs.
+- Wrapper responses preserve provider provenance instead of flattening everything into a fake universal schema.
 
 ## Expansion And Routing
 

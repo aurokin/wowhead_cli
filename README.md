@@ -1,6 +1,11 @@
-# wowhead-cli
+# warcraft
 
-Agent-first CLI for querying Wowhead endpoints without browser automation.
+Warcraft data CLI monorepo.
+
+Milestone 1 includes:
+- `warcraft` as the root wrapper
+- `wowhead` as the working provider CLI
+- `method` as a registered stub provider
 
 ## Install
 
@@ -16,10 +21,11 @@ pip install -e '.[dev,redis]'
 ## Local Dev Deploy
 
 ```bash
-# setup/update editable install and link ~/.local/bin/wowhead
+# setup/update editable install and link ~/.local/bin/{warcraft,wowhead,method}
 make dev-deploy
+warcraft doctor
+warcraft search "defias"
 wowhead search "defias"
-wowhead resolve "fairbreeze favors"
 
 # optional: update venv only (no ~/.local/bin changes)
 make dev-deploy-no-link
@@ -31,26 +37,16 @@ If `wowhead` is not found, add `~/.local/bin` to your `PATH`.
 ## Quick Start
 
 ```bash
+warcraft doctor
+warcraft search "defias"
+warcraft resolve "fairbreeze favors"
+warcraft wowhead guide 3143
+warcraft method search "mistweaver monk"
 wowhead search "defias"
 wowhead guide 3143
-wowhead guide-export 3143 --out ./tmp/frost-dk-guide
-wowhead guide-bundle-list
-wowhead guide-bundle-search "frost"
-wowhead guide-bundle-query "obliterate"
-wowhead guide-bundle-inspect 3143
-wowhead guide-bundle-index-rebuild
-wowhead cache-inspect
-wowhead cache-inspect --show-redis-prefixes
-wowhead cache-inspect --summary --hide-zero
-wowhead cache-repair --expired-only
-wowhead guide-bundle-inspect 3143 --summary
-wowhead cache-clear --namespace entity_response --expired-only
-wowhead entity item 19019
-wowhead comments item 19019 --limit 30 --sort rating
-wowhead compare item:19019 item:19351 --comment-sample 2
 ```
 
-The CLI defaults to compact JSON for machine use. Use `--pretty` for readable output and `--fields` when you only want selected paths from the response. Use `search` when you want to inspect multiple candidates, and `resolve` when you want the CLI to recommend one next command conservatively.
+Use `warcraft` when the source is unclear. Use `wowhead` directly once you know you need Wowhead behavior. `method` is intentionally stubbed in milestone 1.
 
 ## Docs
 
@@ -58,8 +54,10 @@ Detailed usage lives in [docs/USAGE.md](/home/auro/code/wowhead_cli/docs/USAGE.m
 
 Other useful docs:
 - [docs/ROADMAP.md](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
+- [docs/MIGRATION_CHECKLIST.md](/home/auro/code/wowhead_cli/docs/MIGRATION_CHECKLIST.md)
 - [docs/WOWHEAD_ACCESS_METHODS.md](/home/auro/code/wowhead_cli/docs/WOWHEAD_ACCESS_METHODS.md)
 - [docs/WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/wowhead_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md)
+- [docs/WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/wowhead_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
 
 The preferred pattern is to keep docs driven by actual code behavior. The README should stay short, while command details and behavior notes live under `docs/`.
 

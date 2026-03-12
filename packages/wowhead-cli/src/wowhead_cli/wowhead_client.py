@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import random
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+from warcraft_api.http import DEFAULT_RETRY_ATTEMPTS, request_with_retries
 from wowhead_cli.cache import (
     DEFAULT_HTTP_CACHE_DIR,
     CacheSettings,
@@ -30,8 +30,6 @@ WOWHEAD_BASE_URL = "https://www.wowhead.com"
 NETHER_BASE_URL = "https://nether.wowhead.com"
 
 DEFAULT_CACHE_DIR = DEFAULT_HTTP_CACHE_DIR
-DEFAULT_RETRY_ATTEMPTS = 3
-RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 ENTITY_RESPONSE_CACHE_VERSION = 1
 
 SUGGESTION_TYPE_TO_ENTITY: dict[int, str] = {
@@ -144,30 +142,12 @@ class WowheadClient:
         return self._http_client
 
     def _request_with_retries(self, url: str, *, params: dict[str, Any] | None = None) -> httpx.Response:
-        attempts = self._retry_attempts
-        for attempt in range(1, attempts + 1):
-            try:
-                response = self._client().get(url, params=params)
-            except httpx.RequestError:
-                if attempt >= attempts:
-                    raise
-                time.sleep(self._backoff_seconds(attempt))
-                continue
-
-            if response.status_code in RETRYABLE_STATUS_CODES and attempt < attempts:
-                response.close()
-                time.sleep(self._backoff_seconds(attempt))
-                continue
-
-            response.raise_for_status()
-            return response
-
-        raise AssertionError("Unreachable retry loop exit.")
-
-    def _backoff_seconds(self, attempt: int) -> float:
-        base = 0.35 * (2 ** (attempt - 1))
-        jitter = random.uniform(0.0, 0.12)
-        return min(4.0, base + jitter)
+        return request_with_retries(
+            self._client(),
+            url,
+            params=params,
+            retry_attempts=self._retry_attempts,
+        )
 
     def _cache_key(self, namespace: str, url: str, params: dict[str, Any] | None) -> str:
         encoded = urlencode(sorted(params.items()), doseq=True) if params else ""

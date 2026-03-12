@@ -196,12 +196,9 @@ When implementation starts, the first restructure pass should stay narrow:
 
 ## Immediate Planning Priorities
 
-- define the repo and package layout in detail before moving code
-- define the shared package boundaries before adding `method`
-- define the root skill structure before adding another service-specific skill
-- define the minimum viable `warcraft` wrapper contract
-- decide how packaging and entrypoints will work in a multi-package Python monorepo
-- identify which parts of the current `wowhead` codebase should move first and which should stay local until a second consumer exists
+- replace stubbed `method` commands with a real provider in milestone 2
+- keep package boundaries and wrapper/provider contracts aligned with real code as the monorepo grows
+- continue extracting only genuinely shared infrastructure as new providers prove the abstraction
 
 ## Risks To Watch
 

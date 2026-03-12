@@ -81,6 +81,11 @@ Checklist:
 
 7. Re-run verification gates.
 
+Current status:
+- completed
+- package directories, shared package skeletons, `warcraft`, and stubbed `method` are present
+- verification gate passed after the extraction pass
+
 ## Milestone 2
 
 Goal:

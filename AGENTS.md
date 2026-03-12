@@ -25,4 +25,5 @@ Co-Authored-By: OpenAI Codex <noreply@openai.com>
 - Root research and planning docs live under `docs/`.
 
 ## Local Skills
+- Use the `warcraft` skill for root wrapper and provider-routing work. See `skills/warcraft/SKILL.md`.
 - Use the `wowhead` skill for Wowhead CLI work. See `skills/wowhead/SKILL.md`.

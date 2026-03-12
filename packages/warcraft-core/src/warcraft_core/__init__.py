@@ -1,0 +1,2 @@
+"""Shared Warcraft core utilities."""
+
