@@ -48,6 +48,8 @@ Active next step:
 - [Method.gg CLI plan](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md)
 - [Icy Veins CLI plan](/home/auro/code/wowhead_cli/docs/ICY_VEINS_CLI_PLAN.md)
 - [Raider.IO CLI plan](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md)
+- [WowProgress CLI plan](/home/auro/code/wowhead_cli/docs/WOWPROGRESS_CLI_PLAN.md)
+- [Warcraft Wiki CLI plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_WIKI_CLI_PLAN.md)
 - [SimulationCraft CLI plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md)
 - [Raidbots CLI plan](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md)
 - [Warcraft Logs CLI plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md)
@@ -68,6 +70,8 @@ Active next step:
 | Method.gg | Server-rendered article/guide pages with visible section nav and metadata | Build as an article extraction CLI with guide bundles and section query | [Plan](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md) |
 | Icy Veins | Server-rendered article pages with guide metadata and nav links | Build as an article extraction CLI with search/resolve and section query | [Plan](/home/auro/code/wowhead_cli/docs/ICY_VEINS_CLI_PLAN.md) |
 | Raider.IO | Public API with documented schema and rate limits | Build as an API-first CLI with typed endpoints and cached profile/leaderboard lookups | [Plan](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md) |
+| WowProgress | Server-rendered rankings and profile pages | Build as a rankings/profile CLI with guild, character, and progress lookups plus cached leaderboard slices | [Plan](/home/auro/code/wowhead_cli/docs/WOWPROGRESS_CLI_PLAN.md) |
+| Warcraft Wiki | Server-rendered MediaWiki pages plus wiki metadata | Build as a reference CLI for lore, systems, and addon/API documentation with article export/query | [Plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_WIKI_CLI_PLAN.md) |
 | SimulationCraft | Local Git repo, local builds, local command execution | Build as a local-tool CLI with sync, build, inspect, and run workflows | [Plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md) |
 | Raidbots | Web workflow built around SimulationCraft input and result pages | Start with result/report parsing and workflow helpers, then evaluate deeper automation carefully | [Plan](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md) |
 | Warcraft Logs | Authenticated API with complex query workflows | Build as an API-first CLI with typed query helpers, auth management, and reusable report patterns | [Plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md) |
@@ -100,6 +104,8 @@ A good end state is:
 - `packages/method-cli`
 - `packages/icy-veins-cli`
 - `packages/raiderio-cli`
+- `packages/wowprogress-cli`
+- `packages/warcraft-wiki-cli`
 - `packages/simc-cli`
 - `packages/raidbots-cli`
 - `packages/warcraftlogs-cli`
@@ -108,6 +114,8 @@ A good end state is:
 - `skills/method/`
 - `skills/icy-veins/`
 - `skills/raiderio/`
+- `skills/wowprogress/`
+- `skills/warcraft-wiki/`
 - `skills/simc/`
 - `skills/raidbots/`
 - `skills/warcraftlogs/`
@@ -200,9 +208,11 @@ Completed:
 
 Next:
 8. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
-9. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
-10. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
-11. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
+9. Add `wowprogress` as a rankings/profile source adjacent to `raiderio`, but keep it provider-specific until we know which leaderboard/profile abstractions are actually shared. See [WOWPROGRESS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WOWPROGRESS_CLI_PLAN.md).
+10. Add `warcraft-wiki` as the first general reference/documentation source and use it to validate article export/query outside class guides. See [WARCRAFT_WIKI_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFT_WIKI_CLI_PLAN.md).
+11. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
+12. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
+13. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
 
 ## Research Anchors
 
@@ -217,8 +227,19 @@ These are the high-level sources used to shape the plan:
 ## Immediate Planning Priorities
 
 - start `raiderio` on top of the validated shared HTTP/cache layer
+- add `wowprogress` as a second rankings/profile source after `raiderio`
+- add `warcraft-wiki` as a reference/documentation source, especially for addon/API and systems lookups
 - keep package boundaries and wrapper/provider contracts aligned with real code as the monorepo grows
 - continue extracting only genuinely shared infrastructure as new providers prove the abstraction
+
+## Lower-Priority Candidates
+
+- `archon`
+  - likely overlaps heavily with `warcraftlogs` and should be revisited after that ecosystem is in place
+- `mythictrap`
+  - strong raid-guide source, but less broad than `method` or `icy-veins`
+- `dataforazeroth`
+  - potentially useful for collections and achievement completion, but the site appears heavily app-driven and is lower priority than current sources
 
 ## Risks To Watch
 
