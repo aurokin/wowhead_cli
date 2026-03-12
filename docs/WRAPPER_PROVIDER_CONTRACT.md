@@ -106,6 +106,11 @@ This registry should drive wrapper behavior instead of hardcoded special cases s
 
 Providers that are not ready should still report through `doctor`.
 
+Search result ordering rules:
+- provider-local ranking stays provider-specific
+- the wrapper may sort the flattened combined result list by the provider-reported ranking score
+- the wrapper should not invent a fake universal ranking model beyond that thin cross-provider ordering layer
+
 ## Resolve Rules
 
 `warcraft resolve` should:
@@ -113,6 +118,12 @@ Providers that are not ready should still report through `doctor`.
 - rank them conservatively
 - preserve source provenance
 - avoid pretending certainty when providers are stubbed or unavailable
+
+Resolve selection rules:
+- do not pick the first provider that reports `resolved`
+- prefer higher provider-reported confidence first
+- use the provider-reported match ranking score as a tie-breaker
+- preserve the chosen provider's `match`, `next_command`, and confidence instead of flattening them
 
 ## Doctor Rules
 
@@ -146,6 +157,7 @@ Milestone 2:
 Current state:
 - `wowhead` is ready
 - `method` is ready
+- `icy-veins` is ready
 
 ## Documentation Rule
 

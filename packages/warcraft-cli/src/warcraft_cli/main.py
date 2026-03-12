@@ -8,6 +8,7 @@ from typer.main import get_command
 
 from method_cli.main import app as method_app
 from warcraft_core.output import emit
+from warcraft_core.provider_contract import resolve_payload_sort_key, search_result_sort_key
 from warcraft_cli.providers import global_doctor_payload, list_providers, provider_resolve, provider_search
 from wowhead_cli.main import app as wowhead_app
 
@@ -68,6 +69,7 @@ def search(
             for row in payload.get("results", []) or []:
                 if isinstance(row, dict):
                     flattened.append({"provider": registration.name, **row})
+    flattened.sort(key=search_result_sort_key)
     _emit(
         {
             "query": query,
@@ -87,8 +89,7 @@ def resolve(
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum provider-local candidates to request."),
 ) -> None:
     providers: list[dict[str, Any]] = []
-    best_provider: str | None = None
-    best_payload: dict[str, Any] | None = None
+    resolved_candidates: list[tuple[str, dict[str, Any]]] = []
     for registration in list_providers():
         result = provider_resolve(registration.name, query, limit=limit)
         payload = result.get("payload")
@@ -99,9 +100,11 @@ def resolve(
                 "payload": payload,
             }
         )
-        if isinstance(payload, dict) and payload.get("resolved") and best_payload is None:
-            best_provider = registration.name
-            best_payload = payload
+        if isinstance(payload, dict) and payload.get("resolved"):
+            resolved_candidates.append((registration.name, payload))
+    resolved_candidates.sort(key=lambda row: resolve_payload_sort_key(row[0], row[1]))
+    best_provider = resolved_candidates[0][0] if resolved_candidates else None
+    best_payload = resolved_candidates[0][1] if resolved_candidates else None
     _emit(
         {
             "query": query,
@@ -110,6 +113,7 @@ def resolve(
             "provider": best_provider,
             "match": best_payload.get("match") if isinstance(best_payload, dict) else None,
             "next_command": best_payload.get("next_command") if isinstance(best_payload, dict) else None,
+            "confidence": best_payload.get("confidence") if isinstance(best_payload, dict) else None,
             "providers": providers,
         },
         pretty=_pretty(ctx),

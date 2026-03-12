@@ -40,6 +40,8 @@ Current provider state:
 - Preserve provider provenance in your reasoning. Do not describe `warcraft` results as source-neutral.
 - Use `method` when you need article-style guide content that is easier to traverse than the equivalent Wowhead guide surface.
 - Use `icy-veins` when you need article-style guide content with page-family navigation and table-of-contents structure that may be easier to traverse than the equivalent Wowhead guide surface.
+- `warcraft search` now globally sorts the flattened result list by provider-reported ranking score.
+- `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result.
 
 ## Examples
 

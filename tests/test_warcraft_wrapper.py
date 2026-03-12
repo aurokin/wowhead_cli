@@ -64,6 +64,66 @@ def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
     assert providers["wowhead"]["payload"]["results"][0]["name"] == "Thunderfury"
 
 
+def test_warcraft_search_sorts_results_globally_by_ranking(monkeypatch) -> None:
+    def fake_wowhead_search(self, query: str):  # noqa: ANN001
+        return {
+            "search": query,
+            "results": [
+                {
+                    "id": 19019,
+                    "name": "Thunderfury",
+                    "entity_type": "item",
+                    "ranking": {"score": 15, "match_reasons": ["name_contains_query"]},
+                },
+            ],
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_wowhead_search)
+    monkeypatch.setattr(
+        "method_cli.main.MethodClient.sitemap_guides",
+        lambda self: [{"slug": "mistweaver-monk", "name": "Mistweaver Monk", "url": "https://www.method.gg/guides/mistweaver-monk"}],
+    )
+    monkeypatch.setattr(
+        "icy_veins_cli.main.IcyVeinsClient.sitemap_guides",
+        lambda self: [{"slug": "frost-death-knight-pve-dps-guide", "name": "Frost Death Knight PvE DPS Guide", "url": "https://www.icy-veins.com/wow/frost-death-knight-pve-dps-guide"}],
+    )
+
+    result = runner.invoke(warcraft_app, ["search", "mistweaver monk guide", "--limit", "5"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["provider"] == "method"
+
+
+def test_warcraft_resolve_prefers_stronger_later_provider(monkeypatch) -> None:
+    def fake_wowhead_search(self, query: str):  # noqa: ANN001
+        return {
+            "search": query,
+            "results": [
+                {"type": 100, "id": 2594, "name": "Warlords of Draenor Mistweaver Monk Guide", "typeName": "Guide", "popularity": 8},
+            ],
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_wowhead_search)
+    monkeypatch.setattr(
+        "method_cli.main.MethodClient.sitemap_guides",
+        lambda self: [{"slug": "mistweaver-monk", "name": "Mistweaver Monk", "url": "https://www.method.gg/guides/mistweaver-monk"}],
+    )
+    monkeypatch.setattr(
+        "icy_veins_cli.main.IcyVeinsClient.sitemap_guides",
+        lambda self: [{"slug": "mistweaver-monk-pve-healing-guide", "name": "Mistweaver Monk PvE Healing Guide", "url": "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide"}],
+    )
+
+    result = runner.invoke(warcraft_app, ["resolve", "mistweaver monk guide"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["provider"] == "icy-veins"
+    assert payload["confidence"] == "high"
+    assert payload["next_command"] == "icy-veins guide mistweaver-monk-pve-healing-guide"
+
+
 def test_warcraft_resolve_prefers_ready_provider(monkeypatch) -> None:
     def fake_search(self, query: str):  # noqa: ANN001
         return {

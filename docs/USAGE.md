@@ -26,6 +26,8 @@ warcraft icy-veins guide mistweaver-monk-pve-healing-guide
 - Use `warcraft <provider> ...` when you already know which service you need.
 - `method` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
 - `icy-veins` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
+- the flattened `warcraft search` result list is globally sorted by provider-reported ranking score
+- `warcraft resolve` prefers the strongest resolved provider result instead of whichever provider happens to be registered first
 
 `warcraft doctor` reports:
 - wrapper health

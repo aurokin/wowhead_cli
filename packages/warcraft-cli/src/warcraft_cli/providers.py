@@ -21,6 +21,8 @@ class ProviderRegistration:
     language: str
     status: str
     description: str
+    app: Any
+    doctor_args: tuple[str, ...]
 
 
 PROVIDERS: tuple[ProviderRegistration, ...] = (
@@ -30,6 +32,8 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="ready",
         description="Structured Wowhead provider with live search, resolve, and retrieval commands.",
+        app=wowhead_app,
+        doctor_args=("cache-inspect", "--summary", "--hide-zero"),
     ),
     ProviderRegistration(
         name="method",
@@ -37,6 +41,8 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="ready",
         description="Method.gg article provider with sitemap-backed search and guide bundle export/query.",
+        app=method_app,
+        doctor_args=("doctor",),
     ),
     ProviderRegistration(
         name="icy-veins",
@@ -44,12 +50,21 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="ready",
         description="Icy Veins article provider with sitemap-backed search, resolve, and guide bundle export/query.",
+        app=icy_veins_app,
+        doctor_args=("doctor",),
     ),
 )
 
 
 def list_providers() -> tuple[ProviderRegistration, ...]:
     return PROVIDERS
+
+
+def get_provider(provider: str) -> ProviderRegistration:
+    for registration in PROVIDERS:
+        if registration.name == provider:
+            return registration
+    raise ValueError(f"Unknown provider: {provider}")
 
 
 def _invoke_provider_app(app: Any, args: list[str]) -> tuple[int, dict[str, Any] | None, str]:
@@ -67,14 +82,8 @@ def _invoke_provider_app(app: Any, args: list[str]) -> tuple[int, dict[str, Any]
 
 
 def provider_search(provider: str, query: str, *, limit: int = 5) -> dict[str, Any]:
-    if provider == "wowhead":
-        code, payload, _stdout = _invoke_provider_app(wowhead_app, ["search", query, "--limit", str(limit)])
-    elif provider == "method":
-        code, payload, _stdout = _invoke_provider_app(method_app, ["search", query, "--limit", str(limit)])
-    elif provider == "icy-veins":
-        code, payload, _stdout = _invoke_provider_app(icy_veins_app, ["search", query, "--limit", str(limit)])
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
+    registration = get_provider(provider)
+    code, payload, _stdout = _invoke_provider_app(registration.app, ["search", query, "--limit", str(limit)])
     return {
         "provider": provider,
         "exit_code": code,
@@ -83,14 +92,8 @@ def provider_search(provider: str, query: str, *, limit: int = 5) -> dict[str, A
 
 
 def provider_resolve(provider: str, query: str, *, limit: int = 5) -> dict[str, Any]:
-    if provider == "wowhead":
-        code, payload, _stdout = _invoke_provider_app(wowhead_app, ["resolve", query, "--limit", str(limit)])
-    elif provider == "method":
-        code, payload, _stdout = _invoke_provider_app(method_app, ["resolve", query, "--limit", str(limit)])
-    elif provider == "icy-veins":
-        code, payload, _stdout = _invoke_provider_app(icy_veins_app, ["resolve", query, "--limit", str(limit)])
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
+    registration = get_provider(provider)
+    code, payload, _stdout = _invoke_provider_app(registration.app, ["resolve", query, "--limit", str(limit)])
     return {
         "provider": provider,
         "exit_code": code,
@@ -99,37 +102,16 @@ def provider_resolve(provider: str, query: str, *, limit: int = 5) -> dict[str, 
 
 
 def provider_doctor(provider: str) -> dict[str, Any]:
-    if provider == "wowhead":
-        code, payload, _stdout = _invoke_provider_app(wowhead_app, ["cache-inspect", "--summary", "--hide-zero"])
-        return {
-            "provider": provider,
-            "status": "ready" if code == 0 else "error",
-            "command": "wowhead",
-            "language": "python",
-            "installed": True,
-            "details": payload,
-        }
-    if provider == "method":
-        code, payload, _stdout = _invoke_provider_app(method_app, ["doctor"])
-        return {
-            "provider": provider,
-            "status": "ready" if code == 0 else "error",
-            "command": "method",
-            "language": "python",
-            "installed": True,
-            "details": payload,
-        }
-    if provider == "icy-veins":
-        code, payload, _stdout = _invoke_provider_app(icy_veins_app, ["doctor"])
-        return {
-            "provider": provider,
-            "status": "ready" if code == 0 else "error",
-            "command": "icy-veins",
-            "language": "python",
-            "installed": True,
-            "details": payload,
-        }
-    raise ValueError(f"Unknown provider: {provider}")
+    registration = get_provider(provider)
+    code, payload, _stdout = _invoke_provider_app(registration.app, list(registration.doctor_args))
+    return {
+        "provider": registration.name,
+        "status": "ready" if code == 0 else "error",
+        "command": registration.command,
+        "language": registration.language,
+        "installed": True,
+        "details": payload,
+    }
 
 
 def global_doctor_payload() -> dict[str, Any]:
