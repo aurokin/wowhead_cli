@@ -31,9 +31,10 @@ Validated shared so far:
 - bundle/index/query scaffolding
 - wrapper routing
 - article bundle export/load/query
+- article search/resolve payload shaping and follow-up contracts
+- article linked-entity merge across multi-page guides
 
 Active next step:
-- review the article abstractions that now have two real consumers
 - start `raiderio` as the first API-first provider
 
 ## Planning Documents
@@ -140,6 +141,7 @@ These should move only after `method` exists and validates that the abstractions
 
 Current validated subset:
 - article bundle export/load/query is proven shared across `method` and `icy-veins` and now lives in [warcraft_content.article_bundle](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py)
+- article search/resolve payload shaping, follow-up guidance, and multi-page linked-entity merge are proven shared across `method` and `icy-veins` and now live in [warcraft_content.article_discovery](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_discovery.py)
 - article parsing and navigation extraction are still provider-specific
 - provider-local ranking remains provider-specific
 
@@ -197,11 +199,10 @@ Completed:
 7. Validate those article abstractions against `icy-veins`.
 
 Next:
-8. Re-evaluate which article-level abstractions are actually shared now that both `method` and `icy-veins` exist.
-9. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
-10. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
-11. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
-12. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
+8. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
+9. Add `simc` as the first local-tool integration and use it to validate non-network abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
+10. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
+11. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
 
 ## Research Anchors
 
@@ -215,7 +216,6 @@ These are the high-level sources used to shape the plan:
 
 ## Immediate Planning Priorities
 
-- re-evaluate shared article abstractions now that both `method` and `icy-veins` are working
 - start `raiderio` on top of the validated shared HTTP/cache layer
 - keep package boundaries and wrapper/provider contracts aligned with real code as the monorepo grows
 - continue extracting only genuinely shared infrastructure as new providers prove the abstraction

@@ -58,6 +58,7 @@ This should also be treated as an article-first service:
 
 Validated against the current shared layer:
 - the shared article bundle export/load/query contract in [warcraft_content.article_bundle](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py) fits Icy Veins page groups cleanly
+- the shared article discovery helpers in [warcraft_content.article_discovery](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_discovery.py) fit Icy Veins search/resolve payloads and multi-page linked-entity merge cleanly
 - provider-specific parsing is still required before those helpers can be used
 
 ## What This Service Should Validate
@@ -71,7 +72,8 @@ Validated against the current shared layer:
 
 Current conclusion from live validation:
 - bundle export/query behavior is reusable
-- parsing and normalization are not yet shared and should stay local to the future `icy-veins` package
+- search/resolve payload shaping, follow-up guidance, and linked-entity merge are reusable
+- parsing and ranking inputs are not yet shared and should stay local to the `icy-veins` package
 
 ## What Should Stay Service-Specific
 
@@ -82,6 +84,7 @@ Current conclusion from live validation:
 ## What It Has Validated
 
 - the shared article bundle export/load/query contract is reusable across a second article-first provider
+- the shared article discovery payload and linked-entity merge helpers are reusable across a second article-first provider
 - provider-specific parsing and navigation extraction should still stay local
 
 ## Risks

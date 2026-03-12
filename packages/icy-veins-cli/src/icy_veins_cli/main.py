@@ -8,6 +8,13 @@ from typing import Any
 import typer
 
 from icy_veins_cli.client import IcyVeinsClient, guide_ref_parts, load_icy_veins_cache_settings_from_env
+from warcraft_content.article_discovery import (
+    article_candidate,
+    article_resolve_payload,
+    article_search_payload,
+    merge_article_linked_entities,
+    sort_article_candidates,
+)
 from warcraft_content.article_bundle import (
     default_article_export_dir,
     load_article_bundle,
@@ -102,16 +109,6 @@ def _score_text_match(query: str, candidate: str, *, slug: str) -> tuple[int, li
         score -= len(penalty_terms) * 3
     return score, reasons
 
-
-def _guide_follow_up(slug: str) -> dict[str, Any]:
-    return {
-        "recommended_surface": "guide",
-        "recommended_command": f"icy-veins guide {slug}",
-        "reason": "guide_summary",
-        "alternatives": [f"icy-veins guide-full {slug}", f"icy-veins guide-export {slug}"],
-    }
-
-
 def _search_results(client: IcyVeinsClient, query: str, *, limit: int) -> tuple[str, list[dict[str, Any]], int]:
     normalized_query = _normalize_query(query)
     matches: list[dict[str, Any]] = []
@@ -123,23 +120,16 @@ def _search_results(client: IcyVeinsClient, query: str, *, limit: int) -> tuple[
         if score <= 0:
             continue
         matches.append(
-            {
-                "id": slug,
-                "name": name,
-                "type_name": SEARCH_TYPE_NAME,
-                "entity_type": "guide",
-                "url": row["url"],
-                "ranking": {
-                    "score": score,
-                    "match_reasons": reasons,
-                },
-                "metadata": {
-                    "slug": slug,
-                },
-                "follow_up": _guide_follow_up(slug),
-            }
+            article_candidate(
+                slug=slug,
+                name=name,
+                url=row["url"],
+                score=score,
+                reasons=reasons,
+                provider_command="icy-veins",
+            )
         )
-    matches.sort(key=lambda row: (-row["ranking"]["score"], row["name"], row["id"]))
+    sort_article_candidates(matches)
     return normalized_query, matches[:limit], len(matches)
 
 
@@ -185,30 +175,6 @@ def _build_guide_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
         "citations": citations,
     }
 
-
-def _merge_linked_entities(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    merged: dict[tuple[str, str], dict[str, Any]] = {}
-    for page in pages:
-        page_url = page["guide"]["page_url"]
-        for row in page["linked_entities"]:
-            key = (str(row["type"]), str(row["id"]))
-            record = merged.get(key)
-            if record is None:
-                merged[key] = {
-                    "type": row["type"],
-                    "id": row["id"],
-                    "name": row.get("name"),
-                    "url": row["url"],
-                    "source_urls": [page_url],
-                }
-                continue
-            if not record.get("name") and row.get("name"):
-                record["name"] = row["name"]
-            if page_url not in record["source_urls"]:
-                record["source_urls"].append(page_url)
-    return sorted(merged.values(), key=lambda row: (str(row["type"]), str(row["id"])))
-
-
 def _fetch_guide_pages(client: IcyVeinsClient, guide_ref: str) -> dict[str, Any]:
     initial = client.fetch_guide_page(guide_ref)
     nav_items = initial["navigation"] or [
@@ -232,7 +198,7 @@ def _fetch_guide_pages(client: IcyVeinsClient, guide_ref: str) -> dict[str, Any]
         pages.insert(0, initial)
     guide = dict(initial["guide"])
     guide["page_count"] = len(pages)
-    linked_entities = _merge_linked_entities(pages)
+    linked_entities = merge_article_linked_entities(pages)
     return {
         "guide": guide,
         "page": dict(initial["page"]),
@@ -319,15 +285,7 @@ def search(
 ) -> None:
     with _client(ctx) as client:
         normalized_query, results, total_count = _search_results(client, query, limit=limit)
-    _emit(
-        ctx,
-        {
-            "query": query,
-            "search_query": normalized_query,
-            "count": total_count,
-            "results": results,
-        },
-    )
+    _emit(ctx, article_search_payload(query=query, search_query=normalized_query, results=results, total_count=total_count))
 
 
 @app.command("resolve")
@@ -350,17 +308,14 @@ def resolve(
     )
     _emit(
         ctx,
-        {
-            "query": query,
-            "search_query": normalized_query,
-            "resolved": resolved,
-            "confidence": "high" if resolved else ("medium" if top else "none"),
-            "match": top if top else None,
-            "next_command": top["follow_up"]["recommended_command"] if resolved and top else None,
-            "fallback_search_command": None if resolved else f"icy-veins search {query!r}",
-            "count": total_count,
-            "candidates": results,
-        },
+        article_resolve_payload(
+            provider_command="icy-veins",
+            query=query,
+            search_query=normalized_query,
+            results=results,
+            total_count=total_count,
+            resolved=resolved,
+        ),
     )
 
 
