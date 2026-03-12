@@ -23,6 +23,7 @@ Completed:
 - working `wowhead` provider in package form
 - working `method` provider
 - working `icy-veins` provider
+- working `raiderio` phase-1 provider
 - root `warcraft` skill
 
 Validated shared so far:
@@ -35,7 +36,7 @@ Validated shared so far:
 - article linked-entity merge across multi-page guides
 
 Active next step:
-- start `raiderio` as the first API-first provider
+- start `blizzard-api` as the next official API-first provider
 
 ## Planning Documents
 
@@ -211,9 +212,9 @@ Completed:
 5. Move the current root skill layout to service-agnostic root-level skills.
 6. Add `method` as the first article-style service on top of the shared content/bundle pieces. See [METHOD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md).
 7. Validate those article abstractions against `icy-veins`.
+8. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers, with auth deferred and search/resolve stubbed in phase 1. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
 
 Next:
-8. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers. See [RAIDERIO_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDERIO_CLI_PLAN.md).
 9. Add `blizzard-api` as the canonical official data provider for supported game-data and profile lookups. Use it to validate OAuth, region handling, and namespace-aware API patterns. See [BLIZZARD_API_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/BLIZZARD_API_CLI_PLAN.md).
 10. Add `wowprogress` as a rankings/profile source adjacent to `raiderio`, but keep it provider-specific until we know which leaderboard/profile abstractions are actually shared. See [WOWPROGRESS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WOWPROGRESS_CLI_PLAN.md).
 11. Add `warcraft-wiki` as the first general reference/documentation source and use it to validate article export/query outside class guides. See [WARCRAFT_WIKI_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFT_WIKI_CLI_PLAN.md).
@@ -233,7 +234,6 @@ These are the high-level sources used to shape the plan:
 
 ## Immediate Planning Priorities
 
-- start `raiderio` on top of the validated shared HTTP/cache layer
 - add `blizzard-api` as the official canonical data source for supported game-data and profile lookups
 - add `wowprogress` as a second rankings/profile source after `raiderio`
 - add `warcraft-wiki` as a reference/documentation source, especially for addon/API and systems lookups

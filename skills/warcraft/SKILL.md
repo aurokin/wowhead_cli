@@ -15,11 +15,13 @@ Use the local `warcraft` command as the root entrypoint when the caller does not
 - `warcraft wowhead ...`
 - `warcraft method ...`
 - `warcraft icy-veins ...`
+- `warcraft raiderio ...`
 
 Current provider state:
 - `wowhead`: ready
 - `method`: ready for guide search, resolve, fetch, export, and local query
 - `icy-veins`: ready for guide search, resolve, fetch, export, and local query
+- `raiderio`: ready for direct character, guild, and Mythic+ runs lookups; `search` and `resolve` are structured `coming_soon` in phase 1
 
 ## Standard Workflow
 
@@ -27,7 +29,7 @@ Current provider state:
 - `warcraft resolve "<query>"`
 - If unresolved, `warcraft search "<query>"`
 2. Source known:
-- `warcraft wowhead ...`, `warcraft method ...`, or `warcraft icy-veins ...`
+- `warcraft wowhead ...`, `warcraft method ...`, `warcraft icy-veins ...`, or `warcraft raiderio ...`
 3. Provider confirmed and you need deeper provider behavior:
 - use the provider CLI directly, such as `wowhead ...`
 
@@ -40,6 +42,7 @@ Current provider state:
 - Preserve provider provenance in your reasoning. Do not describe `warcraft` results as source-neutral.
 - Use `method` when you need article-style guide content that is easier to traverse than the equivalent Wowhead guide surface.
 - Use `icy-veins` when you need article-style guide content with page-family navigation and table-of-contents structure that may be easier to traverse than the equivalent Wowhead guide surface.
+- Use `raiderio` when you already know the region, realm, and character or guild you want, and need direct profile or Mythic+ run data.
 - `warcraft search` now globally sorts the flattened result list by provider-reported ranking score.
 - `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result.
 
@@ -54,6 +57,7 @@ warcraft method search "mistweaver monk"
 warcraft method guide mistweaver-monk
 warcraft icy-veins search "mistweaver monk guide"
 warcraft icy-veins guide mistweaver-monk-pve-healing-guide
+warcraft raiderio character us illidan Roguecane
 ```
 
 ## Provider Handoff

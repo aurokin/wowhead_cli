@@ -2,7 +2,15 @@
 
 ## Status
 
-`raiderio` is the next active provider after `method` and `icy-veins`.
+`raiderio` is now implemented as a phase-1 provider.
+
+Current command surface:
+- `raiderio doctor`
+- `raiderio search`
+- `raiderio resolve`
+- `raiderio character`
+- `raiderio guild`
+- `raiderio mythic-plus-runs`
 
 ## Why Raider.IO Is Different
 
@@ -27,15 +35,17 @@ This should be an API-first service:
 - typed request builders
 - response normalization where helpful
 - cache-aware profile and leaderboard fetches
-- optional app-key support for higher rate limits
+- unauthenticated phase 1 support first
+- optional app-key support deferred to a later phase
 
 ## Likely CLI Shape
 
-- `raiderio search-character <name> --region us --realm area-52`
+- `raiderio doctor`
+- `raiderio search "<query>"`
+- `raiderio resolve "<query>"`
 - `raiderio character <region> <realm> <name>`
 - `raiderio guild <region> <realm> <name>`
-- `raiderio mythic-plus ...`
-- `raiderio raiding ...`
+- `raiderio mythic-plus-runs ...`
 
 ## What Can Reuse Shared Code
 
@@ -60,13 +70,22 @@ This should be an API-first service:
 
 1. character profile lookup
 2. guild profile lookup
-3. one mythic-plus leaderboard path
-4. simple search/resolve support for name and region/realm routing
+3. one mythic-plus runs path
+4. `doctor`
+5. structured `coming_soon` search/resolve so the wrapper contract is satisfied without inventing undocumented lookup behavior
+
+## Deferred To Later Phases
+
+- app-key / elevated-rate-limit support
+- free-text search if Raider.IO exposes or justifies a stable search path
+- broader leaderboard coverage
+- live-tracking endpoints
 
 ## Risks
 
 - region/realm/name resolution needs clear CLI ergonomics
-- live-tracking endpoints may deserve a later phase
+- free-text discovery may not map to a documented Raider.IO endpoint
+- auth/app-key support should not distort the initial provider shape
 - rate-limit policy needs to be explicit from day one
 
 ## Source Links

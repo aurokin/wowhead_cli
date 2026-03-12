@@ -4,6 +4,7 @@ from typing import Any
 
 import typer
 from icy_veins_cli.main import app as icy_veins_app
+from raiderio_cli.main import app as raiderio_app
 from typer.main import get_command
 
 from method_cli.main import app as method_app
@@ -142,6 +143,14 @@ def icy_veins_passthrough(ctx: typer.Context) -> None:
 )
 def method_passthrough(ctx: typer.Context) -> None:
     _invoke_sub_app(method_app, args=list(ctx.args), prog_name="method")
+
+
+@app.command(
+    "raiderio",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def raiderio_passthrough(ctx: typer.Context) -> None:
+    _invoke_sub_app(raiderio_app, args=list(ctx.args), prog_name="raiderio")
 
 
 def run() -> None:

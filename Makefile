@@ -5,6 +5,7 @@ PYTEST := $(VENV)/bin/pytest
 WOWHEAD := $(VENV)/bin/wowhead
 WARCRAFT := $(VENV)/bin/warcraft
 METHOD := $(VENV)/bin/method
+RAIDERIO := $(VENV)/bin/raiderio
 
 .PHONY: dev-deploy dev-deploy-no-link test test-live fmt-check run
 

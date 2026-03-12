@@ -16,6 +16,8 @@ warcraft method search "mistweaver monk"
 warcraft method guide mistweaver-monk
 warcraft icy-veins search "mistweaver monk guide"
 warcraft icy-veins guide mistweaver-monk-pve-healing-guide
+warcraft raiderio character us illidan Roguecane
+warcraft raiderio guild us illidan Liquid
 ```
 
 ## Wrapper Conventions
@@ -26,6 +28,8 @@ warcraft icy-veins guide mistweaver-monk-pve-healing-guide
 - Use `warcraft <provider> ...` when you already know which service you need.
 - `method` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
 - `icy-veins` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
+- `raiderio` is now a real phase-1 API provider for direct character, guild, and Mythic+ runs lookups.
+- `raiderio` search and resolve currently return structured `coming_soon` payloads in phase 1.
 - the flattened `warcraft search` result list is globally sorted by provider-reported ranking score
 - `warcraft resolve` prefers the strongest resolved provider result instead of whichever provider happens to be registered first
 
@@ -118,6 +122,24 @@ Icy Veins guide behavior:
 - `guide-full` walks the guide-family navigation and returns all discovered guide pages
 - `guide-export` writes a local guide bundle under `./icy-veins_exports/` by default
 - `guide-query` searches exported Icy Veins bundles across sections, navigation links, and linked entities
+
+## Raider.IO Commands
+
+```bash
+raiderio doctor
+raiderio search "liquid"
+raiderio resolve "liquid"
+raiderio character us illidan Roguecane
+raiderio guild us illidan Liquid
+raiderio mythic-plus-runs --region world --dungeon all --page 0
+```
+
+Raider.IO phase-1 behavior:
+- `doctor` reports cache config and phase-1 capability state
+- `character` returns a compact profile summary with guild, Mythic+, and raid progression context
+- `guild` returns a compact guild profile with raid progression, raid rankings, and roster preview
+- `mythic-plus-runs` returns ranked Mythic+ run summaries from the documented API endpoint
+- `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until Raider.IO discovery is implemented
 
 ## Output Conventions
 

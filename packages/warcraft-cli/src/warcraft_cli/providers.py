@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from icy_veins_cli.main import app as icy_veins_app
+from raiderio_cli.main import app as raiderio_app
 from typer.testing import CliRunner
 
 from method_cli.main import app as method_app
@@ -51,6 +52,15 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         status="ready",
         description="Icy Veins article provider with sitemap-backed search, resolve, and guide bundle export/query.",
         app=icy_veins_app,
+        doctor_args=("doctor",),
+    ),
+    ProviderRegistration(
+        name="raiderio",
+        command="raiderio",
+        language="python",
+        status="partial",
+        description="Raider.IO API provider with direct character, guild, and mythic-plus runs lookups.",
+        app=raiderio_app,
         doctor_args=("doctor",),
     ),
 )
