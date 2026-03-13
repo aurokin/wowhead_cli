@@ -31,6 +31,21 @@ PROGRAMMING_FRAMEWORK_TITLES = {
     "howtos",
 }
 
+PROGRAMMING_HOWTO_TITLES = {
+    "ace3 for dummies",
+    "create a wow addon in 15 minutes",
+    "creating a slash command",
+    "handling events",
+    "introduction to lua",
+    "saving variables between game sessions",
+    "using the addon namespace",
+    "using the interface options addons panel",
+    "warcraft wiki:interface customization",
+    "user interface customization guide",
+    "ui faq/addon author resources",
+    "howtos",
+}
+
 SYSTEM_REFERENCE_TITLES = {
     "renown",
     "zone scaling",
@@ -95,17 +110,19 @@ def _normalized_title_key(title: str) -> str:
 
 def classify_article_family(title: str) -> str:
     normalized = _normalized_title_key(title)
+    if normalized.startswith("api change summaries"):
+        return "api_changes"
+    if normalized.endswith("/api changes") or normalized == "api change summaries":
+        return "api_changes"
     if normalized.startswith("api "):
         return "api_function"
     if normalized.startswith("uihandler "):
         return "ui_handler"
-    if normalized.endswith("/api changes") or normalized == "api change summaries":
-        return "api_changes"
+    if normalized in PROGRAMMING_HOWTO_TITLES:
+        return "howto_programming"
     if normalized.startswith("patch ") and ("api changes" not in normalized):
         return "patch_reference"
     if normalized in PROGRAMMING_FRAMEWORK_TITLES:
-        if normalized in {"warcraft wiki:interface customization", "user interface customization guide", "ui faq/addon author resources", "howtos"}:
-            return "howto_programming"
         if normalized == "xml schema":
             return "xml_schema"
         if normalized == "console variables":
@@ -306,19 +323,19 @@ def _first_code_block_text(root: Tag) -> str | None:
 def extract_reference_metadata(*, title: str, text: str, sections: list[dict[str, Any]], root: Tag) -> dict[str, Any]:
     family = classify_article_family(title)
     metadata: dict[str, Any] = {"content_family": family}
-    if family not in {"api_function", "ui_handler", "framework_page", "xml_schema", "cvar", "api_changes", "howto_programming"}:
-        return metadata
     section_map = _section_lookup(sections)
-    metadata["programming_reference"] = True
-    metadata["signature"] = _first_code_block_text(root)
     metadata["summary"] = sections[0]["text"] if sections else text[:240]
-    metadata["arguments"] = section_map.get("arguments", {}).get("text")
-    metadata["returns"] = section_map.get("returns", {}).get("text")
-    metadata["details"] = section_map.get("details", {}).get("text")
     metadata["example"] = section_map.get("example", {}).get("text")
     metadata["patch_changes"] = section_map.get("patch_changes", {}).get("text")
     metadata["see_also"] = section_map.get("see_also", {}).get("text")
     metadata["references"] = section_map.get("references", {}).get("text")
+    if family not in {"api_function", "ui_handler", "framework_page", "xml_schema", "cvar", "api_changes", "howto_programming"}:
+        return metadata
+    metadata["programming_reference"] = True
+    metadata["signature"] = _first_code_block_text(root)
+    metadata["arguments"] = section_map.get("arguments", {}).get("text")
+    metadata["returns"] = section_map.get("returns", {}).get("text")
+    metadata["details"] = section_map.get("details", {}).get("text")
     return metadata
 
 

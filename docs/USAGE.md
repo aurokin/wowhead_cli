@@ -229,6 +229,7 @@ Warcraft Wiki behavior:
 - `article-export` writes a local article bundle under `./warcraft-wiki_exports/` by default
 - `article-query` searches exported wiki bundles across sections, navigation links, and linked entities
 - programming pages now strip low-value wiki chrome more aggressively and filter edit-action links from linked-entity output
+- `reference` metadata is now useful beyond API pages: programming howtos, API-change pages, class pages, expansion pages, and systems pages all expose at least a family-aware summary, and some pages also expose `patch_changes`, `see_also`, and `references`
 
 ## WowProgress Commands
 

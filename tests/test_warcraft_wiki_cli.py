@@ -146,6 +146,28 @@ def test_warcraft_wiki_search_prefers_api_page_for_function_query(monkeypatch) -
     assert payload["next_command"] == "warcraft-wiki article 'API CreateFrame'"
 
 
+def test_warcraft_wiki_search_prefers_api_changes_page_for_patch_query(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            3,
+            [
+                {"title": "API change summaries/Historical", "pageid": 1, "snippet": "Summary of older API changes.", "url": "https://warcraft.wiki.gg/wiki/API_change_summaries/Historical"},
+                {"title": "Patch 2.1.0/API changes", "pageid": 2, "snippet": "Changes in patch 2.1.0.", "url": "https://warcraft.wiki.gg/wiki/Patch_2.1.0/API_changes"},
+                {"title": "Hyperlinks", "pageid": 3, "snippet": "Programming reference.", "url": "https://warcraft.wiki.gg/wiki/Hyperlinks"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["resolve", "patch 2.1.0 api changes"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "Patch 2.1.0/API changes"
+    assert payload["match"]["metadata"]["content_family"] == "api_changes"
+
+
 def test_warcraft_wiki_search_prefers_handler_page_for_handler_query(monkeypatch) -> None:
     monkeypatch.setattr(
         "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
@@ -187,3 +209,25 @@ def test_warcraft_wiki_search_prefers_system_reference_for_system_query(monkeypa
     payload = json.loads(result.stdout)
     assert payload["results"][0]["id"] == "Renown"
     assert payload["results"][0]["metadata"]["content_family"] == "system_reference"
+
+
+def test_warcraft_wiki_search_prefers_programming_howto_for_addon_query(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            3,
+            [
+                {"title": "Create a WoW AddOn in 15 Minutes", "pageid": 1, "snippet": "This guide describes how to make a simple HelloWorld addon.", "url": "https://warcraft.wiki.gg/wiki/Create_a_WoW_AddOn_in_15_Minutes"},
+                {"title": "Druid", "pageid": 2, "snippet": "A shapeshifting class.", "url": "https://warcraft.wiki.gg/wiki/Druid"},
+                {"title": "World of Warcraft API", "pageid": 3, "snippet": "Programming reference.", "url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["resolve", "create addon"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "Create a WoW AddOn in 15 Minutes"
+    assert payload["match"]["metadata"]["content_family"] == "howto_programming"

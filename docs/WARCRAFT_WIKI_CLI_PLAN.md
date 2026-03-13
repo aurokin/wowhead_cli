@@ -19,6 +19,14 @@ Current quality notes:
 - programming extraction now strips the worst wiki chrome and filters edit-action links from linked entities
 - non-programming wiki coverage now includes explicit classification for key system/reference families like `Expansion`, `Profession`, `Renown`, `Zone_scaling`, and class pages
 - `article` and `article-full` now expose extracted `reference` metadata so programming and system pages are easier for agents to traverse
+- validated live/reference coverage now includes:
+  - API functions
+  - UI handlers
+  - API changes pages
+  - programming howto pages
+  - systems pages
+  - expansion pages
+  - class pages
 
 ## Why Add It
 
@@ -145,11 +153,11 @@ The important point is that these families do not all need different commands im
 
 Programming gaps:
 - programming page extraction is still heuristic rather than template-aware
-- typed metadata is strongest for straightforward API/function pages and still needs broader validation across framework and patch-change pages
+- typed metadata is strongest for straightforward API/function pages and still needs broader validation across framework pages
 - there is still no dedicated typed command surface like `api` or `event`; programming support currently rides on the generic `article` surfaces
 
 Non-programming gaps:
-- faction, zone, lore, and guide-style family coverage still needs deeper validation
+- faction, lore, and guide-style family coverage still needs deeper validation
 - search and resolve are stronger for systems/programming pages than for the broader historical/lore surface
 - the support boundary for non-programming pages is clearer now, but still not fully validated family-by-family
 

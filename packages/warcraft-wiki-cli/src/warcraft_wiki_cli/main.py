@@ -69,6 +69,10 @@ def _normalize_query(query: str) -> str:
     return normalized or query.strip().lower()
 
 
+def _collapsed_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
 def _query_intents(query: str) -> set[str]:
     lowered = query.lower()
     intents: set[str] = set()
@@ -89,8 +93,8 @@ def _score_text_match(query: str, title: str, snippet: str, *, ordinal: int) -> 
     score = max(0, 40 - ordinal * 2)
     reasons: list[str] = []
     intents = _query_intents(query)
-    normalized_query = query.replace(" ", "")
-    normalized_title = title.lower().replace(" ", "").replace("_", "")
+    normalized_query = _collapsed_text(query)
+    normalized_title = _collapsed_text(title)
     if title.lower() == query:
         score += 50
         reasons.append("exact_title")

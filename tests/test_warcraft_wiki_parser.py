@@ -10,8 +10,10 @@ def test_normalize_article_ref_handles_wiki_paths() -> None:
 def test_classify_article_family_handles_programming_and_system_titles() -> None:
     assert classify_article_family("API CreateFrame") == "api_function"
     assert classify_article_family("UIHANDLER OnKeyDown") == "ui_handler"
+    assert classify_article_family("API change summaries") == "api_changes"
     assert classify_article_family("World of Warcraft API") == "framework_page"
     assert classify_article_family("Widget API") == "framework_page"
+    assert classify_article_family("Create a WoW AddOn in 15 Minutes") == "howto_programming"
     assert classify_article_family("XML schema") == "xml_schema"
     assert classify_article_family("Patch 2.2.0/API changes") == "api_changes"
     assert classify_article_family("Renown") == "system_reference"
@@ -91,3 +93,42 @@ def test_parse_article_page_extracts_programming_reference_and_filters_edit_link
     assert "Main Menu" not in parsed["article_content"]["text"]
     assert "Wowprogramming" not in parsed["article_content"]["text"]
     assert all("action=edit" not in row["url"] for row in parsed["linked_entities"])
+
+
+def test_parse_article_page_extracts_non_programming_reference_metadata() -> None:
+    payload = {
+        "parse": {
+            "title": "Druid",
+            "displaytitle": "<span class='mw-page-title-main'>Druid</span>",
+            "sections": [
+                {"line": "Class overview", "anchor": "Class_overview"},
+                {"line": "Patch changes", "anchor": "Patch_changes"},
+                {"line": "See also", "anchor": "See_also"},
+                {"line": "References", "anchor": "References"},
+            ],
+            "text": {
+                "*": """
+                <div class="mw-parser-output">
+                  <p>Druids are shapeshifting hybrids.</p>
+                  <h2><span class="mw-headline" id="Class_overview">Class overview</span></h2>
+                  <p>Versatile class overview.</p>
+                  <h2><span class="mw-headline" id="Patch_changes">Patch changes</span></h2>
+                  <p>Patch 10.0.0 adjusted forms.</p>
+                  <h2><span class="mw-headline" id="See_also">See also</span></h2>
+                  <p>Druid abilities</p>
+                  <h2><span class="mw-headline" id="References">References</span></h2>
+                  <p>Chronicle.</p>
+                </div>
+                """
+            },
+        }
+    }
+
+    parsed = parse_article_page(payload, source_title="Druid")
+
+    assert parsed["article"]["content_family"] == "class_reference"
+    assert parsed["reference"]["content_family"] == "class_reference"
+    assert parsed["reference"]["summary"].startswith("Druids are shapeshifting hybrids.")
+    assert parsed["reference"]["patch_changes"] == "Patch 10.0.0 adjusted forms."
+    assert parsed["reference"]["see_also"] == "Druid abilities"
+    assert parsed["reference"]["references"] == "Chronicle."

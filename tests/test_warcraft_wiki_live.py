@@ -45,12 +45,33 @@ def test_live_warcraft_wiki_programming_article_contract() -> None:
     assert all("action=edit" not in row["url"] for row in payload["linked_entities"]["items"])
 
 
+def test_live_warcraft_wiki_api_changes_article_contract() -> None:
+    require_live("Warcraft Wiki")
+    payload = payload_for_live(runner, app, ["article", "Patch 2.1.0/API changes"], provider_name="Warcraft Wiki")
+
+    assert payload["article"]["content_family"] == "api_changes"
+    assert payload["reference"]["programming_reference"] is True
+    assert payload["reference"]["summary"] is not None
+    assert payload["content"]["section_count"] >= 5
+
+
+def test_live_warcraft_wiki_programming_howto_contract() -> None:
+    require_live("Warcraft Wiki")
+    payload = payload_for_live(runner, app, ["article", "Create a WoW AddOn in 15 Minutes"], provider_name="Warcraft Wiki")
+
+    assert payload["article"]["content_family"] == "howto_programming"
+    assert payload["reference"]["programming_reference"] is True
+    assert "Main Menu" not in payload["content"]["text"]
+    assert payload["content"]["section_count"] >= 5
+
+
 def test_live_warcraft_wiki_system_article_contract() -> None:
     require_live("Warcraft Wiki")
     payload = payload_for_live(runner, app, ["article", "Renown"], provider_name="Warcraft Wiki")
 
     assert payload["article"]["content_family"] == "system_reference"
     assert payload["reference"]["content_family"] == "system_reference"
+    assert payload["reference"]["summary"] is not None
     assert payload["content"]["section_count"] >= 3
     assert payload["navigation"]["count"] >= 3
 
@@ -61,4 +82,15 @@ def test_live_warcraft_wiki_expansion_article_contract() -> None:
 
     assert payload["article"]["content_family"] == "expansion_reference"
     assert payload["reference"]["content_family"] == "expansion_reference"
+    assert payload["reference"]["summary"] is not None
     assert payload["content"]["section_count"] >= 2
+
+
+def test_live_warcraft_wiki_class_article_contract() -> None:
+    require_live("Warcraft Wiki")
+    payload = payload_for_live(runner, app, ["article", "Druid"], provider_name="Warcraft Wiki")
+
+    assert payload["article"]["content_family"] == "class_reference"
+    assert payload["reference"]["content_family"] == "class_reference"
+    assert payload["reference"]["patch_changes"] is not None
+    assert payload["content"]["section_count"] >= 10
