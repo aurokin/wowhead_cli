@@ -44,6 +44,7 @@ Current provider state:
 - Prefer `warcraft` when the service is unknown.
 - Prefer `resolve` for a conservative best-next-command recommendation.
 - Prefer `search` when you want to inspect candidates across providers.
+- Use `warcraft --expansion <profile>` when version-specific correctness matters.
 - Use `doctor` to confirm provider readiness before relying on a provider.
 - Preserve provider provenance in your reasoning. Do not describe `warcraft` results as source-neutral.
 - Use `method` when you need article-style guide content that is easier to traverse than the equivalent Wowhead guide surface.
@@ -74,11 +75,18 @@ Current provider state:
 - `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result after applying the same wrapper ranking layer.
 - use `warcraft search --compact --ranking-debug` or `warcraft resolve --compact --ranking-debug` when you want the ranking explanation without the full per-provider payloads.
 - for narrow cases like leaderboard queries, the wrapper may emit a synthetic direct-route candidate even when the provider does not expose a native search surface for that exact query family.
+- wrapper expansion filtering is conservative:
+  - `wowhead` is currently the only profiled expansion-aware provider
+  - `method`, `icy-veins`, `raiderio`, and `wowprogress` are treated as retail-only when wrapper expansion filtering is active
+  - `warcraft-wiki` and `simc` are excluded from wrapper expansion-filtered `search` and `resolve` for now
+  - inspect `included_providers` and `excluded_providers` when `--expansion` is set
+  - do not assume `warcraft --expansion ... <provider> ...` will silently work for every provider; unsupported combinations now fail clearly
 
 ## Examples
 
 ```bash
 warcraft doctor
+warcraft --expansion wotlk search "thunderfury"
 warcraft search "frost death knight"
 warcraft resolve "fairbreeze favors"
 warcraft wowhead guide 3143

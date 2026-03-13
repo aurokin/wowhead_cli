@@ -39,12 +39,33 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert providers["warcraft-wiki"]["status"] == "ready"
     assert providers["wowprogress"]["status"] == "ready"
     assert providers["simc"]["status"] == "ready"
+    assert providers["wowhead"]["expansion_support"]["mode"] == "profiled"
+    assert providers["method"]["expansion_support"]["mode"] == "fixed"
+    assert providers["warcraft-wiki"]["expansion_support"]["mode"] == "none"
     assert providers["method"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["icy-veins"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["raiderio"]["details"]["capabilities"]["search"] == "ready"
     assert providers["warcraft-wiki"]["details"]["capabilities"]["article"] == "ready"
     assert providers["wowprogress"]["details"]["capabilities"]["leaderboard"] == "ready"
     assert providers["simc"]["details"]["capabilities"]["decode_build"] == "ready"
+
+
+def test_warcraft_doctor_reports_expansion_filtering_state() -> None:
+    result = runner.invoke(warcraft_app, ["--expansion", "wotlk", "doctor"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["wrapper"]["requested_expansion"] == "wotlk"
+    assert payload["wrapper"]["expansion_filter_active"] is True
+    assert payload["included_providers"] == ["wowhead"]
+    assert {row["provider"] for row in payload["excluded_providers"]} == {
+        "method",
+        "icy-veins",
+        "raiderio",
+        "warcraft-wiki",
+        "wowprogress",
+        "simc",
+    }
 
 
 def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
@@ -114,6 +135,61 @@ def test_warcraft_search_sorts_results_globally_by_ranking(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["results"][0]["provider"] == "method"
     assert payload["results"][0]["wrapper_ranking"]["score"] >= payload["results"][0]["ranking"]["score"]
+
+
+def test_warcraft_search_expansion_filter_excludes_nonmatching_providers(monkeypatch) -> None:
+    def fake_wowhead_search(self, query: str):  # noqa: ANN001
+        return {
+            "search": query,
+            "results": [
+                {
+                    "id": 19019,
+                    "name": "Thunderfury",
+                    "entity_type": "item",
+                    "ranking": {"score": 20, "match_reasons": ["name_contains_query"]},
+                },
+            ],
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_wowhead_search)
+    monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: (_ for _ in ()).throw(AssertionError("method should be excluded")))
+    monkeypatch.setattr(
+        "icy_veins_cli.main.IcyVeinsClient.sitemap_guides",
+        lambda self: (_ for _ in ()).throw(AssertionError("icy-veins should be excluded")),
+    )
+    monkeypatch.setattr(
+        "raiderio_cli.main.RaiderIOClient.search",
+        lambda self, *, term, kind=None: (_ for _ in ()).throw(AssertionError("raiderio should be excluded")),
+    )
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (_ for _ in ()).throw(AssertionError("warcraft-wiki should be excluded")),
+    )
+    monkeypatch.setattr(
+        "wowprogress_cli.main.WowProgressClient.probe_search_route",
+        lambda self, *, region, realm, name, obj_type: (_ for _ in ()).throw(AssertionError("wowprogress should be excluded")),
+    )
+
+    result = runner.invoke(warcraft_app, ["--expansion", "wotlk", "search", "thunderfury", "--limit", "3"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["requested_expansion"] == "wotlk"
+    assert payload["expansion_filter_active"] is True
+    assert payload["included_providers"] == ["wowhead"]
+    assert payload["results"][0]["provider"] == "wowhead"
+    assert payload["results"][0]["provider_expansion"]["mode"] == "profiled"
+    assert {row["provider"] for row in payload["excluded_providers"]} == {
+        "method",
+        "icy-veins",
+        "raiderio",
+        "warcraft-wiki",
+        "wowprogress",
+        "simc",
+    }
+    excluded = {row["provider"]: row["expansion_support"]["exclusion_reason"] for row in payload["excluded_providers"]}
+    assert excluded["method"] == "provider_fixed_to_other_expansion"
+    assert excluded["warcraft-wiki"] == "provider_has_no_expansion_support"
 
 
 def test_warcraft_search_prefers_profile_provider_for_structured_guild_queries(monkeypatch) -> None:
@@ -234,6 +310,45 @@ def test_warcraft_resolve_prefers_stronger_later_provider(monkeypatch) -> None:
     assert payload["provider"] == "icy-veins"
     assert payload["confidence"] == "high"
     assert payload["next_command"] == "icy-veins guide mistweaver-monk-pve-healing-guide"
+
+
+def test_warcraft_resolve_expansion_filter_blocks_retail_only_resolution(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "wowhead_cli.main.WowheadClient.search_suggestions",
+        lambda self, query: {"search": query, "results": []},
+    )
+    monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: (_ for _ in ()).throw(AssertionError("method should be excluded")))
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: (_ for _ in ()).throw(AssertionError("icy-veins should be excluded")))
+    monkeypatch.setattr(
+        "raiderio_cli.main.RaiderIOClient.search",
+        lambda self, *, term, kind=None: (_ for _ in ()).throw(AssertionError("raiderio should be excluded")),
+    )
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (_ for _ in ()).throw(AssertionError("warcraft-wiki should be excluded")),
+    )
+    monkeypatch.setattr(
+        "wowprogress_cli.main.WowProgressClient.probe_search_route",
+        lambda self, *, region, realm, name, obj_type: (_ for _ in ()).throw(AssertionError("wowprogress should be excluded")),
+    )
+
+    result = runner.invoke(warcraft_app, ["--expansion", "wotlk", "resolve", "guild us illidan Liquid"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["requested_expansion"] == "wotlk"
+    assert payload["expansion_filter_active"] is True
+    assert payload["resolved"] is False
+    assert payload["provider"] is None
+    assert payload["included_providers"] == ["wowhead"]
+    assert {row["provider"] for row in payload["excluded_providers"]} == {
+        "method",
+        "icy-veins",
+        "raiderio",
+        "warcraft-wiki",
+        "wowprogress",
+        "simc",
+    }
 
 
 def test_warcraft_resolve_prefers_ready_provider(monkeypatch) -> None:
@@ -439,6 +554,44 @@ def test_warcraft_passthrough_to_wowhead(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["query"] == "thunderfury"
     assert payload["results"][0]["name"] == "Thunderfury"
+
+
+def test_warcraft_passthrough_to_wowhead_injects_global_expansion(monkeypatch) -> None:
+    def fake_search(self, query: str):  # noqa: ANN001
+        return {
+            "search": query,
+            "results": [
+                {"type": 3, "id": 19019, "name": "Thunderfury", "typeName": "Item"},
+            ],
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_search)
+    result = runner.invoke(warcraft_app, ["--expansion", "wotlk", "wowhead", "search", "thunderfury", "--limit", "1"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["expansion"] == "wotlk"
+
+
+def test_warcraft_passthrough_rejects_unsupported_provider_expansion() -> None:
+    result = runner.invoke(warcraft_app, ["--expansion", "wotlk", "method", "guide", "mistweaver-monk"])
+    assert result.exit_code == 1
+
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "unsupported_provider_expansion"
+    assert payload["provider"] == "method"
+    assert payload["requested_expansion"] == "wotlk"
+
+
+def test_warcraft_passthrough_rejects_duplicate_wowhead_expansion() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["--expansion", "wotlk", "wowhead", "--expansion", "retail", "search", "thunderfury", "--limit", "1"],
+    )
+    assert result.exit_code == 1
+
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "duplicate_expansion_argument"
 
 
 def test_warcraft_passthrough_to_method(monkeypatch) -> None:

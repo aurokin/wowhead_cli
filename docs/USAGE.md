@@ -8,10 +8,14 @@ The goal is to keep the README short and keep detailed usage notes close to actu
 
 ```bash
 warcraft doctor
+warcraft --expansion wotlk doctor
 warcraft search "defias"
+warcraft --expansion wotlk search "thunderfury"
 warcraft search "guild us illidan Liquid" --compact --ranking-debug
 warcraft resolve "fairbreeze favors"
+warcraft --expansion wotlk resolve "thunderfury"
 warcraft resolve "character us illidan Roguecane" --compact --ranking-debug
+warcraft --expansion wotlk wowhead search "thunderfury"
 warcraft wowhead search "defias"
 warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
@@ -39,6 +43,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - Use `warcraft resolve` for a conservative next-command recommendation across providers.
 - Use `warcraft search` when you want to inspect candidates across providers.
 - Use `warcraft <provider> ...` when you already know which service you need.
+- Use `warcraft --expansion <profile>` when the game version matters and you do not want silent cross-version mixing.
 - `method` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
 - `icy-veins` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
 - `raiderio` is now a real phase-1 API provider for direct character, guild, and Mythic+ runs lookups.
@@ -57,11 +62,18 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - use `--ranking-debug` when you want compact ranking summaries for the top wrapper candidates
 - wrapper ranking policy can be overridden with `~/.config/warcraft/wrapper_ranking.json`
 - the wrapper may synthesize a direct provider route when a provider has a strong direct command but no native search surface for that query family, such as `wowprogress leaderboard pve ...`
+- wrapper expansion filtering is conservative:
+  - `wowhead` is currently the only profiled expansion-aware provider
+  - `method`, `icy-veins`, `raiderio`, and `wowprogress` are currently treated as retail-only when wrapper expansion filtering is active
+  - `warcraft-wiki` and `simc` are currently excluded from wrapper expansion-filtered `search` and `resolve`
+  - wrapper `search`, `resolve`, and `doctor` now report included and excluded providers when expansion filtering is active
+  - direct passthrough commands reject unsupported provider/expansion combinations instead of silently ignoring the expansion request
 
 `warcraft doctor` reports:
 - wrapper health
 - shared XDG-style config/data/cache roots
 - registered provider readiness
+- provider expansion-support mode and active expansion eligibility when `--expansion` is set
 
 ## Wowhead Commands
 

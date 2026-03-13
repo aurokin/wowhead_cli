@@ -94,9 +94,82 @@ The wrapper should know for each provider:
 - implementation language
 - whether it is installed
 - whether auth is configured
+- expansion support mode
+- supported expansions when known
 - whether `search`, `resolve`, and `doctor` are supported or stubbed
 
 This registry should drive wrapper behavior instead of hardcoded special cases spread throughout the codebase.
+
+## Expansion Support Contract
+
+The wrapper must treat expansion filtering as a trust-sensitive contract.
+
+When a caller explicitly asks for an expansion, the wrapper must not silently mix in providers whose game-version semantics are ambiguous.
+
+Every provider should declare one expansion mode:
+
+- `profiled`
+- `fixed`
+- `none`
+
+### `profiled`
+
+Meaning:
+- the provider can actively switch behavior based on requested expansion
+
+Expected fields:
+- `expansion_mode = "profiled"`
+- provider-defined supported expansion list or profile map
+
+Current example:
+- `wowhead`
+
+### `fixed`
+
+Meaning:
+- the provider has a known fixed content scope and does not switch dynamically
+
+Expected fields:
+- `expansion_mode = "fixed"`
+- explicit `supported_expansions`
+
+Current likely examples:
+- `method` -> `retail`
+- `icy-veins` -> `retail`
+- `raiderio` -> `retail`
+- `wowprogress` -> `retail`
+
+### `none`
+
+Meaning:
+- the provider cannot yet reliably claim expansion semantics
+
+Expected behavior:
+- excluded from wrapper expansion-filtered search and resolve
+- surfaced in excluded-provider metadata
+
+## Expansion Fanout Rules
+
+When `warcraft search` or `warcraft resolve` is called with `--expansion <x>`:
+
+- include `profiled` providers that support `<x>`
+- include `fixed` providers only when `<x>` is in their declared supported expansion set
+- exclude `none` providers
+- report excluded providers and exclusion reasons
+
+The wrapper must not silently widen scope.
+
+`retail` is a real explicit filter, not equivalent to “no expansion filter”.
+
+## Expansion Output Rules
+
+When expansion filtering is active, wrapper output should preserve:
+- requested expansion
+- included providers
+- excluded providers
+- exclusion reasons
+
+This metadata is required so agents can trust why a result was or was not considered.
 
 ## Search Fanout Rules
 

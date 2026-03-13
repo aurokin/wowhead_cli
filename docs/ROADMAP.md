@@ -45,6 +45,7 @@ Active next step:
 - continue improving existing providers and wrapper discovery quality
 - tighten `method` until its supported scope, reliability, and test coverage are strong enough to treat it as fully covered
 - tighten `icy-veins` until its supported families, traversal rules, reliability, and test coverage are strong enough to treat it as fully covered
+- add conservative wrapper-level expansion filtering so agents can trust version-scoped results
 - focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
 
 ## Planning Documents
@@ -53,6 +54,7 @@ Active next step:
 - [Package layout](/home/auro/code/wowhead_cli/docs/PACKAGE_LAYOUT.md)
 - [Migration checklist](/home/auro/code/wowhead_cli/docs/MIGRATION_CHECKLIST.md)
 - [Wrapper provider contract](/home/auro/code/wowhead_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
+- [Expansion filtering plan](/home/auro/code/wowhead_cli/docs/EXPANSION_FILTERING_PLAN.md)
 - [Warcraft wrapper plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md)
 - [Wowhead CLI plan](/home/auro/code/wowhead_cli/docs/WOWHEAD_CLI_PLAN.md)
 - [Method.gg CLI plan](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md)
