@@ -2,239 +2,179 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from article_provider_testkit import load_fixture_text
 from icy_veins_cli.page_parser import parse_guide_page
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "icy_veins"
 
+RECORDED_CASES = [
+    ("class_hub.html", "https://www.icy-veins.com/wow/monk-guide", "monk-guide", "class_hub", "current_page"),
+    ("role_guide.html", "https://www.icy-veins.com/wow/healing-guide", "healing-guide", "role_guide", "current_page"),
+    (
+        "spec_guide.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide",
+        "mistweaver-monk-pve-healing-guide",
+        "spec_guide",
+        "family_navigation",
+    ),
+    (
+        "easy_mode.html",
+        "https://www.icy-veins.com/wow/fury-warrior-pve-dps-easy-mode",
+        "fury-warrior-pve-dps-easy-mode",
+        "easy_mode",
+        "family_navigation",
+    ),
+    (
+        "leveling.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-leveling-guide",
+        "mistweaver-monk-leveling-guide",
+        "leveling",
+        "family_navigation",
+    ),
+    (
+        "pvp_guide.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pvp-guide",
+        "mistweaver-monk-pvp-guide",
+        "pvp",
+        "family_navigation",
+    ),
+    (
+        "spec_builds_talents.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-spec-builds-talents",
+        "mistweaver-monk-pve-healing-spec-builds-talents",
+        "spec_builds_talents",
+        "family_navigation",
+    ),
+    (
+        "rotation_guide.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-rotation-cooldowns-abilities",
+        "mistweaver-monk-pve-healing-rotation-cooldowns-abilities",
+        "rotation_guide",
+        "family_navigation",
+    ),
+    (
+        "stat_priority.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-stat-priority",
+        "mistweaver-monk-pve-healing-stat-priority",
+        "stat_priority",
+        "family_navigation",
+    ),
+    (
+        "gems_enchants_consumables.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-gems-enchants-consumables",
+        "mistweaver-monk-pve-healing-gems-enchants-consumables",
+        "gems_enchants_consumables",
+        "family_navigation",
+    ),
+    (
+        "spell_summary.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-spell-summary",
+        "mistweaver-monk-pve-healing-spell-summary",
+        "spell_summary",
+        "family_navigation",
+    ),
+    (
+        "resources.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-resources",
+        "mistweaver-monk-resources",
+        "resources",
+        "family_navigation",
+    ),
+    (
+        "macros_addons.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-macros-addons",
+        "mistweaver-monk-pve-healing-macros-addons",
+        "macros_addons",
+        "family_navigation",
+    ),
+    (
+        "mythic_plus_tips.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-mythic-plus-tips",
+        "mistweaver-monk-pve-healing-mythic-plus-tips",
+        "mythic_plus_tips",
+        "family_navigation",
+    ),
+    (
+        "simulations.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-simulations",
+        "mistweaver-monk-pve-healing-simulations",
+        "simulations",
+        "family_navigation",
+    ),
+    (
+        "raid_guide.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-nerub-ar-palace-raid-guide",
+        "mistweaver-monk-pve-healing-nerub-ar-palace-raid-guide",
+        "raid_guide",
+        "family_navigation",
+    ),
+    (
+        "expansion_guide.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-the-war-within-pve-guide",
+        "mistweaver-monk-the-war-within-pve-guide",
+        "expansion_guide",
+        "family_navigation",
+    ),
+    (
+        "special_event_guide.html",
+        "https://www.icy-veins.com/wow/mistweaver-monk-mists-of-pandaria-remix-guide",
+        "mistweaver-monk-mists-of-pandaria-remix-guide",
+        "special_event_guide",
+        "family_navigation",
+    ),
+]
 
-def _load(name: str) -> str:
-    return (FIXTURE_DIR / name).read_text(encoding="utf-8")
+
+@pytest.mark.parametrize(("fixture_name", "source_url", "slug", "content_family", "traversal_scope"), RECORDED_CASES)
+def test_recorded_family_fixture_contracts(
+    fixture_name: str,
+    source_url: str,
+    slug: str,
+    content_family: str,
+    traversal_scope: str,
+) -> None:
+    payload = parse_guide_page(load_fixture_text(FIXTURE_DIR, fixture_name), source_url=source_url)
+
+    assert payload["guide"]["slug"] == slug
+    assert payload["guide"]["content_family"] == content_family
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["traversal_scope"] == traversal_scope
 
 
-def test_recorded_class_hub_fixture_contract() -> None:
+def test_recorded_class_hub_fixture_navigation_contract() -> None:
     payload = parse_guide_page(
-        _load("class_hub.html"),
+        load_fixture_text(FIXTURE_DIR, "class_hub.html"),
         source_url="https://www.icy-veins.com/wow/monk-guide",
     )
 
-    assert payload["guide"]["slug"] == "monk-guide"
-    assert payload["guide"]["content_family"] == "class_hub"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "current_page"
     assert payload["navigation"][0]["section_slug"] == "death-knight-guide"
 
 
-def test_recorded_role_guide_fixture_contract() -> None:
+def test_recorded_spec_guide_fixture_contract_details() -> None:
     payload = parse_guide_page(
-        _load("role_guide.html"),
-        source_url="https://www.icy-veins.com/wow/healing-guide",
-    )
-
-    assert payload["guide"]["slug"] == "healing-guide"
-    assert payload["guide"]["content_family"] == "role_guide"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "current_page"
-    assert len(payload["article"]["sections"]) >= 1
-
-
-def test_recorded_spec_guide_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("spec_guide.html"),
+        load_fixture_text(FIXTURE_DIR, "spec_guide.html"),
         source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide",
     )
 
-    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-guide"
-    assert payload["guide"]["content_family"] == "spec_guide"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
     assert payload["guide"]["author"] == "Dhaubbs"
     assert len(payload["article"]["headings"]) == len({row["title"] for row in payload["article"]["headings"]})
     assert payload["linked_entities"][0]["type"] in {"page", "spell"}
 
 
-def test_recorded_easy_mode_fixture_contract() -> None:
+def test_recorded_role_guide_has_sections() -> None:
     payload = parse_guide_page(
-        _load("easy_mode.html"),
-        source_url="https://www.icy-veins.com/wow/fury-warrior-pve-dps-easy-mode",
+        load_fixture_text(FIXTURE_DIR, "role_guide.html"),
+        source_url="https://www.icy-veins.com/wow/healing-guide",
     )
 
-    assert payload["guide"]["slug"] == "fury-warrior-pve-dps-easy-mode"
-    assert payload["guide"]["content_family"] == "easy_mode"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_leveling_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("leveling.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-leveling-guide",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-leveling-guide"
-    assert payload["guide"]["content_family"] == "leveling"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_pvp_guide_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("pvp_guide.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pvp-guide",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-pvp-guide"
-    assert payload["guide"]["content_family"] == "pvp"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_spec_builds_talents_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("spec_builds_talents.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-spec-builds-talents",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-spec-builds-talents"
-    assert payload["guide"]["content_family"] == "spec_builds_talents"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_rotation_guide_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("rotation_guide.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-rotation-cooldowns-abilities",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-rotation-cooldowns-abilities"
-    assert payload["guide"]["content_family"] == "rotation_guide"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_stat_priority_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("stat_priority.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-stat-priority",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-stat-priority"
-    assert payload["guide"]["content_family"] == "stat_priority"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_gems_enchants_consumables_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("gems_enchants_consumables.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-gems-enchants-consumables",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-gems-enchants-consumables"
-    assert payload["guide"]["content_family"] == "gems_enchants_consumables"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_spell_summary_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("spell_summary.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-spell-summary",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-spell-summary"
-    assert payload["guide"]["content_family"] == "spell_summary"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_resources_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("resources.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-resources",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-resources"
-    assert payload["guide"]["content_family"] == "resources"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_macros_addons_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("macros_addons.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-macros-addons",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-macros-addons"
-    assert payload["guide"]["content_family"] == "macros_addons"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_mythic_plus_tips_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("mythic_plus_tips.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-mythic-plus-tips",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-mythic-plus-tips"
-    assert payload["guide"]["content_family"] == "mythic_plus_tips"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_simulations_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("simulations.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-simulations",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-simulations"
-    assert payload["guide"]["content_family"] == "simulations"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_raid_guide_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("raid_guide.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-nerub-ar-palace-raid-guide",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-nerub-ar-palace-raid-guide"
-    assert payload["guide"]["content_family"] == "raid_guide"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_expansion_guide_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("expansion_guide.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-the-war-within-pve-guide",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-the-war-within-pve-guide"
-    assert payload["guide"]["content_family"] == "expansion_guide"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
-
-
-def test_recorded_special_event_guide_fixture_contract() -> None:
-    payload = parse_guide_page(
-        _load("special_event_guide.html"),
-        source_url="https://www.icy-veins.com/wow/mistweaver-monk-mists-of-pandaria-remix-guide",
-    )
-
-    assert payload["guide"]["slug"] == "mistweaver-monk-mists-of-pandaria-remix-guide"
-    assert payload["guide"]["content_family"] == "special_event_guide"
-    assert payload["guide"]["supported_surface"] is True
-    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert len(payload["article"]["sections"]) >= 1
 
 
 def test_recorded_unsupported_page_fixture_contract() -> None:
     payload = parse_guide_page(
-        _load("unsupported_page.html"),
+        load_fixture_text(FIXTURE_DIR, "unsupported_page.html"),
         source_url="https://www.icy-veins.com/wow/latest-class-changes",
     )
 

@@ -2,17 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from article_provider_testkit import load_fixture_text
 from method_cli.page_parser import parse_guide_page
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "method"
 
 
-def _load(name: str) -> str:
-    return (FIXTURE_DIR / name).read_text(encoding="utf-8")
-
-
 def test_recorded_class_guide_fixture_contract() -> None:
-    payload = parse_guide_page(_load("class_guide.html"), source_url="https://www.method.gg/guides/mistweaver-monk")
+    payload = parse_guide_page(load_fixture_text(FIXTURE_DIR, "class_guide.html"), source_url="https://www.method.gg/guides/mistweaver-monk")
 
     assert payload["guide"]["slug"] == "mistweaver-monk"
     assert payload["guide"]["content_family"] == "class_guide"
@@ -25,7 +22,7 @@ def test_recorded_class_guide_fixture_contract() -> None:
 
 def test_recorded_profession_guide_fixture_contract() -> None:
     payload = parse_guide_page(
-        _load("profession_guide.html"),
+        load_fixture_text(FIXTURE_DIR, "profession_guide.html"),
         source_url="https://www.method.gg/guides/midnight-alchemy-profession-guide",
     )
 
@@ -39,7 +36,7 @@ def test_recorded_profession_guide_fixture_contract() -> None:
 
 def test_recorded_delve_guide_fixture_contract() -> None:
     payload = parse_guide_page(
-        _load("delve_guide.html"),
+        load_fixture_text(FIXTURE_DIR, "delve_guide.html"),
         source_url="https://www.method.gg/guides/shadowguard-point-delve-guide",
     )
 
@@ -53,7 +50,7 @@ def test_recorded_delve_guide_fixture_contract() -> None:
 
 def test_recorded_reputation_guide_fixture_contract() -> None:
     payload = parse_guide_page(
-        _load("reputation_guide.html"),
+        load_fixture_text(FIXTURE_DIR, "reputation_guide.html"),
         source_url="https://www.method.gg/guides/harati-renown-reputation-guide",
     )
 
@@ -67,7 +64,7 @@ def test_recorded_reputation_guide_fixture_contract() -> None:
 
 def test_recorded_article_guide_fixture_contract() -> None:
     payload = parse_guide_page(
-        _load("article_guide.html"),
+        load_fixture_text(FIXTURE_DIR, "article_guide.html"),
         source_url="https://www.method.gg/guides/world-of-warcraft-midnight-season-1-dungeon-locations",
     )
 
@@ -81,7 +78,7 @@ def test_recorded_article_guide_fixture_contract() -> None:
 
 def test_recorded_unsupported_index_fixture_contract() -> None:
     payload = parse_guide_page(
-        _load("unsupported_index.html"),
+        load_fixture_text(FIXTURE_DIR, "unsupported_index.html"),
         source_url="https://www.method.gg/guides/tier-list",
     )
 
