@@ -80,7 +80,7 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         command="wowprogress",
         language="python",
         status="partial",
-        description="WowProgress rankings provider with direct guild, character, and PvE leaderboard lookups.",
+        description="WowProgress rankings provider with structured search, conservative resolve, guild, character, and PvE leaderboard lookups.",
         app=wowprogress_app,
         doctor_args=("doctor",),
     ),

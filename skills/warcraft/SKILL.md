@@ -26,7 +26,7 @@ Current provider state:
 - `icy-veins`: ready for guide search, resolve, fetch, export, and local query
 - `raiderio`: ready for search, resolve, direct character, guild, and Mythic+ runs lookups
 - `warcraft-wiki`: ready for article search, resolve, fetch, export, and local query
-- `wowprogress`: ready for direct guild, character, and PvE leaderboard lookups; `search` and `resolve` are structured `coming_soon` in phase 1
+- `wowprogress`: ready for structured search, conservative resolve, direct guild, character, and PvE leaderboard lookups
 - `simc`: ready for local repo inspection, repo resolution/config, managed checkout, version, spec-files, decode-build, APL list/graph/talent inspection, action tracing, prune/branch/intent analysis, branch comparison, analysis packets, first-cast timing, log inspection, and sync/build/run, with `search` and `resolve` structured `coming_soon`
 
 ## Standard Workflow
@@ -50,7 +50,7 @@ Current provider state:
 - Use `icy-veins` when you need article-style guide content with page-family navigation and table-of-contents structure that may be easier to traverse than the equivalent Wowhead guide surface.
 - Use `raiderio` when you already know the region, realm, and character or guild you want, and need direct profile or Mythic+ run data.
 - Use `warcraft-wiki` when you need general reference material, lore, systems pages, or addon/API documentation.
-- Use `wowprogress` when you already know the region, realm, and guild or character you want, and need progression, roster, or leaderboard context rather than guide content.
+- Use `wowprogress` when you have or can supply structured `region realm name` inputs and need progression, roster, or leaderboard context rather than guide content.
 - Use `simc` when you need local SimulationCraft repo inspection, build decoding, or direct binary execution against a local profile.
 - Use `simc repo` when you need to understand or change which local SimulationCraft checkout is active.
 - Use `simc checkout` when you want the CLI to manage a local SimulationCraft checkout under the XDG data root.

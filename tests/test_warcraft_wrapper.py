@@ -76,7 +76,8 @@ def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
     assert providers["icy-veins"]["payload"]["count"] == 0
     assert providers["raiderio"]["payload"]["count"] == 0
     assert providers["warcraft-wiki"]["payload"]["count"] == 0
-    assert providers["wowprogress"]["payload"]["coming_soon"] is True
+    assert providers["wowprogress"]["payload"]["count"] == 0
+    assert "structured queries" in providers["wowprogress"]["payload"]["message"]
     assert providers["simc"]["payload"]["coming_soon"] is True
     assert providers["wowhead"]["payload"]["results"][0]["name"] == "Thunderfury"
 
@@ -205,6 +206,36 @@ def test_warcraft_resolve_can_select_raiderio(monkeypatch) -> None:
     assert payload["resolved"] is True
     assert payload["provider"] == "raiderio"
     assert payload["next_command"] == "raiderio character us illidan Roguecane"
+
+
+def test_warcraft_resolve_can_select_wowprogress(monkeypatch) -> None:
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", lambda self, query: {"search": query, "results": []})
+    monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.search", lambda self, *, term, kind=None: {"matches": []})
+    monkeypatch.setattr("warcraft_wiki_cli.main.WarcraftWikiClient.search_articles", lambda self, query, limit: (0, []))
+    monkeypatch.setattr(
+        "wowprogress_cli.main.WowProgressClient.probe_search_route",
+        lambda self, *, region, realm, name, obj_type: {
+            "_search_kind": "guild",
+            "guild": {
+                "name": "Liquid",
+                "region": "us",
+                "realm": "illidan",
+                "faction": "Horde",
+                "page_url": "https://www.wowprogress.com/guild/us/illidan/Liquid",
+            },
+        }
+        if obj_type == "guild"
+        else None,
+    )
+
+    result = runner.invoke(warcraft_app, ["resolve", "guild us illidan Liquid"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["provider"] == "wowprogress"
+    assert payload["next_command"] == "wowprogress guild us illidan Liquid"
 
 
 def test_warcraft_passthrough_to_wowhead(monkeypatch) -> None:

@@ -42,8 +42,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `raiderio` is now a real phase-1 API provider for direct character, guild, and Mythic+ runs lookups.
 - `raiderio` now includes real search and conservative resolve on top of the live site search surface.
 - `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, article export, and local query.
-- `wowprogress` is now a real phase-1 rankings provider for direct guild, character, and PvE leaderboard lookups.
-- `wowprogress` search and resolve currently return structured `coming_soon` payloads in phase 1.
+- `wowprogress` is now a real phase-1 rankings provider with structured search, conservative resolve, and direct guild, character, and PvE leaderboard lookups.
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
@@ -184,8 +183,8 @@ Warcraft Wiki behavior:
 
 ```bash
 wowprogress doctor
-wowprogress search "liquid"
-wowprogress resolve "liquid"
+wowprogress search "guild us illidan Liquid"
+wowprogress resolve "character us illidan Imonthegcd"
 wowprogress guild us illidan Liquid
 wowprogress character us illidan Imonthegcd
 wowprogress leaderboard pve us --limit 10
@@ -194,10 +193,12 @@ wowprogress leaderboard pve us --realm illidan --limit 10
 
 WowProgress phase-1 behavior:
 - `doctor` reports cache config and the browser-fingerprint HTTP transport used for live fetches
+- `search` expects structured queries like `us illidan Liquid`, `guild us illidan Liquid`, or `character us illidan Imonthegcd`
+- `resolve` uses the same structured query shape and only returns a next command when the route probe is unambiguous
 - `guild` returns a compact guild profile with progression, item-level rank context, and encounter history
 - `character` returns a compact character profile with item-level, SimDPS, and PvE raid-history context
 - `leaderboard pve` returns the current PvE progression leaderboard for a region, optionally narrowed to a realm
-- `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until WowProgress discovery is implemented
+- WowProgress search is intentionally structured instead of broad free text because the site-native search surface is heavily constrained and less reliable than direct route resolution
 
 ## SimulationCraft Commands
 

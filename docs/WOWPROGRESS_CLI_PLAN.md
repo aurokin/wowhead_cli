@@ -37,7 +37,8 @@ This is now treated as a rankings/profile service using browser-fingerprint HTTP
 - fetch guild, character, and leaderboard HTML directly
 - extract guild, character, realm, and progression context
 - cache leaderboard and profile pages because the pages are expensive and fast-moving
-- defer free-text discovery until a trustworthy site-native search path is available
+- use the site-native `u_search` route conservatively for structured guild/character discovery
+- avoid promising broad free-text discovery while the public search surface remains constrained
 
 ## Current CLI Shape
 
@@ -73,7 +74,7 @@ This is now treated as a rankings/profile service using browser-fingerprint HTTP
 - the site is old and filter-heavy, so HTML stability may be inconsistent
 - rankings are time-sensitive and may need careful cache policy
 - some useful pages may not map cleanly to stable identifiers
-- free-text search/resolve are intentionally deferred because the site search surface is less reliable than the direct profile and leaderboard pages
+- discovery remains intentionally structured because the public search surface is less reliable than direct profile and leaderboard routes
 
 ## Source Links
 

@@ -4,6 +4,7 @@ import json
 
 from typer.testing import CliRunner
 
+from wowprogress_cli.client import WowProgressClient
 from wowprogress_cli.main import app as wowprogress_app
 
 runner = CliRunner()
@@ -18,17 +19,132 @@ def test_wowprogress_doctor_reports_phase_one_capabilities() -> None:
     assert payload["status"] == "ready"
     assert payload["transport"]["mode"] == "browser_fingerprint_http"
     assert payload["capabilities"]["guild"] == "ready"
-    assert payload["capabilities"]["search"] == "coming_soon"
+    assert payload["capabilities"]["search"] == "ready"
 
 
-def test_wowprogress_search_is_structured_coming_soon() -> None:
+def test_wowprogress_search_returns_structured_hint_for_unparseable_query() -> None:
     result = runner.invoke(wowprogress_app, ["search", "liquid"])
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["coming_soon"] is True
     assert payload["count"] == 0
     assert payload["results"] == []
+    assert "structured queries" in payload["message"]
+    assert payload["suggested_queries"]
+
+
+def test_wowprogress_search_returns_ranked_structured_results(monkeypatch) -> None:
+    def fake_probe(self, *, region: str, realm: str, name: str, obj_type: str):  # noqa: ANN001
+        assert region == "us"
+        assert realm == "illidan"
+        assert name == "Liquid"
+        if obj_type == "char":
+            return None
+        return {
+            "_search_kind": "guild",
+            "guild": {
+                "name": "Liquid",
+                "region": "us",
+                "realm": "US-Illidan",
+                "faction": "Horde",
+                "page_url": "https://www.wowprogress.com/guild/us/illidan/Liquid",
+            },
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.probe_search_route", fake_probe)
+    result = runner.invoke(wowprogress_app, ["search", "guild us illidan Liquid"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 1
+    assert payload["results"][0]["kind"] == "guild"
+    assert payload["results"][0]["follow_up"]["command"] == "wowprogress guild us illidan Liquid"
+    assert "type_hint" in payload["results"][0]["ranking"]["match_reasons"]
+
+
+def test_wowprogress_resolve_stays_conservative_when_multiple_results(monkeypatch) -> None:
+    def fake_probe(self, *, region: str, realm: str, name: str, obj_type: str):  # noqa: ANN001
+        if obj_type == "char":
+            return {
+                "_search_kind": "character",
+                "character": {
+                    "name": "Liquid",
+                    "region": "us",
+                    "realm": "illidan",
+                    "guild_name": "Liquid",
+                    "class_name": "Mage",
+                    "page_url": "https://www.wowprogress.com/character/us/illidan/Liquid",
+                },
+            }
+        return {
+            "_search_kind": "guild",
+            "guild": {
+                "name": "Liquid",
+                "region": "us",
+                "realm": "illidan",
+                "faction": "Horde",
+                "page_url": "https://www.wowprogress.com/guild/us/illidan/Liquid",
+            },
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.probe_search_route", fake_probe)
+    result = runner.invoke(wowprogress_app, ["resolve", "us illidan Liquid"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is False
+    assert payload["confidence"] in {"medium", "low"}
+    assert payload["fallback_search_command"] == 'wowprogress search "us illidan Liquid"'
+
+
+def test_wowprogress_resolve_returns_command_for_typed_query(monkeypatch) -> None:
+    def fake_probe(self, *, region: str, realm: str, name: str, obj_type: str):  # noqa: ANN001
+        assert obj_type == "char"
+        return {
+            "_search_kind": "character",
+            "character": {
+                "name": "Imonthegcd",
+                "region": "us",
+                "realm": "illidan",
+                "guild_name": "Liquid",
+                "class_name": "Mage",
+                "page_url": "https://www.wowprogress.com/character/us/illidan/Imonthegcd",
+            },
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.probe_search_route", fake_probe)
+    result = runner.invoke(wowprogress_app, ["resolve", "character us illidan Imonthegcd"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["confidence"] == "high"
+    assert payload["next_command"] == "wowprogress character us illidan Imonthegcd"
+
+
+def test_wowprogress_client_search_probe_cache_reads_final_url(monkeypatch) -> None:
+    client = WowProgressClient()
+    try:
+        monkeypatch.setattr(
+            client,
+            "_read_cache",
+            lambda key: json.dumps(
+                {
+                    "html": "<html><h1>Liquid Guild</h1></html>",
+                    "final_url": "https://www.wowprogress.com/guild/us/illidan/Liquid",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            "wowprogress_cli.client.parse_guild_page",
+            lambda html, *, url, region, realm, name: {"guild": {"name": name, "region": region, "realm": realm, "page_url": url}},
+        )
+        payload = client.probe_search_route(region="us", realm="illidan", name="Liquid", obj_type="guild")
+    finally:
+        client.close()
+
+    assert payload is not None
+    assert payload["guild"]["page_url"] == "https://www.wowprogress.com/guild/us/illidan/Liquid"
 
 
 def test_wowprogress_guild_summary(monkeypatch) -> None:

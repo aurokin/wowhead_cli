@@ -4,6 +4,7 @@ import hashlib
 import json
 import time
 from typing import Any
+from urllib.parse import urlencode
 
 from curl_cffi import requests
 
@@ -132,6 +133,56 @@ class WowProgressClient:
             return html
         raise AssertionError("Unreachable retry loop exit.")
 
+    def _fetch_response(self, url: str, *, namespace: str, ttl_seconds: int) -> tuple[str, str]:
+        key = self._cache_key(namespace, {"url": url, "impersonate": self._impersonate})
+        cached = self._read_cache(key)
+        if cached is not None:
+            try:
+                payload = json.loads(cached)
+            except json.JSONDecodeError:
+                payload = None
+            if isinstance(payload, dict):
+                html = payload.get("html")
+                final_url = payload.get("final_url")
+                if isinstance(html, str) and isinstance(final_url, str):
+                    return html, final_url
+            return cached, url
+        attempts = max(1, self._retry_attempts)
+        for attempt in range(1, attempts + 1):
+            try:
+                response = self._client().get(
+                    url,
+                    impersonate=self._impersonate,
+                    timeout=self._timeout_seconds,
+                    allow_redirects=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                if attempt >= attempts:
+                    raise WowProgressClientError("network_error", f"WowProgress request failed: {exc}") from exc
+                time.sleep(backoff_seconds(attempt))
+                continue
+
+            status_code = int(response.status_code)
+            final_url = str(response.url)
+            if status_code in RETRYABLE_STATUS_CODES and attempt < attempts:
+                time.sleep(backoff_seconds(attempt))
+                continue
+            if status_code == 403 and "/search" in final_url:
+                raise WowProgressClientError("blocked", "WowProgress blocked the search request.")
+            if status_code >= 400:
+                raise WowProgressClientError("upstream_error", f"WowProgress request failed with HTTP {status_code}.")
+            html = str(response.text)
+            title_probe = html[:512].lower()
+            if "just a moment" in title_probe:
+                raise WowProgressClientError("blocked", "WowProgress returned a bot-protection challenge page.")
+            self._write_cache(
+                key,
+                json.dumps({"html": html, "final_url": final_url}, sort_keys=True),
+                ttl_seconds=ttl_seconds,
+            )
+            return html, final_url
+        raise AssertionError("Unreachable retry loop exit.")
+
     def fetch_guild_page(self, *, region: str, realm: str, name: str) -> dict[str, Any]:
         url = guild_url(region, realm, name)
         html = self._fetch_html(url, namespace="guild_page", ttl_seconds=self._guild_ttl)
@@ -146,3 +197,27 @@ class WowProgressClient:
         url = leaderboard_url(region, realm)
         html = self._fetch_html(url, namespace="pve_leaderboard", ttl_seconds=self._leaderboard_ttl)
         return parse_pve_leaderboard_page(html, url=url, region=region, realm=realm, limit=limit)
+
+    def probe_search_route(self, *, region: str, realm: str, name: str, obj_type: str) -> dict[str, Any] | None:
+        if obj_type not in {"char", "guild"}:
+            raise WowProgressClientError("invalid_query", "WowProgress search probe supports only char or guild.")
+        query = urlencode({"name": name, "realm": realm, "area": region, "obj_type": obj_type})
+        url = f"{WOWPROGRESS_BASE_URL}/u_search?{query}"
+        html, final_url = self._fetch_response(url, namespace=f"search_probe_{obj_type}", ttl_seconds=self._character_ttl)
+        if final_url.rstrip("/") == WOWPROGRESS_BASE_URL.rstrip("/"):
+            return None
+        if obj_type == "char" and "/character/" in final_url:
+            try:
+                payload = parse_character_page(html, url=final_url, region=region, realm=realm, name=name)
+            except ValueError as exc:
+                raise WowProgressClientError("upstream_error", "WowProgress returned an unexpected character profile page.") from exc
+            payload["_search_kind"] = "character"
+            return payload
+        if obj_type == "guild" and "/guild/" in final_url:
+            try:
+                payload = parse_guild_page(html, url=final_url, region=region, realm=realm, name=name)
+            except ValueError as exc:
+                raise WowProgressClientError("upstream_error", "WowProgress returned an unexpected guild profile page.") from exc
+            payload["_search_kind"] = "guild"
+            return payload
+        return None
