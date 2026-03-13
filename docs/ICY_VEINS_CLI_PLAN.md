@@ -38,6 +38,7 @@ Current strengths:
 - dedicated Icy Veins live tests now exist
 - recorded real-page fixtures now exist across representative supported and intentionally unsupported WoW page shapes
 - PvP and stat-priority families are now explicitly validated by recorded and live coverage
+- resources, macros/addons, Mythic+ tips, and simulations are now also explicitly validated by recorded and live coverage
 - local bundle export/query works
 
 Current weaknesses:

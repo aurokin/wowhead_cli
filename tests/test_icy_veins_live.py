@@ -20,6 +20,10 @@ ROLE_GUIDE_REF = "healing-guide"
 EASY_MODE_REF = "fury-warrior-pve-dps-easy-mode"
 PVP_REF = "mistweaver-monk-pvp-guide"
 STAT_PRIORITY_REF = "mistweaver-monk-pve-healing-stat-priority"
+RESOURCES_REF = "mistweaver-monk-resources"
+MACROS_ADDONS_REF = "mistweaver-monk-pve-healing-macros-addons"
+MYTHIC_PLUS_TIPS_REF = "mistweaver-monk-pve-healing-mythic-plus-tips"
+SIMULATIONS_REF = "mistweaver-monk-pve-healing-simulations"
 RAID_GUIDE_REF = "mistweaver-monk-pve-healing-nerub-ar-palace-raid-guide"
 SPECIAL_EVENT_REF = "mistweaver-monk-mists-of-pandaria-remix-guide"
 
@@ -146,6 +150,46 @@ def test_live_icy_stat_priority_contract() -> None:
 
     assert payload["guide"]["slug"] == STAT_PRIORITY_REF
     assert payload["guide"]["content_family"] == "stat_priority"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
+def test_live_icy_resources_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", RESOURCES_REF])
+
+    assert payload["guide"]["slug"] == RESOURCES_REF
+    assert payload["guide"]["content_family"] == "resources"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
+def test_live_icy_macros_addons_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", MACROS_ADDONS_REF])
+
+    assert payload["guide"]["slug"] == MACROS_ADDONS_REF
+    assert payload["guide"]["content_family"] == "macros_addons"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
+def test_live_icy_mythic_plus_tips_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", MYTHIC_PLUS_TIPS_REF])
+
+    assert payload["guide"]["slug"] == MYTHIC_PLUS_TIPS_REF
+    assert payload["guide"]["content_family"] == "mythic_plus_tips"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
+def test_live_icy_simulations_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", SIMULATIONS_REF])
+
+    assert payload["guide"]["slug"] == SIMULATIONS_REF
+    assert payload["guide"]["content_family"] == "simulations"
     assert payload["guide"]["traversal_scope"] == "family_navigation"
     assert payload["article"]["section_count"] >= 1
 

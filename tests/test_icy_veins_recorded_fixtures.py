@@ -88,6 +88,54 @@ def test_recorded_stat_priority_fixture_contract() -> None:
     assert payload["guide"]["traversal_scope"] == "family_navigation"
 
 
+def test_recorded_resources_fixture_contract() -> None:
+    payload = parse_guide_page(
+        _load("resources.html"),
+        source_url="https://www.icy-veins.com/wow/mistweaver-monk-resources",
+    )
+
+    assert payload["guide"]["slug"] == "mistweaver-monk-resources"
+    assert payload["guide"]["content_family"] == "resources"
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+
+
+def test_recorded_macros_addons_fixture_contract() -> None:
+    payload = parse_guide_page(
+        _load("macros_addons.html"),
+        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-macros-addons",
+    )
+
+    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-macros-addons"
+    assert payload["guide"]["content_family"] == "macros_addons"
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+
+
+def test_recorded_mythic_plus_tips_fixture_contract() -> None:
+    payload = parse_guide_page(
+        _load("mythic_plus_tips.html"),
+        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-mythic-plus-tips",
+    )
+
+    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-mythic-plus-tips"
+    assert payload["guide"]["content_family"] == "mythic_plus_tips"
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+
+
+def test_recorded_simulations_fixture_contract() -> None:
+    payload = parse_guide_page(
+        _load("simulations.html"),
+        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-simulations",
+    )
+
+    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-simulations"
+    assert payload["guide"]["content_family"] == "simulations"
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+
+
 def test_recorded_raid_guide_fixture_contract() -> None:
     payload = parse_guide_page(
         _load("raid_guide.html"),
