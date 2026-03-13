@@ -303,6 +303,39 @@ def test_simc_first_cast_and_log_actions(monkeypatch, tmp_path: Path) -> None:
     assert log_payload["hits"][0]["performed_at"] == 0.25
 
 
+def test_simc_analysis_packet_surfaces_runtime_timing_failures(monkeypatch, tmp_path: Path) -> None:
+    apl = tmp_path / "evoker_devastation.simc"
+    apl.write_text("actions.st+=/disintegrate\n")
+
+    monkeypatch.setattr(
+        "simc_cli.main._resolve_prune_context",
+        lambda paths, apl_path, option_values, targets: (
+            type("Context", (), {"enabled_talents": set(), "disabled_talents": set(), "targets": targets, "talent_sources": {}})(),
+            type("Resolution", (), {"actor_class": "evoker", "spec": "devastation", "source_notes": ["decoded via /tmp/simc"]})(),
+        ),
+    )
+    monkeypatch.setattr("simc_cli.main.build_analysis_packet", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("timing failed")))
+
+    result = runner.invoke(
+        simc_app,
+        [
+            "analysis-packet",
+            str(apl),
+            "--targets",
+            "1",
+            "--sim-profile",
+            str(tmp_path / "profile.simc"),
+            "--first-cast-action",
+            "disintegrate",
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "analysis_packet_failed"
+    assert payload["error"]["message"] == "timing failed"
+
+
 def test_simc_sync_skips_dirty_repo(monkeypatch) -> None:
     monkeypatch.setattr("simc_cli.main.repo_git_status", lambda paths: {"git": True, "dirty": True, "branch": "main", "head": "abc", "dirty_entries": [" M engine/file.cpp"]})
     monkeypatch.setattr("simc_cli.main.sync_repo", lambda paths, allow_dirty: None)

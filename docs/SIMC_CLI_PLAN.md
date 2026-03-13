@@ -65,6 +65,7 @@ Observed from the existing `simc_exp` tool:
 This should be a local-tool service:
 - readonly local repo inspection
 - optional local repo sync
+- optional managed local checkout/update for users who want the CLI to own the repo lifecycle
 - local build management
 - local binary execution
 - profile, log, and analysis helpers
@@ -75,6 +76,10 @@ The important planning change is that `simc` should not be thought of as only:
 - run sim
 
 It should also support a readonly analysis mode against a local SimulationCraft source tree.
+
+Longer term, the repo strategy should support both:
+- explicit repo-path/config driven usage
+- an optional CLI-managed checkout and update workflow
 
 ## Recommended Phase Shape
 

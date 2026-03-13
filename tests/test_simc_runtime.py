@@ -5,7 +5,7 @@ from pathlib import Path
 from simc_cli.sim import first_action_hits, first_action_time, summarize_first_casts
 
 
-def test_first_action_time_extracts_first_matching_timestamp() -> None:
+def test_first_action_time_extracts_first_performed_timestamp() -> None:
     log_text = "\n".join(
         [
             "0.100 schedules execute for Action 'rising_sun_kick'",
@@ -13,7 +13,7 @@ def test_first_action_time_extracts_first_matching_timestamp() -> None:
             "0.400 performs Action 'blackout_kick'",
         ]
     )
-    assert first_action_time(log_text, "rising_sun_kick") == 0.1
+    assert first_action_time(log_text, "rising_sun_kick") == 0.25
     assert first_action_time(log_text, "vivify") is None
 
 

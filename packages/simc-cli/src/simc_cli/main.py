@@ -1081,21 +1081,25 @@ def analysis_packet_command(
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         _fail(ctx, "analysis_packet_failed", str(exc))
         return
-    packet = build_analysis_packet(
-        paths,
-        resolved,
-        context,
-        start_list=list_name,
-        intent_limit=intent_limit,
-        explain_limit=explain_limit,
-        runtime_scan_limit=runtime_scan_limit,
-        first_cast_profile=sim_profile or profile_path,
-        first_cast_actions=first_cast_action,
-        first_cast_seeds=seeds,
-        first_cast_max_time=max_time,
-        first_cast_targets=targets,
-        first_cast_fight_style=fight_style,
-    )
+    try:
+        packet = build_analysis_packet(
+            paths,
+            resolved,
+            context,
+            start_list=list_name,
+            intent_limit=intent_limit,
+            explain_limit=explain_limit,
+            runtime_scan_limit=runtime_scan_limit,
+            first_cast_profile=sim_profile or profile_path,
+            first_cast_actions=first_cast_action,
+            first_cast_seeds=seeds,
+            first_cast_max_time=max_time,
+            first_cast_targets=targets,
+            first_cast_fight_style=fight_style,
+        )
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "analysis_packet_failed", str(exc))
+        return
     _emit(
         ctx,
         {

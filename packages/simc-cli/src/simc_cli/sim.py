@@ -71,6 +71,8 @@ def first_action_time(log_text: str, action: str) -> float | None:
     for line in log_text.splitlines():
         if needle not in line:
             continue
+        if "performs Action" not in line:
+            continue
         timestamp, _, _ = line.partition(" ")
         try:
             return float(timestamp)
