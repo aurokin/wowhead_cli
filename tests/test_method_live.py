@@ -63,6 +63,15 @@ def test_live_method_search_contract() -> None:
     assert first["follow_up"]["recommended_command"] == f"method guide {GUIDE_REF}"
 
 
+def test_live_method_unsupported_query_scope_hint() -> None:
+    _require_live()
+    payload = _payload_for(["search", "tier list", "--limit", "5"])
+
+    assert payload["count"] == 0
+    assert payload["results"] == []
+    assert payload["scope_hint"]["code"] == "tier_list"
+
+
 def test_live_method_resolve_contract() -> None:
     _require_live()
     payload = _payload_for(["resolve", "mistweaver monk"])

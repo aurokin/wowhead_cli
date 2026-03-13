@@ -27,6 +27,17 @@ from warcraft_content.article_bundle import (
 app = typer.Typer(add_completion=False, help="Method.gg guide CLI.")
 
 SEARCH_TYPE_NAME = "Guide"
+FAMILY_QUERY_KEYWORDS = {
+    "profession_guide": {"profession", "professions", "alchemy", "blacksmithing", "enchanting", "engineering", "herbalism", "inscription", "jewelcrafting", "leatherworking", "mining", "skinning", "tailoring", "fishing", "cooking"},
+    "delve_guide": {"delve", "delves"},
+    "reputation_guide": {"renown", "reputation"},
+}
+UNSUPPORTED_QUERY_HINTS = {
+    "tier_list": {
+        "keywords": {"tier", "list"},
+        "message": "Method tier-list index roots are currently out of scope for the supported Method surface.",
+    },
+}
 SUPPORTED_SCOPE = {
     "content_families": [
         "class_guide",
@@ -135,8 +146,45 @@ def _score_text_match(query: str, candidate: str) -> int:
         score += 8
     return score
 
+
+def _query_terms(query: str) -> set[str]:
+    return {term for term in query.split() if term}
+
+
+def _family_score_boost(content_family: str, query: str) -> tuple[int, list[str]]:
+    terms = _query_terms(query)
+    if not terms:
+        return 0, []
+    reasons: list[str] = []
+    score = 0
+    for family, keywords in FAMILY_QUERY_KEYWORDS.items():
+        if not (terms & keywords):
+            continue
+        if family != content_family:
+            continue
+        score += 12
+        reasons.append("content_family_match")
+    return score, reasons
+
+
+def _unsupported_scope_hint(query: str) -> dict[str, Any] | None:
+    terms = _query_terms(query)
+    if not terms:
+        return None
+    for code, config in UNSUPPORTED_QUERY_HINTS.items():
+        keywords = set(config["keywords"])
+        if keywords <= terms:
+            return {
+                "code": code,
+                "message": config["message"],
+            }
+    return None
+
 def _search_results(client: MethodClient, query: str, *, limit: int) -> tuple[str, list[dict[str, Any]], int]:
     normalized_query = _normalize_query(query)
+    scope_hint = _unsupported_scope_hint(normalized_query)
+    if scope_hint is not None:
+        return normalized_query, [], 0, scope_hint
     matches: list[dict[str, Any]] = []
     for row in client.sitemap_guides():
         slug = row["slug"]
@@ -155,6 +203,9 @@ def _search_results(client: MethodClient, query: str, *, limit: int) -> tuple[st
             reasons.append("name_contains_query")
         if normalized_query and all(term in candidate for term in normalized_query.split()):
             reasons.append("all_terms_match")
+        family_boost, family_reasons = _family_score_boost(content_family, normalized_query)
+        score += family_boost
+        reasons.extend(family_reasons)
         if score <= 0:
             continue
         candidate_row = article_candidate(
@@ -168,7 +219,7 @@ def _search_results(client: MethodClient, query: str, *, limit: int) -> tuple[st
         candidate_row["metadata"]["content_family"] = content_family
         matches.append(candidate_row)
     sort_article_candidates(matches)
-    return normalized_query, matches[:limit], len(matches)
+    return normalized_query, matches[:limit], len(matches), None
 
 
 def _build_guide_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
@@ -316,8 +367,11 @@ def search(
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum results to return."),
 ) -> None:
     with _client(ctx) as client:
-        normalized_query, results, total_count = _search_results(client, query, limit=limit)
-    _emit(ctx, article_search_payload(query=query, search_query=normalized_query, results=results, total_count=total_count))
+        normalized_query, results, total_count, scope_hint = _search_results(client, query, limit=limit)
+    payload = article_search_payload(query=query, search_query=normalized_query, results=results, total_count=total_count)
+    if scope_hint is not None:
+        payload["scope_hint"] = scope_hint
+    _emit(ctx, payload)
 
 
 @app.command("resolve")
@@ -327,7 +381,7 @@ def resolve(
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum candidates to inspect."),
 ) -> None:
     with _client(ctx) as client:
-        normalized_query, results, total_count = _search_results(client, query, limit=limit)
+        normalized_query, results, total_count, scope_hint = _search_results(client, query, limit=limit)
     top = results[0] if results else None
     second = results[1] if len(results) > 1 else None
     top_score = top["ranking"]["score"] if top else 0
@@ -335,14 +389,17 @@ def resolve(
     resolved = top is not None and (top_score >= 50 or top_score >= second_score + 15)
     _emit(
         ctx,
-        article_resolve_payload(
+        {
+            **article_resolve_payload(
             provider_command="method",
             query=query,
             search_query=normalized_query,
             results=results,
             total_count=total_count,
             resolved=resolved,
-        ),
+            ),
+            **({"scope_hint": scope_hint} if scope_hint is not None else {}),
+        },
     )
 
 

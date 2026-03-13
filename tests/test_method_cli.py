@@ -226,7 +226,33 @@ def test_method_search_excludes_unsupported_index_roots(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert all(row["id"] != "tier-list" for row in payload["results"])
+    assert payload["count"] == 0
+    assert payload["results"] == []
+    assert payload["scope_hint"]["code"] == "tier_list"
+
+
+def test_method_search_boosts_matching_content_family(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "method_cli.main.MethodClient.sitemap_guides",
+        lambda self: [
+            {
+                "slug": "midnight-alchemy-profession-guide",
+                "name": "Midnight Alchemy Profession Guide",
+                "url": "https://www.method.gg/guides/midnight-alchemy-profession-guide",
+            },
+            {
+                "slug": "the-war-within-alchemy-leveling",
+                "name": "The War Within Alchemy Leveling",
+                "url": "https://www.method.gg/guides/the-war-within-alchemy-leveling",
+            },
+        ],
+    )
+    result = runner.invoke(app, ["search", "alchemy profession"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["id"] == "midnight-alchemy-profession-guide"
+    assert "content_family_match" in payload["results"][0]["ranking"]["match_reasons"]
 
 
 def test_method_guide_and_guide_full(monkeypatch) -> None:

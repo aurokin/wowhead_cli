@@ -133,6 +133,7 @@ The target is not “support every page on Method.gg.”
 It is:
 - the supported Method guide families are explicit
 - search and resolve are trustworthy within that supported scope
+- unsupported Method query families fail clearly at discovery time when we know the matching roots are intentionally out of scope
 - guide and guide-full are resilient to normal template variation
 - export and query remain stable across supported guide pages
 - unsupported Method surfaces fail clearly instead of silently disappearing

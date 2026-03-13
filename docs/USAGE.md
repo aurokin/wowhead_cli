@@ -130,6 +130,7 @@ Method guide behavior:
 - `guide-full` walks the guide navigation and returns all discovered guide pages
 - `guide-export` writes a local guide bundle under `./method_exports/` by default
 - `guide-query` searches exported Method bundles across sections, navigation links, and linked entities
+- unsupported Method query families such as `tier list` return a `scope_hint` and no search candidates
 - unsupported Method URLs such as premium or account pages return structured `invalid_guide_ref` errors
 - unsupported index-style roots such as `tier-list` return structured `unsupported_guide_surface` errors
 
