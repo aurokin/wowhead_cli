@@ -142,6 +142,8 @@ def test_compact_wrapper_candidate_keeps_provider_expansion_support() -> None:
                 "requested_expansion": "wotlk",
                 "allowed": True,
                 "supported_expansions": ["retail", "classic", "wotlk"],
+                "review_status": "reviewed",
+                "policy_note": "Provider has first-class expansion profiles.",
             },
         }
     )
@@ -149,6 +151,8 @@ def test_compact_wrapper_candidate_keeps_provider_expansion_support() -> None:
     assert compact["provider_expansion"]["mode"] == "profiled"
     assert compact["provider_expansion"]["requested_expansion"] == "wotlk"
     assert compact["provider_expansion"]["allowed"] is True
+    assert compact["provider_expansion"]["review_status"] == "reviewed"
+    assert "first-class expansion profiles" in compact["provider_expansion"]["policy_note"]
 
 
 def test_synthetic_search_candidates_adds_leaderboard_route() -> None:

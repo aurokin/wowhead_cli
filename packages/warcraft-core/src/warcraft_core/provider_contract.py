@@ -298,6 +298,8 @@ def compact_wrapper_candidate(candidate: Mapping[str, Any]) -> dict[str, Any]:
             "requested_expansion": provider_expansion.get("requested_expansion"),
             "allowed": provider_expansion.get("allowed"),
             "supported_expansions": provider_expansion.get("supported_expansions"),
+            "review_status": provider_expansion.get("review_status"),
+            "policy_note": provider_expansion.get("policy_note"),
         }
         exclusion_reason = provider_expansion.get("exclusion_reason")
         if exclusion_reason is not None:

@@ -40,8 +40,11 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert providers["wowprogress"]["status"] == "ready"
     assert providers["simc"]["status"] == "ready"
     assert providers["wowhead"]["expansion_support"]["mode"] == "profiled"
+    assert providers["wowhead"]["expansion_support"]["review_status"] == "reviewed"
     assert providers["method"]["expansion_support"]["mode"] == "fixed"
+    assert providers["method"]["expansion_support"]["review_status"] == "reviewed"
     assert providers["warcraft-wiki"]["expansion_support"]["mode"] == "none"
+    assert providers["warcraft-wiki"]["expansion_support"]["review_status"] == "deferred"
     assert providers["method"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["icy-veins"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["raiderio"]["details"]["capabilities"]["search"] == "ready"
@@ -244,8 +247,10 @@ def test_warcraft_search_compact_expansion_debug(monkeypatch) -> None:
     assert payload["results"][0]["provider_expansion"]["mode"] == "profiled"
     snapshot = {row["provider"]: row["expansion_support"] for row in payload["expansion_debug"]}
     assert snapshot["wowhead"]["allowed"] is True
+    assert snapshot["wowhead"]["review_status"] == "reviewed"
     assert snapshot["method"]["allowed"] is False
     assert snapshot["method"]["exclusion_reason"] == "provider_fixed_to_other_expansion"
+    assert "retail-focused" in snapshot["method"]["policy_note"]
 
 
 def test_warcraft_search_retail_filter_keeps_fixed_retail_providers_and_excludes_none(monkeypatch) -> None:
@@ -519,6 +524,8 @@ def test_warcraft_resolve_expansion_debug(monkeypatch) -> None:
     assert snapshot["wowhead"]["allowed"] is True
     assert snapshot["simc"]["allowed"] is False
     assert snapshot["simc"]["exclusion_reason"] == "provider_has_no_expansion_support"
+    assert snapshot["simc"]["review_status"] == "deferred"
+    assert "Local repo analysis" in snapshot["simc"]["policy_note"]
 
 
 def test_warcraft_resolve_prefers_ready_provider(monkeypatch) -> None:

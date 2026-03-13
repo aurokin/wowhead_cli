@@ -137,6 +137,8 @@ When expansion filtering is active, wrapper responses should include:
 - included providers
 - excluded providers
 - exclusion reasons
+- provider review status
+- short policy notes for current provider classification
 
 This is required for trust and debugging.
 
@@ -203,6 +205,15 @@ Status:
 ### Phase 4
 
 - review providers individually and promote any that gain real non-retail support
+
+Current review outcome:
+- `wowhead`: reviewed, `profiled`
+- `method`: reviewed, `fixed retail`
+- `icy-veins`: reviewed, `fixed retail`
+- `raiderio`: reviewed, `fixed retail`
+- `wowprogress`: reviewed, `fixed retail`
+- `warcraft-wiki`: deferred, `none`
+- `simc`: deferred, `none`
 
 ## Risks
 

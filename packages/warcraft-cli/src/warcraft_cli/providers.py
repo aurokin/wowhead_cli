@@ -28,6 +28,8 @@ class ProviderRegistration:
     description: str
     expansion_mode: str
     supported_expansions: tuple[str, ...]
+    expansion_review_status: str
+    expansion_policy_note: str
     app: Any
     doctor_args: tuple[str, ...]
 
@@ -41,6 +43,8 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         description="Structured Wowhead provider with live search, resolve, and retrieval commands.",
         expansion_mode="profiled",
         supported_expansions=tuple(profile.key for profile in list_profiles()),
+        expansion_review_status="reviewed",
+        expansion_policy_note="Provider has first-class expansion profiles and real version-specific routing.",
         app=wowhead_app,
         doctor_args=("cache-inspect", "--summary", "--hide-zero"),
     ),
@@ -52,6 +56,8 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         description="Method.gg article provider with sitemap-backed search and guide bundle export/query.",
         expansion_mode="fixed",
         supported_expansions=("retail",),
+        expansion_review_status="reviewed",
+        expansion_policy_note="Current supported live guide/article families are retail-focused and do not expose reliable non-retail routing.",
         app=method_app,
         doctor_args=("doctor",),
     ),
@@ -63,6 +69,8 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         description="Icy Veins article provider with sitemap-backed search, resolve, and guide bundle export/query.",
         expansion_mode="fixed",
         supported_expansions=("retail",),
+        expansion_review_status="reviewed",
+        expansion_policy_note="Current supported guide families are retail-focused and do not provide a reliable wrapper-level non-retail split.",
         app=icy_veins_app,
         doctor_args=("doctor",),
     ),
@@ -74,6 +82,8 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         description="Raider.IO API provider with search, resolve, character, guild, and mythic-plus runs lookups.",
         expansion_mode="fixed",
         supported_expansions=("retail",),
+        expansion_review_status="reviewed",
+        expansion_policy_note="Current provider surface is retail-first profile and leaderboard data; non-retail semantics are not part of the supported contract.",
         app=raiderio_app,
         doctor_args=("doctor",),
     ),
@@ -85,6 +95,8 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         description="Warcraft Wiki reference provider with MediaWiki-backed search, resolve, article export, and local query.",
         expansion_mode="none",
         supported_expansions=(),
+        expansion_review_status="deferred",
+        expansion_policy_note="Mixed historical and reference content needs a separate policy review before wrapper expansion filtering can include it.",
         app=warcraft_wiki_app,
         doctor_args=("doctor",),
     ),
@@ -96,6 +108,8 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         description="WowProgress rankings provider with structured search, conservative resolve, guild, character, and PvE leaderboard lookups.",
         expansion_mode="fixed",
         supported_expansions=("retail",),
+        expansion_review_status="reviewed",
+        expansion_policy_note="Current supported guild, character, and PvE leaderboard surfaces are retail-focused and should stay fixed to retail for now.",
         app=wowprogress_app,
         doctor_args=("doctor",),
     ),
@@ -107,6 +121,8 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         description="SimulationCraft local provider with repo inspection, build decoding, and local run workflows.",
         expansion_mode="none",
         supported_expansions=(),
+        expansion_review_status="deferred",
+        expansion_policy_note="Local repo analysis is versioned differently from wrapper content providers and should not join expansion fanout yet.",
         app=simc_app,
         doctor_args=("doctor",),
     ),
@@ -131,6 +147,8 @@ def provider_expansion_support(registration: ProviderRegistration, *, requested_
         "supported_expansions": list(registration.supported_expansions),
         "requested_expansion": requested_expansion,
         "allowed": allowed,
+        "review_status": registration.expansion_review_status,
+        "policy_note": registration.expansion_policy_note,
     }
     reason = provider_expansion_exclusion_reason(registration, requested_expansion=requested_expansion)
     if reason is not None:

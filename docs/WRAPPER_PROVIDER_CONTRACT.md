@@ -96,6 +96,8 @@ The wrapper should know for each provider:
 - whether auth is configured
 - expansion support mode
 - supported expansions when known
+- expansion review status
+- a short policy note explaining the current expansion classification
 - whether `search`, `resolve`, and `doctor` are supported or stubbed
 
 This registry should drive wrapper behavior instead of hardcoded special cases spread throughout the codebase.
