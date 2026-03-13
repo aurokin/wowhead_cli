@@ -27,7 +27,7 @@ Current provider state:
 - `raiderio`: ready for direct character, guild, and Mythic+ runs lookups; `search` and `resolve` are structured `coming_soon` in phase 1
 - `warcraft-wiki`: ready for article search, resolve, fetch, export, and local query
 - `wowprogress`: ready for direct guild, character, and PvE leaderboard lookups; `search` and `resolve` are structured `coming_soon` in phase 1
-- `simc`: ready for local repo inspection, version, spec-files, decode-build, APL list/graph/talent inspection, action tracing, prune/branch/intent analysis, branch comparison, analysis packets, first-cast timing, log inspection, and sync/build/run, with `search` and `resolve` structured `coming_soon`
+- `simc`: ready for local repo inspection, repo resolution/config, managed checkout, version, spec-files, decode-build, APL list/graph/talent inspection, action tracing, prune/branch/intent analysis, branch comparison, analysis packets, first-cast timing, log inspection, and sync/build/run, with `search` and `resolve` structured `coming_soon`
 
 ## Standard Workflow
 
@@ -52,6 +52,8 @@ Current provider state:
 - Use `warcraft-wiki` when you need general reference material, lore, systems pages, or addon/API documentation.
 - Use `wowprogress` when you already know the region, realm, and guild or character you want, and need progression, roster, or leaderboard context rather than guide content.
 - Use `simc` when you need local SimulationCraft repo inspection, build decoding, or direct binary execution against a local profile.
+- Use `simc repo` when you need to understand or change which local SimulationCraft checkout is active.
+- Use `simc checkout` when you want the CLI to manage a local SimulationCraft checkout under the XDG data root.
 - Use `simc` for readonly APL inspection questions before escalating to a real sim run.
 - Use `simc apl-prune`, `apl-branch-trace`, and `apl-intent` when you need conservative reasoning about likely list flow without running the simulation.
 - Use `simc analysis-packet` when you want the compact agent-facing summary instead of assembling branch and intent outputs manually.

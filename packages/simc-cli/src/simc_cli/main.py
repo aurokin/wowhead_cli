@@ -11,7 +11,16 @@ from simc_cli.branch import attach_focus_comparison, compare_branch_summaries, e
 from simc_cli.build_input import decode_build, extract_build_spec_from_text, infer_actor_and_spec_from_apl, load_build_spec
 from simc_cli.packet import build_analysis_packet
 from simc_cli.prune import PruneContext, TruthValue, prune_entries, split_csv_values
-from simc_cli.repo import RepoPaths, discover_repo, validate_build, validate_repo
+from simc_cli.repo import (
+    RepoPaths,
+    checkout_managed_repo,
+    clear_configured_repo_root,
+    discover_repo,
+    resolve_repo_root,
+    save_configured_repo_root,
+    validate_build,
+    validate_repo,
+)
 from simc_cli.run import binary_version, build_repo, repo_git_status, run_profile, sync_repo
 from simc_cli.search import find_action, spec_file_search
 from simc_cli.sim import first_action_hits, run_first_casts, summarize_first_casts
@@ -47,6 +56,10 @@ def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1, extra
 
 def _repo_paths(ctx: typer.Context) -> RepoPaths:
     return discover_repo(_cfg(ctx).repo_root)
+
+
+def _repo_resolution(ctx: typer.Context):
+    return resolve_repo_root(_cfg(ctx).repo_root)
 
 
 def _preview_text(text: str, *, max_lines: int = 20) -> tuple[list[str], bool]:
@@ -188,6 +201,7 @@ def main_callback(
 @app.command("doctor")
 def doctor(ctx: typer.Context) -> None:
     paths = _repo_paths(ctx)
+    resolution = _repo_resolution(ctx)
     repo = _repo_payload(paths)
     status = "ready" if repo["repo_ready"] and repo["build_ready"] else "degraded"
     _emit(
@@ -206,6 +220,8 @@ def doctor(ctx: typer.Context) -> None:
                 "search": "coming_soon",
                 "resolve": "coming_soon",
                 "doctor": "ready",
+                "repo": "ready",
+                "checkout": "ready",
                 "version": "ready",
                 "sync": "ready",
                 "build": "ready",
@@ -227,7 +243,87 @@ def doctor(ctx: typer.Context) -> None:
                 "first_cast": "ready",
                 "log_actions": "ready",
             },
+            "repo_resolution": {
+                "source": resolution.source,
+                "config_path": str(resolution.config_path),
+                "configured_root": str(resolution.configured_root) if resolution.configured_root else None,
+                "managed_root": str(resolution.managed_root),
+                "managed_exists": resolution.managed_exists,
+                "legacy_root": str(resolution.legacy_root),
+            },
             "repo": repo,
+        },
+    )
+
+
+@app.command("repo")
+def repo_command(
+    ctx: typer.Context,
+    set_root: str | None = typer.Option(None, "--set-root", help="Persist an explicit SimulationCraft repo root."),
+    clear_root: bool = typer.Option(False, "--clear-root", help="Clear the persisted explicit SimulationCraft repo root."),
+) -> None:
+    if set_root and clear_root:
+        _fail(ctx, "invalid_query", "Use either --set-root or --clear-root, not both.")
+        return
+    changed = False
+    action = "inspect"
+    stored_root: str | None = None
+    if set_root:
+        resolved = Path(set_root).expanduser().resolve()
+        if not resolved.exists():
+            _fail(ctx, "not_found", f"Repo root not found: {resolved}")
+            return
+        save_configured_repo_root(resolved)
+        changed = True
+        action = "set_root"
+        stored_root = str(resolved)
+    elif clear_root:
+        changed = clear_configured_repo_root()
+        action = "clear_root"
+    resolution = _repo_resolution(ctx)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "action": action,
+            "changed": changed,
+            "stored_root": stored_root,
+            "resolution": {
+                "root": str(resolution.root),
+                "source": resolution.source,
+                "config_path": str(resolution.config_path),
+                "configured_root": str(resolution.configured_root) if resolution.configured_root else None,
+                "managed_root": str(resolution.managed_root),
+                "managed_exists": resolution.managed_exists,
+                "legacy_root": str(resolution.legacy_root),
+            },
+        },
+    )
+
+
+@app.command("checkout")
+def checkout_command(ctx: typer.Context) -> None:
+    try:
+        result = checkout_managed_repo()
+    except RuntimeError as exc:
+        _fail(ctx, "checkout_failed", str(exc))
+        return
+    resolution = _repo_resolution(ctx)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "status": result.status,
+            "repo_url": result.repo_url,
+            "managed_root": str(result.root),
+            "commands": result.commands,
+            "active_resolution": {
+                "root": str(resolution.root),
+                "source": resolution.source,
+                "configured_root": str(resolution.configured_root) if resolution.configured_root else None,
+                "managed_root": str(resolution.managed_root),
+            },
+            "note": "Managed checkout becomes active when no CLI override, SIMC_REPO_ROOT, or configured explicit root is set.",
         },
     )
 

@@ -6,6 +6,8 @@
 
 Current commands:
 - `simc doctor`
+- `simc repo`
+- `simc checkout`
 - `simc version`
 - `simc inspect`
 - `simc spec-files`

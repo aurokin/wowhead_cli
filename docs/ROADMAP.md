@@ -28,6 +28,7 @@ Completed:
 - working `wowprogress` phase-1 provider
 - working `simc` phase-1 provider
 - working `simc` phase-3 runtime helpers
+- working `simc` repo resolution and managed checkout flow
 - root `warcraft` skill
 
 Validated shared so far:

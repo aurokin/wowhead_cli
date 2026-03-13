@@ -15,6 +15,7 @@ Current status:
 - phase 1 package and command surface are implemented
 - phase 2 readonly analysis commands are implemented
 - phase 3 runtime helpers are implemented
+- repo resolution now supports explicit config plus a managed checkout fallback
 - the remaining purpose of this document is to preserve the file-level package shape and migration rationale
 
 ## Package Shape
@@ -78,12 +79,14 @@ Primary source:
 
 Responsibilities:
 - discover local SimulationCraft checkout
+- resolve repo source precedence across CLI override, env, config, managed checkout, and legacy fallback
 - resolve important repo paths
 - validate required directories
 - validate binary presence
+- support managed checkout/update helpers
 
 Needed changes:
-- replace hardcoded defaults with XDG-aware config or explicit CLI options
+- continue moving away from hardcoded defaults toward explicit config and managed checkout usage
 - support readonly repo usage first
 - separate repo validation from build validation
 

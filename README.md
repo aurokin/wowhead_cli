@@ -61,6 +61,7 @@ raiderio guild us illidan Liquid
 warcraft-wiki search "world of warcraft api"
 wowprogress leaderboard pve us --limit 10
 simc version
+simc repo
 simc spec-files mistweaver
 simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1

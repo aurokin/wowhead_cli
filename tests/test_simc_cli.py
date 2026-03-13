@@ -37,6 +37,8 @@ def test_simc_doctor_reports_phase_one_capabilities(monkeypatch, tmp_path: Path)
     assert payload["status"] == "ready"
     assert payload["capabilities"]["version"] == "ready"
     assert payload["capabilities"]["search"] == "coming_soon"
+    assert payload["capabilities"]["repo"] == "ready"
+    assert payload["capabilities"]["checkout"] == "ready"
     assert payload["capabilities"]["apl_lists"] == "ready"
     assert payload["capabilities"]["apl_prune"] == "ready"
     assert payload["capabilities"]["analysis_packet"] == "ready"
@@ -50,6 +52,67 @@ def test_simc_search_is_structured_coming_soon() -> None:
     payload = json.loads(result.stdout)
     assert payload["coming_soon"] is True
     assert payload["count"] == 0
+
+
+def test_simc_repo_reports_and_updates_resolution(monkeypatch, tmp_path: Path) -> None:
+    target = tmp_path / "simc"
+    target.mkdir()
+
+    monkeypatch.setattr(
+        "simc_cli.main._repo_resolution",
+        lambda ctx: type(
+            "Resolution",
+            (),
+            {
+                "root": target.resolve(),
+                "source": "config",
+                "config_path": tmp_path / "repo.json",
+                "configured_root": target.resolve(),
+                "managed_root": tmp_path / "managed",
+                "managed_exists": False,
+                "legacy_root": Path("/tmp/legacy"),
+            },
+        )(),
+    )
+    monkeypatch.setattr("simc_cli.main.save_configured_repo_root", lambda root: target.resolve())
+
+    result = runner.invoke(simc_app, ["repo", "--set-root", str(target)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["action"] == "set_root"
+    assert payload["changed"] is True
+    assert payload["resolution"]["source"] == "config"
+
+
+def test_simc_checkout_reports_managed_checkout(monkeypatch, tmp_path: Path) -> None:
+    managed = tmp_path / "managed"
+
+    monkeypatch.setattr(
+        "simc_cli.main.checkout_managed_repo",
+        lambda: type("Checkout", (), {"status": "cloned", "root": managed, "repo_url": "https://github.com/simulationcraft/simc.git", "commands": [["git", "clone"]]})(),
+    )
+    monkeypatch.setattr(
+        "simc_cli.main._repo_resolution",
+        lambda ctx: type(
+            "Resolution",
+            (),
+            {
+                "root": managed,
+                "source": "managed",
+                "config_path": tmp_path / "repo.json",
+                "configured_root": None,
+                "managed_root": managed,
+                "managed_exists": True,
+                "legacy_root": Path("/tmp/legacy"),
+            },
+        )(),
+    )
+
+    result = runner.invoke(simc_app, ["checkout"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "cloned"
+    assert payload["active_resolution"]["source"] == "managed"
 
 
 def test_simc_version_uses_binary_probe(monkeypatch) -> None:

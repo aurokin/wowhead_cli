@@ -202,6 +202,9 @@ WowProgress phase-1 behavior:
 
 ```bash
 simc doctor
+simc repo
+simc repo --set-root /home/auro/code/simc
+simc checkout
 simc version
 simc inspect
 simc inspect /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
@@ -225,8 +228,10 @@ simc sync
 simc build
 ```
 
-SimulationCraft phase-1 behavior:
-- `doctor` reports repo path, git status, binary presence, and phase-1 capability state
+SimulationCraft behavior:
+- `doctor` reports repo path, git status, binary presence, phase capability state, and repo-resolution source
+- `repo` shows the active repo-resolution path and can persist or clear an explicit repo root
+- `checkout` performs an optional CLI-managed checkout or update under the XDG data root
 - `version` probes the local `simc` binary and extracts the printed SimulationCraft version line
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
@@ -247,6 +252,7 @@ SimulationCraft phase-1 behavior:
 - `run` executes the local `simc` binary against a profile and returns bounded stdout/stderr previews
 - `sync` and `build` are conservative local repo helpers; `sync` skips dirty worktrees unless `--allow-dirty` is set
 - `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until SimC discovery is implemented
+- repo resolution supports both explicit path configuration and a CLI-managed checkout fallback
 
 ## Output Conventions
 
