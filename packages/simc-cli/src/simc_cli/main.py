@@ -14,6 +14,7 @@ from simc_cli.prune import PruneContext, TruthValue, prune_entries, split_csv_va
 from simc_cli.repo import RepoPaths, discover_repo, validate_build, validate_repo
 from simc_cli.run import binary_version, build_repo, repo_git_status, run_profile, sync_repo
 from simc_cli.search import find_action, spec_file_search
+from simc_cli.sim import first_action_hits, run_first_casts, summarize_first_casts
 from warcraft_core.output import emit
 
 app = typer.Typer(add_completion=False, help="SimulationCraft local workflow CLI.")
@@ -223,6 +224,8 @@ def doctor(ctx: typer.Context) -> None:
                 "apl_intent_explain": "ready",
                 "apl_branch_compare": "ready",
                 "analysis_packet": "ready",
+                "first_cast": "ready",
+                "log_actions": "ready",
             },
             "repo": repo,
         },
@@ -1038,6 +1041,11 @@ def analysis_packet_command(
     intent_limit: int = typer.Option(6, "--intent-limit", min=1, max=50, help="Number of intent lines to return."),
     explain_limit: int = typer.Option(8, "--explain-limit", min=1, max=50, help="Maximum items per explanation bucket."),
     runtime_scan_limit: int = typer.Option(8, "--runtime-scan-limit", min=1, max=50, help="How many early runtime-sensitive lines to report."),
+    sim_profile: str | None = typer.Option(None, "--sim-profile", help="Optional profile path used for first-cast timing checks."),
+    first_cast_action: list[str] = typer.Option([], "--first-cast-action", help="Action name to time with short sims. Repeat as needed."),
+    seeds: int = typer.Option(5, "--seeds", min=1, max=100, help="Number of timing samples per first-cast action."),
+    max_time: int = typer.Option(60, "--max-time", min=1, max=10000, help="Fight length for first-cast timing sims."),
+    fight_style: str = typer.Option("Patchwerk", "--fight-style", help="Fight style for first-cast timing sims."),
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
@@ -1074,12 +1082,19 @@ def analysis_packet_command(
         _fail(ctx, "analysis_packet_failed", str(exc))
         return
     packet = build_analysis_packet(
+        paths,
         resolved,
         context,
         start_list=list_name,
         intent_limit=intent_limit,
         explain_limit=explain_limit,
         runtime_scan_limit=runtime_scan_limit,
+        first_cast_profile=sim_profile or profile_path,
+        first_cast_actions=first_cast_action,
+        first_cast_seeds=seeds,
+        first_cast_max_time=max_time,
+        first_cast_targets=targets,
+        first_cast_fight_style=fight_style,
     )
     _emit(
         ctx,
@@ -1111,6 +1126,25 @@ def analysis_packet_command(
                     "burst": packet.explained_intent.burst,
                     "priorities": packet.explained_intent.priorities,
                 },
+                "first_casts": [
+                    {
+                        "action": item.action,
+                        "samples": item.samples,
+                        "found": item.found,
+                        "min_time": item.min_time,
+                        "avg_time": item.avg_time,
+                        "max_time": item.max_time,
+                        "results": [
+                            {
+                                "seed": result.seed,
+                                "time": result.time,
+                                "log_path": str(result.log_path),
+                            }
+                            for result in item.results
+                        ],
+                    }
+                    for item in packet.first_casts
+                ],
                 "branch_summary": {
                     "start_list": packet.branch_summary.start_list,
                     "guaranteed_dispatch": packet.branch_summary.guaranteed_dispatch,
@@ -1121,6 +1155,79 @@ def analysis_packet_command(
                     "shadowed_lines": packet.branch_summary.shadowed_lines,
                 },
             },
+        },
+    )
+
+
+@app.command("first-cast")
+def first_cast_command(
+    ctx: typer.Context,
+    profile_path: str = typer.Argument(..., help="Path to a SimulationCraft profile to execute."),
+    action: str = typer.Argument(..., help="Action name to time."),
+    seeds: int = typer.Option(5, "--seeds", min=1, max=100, help="Number of timing samples."),
+    max_time: int = typer.Option(60, "--max-time", min=1, max=10000, help="Fight length for each short sim."),
+    targets: int = typer.Option(1, "--targets", min=1, help="Active target count."),
+    fight_style: str = typer.Option("Patchwerk", "--fight-style", help="Fight style for the short sims."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = Path(profile_path).expanduser().resolve()
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"Profile not found: {resolved}")
+        return
+    try:
+        results = run_first_casts(paths, resolved, action, seeds, max_time, targets, fight_style)
+    except (FileNotFoundError, RuntimeError) as exc:
+        _fail(ctx, "first_cast_failed", str(exc))
+        return
+    summary = summarize_first_casts(results)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "profile_path": str(resolved),
+            "action": action,
+            "targets": targets,
+            "fight_style": fight_style,
+            "seeds": seeds,
+            "summary": summary,
+            "results": [
+                {
+                    "seed": result.seed,
+                    "time": result.time,
+                    "log_path": str(result.log_path),
+                }
+                for result in results
+            ],
+        },
+    )
+
+
+@app.command("log-actions")
+def log_actions_command(
+    ctx: typer.Context,
+    log_path: str = typer.Argument(..., help="Path to a SimulationCraft combat log."),
+    actions: list[str] = typer.Argument(..., help="One or more action names to inspect."),
+) -> None:
+    resolved = Path(log_path).expanduser().resolve()
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"Log file not found: {resolved}")
+        return
+    hits = first_action_hits(resolved, list(actions))
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "log_path": str(resolved),
+            "actions": list(actions),
+            "count": len(hits),
+            "hits": [
+                {
+                    "action": hit.action,
+                    "scheduled_at": hit.scheduled_at,
+                    "performed_at": hit.performed_at,
+                }
+                for hit in hits
+            ],
         },
     )
 

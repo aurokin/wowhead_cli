@@ -14,8 +14,8 @@ This is intentionally more concrete than the roadmap.
 Current status:
 - phase 1 package and command surface are implemented
 - phase 2 readonly analysis commands are implemented
-- most of phase 3 is implemented
-- the remaining purpose of this document is to guide the runtime-helper tail of phase 3 work
+- phase 3 runtime helpers are implemented
+- the remaining purpose of this document is to preserve the file-level package shape and migration rationale
 
 ## Package Shape
 
@@ -37,7 +37,7 @@ Phase-3 modules:
 - `packages/simc-cli/src/simc_cli/prune.py`
 - `packages/simc-cli/src/simc_cli/branch.py`
 - `packages/simc-cli/src/simc_cli/packet.py`
-- `packages/simc-cli/src/simc_cli/logs.py`
+- `packages/simc-cli/src/simc_cli/sim.py`
 
 ## Dependency Direction
 
@@ -164,7 +164,7 @@ Implemented package layout change:
 
 ## Phase 3 Scope
 
-Ship after the base provider is trusted:
+Shipped after the base provider was trusted:
 - `simc first-cast`
 - `simc log-actions`
 

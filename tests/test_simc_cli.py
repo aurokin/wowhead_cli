@@ -40,6 +40,8 @@ def test_simc_doctor_reports_phase_one_capabilities(monkeypatch, tmp_path: Path)
     assert payload["capabilities"]["apl_lists"] == "ready"
     assert payload["capabilities"]["apl_prune"] == "ready"
     assert payload["capabilities"]["analysis_packet"] == "ready"
+    assert payload["capabilities"]["first_cast"] == "ready"
+    assert payload["capabilities"]["log_actions"] == "ready"
 
 
 def test_simc_search_is_structured_coming_soon() -> None:
@@ -260,6 +262,45 @@ def test_simc_intent_explain_branch_compare_and_analysis_packet(monkeypatch, tmp
     packet_payload = json.loads(packet_result.stdout)
     assert packet_payload["packet"]["focus_list"] == "st"
     assert packet_payload["packet"]["explained_intent"]["priorities"]
+
+
+def test_simc_first_cast_and_log_actions(monkeypatch, tmp_path: Path) -> None:
+    profile = tmp_path / "example.simc"
+    profile.write_text('monk="example"\n')
+    log_path = tmp_path / "combat.log"
+    log_path.write_text(
+        "\n".join(
+            [
+                "0.100 schedules execute for Action 'rising_sun_kick'",
+                "0.250 performs Action 'rising_sun_kick'",
+            ]
+        )
+        + "\n"
+    )
+
+    monkeypatch.setattr(
+        "simc_cli.main.run_first_casts",
+        lambda paths, profile_path, action, seeds, max_time, targets, fight_style: [
+            type("Result", (), {"seed": 1, "time": 0.2, "log_path": tmp_path / "seed_1.log"})(),
+            type("Result", (), {"seed": 2, "time": 0.3, "log_path": tmp_path / "seed_2.log"})(),
+        ],
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.summarize_first_casts",
+        lambda results: {"samples": 2, "found": 2, "min": 0.2, "avg": 0.25, "max": 0.3},
+    )
+
+    first_cast_result = runner.invoke(simc_app, ["first-cast", str(profile), "rising_sun_kick"])
+    assert first_cast_result.exit_code == 0
+    first_cast_payload = json.loads(first_cast_result.stdout)
+    assert first_cast_payload["summary"]["avg"] == 0.25
+    assert first_cast_payload["results"][0]["seed"] == 1
+
+    log_result = runner.invoke(simc_app, ["log-actions", str(log_path), "rising_sun_kick"])
+    assert log_result.exit_code == 0
+    log_payload = json.loads(log_result.stdout)
+    assert log_payload["count"] == 1
+    assert log_payload["hits"][0]["performed_at"] == 0.25
 
 
 def test_simc_sync_skips_dirty_repo(monkeypatch) -> None:

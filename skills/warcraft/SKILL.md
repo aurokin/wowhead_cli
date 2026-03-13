@@ -27,7 +27,7 @@ Current provider state:
 - `raiderio`: ready for direct character, guild, and Mythic+ runs lookups; `search` and `resolve` are structured `coming_soon` in phase 1
 - `warcraft-wiki`: ready for article search, resolve, fetch, export, and local query
 - `wowprogress`: ready for direct guild, character, and PvE leaderboard lookups; `search` and `resolve` are structured `coming_soon` in phase 1
-- `simc`: ready for local repo inspection, version, spec-files, decode-build, APL list/graph/talent inspection, action tracing, prune/branch/intent analysis, branch comparison, analysis packets, and sync/build/run, with `search` and `resolve` structured `coming_soon`
+- `simc`: ready for local repo inspection, version, spec-files, decode-build, APL list/graph/talent inspection, action tracing, prune/branch/intent analysis, branch comparison, analysis packets, first-cast timing, log inspection, and sync/build/run, with `search` and `resolve` structured `coming_soon`
 
 ## Standard Workflow
 
@@ -55,6 +55,7 @@ Current provider state:
 - Use `simc` for readonly APL inspection questions before escalating to a real sim run.
 - Use `simc apl-prune`, `apl-branch-trace`, and `apl-intent` when you need conservative reasoning about likely list flow without running the simulation.
 - Use `simc analysis-packet` when you want the compact agent-facing summary instead of assembling branch and intent outputs manually.
+- Use `simc first-cast` and `simc log-actions` when you need to validate opener timing against real SimC execution instead of relying only on static APL reasoning.
 - `warcraft search` now globally sorts the flattened result list by provider-reported ranking score.
 - `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result.
 
@@ -77,6 +78,7 @@ warcraft simc spec-files mistweaver
 warcraft simc apl-talents /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 warcraft simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 warcraft simc analysis-packet /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker.simc tiger_palm --seeds 1 --max-time 20
 ```
 
 ## Provider Handoff

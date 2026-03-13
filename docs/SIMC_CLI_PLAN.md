@@ -21,6 +21,8 @@ Current commands:
 - `simc apl-intent-explain`
 - `simc apl-branch-compare`
 - `simc analysis-packet`
+- `simc first-cast`
+- `simc log-actions`
 - `simc sync`
 - `simc build`
 - `simc run`
@@ -105,15 +107,13 @@ These commands should work against a local checkout without requiring a full sim
 
 ### Phase 3: Runtime-Aware Reasoning
 
-Early phase-3 slice implemented:
+Phase 3 is now implemented:
 - `simc apl-prune`
 - `simc apl-branch-trace`
 - `simc apl-intent`
 - `simc apl-intent-explain`
 - `simc apl-branch-compare`
 - `simc analysis-packet`
-
-Still next:
 - `simc first-cast`
 - `simc log-actions`
 

@@ -27,6 +27,7 @@ Completed:
 - working `warcraft-wiki` provider
 - working `wowprogress` phase-1 provider
 - working `simc` phase-1 provider
+- working `simc` phase-3 runtime helpers
 - root `warcraft` skill
 
 Validated shared so far:
@@ -40,7 +41,7 @@ Validated shared so far:
 - article/reference bundle export/query outside class guides
 
 Active next step:
-- finish the remaining `simc` runtime-aware helpers like `first-cast` and `log-actions`, then decide whether any local-tool analysis helpers should be shared later
+- review whether any local-tool analysis helpers should be shared later within the repo, then decide the next provider after `simc`
 
 ## Planning Documents
 
