@@ -74,7 +74,7 @@ def _extract_ranks(container: Tag) -> dict[str, str | None]:
         cells = row.find_all("td", recursive=False)
         if len(cells) < 2:
             continue
-        label = _clean_text(cells[0].get_text(" ", strip=True)).rstrip(":").lower()
+        label = _clean_text(cells[0].get_text(" ", strip=True)).rstrip(":").strip().lower()
         value = _clean_text(cells[1].get_text(" ", strip=True)) or None
         if label == "world":
             ranks["world"] = value
@@ -374,6 +374,8 @@ def parse_pve_leaderboard_page(
             realm_link = cells[2].find("a", href=True)
             if guild_link is None:
                 continue
+            progress_text = _clean_text(cells[3].get_text(" ", strip=True)) or None
+            progress_match = re.search(r"([0-9]+/[0-9]+\s*\([^)]+\)|[0-9]+/[0-9]+)", progress_text or "")
             entries.append(
                 {
                     "rank": int(rank_text),
@@ -381,7 +383,7 @@ def parse_pve_leaderboard_page(
                     "guild_url": _absolute_url(guild_link["href"]),
                     "realm": _clean_text(cells[2].get_text(" ", strip=True)) or None,
                     "realm_url": _absolute_url(realm_link["href"]) if realm_link is not None else None,
-                    "progress": _clean_text(cells[3].get_text(" ", strip=True)) or None,
+                    "progress": progress_match.group(1) if progress_match else progress_text,
                 }
             )
             if len(entries) >= limit:

@@ -60,6 +60,7 @@ def test_wowprogress_search_returns_ranked_structured_results(monkeypatch) -> No
     assert payload["results"][0]["kind"] == "guild"
     assert payload["results"][0]["follow_up"]["command"] == "wowprogress guild us illidan Liquid"
     assert "type_hint" in payload["results"][0]["ranking"]["match_reasons"]
+    assert payload["normalized_candidates"][0] == {"region": "us", "realm": "illidan", "name": "Liquid"}
 
 
 def test_wowprogress_resolve_stays_conservative_when_multiple_results(monkeypatch) -> None:
@@ -146,6 +147,63 @@ def test_wowprogress_resolve_returns_command_for_short_exact_guild_query(monkeyp
     assert payload["next_command"] == "wowprogress guild us area-52 xD"
     assert "exact_target_name" in payload["match"]["ranking"]["match_reasons"]
     assert "exact_target_realm" in payload["match"]["ranking"]["match_reasons"]
+
+
+def test_wowprogress_search_normalizes_multi_word_realm(monkeypatch) -> None:
+    calls: list[tuple[str, str, str, str]] = []
+
+    def fake_probe(self, *, region: str, realm: str, name: str, obj_type: str):  # noqa: ANN001
+        calls.append((region, realm, name, obj_type))
+        if (region, realm, name, obj_type) == ("us", "area-52", "xD", "guild"):
+            return {
+                "_search_kind": "guild",
+                "guild": {
+                    "name": "xD",
+                    "region": "us",
+                    "realm": "US-Area 52",
+                    "faction": "Horde",
+                    "page_url": "https://www.wowprogress.com/guild/us/area-52/xD",
+                },
+            }
+        return None
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.probe_search_route", fake_probe)
+    result = runner.invoke(wowprogress_app, ["search", "guild us area 52 xD"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 1
+    assert payload["results"][0]["follow_up"]["command"] == "wowprogress guild us area-52 xD"
+    assert {"region": "us", "realm": "area-52", "name": "xD"} in payload["normalized_candidates"]
+    assert ("us", "area-52", "xD", "guild") in calls
+
+
+def test_wowprogress_search_excludes_trailing_terms_with_hint(monkeypatch) -> None:
+    def fake_probe(self, *, region: str, realm: str, name: str, obj_type: str):  # noqa: ANN001
+        assert region == "us"
+        assert realm == "illidan"
+        assert name == "Liquid"
+        assert obj_type == "guild"
+        return {
+            "_search_kind": "guild",
+            "guild": {
+                "name": "Liquid",
+                "region": "us",
+                "realm": "US-Illidan",
+                "faction": "Horde",
+                "page_url": "https://www.wowprogress.com/guild/us/illidan/Liquid",
+            },
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.probe_search_route", fake_probe)
+    result = runner.invoke(wowprogress_app, ["search", "guild us illidan Liquid recruit"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 1
+    assert payload["excluded_terms"] == ["recruit"]
+    assert payload["normalization_hint"]["code"] == "excluded_query_terms"
+    assert payload["search_query"] == "guild us illidan Liquid"
 
 
 def test_wowprogress_client_search_probe_cache_reads_final_url(monkeypatch) -> None:

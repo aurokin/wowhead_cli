@@ -154,7 +154,9 @@ def test_parse_guild_page() -> None:
     )
     assert payload["guild"]["name"] == "Liquid"
     assert payload["progress"]["summary"] == "8/8 (M)"
+    assert payload["progress"]["ranks"] == {"world": "1", "region": "1", "realm": "1"}
     assert payload["item_level"]["average"] == 724.51
+    assert payload["item_level"]["ranks"] == {"world": "9026", "region": "4149", "realm": "238"}
     assert payload["encounters"]["items"][0]["encounter"] == "Dimensius, the All-Devouring"
     assert payload["encounters"]["items"][0]["video_count"] == 2
 
@@ -172,7 +174,9 @@ def test_parse_character_page() -> None:
     assert payload["character"]["race"] == "Void Elf"
     assert payload["character"]["class_name"] == "Mage"
     assert payload["item_level"]["value"] == 728.81
+    assert payload["item_level"]["ranks"] == {"world": None, "region": "n/a", "realm": "6246"}
     assert payload["sim_dps"]["value"] == 6089532.23
+    assert payload["sim_dps"]["ranks"] == {"world": None, "region": "236", "realm": "35"}
     assert payload["pve"]["score"] == 750000.0
     assert payload["pve"]["raids"][0]["raid"] == "Manaforge Omega"
 
@@ -190,3 +194,4 @@ def test_parse_pve_leaderboard_page() -> None:
     assert payload["count"] == 2
     assert payload["entries"][0]["guild_name"] == "Liquid"
     assert payload["entries"][0]["rank"] == 1
+    assert payload["entries"][0]["progress"] == "8/8 (M)"

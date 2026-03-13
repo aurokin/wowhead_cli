@@ -56,3 +56,24 @@ def test_live_wowprogress_leaderboard_contract() -> None:
     assert payload["leaderboard"]["region"] == "us"
     assert payload["count"] == 5
     assert len(payload["entries"]) == 5
+    assert all(entry["progress"] and "Manaforge Omega" not in entry["progress"] for entry in payload["entries"])
+
+
+def test_live_wowprogress_guild_contract() -> None:
+    require_live("WowProgress")
+    payload = payload_for_live(runner, app, ["guild", "us", "illidan", "Liquid"], provider_name="WowProgress")
+
+    assert payload["guild"]["name"] == "Liquid"
+    assert payload["progress"]["summary"] == "8/8 (M)"
+    assert payload["progress"]["ranks"]["world"] is not None
+    assert payload["item_level"]["ranks"]["region"] is not None
+
+
+def test_live_wowprogress_character_contract() -> None:
+    require_live("WowProgress")
+    payload = payload_for_live(runner, app, ["character", "us", "illidan", "Imonthegcd"], provider_name="WowProgress")
+
+    assert payload["character"]["name"] == "Imonthegcd"
+    assert payload["item_level"]["value"] is not None
+    assert payload["item_level"]["ranks"]["realm"] is not None
+    assert payload["sim_dps"]["ranks"]["region"] is not None

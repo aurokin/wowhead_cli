@@ -16,6 +16,9 @@ Current quality notes:
 - structured guild and character lookups are the primary search and resolve path
 - direct route probes now treat canonical WowProgress realm forms like `US-Area 52` as exact matches for structured inputs like `area-52`
 - exact short-name structured queries like `guild us area-52 xD` now resolve confidently instead of failing low-score conservatively
+- structured realm normalization now tolerates some natural multi-word forms like `area 52`
+- trailing unsupported qualifier terms are excluded explicitly and surfaced back as query-normalization metadata
+- live guild and character retrieval coverage now validates rank extraction as well as basic profile parsing
 - provider-local live coverage now exists for structured search, resolve, and leaderboard contracts
 
 ## Why Add It

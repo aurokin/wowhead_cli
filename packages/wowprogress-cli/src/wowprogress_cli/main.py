@@ -12,6 +12,19 @@ from wowprogress_cli.client import DEFAULT_IMPERSONATE, WowProgressClient, WowPr
 
 app = typer.Typer(add_completion=False, help="WowProgress rankings and profile CLI.")
 
+EXCLUDED_QUERY_TERMS = frozenset(
+    {
+        "recruit",
+        "recruiting",
+        "recruitment",
+        "apply",
+        "application",
+        "applications",
+        "roster",
+        "progression",
+    }
+)
+
 
 @dataclass(slots=True)
 class RuntimeConfig:
@@ -67,8 +80,40 @@ def _structured_search_hint(query: str) -> dict[str, Any]:
     }
 
 
-def _normalize_structured_query(query: str) -> tuple[str, str | None, str | None, str | None, str | None]:
-    tokens = [token for token in query.strip().split() if token]
+def _query_tokens(query: str) -> list[str]:
+    return [token for token in query.strip().split() if token]
+
+
+def _strip_excluded_terms(tokens: list[str]) -> tuple[list[str], list[str]]:
+    kept = list(tokens)
+    excluded: list[str] = []
+    while kept and kept[-1].lower() in EXCLUDED_QUERY_TERMS:
+        excluded.insert(0, kept.pop())
+    return kept, excluded
+
+
+def _normalize_realm_candidate(value: str) -> str:
+    return value.strip().replace(" ", "-")
+
+
+def _structured_candidates(tokens: list[str]) -> list[tuple[str, str]]:
+    if len(tokens) < 3:
+        return []
+    trailing = tokens[1:]
+    candidates: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for split_index in range(len(trailing) - 1, 0, -1):
+        realm = _normalize_realm_candidate(" ".join(trailing[:split_index]))
+        name = " ".join(trailing[split_index:]).strip()
+        candidate = (realm, name)
+        if realm and name and candidate not in seen:
+            candidates.append(candidate)
+            seen.add(candidate)
+    return candidates
+
+
+def _normalize_structured_query(query: str) -> tuple[str, str | None, str | None, list[tuple[str, str]], list[str]]:
+    tokens = _query_tokens(query)
     kind: str | None = None
     kept: list[str] = []
     for token in tokens:
@@ -80,13 +125,18 @@ def _normalize_structured_query(query: str) -> tuple[str, str | None, str | None
             kind = "character"
             continue
         kept.append(token)
+    kept, excluded_terms = _strip_excluded_terms(kept)
     if len(kept) < 3:
-        return " ".join(kept).strip() or query.strip(), kind, None, None, None
+        normalized = " ".join(kept).strip() or query.strip()
+        return normalized, kind, None, [], excluded_terms
     region = kept[0].lower()
-    realm = kept[1]
-    name = " ".join(kept[2:]).strip()
-    normalized = " ".join(part for part in ([kind] if kind else []) + [region, realm, name]).strip()
-    return normalized, kind, region, realm, name
+    candidates = _structured_candidates(kept)
+    if not candidates:
+        normalized = " ".join(kept).strip()
+        return normalized, kind, region, [], excluded_terms
+    primary_realm, primary_name = candidates[0]
+    normalized = " ".join(part for part in ([kind] if kind else []) + [region, primary_realm, primary_name]).strip()
+    return normalized, kind, region, candidates, excluded_terms
 
 
 def _normalized_token_text(value: str) -> str:
@@ -232,7 +282,15 @@ def _candidate_from_probe(
     }
 
 
-def _search_payload(*, query: str, normalized_query: str, candidates: list[dict[str, Any]], limit: int, message: str | None = None) -> dict[str, Any]:
+def _search_payload(
+    *,
+    query: str,
+    normalized_query: str,
+    kind_hint: str | None,
+    candidates: list[dict[str, Any]],
+    limit: int,
+    message: str | None = None,
+) -> dict[str, Any]:
     sorted_rows = sorted(
         candidates,
         key=lambda item: (-int(((item.get("ranking") or {}).get("score")) or 0), str(item.get("kind") or ""), str(item.get("name") or "")),
@@ -241,6 +299,7 @@ def _search_payload(*, query: str, normalized_query: str, candidates: list[dict[
         "provider": "wowprogress",
         "query": query,
         "search_query": normalized_query,
+        "query_kind": kind_hint,
         "count": len(sorted_rows),
         "results": sorted_rows[:limit],
         "truncated": len(sorted_rows) > limit,
@@ -256,13 +315,24 @@ def _resolve_payload(search_payload: dict[str, Any]) -> dict[str, Any]:
     second = results[1] if len(results) > 1 else None
     best_score = int((((best or {}).get("ranking") or {}).get("score")) or 0)
     second_score = int((((second or {}).get("ranking") or {}).get("score")) or 0)
+    query_kind = search_payload.get("query_kind")
+    distinct_kinds = sorted(
+        {
+            str(item.get("kind") or "").strip().lower()
+            for item in results
+            if isinstance(item, dict) and str(item.get("kind") or "").strip()
+        }
+    )
     follow_up = best.get("follow_up") if isinstance((best or {}).get("follow_up"), dict) else {}
     resolved = best is not None and bool(follow_up.get("command")) and (best_score >= 55 and (second is None or best_score - second_score >= 15))
+    if resolved and not query_kind and len(distinct_kinds) > 1:
+        resolved = False
     confidence = "high" if resolved else ("medium" if best_score >= 40 else ("low" if best is not None else "none"))
     return {
         "provider": "wowprogress",
         "query": search_payload.get("query"),
         "search_query": search_payload.get("search_query"),
+        "query_kind": query_kind,
         "resolved": resolved,
         "confidence": confidence,
         "match": best,
@@ -274,10 +344,12 @@ def _resolve_payload(search_payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _search_candidates(ctx: typer.Context, query: str, *, limit: int) -> dict[str, Any]:
-    normalized_query, kind_hint, region, realm, name = _normalize_structured_query(query)
-    if region is None or realm is None or name is None:
-        return _structured_search_hint(query)
-    match_query = " ".join(part for part in (region, realm, name) if part)
+    normalized_query, kind_hint, region, query_candidates, excluded_terms = _normalize_structured_query(query)
+    if region is None or not query_candidates:
+        payload = _structured_search_hint(query)
+        if excluded_terms:
+            payload["excluded_terms"] = excluded_terms
+        return payload
     probe_types = ["char", "guild"]
     if kind_hint == "character":
         probe_types = ["char"]
@@ -286,25 +358,56 @@ def _search_candidates(ctx: typer.Context, query: str, *, limit: int) -> dict[st
     candidates: list[dict[str, Any]] = []
     try:
         with _client(ctx) as client:
-            for probe_type in probe_types:
-                payload = client.probe_search_route(region=region, realm=realm, name=name, obj_type=probe_type)
-                if payload is None:
-                    continue
-                candidates.append(
-                    _candidate_from_probe(
-                        match_query,
-                        kind_hint=kind_hint,
-                        payload=payload,
-                        query_region=region,
-                        query_realm=realm,
-                        query_name=name,
+            for realm, name in query_candidates:
+                match_query = " ".join(part for part in (region, realm, name) if part)
+                split_results: list[dict[str, Any]] = []
+                for probe_type in probe_types:
+                    payload = client.probe_search_route(region=region, realm=realm, name=name, obj_type=probe_type)
+                    if payload is None:
+                        continue
+                    split_results.append(
+                        _candidate_from_probe(
+                            match_query,
+                            kind_hint=kind_hint,
+                            payload=payload,
+                            query_region=region,
+                            query_realm=realm,
+                            query_name=name,
+                        )
                     )
-                )
+                    if kind_hint is not None:
+                        break
+                if split_results:
+                    candidates.extend(split_results)
+                    break
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         raise AssertionError("unreachable")
     message = None if candidates else "WowProgress did not resolve that structured guild or character query."
-    return _search_payload(query=query, normalized_query=normalized_query, candidates=candidates, limit=limit, message=message)
+    payload = _search_payload(
+        query=query,
+        normalized_query=normalized_query,
+        kind_hint=kind_hint,
+        candidates=candidates,
+        limit=limit,
+        message=message,
+    )
+    if excluded_terms:
+        payload["excluded_terms"] = excluded_terms
+        payload["normalization_hint"] = {
+            "code": "excluded_query_terms",
+            "message": "Trailing query terms were excluded to keep the WowProgress lookup on a supported structured guild or character route.",
+        }
+    if query_candidates:
+        payload["normalized_candidates"] = [
+            {
+                "region": region,
+                "realm": realm,
+                "name": name,
+            }
+            for realm, name in query_candidates
+        ]
+    return payload
 
 
 @app.callback()

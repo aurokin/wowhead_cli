@@ -243,6 +243,8 @@ wowprogress leaderboard pve us --realm illidan --limit 10
 WowProgress phase-1 behavior:
 - `doctor` reports cache config and the browser-fingerprint HTTP transport used for live fetches
 - `search` expects structured queries like `us illidan Liquid`, `guild us illidan Liquid`, or `character us illidan Imonthegcd`
+- `search` normalizes some realm forms like `area 52` -> `area-52` and returns `normalized_candidates` so the cleaned structured targets stay visible
+- `search` can exclude unsupported trailing terms like `recruit` and reports them in `excluded_terms` with a `normalization_hint`
 - `resolve` uses the same structured query shape and only returns a next command when the route probe is unambiguous
 - direct route resolution handles canonical WowProgress realm formatting, so queries like `guild us area-52 xD` still resolve correctly even when the site returns `US-Area 52`
 - `guild` returns a compact guild profile with progression, item-level rank context, and encounter history
