@@ -291,6 +291,17 @@ def compact_wrapper_candidate(candidate: Mapping[str, Any]) -> dict[str, Any]:
     follow_up = candidate.get("follow_up")
     if isinstance(follow_up, Mapping) and follow_up.get("command"):
         compact["follow_up_command"] = follow_up.get("command")
+    provider_expansion = candidate.get("provider_expansion")
+    if isinstance(provider_expansion, Mapping):
+        compact["provider_expansion"] = {
+            "mode": provider_expansion.get("mode"),
+            "requested_expansion": provider_expansion.get("requested_expansion"),
+            "allowed": provider_expansion.get("allowed"),
+            "supported_expansions": provider_expansion.get("supported_expansions"),
+        }
+        exclusion_reason = provider_expansion.get("exclusion_reason")
+        if exclusion_reason is not None:
+            compact["provider_expansion"]["exclusion_reason"] = exclusion_reason
     ranking = candidate.get("wrapper_ranking")
     if isinstance(ranking, Mapping):
         compact["wrapper_ranking"] = {

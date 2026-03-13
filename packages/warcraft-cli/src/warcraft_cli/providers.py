@@ -183,6 +183,20 @@ def expansion_filtered_providers(
     return included, excluded
 
 
+def expansion_support_snapshot(*, requested_expansion: str | None) -> list[dict[str, Any]]:
+    return [
+        {
+            "provider": registration.name,
+            "command": registration.command,
+            "expansion_support": provider_expansion_support(
+                registration,
+                requested_expansion=requested_expansion,
+            ),
+        }
+        for registration in PROVIDERS
+    ]
+
+
 def _invoke_provider_app(app: Any, args: list[str]) -> tuple[int, dict[str, Any] | None, str]:
     result = runner.invoke(app, args)
     payload: dict[str, Any] | None = None

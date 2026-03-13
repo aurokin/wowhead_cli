@@ -74,12 +74,14 @@ Current provider state:
 - inspect `wrapper_ranking` in wrapper results when ranking behavior matters.
 - `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result after applying the same wrapper ranking layer.
 - use `warcraft search --compact --ranking-debug` or `warcraft resolve --compact --ranking-debug` when you want the ranking explanation without the full per-provider payloads.
+- use `warcraft search --compact --expansion-debug` or `warcraft resolve --compact --expansion-debug` when you need a compact provider eligibility snapshot for expansion filtering.
 - for narrow cases like leaderboard queries, the wrapper may emit a synthetic direct-route candidate even when the provider does not expose a native search surface for that exact query family.
 - wrapper expansion filtering is conservative:
   - `wowhead` is currently the only profiled expansion-aware provider
   - `method`, `icy-veins`, `raiderio`, and `wowprogress` are treated as retail-only when wrapper expansion filtering is active
   - `warcraft-wiki` and `simc` are excluded from wrapper expansion-filtered `search` and `resolve` for now
   - inspect `included_providers` and `excluded_providers` when `--expansion` is set
+  - use `--expansion-debug` when you need the full provider support snapshot in compact mode
   - do not assume `warcraft --expansion ... <provider> ...` will silently work for every provider; unsupported combinations now fail clearly
 
 ## Examples

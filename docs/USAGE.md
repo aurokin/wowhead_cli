@@ -11,9 +11,11 @@ warcraft doctor
 warcraft --expansion wotlk doctor
 warcraft search "defias"
 warcraft --expansion wotlk search "thunderfury"
+warcraft --expansion wotlk search "thunderfury" --compact --expansion-debug
 warcraft search "guild us illidan Liquid" --compact --ranking-debug
 warcraft resolve "fairbreeze favors"
 warcraft --expansion wotlk resolve "thunderfury"
+warcraft --expansion wotlk resolve "guild us illidan Liquid" --compact --expansion-debug
 warcraft resolve "character us illidan Roguecane" --compact --ranking-debug
 warcraft --expansion wotlk wowhead search "thunderfury"
 warcraft wowhead search "defias"
@@ -60,6 +62,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `warcraft resolve` uses the same wrapper ranking layer on top of provider confidence instead of trusting provider registration order
 - use `--compact` on `warcraft search` or `warcraft resolve` when you want the wrapper decision without the full per-provider payloads
 - use `--ranking-debug` when you want compact ranking summaries for the top wrapper candidates
+- use `--expansion-debug` when you want a compact per-provider expansion eligibility snapshot
 - wrapper ranking policy can be overridden with `~/.config/warcraft/wrapper_ranking.json`
 - the wrapper may synthesize a direct provider route when a provider has a strong direct command but no native search surface for that query family, such as `wowprogress leaderboard pve ...`
 - wrapper expansion filtering is conservative:
@@ -67,6 +70,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
   - `method`, `icy-veins`, `raiderio`, and `wowprogress` are currently treated as retail-only when wrapper expansion filtering is active
   - `warcraft-wiki` and `simc` are currently excluded from wrapper expansion-filtered `search` and `resolve`
   - wrapper `search`, `resolve`, and `doctor` now report included and excluded providers when expansion filtering is active
+  - `--expansion-debug` exposes the full provider eligibility snapshot even in compact mode
   - direct passthrough commands reject unsupported provider/expansion combinations instead of silently ignoring the expansion request
 
 `warcraft doctor` reports:

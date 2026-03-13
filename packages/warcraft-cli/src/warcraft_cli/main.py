@@ -24,6 +24,7 @@ from warcraft_core.provider_contract import (
 )
 from warcraft_cli.providers import (
     expansion_filtered_providers,
+    expansion_support_snapshot,
     get_provider,
     global_doctor_payload,
     list_providers,
@@ -147,6 +148,11 @@ def search(
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum provider-local results to request."),
     compact: bool = typer.Option(False, "--compact", help="Return a smaller wrapper payload with compact candidates."),
     ranking_debug: bool = typer.Option(False, "--ranking-debug", help="Include compact wrapper ranking summaries for the returned candidates."),
+    expansion_debug: bool = typer.Option(
+        False,
+        "--expansion-debug",
+        help="Include a compact expansion support snapshot for all providers.",
+    ),
 ) -> None:
     requested_expansion = _requested_expansion(ctx)
     included_registrations, excluded_providers = expansion_filtered_providers(requested_expansion=requested_expansion)
@@ -216,6 +222,8 @@ def search(
     }
     if ranking_debug:
         payload["ranking_debug"] = [compact_wrapper_candidate(row) for row in flattened[:limit]]
+    if expansion_debug:
+        payload["expansion_debug"] = expansion_support_snapshot(requested_expansion=requested_expansion)
     _emit(
         payload,
         pretty=_pretty(ctx),
@@ -229,6 +237,11 @@ def resolve(
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum provider-local candidates to request."),
     compact: bool = typer.Option(False, "--compact", help="Return a smaller wrapper payload with a compact match summary."),
     ranking_debug: bool = typer.Option(False, "--ranking-debug", help="Include compact wrapper ranking summaries for resolved candidates."),
+    expansion_debug: bool = typer.Option(
+        False,
+        "--expansion-debug",
+        help="Include a compact expansion support snapshot for all providers.",
+    ),
 ) -> None:
     requested_expansion = _requested_expansion(ctx)
     included_registrations, excluded_providers = expansion_filtered_providers(requested_expansion=requested_expansion)
@@ -277,6 +290,8 @@ def resolve(
     }
     if ranking_debug:
         payload["ranking_debug"] = [compact_resolve_match(row[1]) for row in resolved_candidates[:limit] if compact_resolve_match(row[1]) is not None]
+    if expansion_debug:
+        payload["expansion_debug"] = expansion_support_snapshot(requested_expansion=requested_expansion)
     _emit(
         payload,
         pretty=_pretty(ctx),

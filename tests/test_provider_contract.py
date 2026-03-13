@@ -130,6 +130,27 @@ def test_compact_wrapper_candidate_keeps_ranking_and_follow_up() -> None:
     assert compact["wrapper_ranking"]["score"] == 88
 
 
+def test_compact_wrapper_candidate_keeps_provider_expansion_support() -> None:
+    compact = compact_wrapper_candidate(
+        {
+            "provider": "wowhead",
+            "kind": "item",
+            "name": "Thunderfury",
+            "id": 19019,
+            "provider_expansion": {
+                "mode": "profiled",
+                "requested_expansion": "wotlk",
+                "allowed": True,
+                "supported_expansions": ["retail", "classic", "wotlk"],
+            },
+        }
+    )
+
+    assert compact["provider_expansion"]["mode"] == "profiled"
+    assert compact["provider_expansion"]["requested_expansion"] == "wotlk"
+    assert compact["provider_expansion"]["allowed"] is True
+
+
 def test_synthetic_search_candidates_adds_leaderboard_route() -> None:
     candidates = synthetic_search_candidates("leaderboard us illidan")
 
