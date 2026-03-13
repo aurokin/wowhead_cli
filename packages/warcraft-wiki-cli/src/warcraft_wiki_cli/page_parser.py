@@ -54,6 +54,39 @@ SYSTEM_REFERENCE_TITLES = {
     "expansion",
 }
 
+PROFESSION_REFERENCE_TITLES = {
+    "alchemy",
+    "archaeology",
+    "blacksmithing",
+    "cooking",
+    "enchanting",
+    "engineering",
+    "fishing",
+    "first aid",
+    "herbalism",
+    "inscription",
+    "jewelcrafting",
+    "leatherworking",
+    "mining",
+    "skinning",
+    "tailoring",
+}
+
+EXPANSION_REFERENCE_TITLES = {
+    "world of warcraft",
+    "world of warcraft: the burning crusade",
+    "world of warcraft: wrath of the lich king",
+    "world of warcraft: cataclysm",
+    "world of warcraft: mists of pandaria",
+    "world of warcraft: warlords of draenor",
+    "world of warcraft: legion",
+    "world of warcraft: battle for azeroth",
+    "world of warcraft: shadowlands",
+    "world of warcraft: dragonflight",
+    "world of warcraft: the war within",
+    "world of warcraft: midnight",
+}
+
 CLASS_REFERENCE_TITLES = {
     "death knight",
     "demon hunter",
@@ -130,6 +163,10 @@ def classify_article_family(title: str) -> str:
         return "framework_page"
     if normalized in CLASS_REFERENCE_TITLES:
         return "class_reference"
+    if normalized in PROFESSION_REFERENCE_TITLES:
+        return "profession_reference"
+    if normalized in EXPANSION_REFERENCE_TITLES:
+        return "expansion_reference"
     if normalized in SYSTEM_REFERENCE_TITLES:
         if normalized == "expansion":
             return "expansion_reference"
@@ -330,6 +367,10 @@ def _refine_article_family(*, title: str, family: str, headings: list[dict[str, 
     }
     if len(zone_markers & titles) >= 2:
         return "zone_reference"
+    if normalized in PROFESSION_REFERENCE_TITLES and ({"official overview", "alchemy training", "patch changes", "see also"} & titles):
+        return "profession_reference"
+    if normalized.startswith("world of warcraft:") and ({"features", "new zones", "dungeons and raids"} & titles):
+        return "expansion_reference"
     if normalized == "faction":
         return "faction_reference"
     return family

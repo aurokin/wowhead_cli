@@ -152,3 +152,37 @@ def test_live_warcraft_wiki_guide_query_cleanup_and_article_contract() -> None:
     assert resolve_payload["resolved"] is True
     assert resolve_payload["match"]["id"] == "User interface customization guide"
     assert resolve_payload["match"]["metadata"]["content_family"] == "howto_programming"
+
+
+def test_live_warcraft_wiki_profession_query_cleanup_and_article_contract() -> None:
+    require_live("Warcraft Wiki")
+    resolve_payload = payload_for_live(runner, app, ["resolve", "profession alchemy", "--limit", "10"], provider_name="Warcraft Wiki")
+    assert resolve_payload["search_query"] == "alchemy"
+    assert resolve_payload["excluded_terms"] == ["profession"]
+    assert resolve_payload["resolved"] is True
+    assert resolve_payload["match"]["id"] == "Alchemy"
+
+    payload = payload_for_live(runner, app, ["article", "Alchemy"], provider_name="Warcraft Wiki")
+    assert payload["article"]["content_family"] == "profession_reference"
+    assert payload["reference"]["content_family"] == "profession_reference"
+    assert payload["reference"]["patch_changes"] is not None
+
+
+def test_live_warcraft_wiki_class_query_cleanup_contract() -> None:
+    require_live("Warcraft Wiki")
+    resolve_payload = payload_for_live(runner, app, ["resolve", "class druid", "--limit", "10"], provider_name="Warcraft Wiki")
+    assert resolve_payload["search_query"] == "druid"
+    assert resolve_payload["excluded_terms"] == ["class"]
+    assert resolve_payload["resolved"] is True
+    assert resolve_payload["match"]["id"] == "Druid"
+    assert resolve_payload["match"]["metadata"]["content_family"] == "class_reference"
+
+
+def test_live_warcraft_wiki_expansion_query_cleanup_and_article_contract() -> None:
+    require_live("Warcraft Wiki")
+    resolve_payload = payload_for_live(runner, app, ["resolve", "expansion legion", "--limit", "10"], provider_name="Warcraft Wiki")
+    assert resolve_payload["search_query"] == "legion"
+    assert resolve_payload["excluded_terms"] == ["expansion"]
+    assert resolve_payload["resolved"] is True
+    assert resolve_payload["match"]["id"] == "World of Warcraft: Legion"
+    assert resolve_payload["match"]["metadata"]["content_family"] == "expansion_reference"

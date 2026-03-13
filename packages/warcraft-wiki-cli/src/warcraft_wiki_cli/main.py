@@ -40,7 +40,7 @@ QUERY_FAMILY_HINT_TERMS = {
     "tutorial",
     "tutorials",
 }
-CONDITIONAL_FAMILY_HINT_TERMS = {"zone", "zones"}
+CONDITIONAL_FAMILY_HINT_TERMS = {"zone", "zones", "class", "classes", "profession", "professions", "expansion", "expansions"}
 
 
 @dataclass(slots=True)
@@ -91,7 +91,7 @@ def _normalize_query(query: str) -> tuple[str, list[str]]:
         if head in QUERY_FAMILY_HINT_TERMS:
             excluded_terms.append(kept_terms.pop(0))
             continue
-        if head in CONDITIONAL_FAMILY_HINT_TERMS and len(kept_terms) >= 3 and kept_terms[1] != "scaling":
+        if head in CONDITIONAL_FAMILY_HINT_TERMS and len(kept_terms) >= 2 and not (head in {"zone", "zones"} and kept_terms[1] == "scaling"):
             excluded_terms.append(kept_terms.pop(0))
             continue
         break
@@ -185,6 +185,11 @@ def _score_text_match(original_query: str, query: str, title: str, snippet: str,
     }:
         score += 4
         reasons.append(f"family_{family}")
+    if family == "expansion_reference" and title.lower().startswith("world of warcraft:"):
+        suffix = title.lower().split(":", 1)[1].strip()
+        if query == suffix:
+            score += 24
+            reasons.append("expansion_alias_match")
     return score, reasons, family
 
 

@@ -19,7 +19,9 @@ def test_classify_article_family_handles_programming_and_system_titles() -> None
     assert classify_article_family("Renown") == "system_reference"
     assert classify_article_family("Druid") == "class_reference"
     assert classify_article_family("Profession") == "profession_reference"
+    assert classify_article_family("Alchemy") == "profession_reference"
     assert classify_article_family("Zone scaling") == "zone_reference"
+    assert classify_article_family("World of Warcraft: Legion") == "expansion_reference"
 
 
 def test_parse_article_page_uses_mw_parser_output_root() -> None:
@@ -237,3 +239,74 @@ def test_parse_article_page_refines_general_family_to_zone_reference_and_strips_
     assert parsed["reference"]["content_family"] == "zone_reference"
     assert "Zone infobox content" not in parsed["article_content"]["text"]
     assert "Saved in parser cache" not in parsed["article_content"]["text"]
+
+
+def test_parse_article_page_extracts_profession_reference_metadata() -> None:
+    payload = {
+        "parse": {
+            "title": "Alchemy",
+            "displaytitle": "<span class='mw-page-title-main'>Alchemy</span>",
+            "sections": [
+                {"line": "Official overview", "anchor": "Official_overview"},
+                {"line": "Alchemy training", "anchor": "Alchemy_training"},
+                {"line": "See also", "anchor": "See_also"},
+                {"line": "Patch changes", "anchor": "Patch_changes"},
+            ],
+            "text": {
+                "*": """
+                <div class="mw-parser-output">
+                  <p>Alchemy is a primary profession.</p>
+                  <h2><span class="mw-headline" id="Official_overview">Official overview</span></h2>
+                  <p>Mixes herbs into potions.</p>
+                  <h2><span class="mw-headline" id="Alchemy_training">Alchemy training</span></h2>
+                  <p>Learn from profession trainers.</p>
+                  <h2><span class="mw-headline" id="See_also">See also</span></h2>
+                  <p>Alchemy trainers</p>
+                  <h2><span class="mw-headline" id="Patch_changes">Patch changes</span></h2>
+                  <p>Patch 8.0.1 split profession skill bars.</p>
+                </div>
+                """
+            },
+        }
+    }
+
+    parsed = parse_article_page(payload, source_title="Alchemy")
+
+    assert parsed["article"]["content_family"] == "profession_reference"
+    assert parsed["reference"]["content_family"] == "profession_reference"
+    assert parsed["reference"]["see_also"] == "Alchemy trainers"
+
+
+def test_parse_article_page_extracts_expansion_reference_metadata() -> None:
+    payload = {
+        "parse": {
+            "title": "World of Warcraft: Legion",
+            "displaytitle": "<span class='mw-page-title-main'>World of Warcraft: Legion</span>",
+            "sections": [
+                {"line": "Features", "anchor": "Features"},
+                {"line": "New zones", "anchor": "New_zones"},
+                {"line": "Dungeons and raids", "anchor": "Dungeons_and_raids"},
+                {"line": "References", "anchor": "References"},
+            ],
+            "text": {
+                "*": """
+                <div class="mw-parser-output">
+                  <p>Legion is the sixth expansion.</p>
+                  <h2><span class="mw-headline" id="Features">Features</span></h2>
+                  <p>Artifacts and class halls.</p>
+                  <h2><span class="mw-headline" id="New_zones">New zones</span></h2>
+                  <p>Broken Isles.</p>
+                  <h2><span class="mw-headline" id="Dungeons_and_raids">Dungeons and raids</span></h2>
+                  <p>Emerald Nightmare.</p>
+                  <h2><span class="mw-headline" id="References">References</span></h2>
+                  <p>Official announcement.</p>
+                </div>
+                """
+            },
+        }
+    }
+
+    parsed = parse_article_page(payload, source_title="World of Warcraft: Legion")
+
+    assert parsed["article"]["content_family"] == "expansion_reference"
+    assert parsed["reference"]["content_family"] == "expansion_reference"

@@ -29,6 +29,7 @@ Current quality notes:
   - systems pages
   - expansion pages
   - class pages
+  - profession pages
   - faction pages
   - lore pages
   - zone pages

@@ -344,3 +344,72 @@ def test_warcraft_wiki_search_prefers_specific_programming_guide_title(monkeypat
     assert payload["resolved"] is True
     assert payload["match"]["id"] == "User interface customization guide"
     assert payload["match"]["metadata"]["content_family"] == "howto_programming"
+
+
+def test_warcraft_wiki_search_excludes_profession_hint_terms(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            2,
+            [
+                {"title": "Alchemy", "pageid": 1, "snippet": "Primary profession page.", "url": "https://warcraft.wiki.gg/wiki/Alchemy"},
+                {"title": "Profession", "pageid": 2, "snippet": "General profession system page.", "url": "https://warcraft.wiki.gg/wiki/Profession"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["resolve", "profession alchemy"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["search_query"] == "alchemy"
+    assert payload["excluded_terms"] == ["profession"]
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "Alchemy"
+
+
+def test_warcraft_wiki_search_excludes_class_hint_terms(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            2,
+            [
+                {"title": "Druid", "pageid": 1, "snippet": "Playable class page.", "url": "https://warcraft.wiki.gg/wiki/Druid"},
+                {"title": "Rejuvenation", "pageid": 2, "snippet": "Druid ability.", "url": "https://warcraft.wiki.gg/wiki/Rejuvenation"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["resolve", "class druid"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["search_query"] == "druid"
+    assert payload["excluded_terms"] == ["class"]
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "Druid"
+    assert payload["match"]["metadata"]["content_family"] == "class_reference"
+
+
+def test_warcraft_wiki_search_excludes_expansion_hint_terms(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            3,
+            [
+                {"title": "Legion Invasions", "pageid": 1, "snippet": "Legion world events.", "url": "https://warcraft.wiki.gg/wiki/Legion_Invasions"},
+                {"title": "World of Warcraft: Legion", "pageid": 2, "snippet": "The sixth WoW expansion.", "url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft:_Legion"},
+                {"title": "Burning Legion", "pageid": 3, "snippet": "Demonic army.", "url": "https://warcraft.wiki.gg/wiki/Burning_Legion"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["resolve", "expansion legion"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["search_query"] == "legion"
+    assert payload["excluded_terms"] == ["expansion"]
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "World of Warcraft: Legion"
+    assert payload["match"]["metadata"]["content_family"] == "expansion_reference"
