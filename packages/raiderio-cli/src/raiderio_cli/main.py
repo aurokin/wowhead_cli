@@ -79,6 +79,21 @@ def _normalize_search_query(query: str) -> tuple[str, str | None]:
     return normalized, type_hint
 
 
+def _normalize_structured_query(query: str) -> tuple[str, str | None, str | None, str | None, str | None]:
+    normalized_query, type_hint = _normalize_search_query(query)
+    tokens = [token for token in normalized_query.strip().split() if token]
+    if len(tokens) < 3:
+        return normalized_query, type_hint, None, None, None
+    region = tokens[0].lower()
+    if region not in {"us", "eu", "kr", "tw", "cn"}:
+        return normalized_query, type_hint, None, None, None
+    realm = tokens[1]
+    name = " ".join(tokens[2:]).strip()
+    if not name:
+        return normalized_query, type_hint, None, None, None
+    return normalized_query, type_hint, region, realm, name
+
+
 def _match_reasons(
     *,
     query: str,
@@ -139,7 +154,176 @@ def _follow_up_for_match(kind: str, region: str | None, realm: str | None, name:
     }
 
 
-def _search_results_payload(query: str, raw_matches: list[dict[str, Any]], *, type_hint: str | None, limit: int) -> dict[str, Any]:
+def _structured_match_reasons(
+    *,
+    query: str,
+    type_hint: str | None,
+    kind: str,
+    name: str,
+    region: str,
+    realm: str,
+) -> tuple[int, list[str]]:
+    lowered_query = query.lower()
+    name_lower = name.lower()
+    combined = " ".join((name, realm, region)).lower()
+    score = 0
+    reasons: list[str] = ["structured_probe"]
+    if lowered_query == name_lower:
+        score += 45
+        reasons.append("exact_name")
+    elif lowered_query in name_lower:
+        score += 20
+        reasons.append("name_contains_query")
+    query_terms = [part for part in lowered_query.split() if part]
+    if query_terms and all(term in combined for term in query_terms):
+        score += 25
+        reasons.append("all_terms_match")
+    if any(term == region.lower() for term in query_terms):
+        score += 12
+        reasons.append("region_match")
+    if any(term == realm.lower() for term in query_terms):
+        score += 12
+        reasons.append("realm_match")
+    if type_hint and type_hint == kind:
+        score += 20
+        reasons.append("type_hint")
+    score += 12
+    return score, reasons
+
+
+def _candidate_from_character_profile(
+    *,
+    query: str,
+    type_hint: str | None,
+    payload: dict[str, Any],
+    query_region: str,
+    query_realm: str,
+    query_name: str,
+) -> dict[str, Any]:
+    region = str(payload.get("region") or query_region).strip().lower()
+    realm = str(payload.get("realm") or query_realm).strip()
+    name = str(payload.get("name") or query_name).strip()
+    score, reasons = _structured_match_reasons(
+        query=query,
+        type_hint=type_hint,
+        kind="character",
+        name=name,
+        region=region,
+        realm=realm,
+    )
+    return {
+        "provider": "raiderio",
+        "kind": "character",
+        "id": payload.get("id") or payload.get("profile_url") or f"character:{region}:{realm}:{name}",
+        "name": name,
+        "region": region,
+        "realm": realm.lower() if realm else None,
+        "realm_name": realm,
+        "faction": payload.get("faction"),
+        "class_name": payload.get("class"),
+        "active_spec_name": payload.get("active_spec_name"),
+        "profile_url": payload.get("profile_url"),
+        "ranking": {
+            "score": score,
+            "match_reasons": reasons,
+        },
+        "follow_up": _follow_up_for_match("character", query_region, query_realm, query_name),
+    }
+
+
+def _candidate_from_guild_profile(
+    *,
+    query: str,
+    type_hint: str | None,
+    payload: dict[str, Any],
+    query_region: str,
+    query_realm: str,
+    query_name: str,
+) -> dict[str, Any]:
+    region = str(payload.get("region") or query_region).strip().lower()
+    realm = str(payload.get("realm") or query_realm).strip()
+    name = str(payload.get("name") or query_name).strip()
+    score, reasons = _structured_match_reasons(
+        query=query,
+        type_hint=type_hint,
+        kind="guild",
+        name=name,
+        region=region,
+        realm=realm,
+    )
+    return {
+        "provider": "raiderio",
+        "kind": "guild",
+        "id": payload.get("id") or payload.get("profile_url"),
+        "name": name,
+        "region": region,
+        "realm": realm.lower() if realm else None,
+        "realm_name": realm,
+        "faction": payload.get("faction"),
+        "profile_url": payload.get("profile_url"),
+        "ranking": {
+            "score": score,
+            "match_reasons": reasons,
+        },
+        "follow_up": _follow_up_for_match("guild", query_region, query_realm, query_name),
+    }
+
+
+def _probe_structured_candidates(
+    client: RaiderIOClient,
+    *,
+    query: str,
+    type_hint: str | None,
+    region: str | None,
+    realm: str | None,
+    name: str | None,
+) -> list[dict[str, Any]]:
+    if region is None or realm is None or name is None:
+        return []
+    candidates: list[dict[str, Any]] = []
+    probe_kinds = [type_hint] if type_hint in {"character", "guild"} else ["character", "guild"]
+    for probe_kind in probe_kinds:
+        try:
+            if probe_kind == "character":
+                payload = client.character_profile(region=region, realm=realm, name=name)
+                candidates.append(
+                    _candidate_from_character_profile(
+                        query=query,
+                        type_hint=type_hint,
+                        payload=payload,
+                        query_region=region,
+                        query_realm=realm,
+                        query_name=name,
+                    )
+                )
+            else:
+                payload = client.guild_profile(region=region, realm=realm, name=name)
+                candidates.append(
+                    _candidate_from_guild_profile(
+                        query=query,
+                        type_hint=type_hint,
+                        payload=payload,
+                        query_region=region,
+                        query_realm=realm,
+                        query_name=name,
+                    )
+                )
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code
+            if status_code in {400, 404}:
+                continue
+            raise
+    return candidates
+
+
+def _search_results_payload(
+    query: str,
+    raw_matches: list[dict[str, Any]],
+    *,
+    type_hint: str | None,
+    limit: int,
+    extra_candidates: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     for row in raw_matches:
         kind = str(row.get("type") or "").strip().lower()
@@ -184,6 +368,25 @@ def _search_results_payload(query: str, raw_matches: list[dict[str, Any]], *, ty
                 "follow_up": _follow_up_for_match(kind, region, realm, name),
             }
         )
+    if extra_candidates:
+        results.extend(extra_candidates)
+    deduped: dict[tuple[str, str | None, str | None, str], dict[str, Any]] = {}
+    for row in results:
+        key = (
+            str(row.get("kind") or ""),
+            (str(row.get("region") or "").lower() or None),
+            (str(row.get("realm") or "").lower() or None),
+            str(row.get("name") or ""),
+        )
+        existing = deduped.get(key)
+        if existing is None:
+            deduped[key] = row
+            continue
+        current_score = int((((row.get("ranking") or {}).get("score")) or 0))
+        existing_score = int((((existing.get("ranking") or {}).get("score")) or 0))
+        if current_score > existing_score:
+            deduped[key] = row
+    results = list(deduped.values())
     results.sort(key=lambda item: (-int(((item.get("ranking") or {}).get("score")) or 0), str(item.get("kind") or ""), str(item.get("name") or "")))
     top = results[:limit]
     return {
@@ -365,10 +568,30 @@ def search(
     if kind not in {"all", "character", "guild"}:
         _fail(ctx, "invalid_query", "--kind must be one of: all, character, guild")
         return
-    normalized_query, type_hint = _normalize_search_query(query)
+    normalized_query, type_hint, region, realm, name = _normalize_structured_query(query)
     effective_kind = type_hint or kind
     try:
         with _client(ctx) as client:
+            structured_candidates = _probe_structured_candidates(
+                client,
+                query=normalized_query,
+                type_hint=type_hint,
+                region=region,
+                realm=realm,
+                name=name,
+            )
+            if structured_candidates:
+                _emit(
+                    ctx,
+                    _search_results_payload(
+                        normalized_query,
+                        [],
+                        type_hint=type_hint,
+                        limit=limit,
+                        extra_candidates=structured_candidates,
+                    ),
+                )
+                return
             payload = client.search(term=normalized_query, kind=effective_kind)
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
@@ -387,10 +610,28 @@ def resolve(
     if kind not in {"all", "character", "guild"}:
         _fail(ctx, "invalid_query", "--kind must be one of: all, character, guild")
         return
-    normalized_query, type_hint = _normalize_search_query(query)
+    normalized_query, type_hint, region, realm, name = _normalize_structured_query(query)
     effective_kind = type_hint or kind
     try:
         with _client(ctx) as client:
+            structured_candidates = _probe_structured_candidates(
+                client,
+                query=normalized_query,
+                type_hint=type_hint,
+                region=region,
+                realm=realm,
+                name=name,
+            )
+            if structured_candidates:
+                search_payload = _search_results_payload(
+                    normalized_query,
+                    [],
+                    type_hint=type_hint,
+                    limit=limit,
+                    extra_candidates=structured_candidates,
+                )
+                _emit(ctx, _resolve_payload(search_payload, limit=limit))
+                return
             payload = client.search(term=normalized_query, kind=effective_kind)
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)

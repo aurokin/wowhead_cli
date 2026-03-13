@@ -60,6 +60,7 @@ Current provider state:
 - For broad class or role queries like `monk guide` or `healing guide`, prefer letting `icy-veins resolve` pick the class hub or role guide before jumping straight to a spec page.
 - If an Icy Veins query is really about patch notes, class changes, hotfixes, or news, expect a `scope_hint` instead of guide candidates.
 - Use `raiderio` when you already know the region, realm, and character or guild you want, and need direct profile or Mythic+ run data.
+- For exact Raider.IO lookups, prefer structured queries like `character us illidan Roguecane` or `guild us illidan Liquid`; the provider now probes direct profile surfaces for those.
 - Use `warcraft-wiki` when you need general reference material, lore, systems pages, or addon/API documentation.
 - Use `wowprogress` when you have or can supply structured `region realm name` inputs and need progression, roster, or leaderboard context rather than guide content.
 - Use `simc` when you need local SimulationCraft repo inspection, build decoding, or direct binary execution against a local profile.

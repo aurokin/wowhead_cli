@@ -68,6 +68,41 @@ def test_raiderio_search_returns_ranked_matches(monkeypatch) -> None:
     assert payload["results"][0]["follow_up"]["command"] == "raiderio guild us illidan Liquid"
 
 
+def test_raiderio_search_uses_structured_direct_guild_probe_when_search_is_empty(monkeypatch) -> None:
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.search", lambda self, *, term, kind=None: {"matches": []})
+    monkeypatch.setattr(
+        "raiderio_cli.main.RaiderIOClient.guild_profile",
+        lambda self, *, region, realm, name, fields="": {
+            "id": 1,
+            "name": "Liquid",
+            "region": "us",
+            "realm": "Illidan",
+            "faction": "horde",
+            "profile_url": "https://raider.io/guilds/us/illidan/Liquid",
+        },
+    )
+    monkeypatch.setattr(
+        "raiderio_cli.main.RaiderIOClient.character_profile",
+        lambda self, *, region, realm, name, fields="": (_ for _ in ()).throw(
+            httpx.HTTPStatusError(
+                "not found",
+                request=httpx.Request("GET", "https://raider.io/api/v1/characters/profile"),
+                response=httpx.Response(404, request=httpx.Request("GET", "https://raider.io/api/v1/characters/profile")),
+            )
+        ),
+    )
+
+    result = runner.invoke(raiderio_app, ["search", "guild us illidan Liquid", "--limit", "5"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 1
+    assert payload["results"][0]["kind"] == "guild"
+    assert payload["results"][0]["name"] == "Liquid"
+    assert "structured_probe" in payload["results"][0]["ranking"]["match_reasons"]
+    assert payload["results"][0]["follow_up"]["command"] == "raiderio guild us illidan Liquid"
+
+
 def test_raiderio_resolve_returns_conservative_next_command(monkeypatch) -> None:
     monkeypatch.setattr(
         "raiderio_cli.main.RaiderIOClient.search",
@@ -94,6 +129,42 @@ def test_raiderio_resolve_returns_conservative_next_command(monkeypatch) -> None
     assert payload["resolved"] is True
     assert payload["confidence"] == "high"
     assert payload["next_command"] == "raiderio character us illidan Roguecane"
+
+
+def test_raiderio_resolve_uses_structured_direct_character_probe(monkeypatch) -> None:
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.search", lambda self, *, term, kind=None: {"matches": []})
+    monkeypatch.setattr(
+        "raiderio_cli.main.RaiderIOClient.character_profile",
+        lambda self, *, region, realm, name, fields="": {
+            "id": 39943,
+            "name": "Roguecane",
+            "region": "us",
+            "realm": "Illidan",
+            "class": "Rogue",
+            "active_spec_name": "Subtlety",
+            "faction": "horde",
+            "profile_url": "https://raider.io/characters/us/illidan/Roguecane",
+        },
+    )
+    monkeypatch.setattr(
+        "raiderio_cli.main.RaiderIOClient.guild_profile",
+        lambda self, *, region, realm, name, fields="": (_ for _ in ()).throw(
+            httpx.HTTPStatusError(
+                "not found",
+                request=httpx.Request("GET", "https://raider.io/api/v1/guilds/profile"),
+                response=httpx.Response(404, request=httpx.Request("GET", "https://raider.io/api/v1/guilds/profile")),
+            )
+        ),
+    )
+
+    result = runner.invoke(raiderio_app, ["resolve", "character us illidan Roguecane"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["confidence"] == "high"
+    assert payload["next_command"] == "raiderio character us illidan Roguecane"
+    assert "structured_probe" in payload["match"]["ranking"]["match_reasons"]
 
 
 def test_raiderio_resolve_stays_unresolved_for_ambiguous_match_set(monkeypatch) -> None:

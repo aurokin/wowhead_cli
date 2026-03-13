@@ -203,6 +203,7 @@ raiderio mythic-plus-runs --region world --dungeon all --page 0
 Raider.IO phase-1 behavior:
 - `doctor` reports cache config and phase-1 capability state
 - `search` returns ranked character and guild matches with follow-up commands
+- structured queries like `guild us illidan Liquid` or `character us illidan Roguecane` now probe the direct profile surfaces before falling back to the weaker site search route
 - `resolve` picks a next command conservatively and falls back to `search` when the match set is ambiguous
 - `character` returns a compact profile summary with guild, Mythic+, and raid progression context
 - `guild` returns a compact guild profile with raid progression, raid rankings, and roster preview

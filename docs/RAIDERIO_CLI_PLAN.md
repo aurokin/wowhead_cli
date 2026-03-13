@@ -12,6 +12,11 @@ Current command surface:
 - `raiderio guild`
 - `raiderio mythic-plus-runs`
 
+Current quality notes:
+- structured `region realm name` queries now use direct profile probes before falling back to the weaker site search route
+- live search/resolve quality is materially better for exact guild and character lookups
+- leaderboard, broader Mythic+ surfaces, and richer profile workflows are still later-phase work
+
 ## Why Raider.IO Is Different
 
 `raiderio` should be treated as an API-first integration, not a scraping project.
