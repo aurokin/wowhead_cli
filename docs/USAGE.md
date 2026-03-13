@@ -48,8 +48,9 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
 - `simc` now includes comparison, packet, first-cast, and log-actions commands built on the same conservative reasoning layer.
 - `simc` search and resolve currently return structured `coming_soon` payloads in phase 1.
-- the flattened `warcraft search` result list is globally sorted by provider-reported ranking score
-- `warcraft resolve` prefers the strongest resolved provider result instead of whichever provider happens to be registered first
+- the flattened `warcraft search` result list is globally sorted by a tunable wrapper ranking layer that combines provider score, query intent, provider family, and result kind
+- flattened wrapper results now include `wrapper_ranking` so agents can inspect why a provider/result surfaced first
+- `warcraft resolve` uses the same wrapper ranking layer on top of provider confidence instead of trusting provider registration order
 
 `warcraft doctor` reports:
 - wrapper health

@@ -108,8 +108,10 @@ Providers that are not ready should still report through `doctor`.
 
 Search result ordering rules:
 - provider-local ranking stays provider-specific
-- the wrapper may sort the flattened combined result list by the provider-reported ranking score
-- the wrapper should not invent a fake universal ranking model beyond that thin cross-provider ordering layer
+- the wrapper may apply a thin, tunable cross-provider ranking layer on top of provider-local scores
+- that wrapper layer should be query-aware and use signals like provider family, result kind, and structured query hints
+- wrapper ranking must stay inspectable in output, not hidden behind opaque ordering
+- the wrapper should not invent a fake universal content model beyond that thin ranking/orchestration layer
 
 ## Resolve Rules
 
@@ -122,7 +124,7 @@ Search result ordering rules:
 Resolve selection rules:
 - do not pick the first provider that reports `resolved`
 - prefer higher provider-reported confidence first
-- use the provider-reported match ranking score as a tie-breaker
+- use the tunable wrapper ranking layer, then the provider-reported match score, as tie-breakers
 - preserve the chosen provider's `match`, `next_command`, and confidence instead of flattening them
 
 ## Doctor Rules

@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from warcraft_core.provider_contract import candidate_score, confidence_rank, resolve_payload_sort_key, search_result_sort_key
+from warcraft_core.provider_contract import (
+    candidate_score,
+    confidence_rank,
+    decorate_resolve_payload,
+    decorate_search_result,
+    query_intents,
+    resolve_payload_sort_key,
+    search_result_sort_key,
+    wrapper_search_ranking,
+)
 
 
 def test_confidence_rank_orders_known_values() -> None:
@@ -26,10 +35,72 @@ def test_search_result_sort_key_prefers_higher_scores() -> None:
     assert rows[0]["provider"] == "wowhead"
 
 
-def test_resolve_payload_sort_key_prefers_resolved_then_confidence_then_score() -> None:
+def test_query_intents_detect_structured_profile_and_reference() -> None:
+    assert "structured_profile" in query_intents("guild us illidan Liquid")
+    assert "guild_profile" in query_intents("guild us illidan Liquid")
+    assert "reference" in query_intents("world of warcraft api")
+
+
+def test_wrapper_search_ranking_boosts_reference_provider_for_api_queries() -> None:
+    wiki = wrapper_search_ranking(
+        "world of warcraft api",
+        {
+            "provider": "warcraft-wiki",
+            "name": "World of Warcraft API",
+            "entity_type": "article",
+            "ranking": {"score": 18},
+        },
+    )
+    guide = wrapper_search_ranking(
+        "world of warcraft api",
+        {
+            "provider": "method",
+            "name": "API Guide",
+            "entity_type": "guide",
+            "ranking": {"score": 24},
+        },
+    )
+
+    assert wiki["score"] > guide["score"]
+    assert any("intent:reference:family:reference" in reason for reason in wiki["reasons"])
+
+
+def test_search_result_sort_key_prefers_wrapper_ranking_when_present() -> None:
+    rows = [
+        decorate_search_result(
+            "guild us illidan Liquid",
+            {"provider": "method", "name": "Liquid Guide", "entity_type": "guide", "ranking": {"score": 40}},
+        ),
+        decorate_search_result(
+            "guild us illidan Liquid",
+            {"provider": "wowprogress", "name": "Liquid", "kind": "guild", "ranking": {"score": 20}},
+        ),
+    ]
+
+    rows.sort(key=search_result_sort_key)
+
+    assert rows[0]["provider"] == "wowprogress"
+    assert rows[0]["wrapper_ranking"]["score"] > rows[1]["wrapper_ranking"]["score"]
+
+
+def test_resolve_payload_sort_key_prefers_resolved_then_confidence_then_wrapper_score() -> None:
     unresolved = ("wowhead", {"resolved": False, "confidence": "medium", "match": {"ranking": {"score": 90}}})
-    medium = ("method", {"resolved": True, "confidence": "medium", "match": {"ranking": {"score": 20}}})
-    high = ("icy-veins", {"resolved": True, "confidence": "high", "match": {"ranking": {"score": 10}}})
+    medium = (
+        "method",
+        decorate_resolve_payload(
+            "mistweaver monk guide",
+            "method",
+            {"resolved": True, "confidence": "medium", "match": {"entity_type": "guide", "ranking": {"score": 20}}},
+        ),
+    )
+    high = (
+        "icy-veins",
+        decorate_resolve_payload(
+            "mistweaver monk guide",
+            "icy-veins",
+            {"resolved": True, "confidence": "high", "match": {"entity_type": "guide", "ranking": {"score": 10}}},
+        ),
+    )
 
     ordered = sorted([medium, unresolved, high], key=lambda row: resolve_payload_sort_key(row[0], row[1]))
 

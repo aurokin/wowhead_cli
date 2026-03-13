@@ -58,8 +58,9 @@ Current provider state:
 - Use `simc apl-prune`, `apl-branch-trace`, and `apl-intent` when you need conservative reasoning about likely list flow without running the simulation.
 - Use `simc analysis-packet` when you want the compact agent-facing summary instead of assembling branch and intent outputs manually.
 - Use `simc first-cast` and `simc log-actions` when you need to validate opener timing against real SimC execution instead of relying only on static APL reasoning.
-- `warcraft search` now globally sorts the flattened result list by provider-reported ranking score.
-- `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result.
+- `warcraft search` now uses a tunable wrapper ranking layer on top of provider scores, with query-intent, provider-family, and result-kind boosts.
+- inspect `wrapper_ranking` in wrapper results when ranking behavior matters.
+- `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result after applying the same wrapper ranking layer.
 
 ## Examples
 

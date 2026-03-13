@@ -113,6 +113,46 @@ def test_warcraft_search_sorts_results_globally_by_ranking(monkeypatch) -> None:
 
     payload = json.loads(result.stdout)
     assert payload["results"][0]["provider"] == "method"
+    assert payload["results"][0]["wrapper_ranking"]["score"] >= payload["results"][0]["ranking"]["score"]
+
+
+def test_warcraft_search_prefers_profile_provider_for_structured_guild_queries(monkeypatch) -> None:
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", lambda self, query: {"search": query, "results": []})
+    monkeypatch.setattr(
+        "method_cli.main.MethodClient.sitemap_guides",
+        lambda self: [{"slug": "liquid-guide", "name": "Liquid Guide", "url": "https://www.method.gg/guides/liquid-guide"}],
+    )
+    monkeypatch.setattr(
+        "icy_veins_cli.main.IcyVeinsClient.sitemap_guides",
+        lambda self: [{"slug": "liquid-guide", "name": "Liquid Guide", "url": "https://www.icy-veins.com/wow/liquid-guide"}],
+    )
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.search", lambda self, *, term, kind=None: {"matches": []})
+    monkeypatch.setattr("warcraft_wiki_cli.main.WarcraftWikiClient.search_articles", lambda self, query, limit: (0, []))
+    monkeypatch.setattr(
+        "wowprogress_cli.main.WowProgressClient.probe_search_route",
+        lambda self, *, region, realm, name, obj_type: {
+            "_search_kind": "guild",
+            "guild": {
+                "name": "Liquid",
+                "region": "us",
+                "realm": "illidan",
+                "faction": "Horde",
+                "page_url": "https://www.wowprogress.com/guild/us/illidan/Liquid",
+            },
+        }
+        if obj_type == "guild"
+        else None,
+    )
+
+    result = runner.invoke(warcraft_app, ["search", "guild us illidan Liquid", "--limit", "5"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["provider"] == "wowprogress"
+    assert any(
+        "intent:structured_profile:family:profile" in reason
+        for reason in payload["results"][0]["wrapper_ranking"]["reasons"]
+    )
 
 
 def test_warcraft_resolve_prefers_stronger_later_provider(monkeypatch) -> None:
@@ -236,6 +276,7 @@ def test_warcraft_resolve_can_select_wowprogress(monkeypatch) -> None:
     assert payload["resolved"] is True
     assert payload["provider"] == "wowprogress"
     assert payload["next_command"] == "wowprogress guild us illidan Liquid"
+    assert payload["match"]["wrapper_ranking"]["provider_family"] == "profile"
 
 
 def test_warcraft_passthrough_to_wowhead(monkeypatch) -> None:
