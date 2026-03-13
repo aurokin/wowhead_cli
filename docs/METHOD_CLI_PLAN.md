@@ -58,7 +58,7 @@ Current supported surface:
 - supported root guide/article pages under `/guides/<slug>`
 - supported section traversal under `/guides/<slug>/<section>`
 - local export/query over supported guide/article pages
-- currently validated families include class guides, profession guides, and delve guides
+- currently validated families include class guides, profession guides, delve guides, and reputation guides
 
 Explicitly out of scope for now:
 - premium/login

@@ -51,6 +51,20 @@ def test_recorded_delve_guide_fixture_contract() -> None:
     assert len(payload["article"]["sections"]) >= 1
 
 
+def test_recorded_reputation_guide_fixture_contract() -> None:
+    payload = parse_guide_page(
+        _load("reputation_guide.html"),
+        source_url="https://www.method.gg/guides/harati-renown-reputation-guide",
+    )
+
+    assert payload["guide"]["slug"] == "harati-renown-reputation-guide"
+    assert payload["guide"]["content_family"] == "reputation_guide"
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["author"] == "Roguery"
+    assert payload["guide"]["last_updated"] == "26th February 2026"
+    assert payload["linked_entities"][0]["id"] == 246734
+
+
 def test_recorded_unsupported_index_fixture_contract() -> None:
     payload = parse_guide_page(
         _load("unsupported_index.html"),
