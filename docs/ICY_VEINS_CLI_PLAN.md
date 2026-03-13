@@ -37,6 +37,7 @@ Current strengths:
 - unsupported query families like patch notes, class changes, hotfixes, and news now return a `scope_hint` instead of misleading guide matches
 - dedicated Icy Veins live tests now exist
 - recorded real-page fixtures now exist across representative supported and intentionally unsupported WoW page shapes
+- PvP and stat-priority families are now explicitly validated by recorded and live coverage
 - local bundle export/query works
 
 Current weaknesses:

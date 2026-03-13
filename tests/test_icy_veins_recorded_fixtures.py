@@ -64,6 +64,30 @@ def test_recorded_easy_mode_fixture_contract() -> None:
     assert payload["guide"]["traversal_scope"] == "family_navigation"
 
 
+def test_recorded_pvp_guide_fixture_contract() -> None:
+    payload = parse_guide_page(
+        _load("pvp_guide.html"),
+        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pvp-guide",
+    )
+
+    assert payload["guide"]["slug"] == "mistweaver-monk-pvp-guide"
+    assert payload["guide"]["content_family"] == "pvp"
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+
+
+def test_recorded_stat_priority_fixture_contract() -> None:
+    payload = parse_guide_page(
+        _load("stat_priority.html"),
+        source_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-stat-priority",
+    )
+
+    assert payload["guide"]["slug"] == "mistweaver-monk-pve-healing-stat-priority"
+    assert payload["guide"]["content_family"] == "stat_priority"
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+
+
 def test_recorded_raid_guide_fixture_contract() -> None:
     payload = parse_guide_page(
         _load("raid_guide.html"),

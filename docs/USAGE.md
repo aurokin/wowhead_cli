@@ -167,6 +167,7 @@ Icy Veins guide behavior:
 - unsupported or bad WoW refs fail with a structured `invalid_guide_ref`
 - unsupported Icy Veins query families such as `patch notes` or `latest class changes` now return a `scope_hint` and no search candidates
 - representative real-page fixtures now cover supported and intentionally unsupported Icy Veins WoW page shapes
+- PvP and stat-priority pages are now part of the validated supported family set
 - `guide-export` writes a local guide bundle under `./icy-veins_exports/` by default
 - `guide-query` searches exported Icy Veins bundles across sections, navigation links, and linked entities
 

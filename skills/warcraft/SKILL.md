@@ -53,6 +53,7 @@ Current provider state:
 - If a Method root acts like an index surface rather than a real guide/article page, expect a structured `unsupported_guide_surface` failure instead of empty content.
 - Use `icy-veins` when you need article-style guide content with page-family navigation and table-of-contents structure that may be easier to traverse than the equivalent Wowhead guide surface.
 - `icy-veins` now intentionally supports more than just spec landing guides: class hubs, role guides, easy mode, leveling, PvP, spec subpages, raid guides, and special-event guide pages like Remix or Torghast.
+- validated Icy Veins families now explicitly include PvP and stat-priority pages in addition to the broader guide families above.
 - For broad class or role queries like `monk guide` or `healing guide`, prefer letting `icy-veins resolve` pick the class hub or role guide before jumping straight to a spec page.
 - If an Icy Veins query is really about patch notes, class changes, hotfixes, or news, expect a `scope_hint` instead of guide candidates.
 - Use `raiderio` when you already know the region, realm, and character or guild you want, and need direct profile or Mythic+ run data.

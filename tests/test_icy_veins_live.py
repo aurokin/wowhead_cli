@@ -18,6 +18,8 @@ SPEC_GUIDE_REF = "mistweaver-monk-pve-healing-guide"
 CLASS_HUB_REF = "monk-guide"
 ROLE_GUIDE_REF = "healing-guide"
 EASY_MODE_REF = "fury-warrior-pve-dps-easy-mode"
+PVP_REF = "mistweaver-monk-pvp-guide"
+STAT_PRIORITY_REF = "mistweaver-monk-pve-healing-stat-priority"
 RAID_GUIDE_REF = "mistweaver-monk-pve-healing-nerub-ar-palace-raid-guide"
 SPECIAL_EVENT_REF = "mistweaver-monk-mists-of-pandaria-remix-guide"
 
@@ -124,6 +126,26 @@ def test_live_icy_special_event_contract() -> None:
 
     assert payload["guide"]["slug"] == SPECIAL_EVENT_REF
     assert payload["guide"]["content_family"] == "special_event_guide"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
+def test_live_icy_pvp_guide_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", PVP_REF])
+
+    assert payload["guide"]["slug"] == PVP_REF
+    assert payload["guide"]["content_family"] == "pvp"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
+def test_live_icy_stat_priority_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", STAT_PRIORITY_REF])
+
+    assert payload["guide"]["slug"] == STAT_PRIORITY_REF
+    assert payload["guide"]["content_family"] == "stat_priority"
     assert payload["guide"]["traversal_scope"] == "family_navigation"
     assert payload["article"]["section_count"] >= 1
 
