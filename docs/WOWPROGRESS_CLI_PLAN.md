@@ -12,6 +12,12 @@ Current command surface:
 - `wowprogress character`
 - `wowprogress leaderboard`
 
+Current quality notes:
+- structured guild and character lookups are the primary search and resolve path
+- direct route probes now treat canonical WowProgress realm forms like `US-Area 52` as exact matches for structured inputs like `area-52`
+- exact short-name structured queries like `guild us area-52 xD` now resolve confidently instead of failing low-score conservatively
+- provider-local live coverage now exists for structured search, resolve, and leaderboard contracts
+
 ## Why Add It
 
 `wowprogress` adds a different kind of value from guide and wiki sources: guild progression, character rankings, roster context, and recruitment-style profile discovery.

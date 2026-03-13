@@ -46,6 +46,7 @@ Active next step:
 - tighten `method` until its supported scope, reliability, and test coverage are strong enough to treat it as fully covered
 - tighten `icy-veins` until its supported families, traversal rules, reliability, and test coverage are strong enough to treat it as fully covered
 - add conservative wrapper-level expansion filtering so agents can trust version-scoped results
+- build reusable analytics systems for profile and leaderboard providers instead of one-off answer commands
 - focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
 
 ## Planning Documents
@@ -100,6 +101,12 @@ Active next step:
 
 - `Method.gg` and `Icy Veins` are article-first sources. They look much closer to guide extraction and local bundles than to entity APIs.
 - `Raider.IO` is API-first. Its developer API is documented via Swagger/OpenAPI and publishes rate-limit expectations.
+- profile and leaderboard providers should grow through reusable analytics systems:
+  - sampling
+  - normalization
+  - aggregation
+  - provenance
+  - freshness
 - `Blizzard API` should be treated as the canonical official source for supported game-data and profile surfaces, with OAuth, region, and namespace rules treated as first-class concerns.
 - `Warcraft Logs` should be treated as API-first and auth-heavy rather than a scraping target.
 - `SimulationCraft` is fundamentally a local-repo integration, not a site integration, and the existing `simc_exp` work shows that readonly source-tree analysis is already a real use case.

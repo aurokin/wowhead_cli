@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import shlex
+import re
 from typing import Any
 
 import typer
@@ -88,18 +89,52 @@ def _normalize_structured_query(query: str) -> tuple[str, str | None, str | None
     return normalized, kind, region, realm, name
 
 
-def _score_match(*, query: str, kind_hint: str | None, kind: str, name: str, region: str, realm: str) -> tuple[int, list[str]]:
+def _normalized_token_text(value: str) -> str:
+    lowered = value.strip().lower()
+    parts = [part for part in re.split(r"[^a-z0-9]+", lowered) if part]
+    return " ".join(parts)
+
+
+def _normalized_realm_matches(query_realm: str, resolved_realm: str) -> bool:
+    if not query_realm or not resolved_realm:
+        return False
+    if query_realm == resolved_realm:
+        return True
+    return resolved_realm.endswith(f" {query_realm}") or query_realm.endswith(f" {resolved_realm}")
+
+
+def _score_match(
+    *,
+    query: str,
+    kind_hint: str | None,
+    kind: str,
+    name: str,
+    region: str,
+    realm: str,
+    query_name: str,
+    query_realm: str,
+) -> tuple[int, list[str]]:
     lowered_query = query.lower()
     name_lower = name.lower()
     combined = " ".join((name, realm, region)).lower()
+    normalized_name = _normalized_token_text(name)
+    normalized_query_name = _normalized_token_text(query_name)
+    normalized_realm = _normalized_token_text(realm)
+    normalized_query_realm = _normalized_token_text(query_realm)
     score = 0
     reasons: list[str] = ["route_resolved"]
+    if normalized_query_name and normalized_query_name == normalized_name:
+        score += 35
+        reasons.append("exact_target_name")
     if lowered_query == name_lower:
         score += 50
         reasons.append("exact_name")
     elif lowered_query in name_lower:
         score += 20
         reasons.append("name_contains_query")
+    if _normalized_realm_matches(normalized_query_realm, normalized_realm):
+        score += 15
+        reasons.append("exact_target_realm")
     terms = [part for part in lowered_query.split() if part]
     if terms and all(term in combined for term in terms):
         score += 20
@@ -143,7 +178,16 @@ def _candidate_from_probe(
         region = str(character.get("region") or "").strip()
         realm = str(character.get("realm") or "").strip()
         page_url = character.get("page_url")
-        score, reasons = _score_match(query=query, kind_hint=kind_hint, kind="character", name=name, region=region, realm=realm)
+        score, reasons = _score_match(
+            query=query,
+            kind_hint=kind_hint,
+            kind="character",
+            name=name,
+            region=region,
+            realm=realm,
+            query_name=query_name,
+            query_realm=query_realm,
+        )
         return {
             "provider": "wowprogress",
             "kind": "character",
@@ -164,7 +208,16 @@ def _candidate_from_probe(
     region = str(guild.get("region") or "").strip()
     realm = str(guild.get("realm") or "").strip()
     page_url = guild.get("page_url")
-    score, reasons = _score_match(query=query, kind_hint=kind_hint, kind="guild", name=name, region=region, realm=realm)
+    score, reasons = _score_match(
+        query=query,
+        kind_hint=kind_hint,
+        kind="guild",
+        name=name,
+        region=region,
+        realm=realm,
+        query_name=query_name,
+        query_realm=query_realm,
+    )
     return {
         "provider": "wowprogress",
         "kind": "guild",

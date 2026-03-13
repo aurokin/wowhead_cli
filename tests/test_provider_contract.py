@@ -105,7 +105,31 @@ def test_load_wrapper_ranking_policy_allows_json_override(tmp_path) -> None:
     policy = load_wrapper_ranking_policy(override_path=override_path)
 
     assert policy["provider_kind_boosts"]["wowprogress"]["guild"] == 99
-    assert policy["provider_kind_boosts"]["raiderio"]["character"] == 12
+    assert policy["provider_kind_boosts"]["raiderio"]["character"] == 16
+
+
+def test_wrapper_search_ranking_prefers_raiderio_for_character_profile_queries() -> None:
+    raiderio = wrapper_search_ranking(
+        "character us illidan Roguecane",
+        {
+            "provider": "raiderio",
+            "name": "Roguecane",
+            "kind": "character",
+            "ranking": {"score": 60},
+        },
+    )
+    wowprogress = wrapper_search_ranking(
+        "character us illidan Roguecane",
+        {
+            "provider": "wowprogress",
+            "name": "Roguecane",
+            "kind": "character",
+            "ranking": {"score": 80},
+        },
+    )
+
+    assert raiderio["score"] > wowprogress["score"]
+    assert any("intent:character_profile:provider:raiderio" in reason for reason in raiderio["reasons"])
 
 
 def test_compact_wrapper_candidate_keeps_ranking_and_follow_up() -> None:

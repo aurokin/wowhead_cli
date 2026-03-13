@@ -53,6 +53,11 @@ Minimum behavior:
 - return either a candidate resolution or a structured unresolved response
 - return `coming_soon` if not implemented yet
 
+Important boundary:
+- wrapper `search`, `resolve`, and follow-up guidance are routing aids
+- they should help agents choose the right provider and next command
+- they should not pretend to be final answer synthesis
+
 ### `doctor`
 
 Purpose:
@@ -232,6 +237,7 @@ The wrapper should preserve:
 - clear readiness/error state
 
 It should not flatten all provider outputs into one fake universal model.
+It should not turn routing guidance into unsupported "smart answers."
 
 ## Milestone Behavior
 

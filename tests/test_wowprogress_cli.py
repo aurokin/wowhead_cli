@@ -122,6 +122,32 @@ def test_wowprogress_resolve_returns_command_for_typed_query(monkeypatch) -> Non
     assert payload["next_command"] == "wowprogress character us illidan Imonthegcd"
 
 
+def test_wowprogress_resolve_returns_command_for_short_exact_guild_query(monkeypatch) -> None:
+    def fake_probe(self, *, region: str, realm: str, name: str, obj_type: str):  # noqa: ANN001
+        assert obj_type == "guild"
+        return {
+            "_search_kind": "guild",
+            "guild": {
+                "name": "xD",
+                "region": "us",
+                "realm": "US-Area 52",
+                "faction": "Horde",
+                "page_url": "https://www.wowprogress.com/guild/us/area-52/xD",
+            },
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.probe_search_route", fake_probe)
+    result = runner.invoke(wowprogress_app, ["resolve", "guild us area-52 xD"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["confidence"] == "high"
+    assert payload["next_command"] == "wowprogress guild us area-52 xD"
+    assert "exact_target_name" in payload["match"]["ranking"]["match_reasons"]
+    assert "exact_target_realm" in payload["match"]["ranking"]["match_reasons"]
+
+
 def test_wowprogress_client_search_probe_cache_reads_final_url(monkeypatch) -> None:
     client = WowProgressClient()
     try:

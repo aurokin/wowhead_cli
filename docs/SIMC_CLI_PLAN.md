@@ -145,6 +145,20 @@ It should also validate that the repo can support:
 - optional escalation into binary-backed execution
 - agent-facing reasoning packets that are not tied to HTTP responses or article pages
 
+## Analysis Boundary
+
+The `simc` analysis layer should stay grounded in observable local evidence.
+
+That means:
+- `analysis-packet` and intent helpers can summarize structure, branches, and runtime samples
+- they can recommend next commands or follow-up investigations
+- they should not drift into authoritative "smart answers" that go beyond what the local source tree or runtime sample actually proves
+
+This is an important boundary for agent trust:
+- analysis metadata is good
+- evidence-backed recommendations are good
+- unsupported synthesis is not
+
 ## What Should Stay SimC-Specific
 
 - local source-tree parsing and APL reasoning

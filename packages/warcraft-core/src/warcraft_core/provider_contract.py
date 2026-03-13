@@ -65,7 +65,7 @@ DEFAULT_WRAPPER_RANKING_POLICY: dict[str, Any] = {
     },
     "intent_provider_boosts": {
         "guild_profile": {"wowprogress": 10, "raiderio": -4},
-        "character_profile": {"raiderio": 16, "wowprogress": -6},
+        "character_profile": {"raiderio": 28, "wowprogress": -14},
         "structured_profile": {"wowprogress": 4, "raiderio": 2},
     },
     "intent_kind_boosts": {
@@ -92,9 +92,9 @@ DEFAULT_WRAPPER_RANKING_POLICY: dict[str, Any] = {
         "wowhead": {"guide": 4, "item": 4, "npc": 4, "quest": 6, "spell": 6},
         "method": {"guide": 6},
         "icy-veins": {"guide": 6},
-        "raiderio": {"character": 12, "guild": 6, "mythic_plus_runs": 8},
+        "raiderio": {"character": 16, "guild": 6, "mythic_plus_runs": 8},
         "warcraft-wiki": {"article": 8},
-        "wowprogress": {"character": 4, "guild": 12, "leaderboard": 8},
+        "wowprogress": {"character": 0, "guild": 12, "leaderboard": 8},
         "simc": {"analysis": 8, "apl": 10, "decode_build": 10, "inspect": 8, "run": 8},
     },
 }

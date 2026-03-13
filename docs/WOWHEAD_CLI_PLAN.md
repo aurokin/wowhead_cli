@@ -14,6 +14,24 @@ It should keep its current command surface stable while shared infrastructure is
 - cache layers and cache inspection
 - search and resolve patterns
 
+## Search And Resolve Boundary
+
+`wowhead` search and resolve should stay focused on discovery:
+- candidate search
+- conservative resolution
+- follow-up command guidance
+
+They are intentionally routing aids, not analytics answer surfaces.
+
+That means follow-up recommendations are good when they help an agent decide between:
+- `entity`
+- `entity-page`
+- `comments`
+- `guide`
+- `guide-full`
+
+But they should not be stretched into unsupported answer synthesis beyond what the retrieved Wowhead data actually shows.
+
 ## What Should Move Out First
 
 The first shared extractions should be infrastructure that is already generic:

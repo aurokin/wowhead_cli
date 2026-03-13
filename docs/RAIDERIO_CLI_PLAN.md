@@ -17,6 +17,21 @@ Current quality notes:
 - live search/resolve quality is materially better for exact guild and character lookups
 - leaderboard, broader Mythic+ surfaces, and richer profile workflows are still later-phase work
 
+## Next Quality Direction
+
+The next Raider.IO work should not focus on one-off question commands.
+
+It should focus on reusable analytics systems that let agents answer ranking and season questions reliably.
+
+Examples of the kinds of questions this should eventually support:
+- most common or most successful class/spec slices in a season
+- common group compositions for a dungeon or score bracket
+- score-to-key-level estimation
+- distribution and threshold questions like what 3k rating usually looks like
+
+The important point is that the CLI does not need to answer those questions directly in one leap.
+It needs to provide trustworthy building blocks first.
+
 ## Why Raider.IO Is Different
 
 `raiderio` should be treated as an API-first integration, not a scraping project.
@@ -59,6 +74,12 @@ This should be an API-first service:
 - output shaping
 - auth/config handling where needed
 
+Potential future shared analytics pieces:
+- sampling contracts
+- normalized snapshot contracts
+- provenance and confidence metadata
+- freshness metadata for derived analytics
+
 ## What Should Not Be Forced Into Shared Models
 
 - Raider.IO endpoint shapes should not be turned into a universal Warcraft entity contract
@@ -70,6 +91,8 @@ This should be an API-first service:
 - typed field selection
 - rate-limit aware request policy
 - response models and ranking rules
+- season-specific Mythic+ analytics query builders
+- Raider.IO-specific normalization from raw profile and run payloads into analytics snapshots
 
 ## First Useful Slice
 
@@ -79,12 +102,96 @@ This should be an API-first service:
 4. `doctor`
 5. conservative search/resolve built on the live site search surface
 
+## Analytics Systems To Build
+
+These are the next high-value systems for Raider.IO.
+
+### Sampling
+
+Build reliable sampling over:
+- Mythic+ run leaderboards
+- current-season profile slices
+- class/spec filtered slices when the provider surface allows it
+
+This is the base system for any popularity, threshold, or distribution question.
+
+### Normalized Snapshots
+
+Add Raider.IO-specific normalized records for:
+- character snapshot
+- guild snapshot
+- run snapshot
+- group composition snapshot
+- score snapshot
+
+These should stay Raider.IO-specific initially, but the output contract should be stable enough for later cross-provider analytics.
+
+### Aggregation
+
+Build simple, trustworthy aggregation helpers for:
+- averages
+- medians
+- percentiles
+- frequency counts
+- top-N combinations
+- threshold estimation
+
+This is the right layer for questions like:
+- average dungeon level near 3k rating
+- most common group composition at a rating bracket
+- most common spec appearances in a sampled slice
+
+### Provenance
+
+Every analytic payload should carry:
+- source provider
+- query slice
+- sample size
+- season
+- time/freshness
+- exclusions or caveats
+
+Without that, agents will over-trust thin or biased samples.
+
+### Freshness
+
+Analytics answers are more time-sensitive than direct profile lookups.
+
+Derived outputs should include:
+- sampled_at
+- season context
+- freshness windows
+- cache policy appropriate for leaderboard-style data
+
+## Suggested Next Commands
+
+The next commands should be system-building commands, not freeform answer commands.
+
+Good candidates:
+- `raiderio leaderboard ...`
+- `raiderio sample ...`
+- `raiderio distribution ...`
+- `raiderio threshold ...`
+
+Possible examples:
+- `raiderio sample mythic-plus-runs --region us --limit 100`
+- `raiderio distribution score --season current`
+- `raiderio threshold score-to-level --score 3000`
+
+The exact names matter less than keeping the outputs:
+- structured
+- sample-backed
+- freshness-aware
+- provenance-rich
+
 ## Deferred To Later Phases
 
 - app-key / elevated-rate-limit support
 - stronger realm/region-aware discovery heuristics if the current search surface proves too shallow
 - broader leaderboard coverage
 - live-tracking endpoints
+- cross-provider talent/build analytics that really require Blizzard API or another source
+- encounter recommendation workflows that belong more naturally to Warcraft Logs plus article providers
 
 ## Risks
 

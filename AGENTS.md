@@ -23,6 +23,9 @@ Co-Authored-By: OpenAI Codex <noreply@openai.com>
 - Keep docs aligned with actual CLI behavior.
 - Prefer updating docs when command contracts or output shapes change.
 - Root research and planning docs live under `docs/`.
+- Do not bolt on “smart answers” for analytics-heavy questions.
+- Build reliable, sample-backed analytics primitives that agents can trust and compose.
+- Prefer systems like sampling, normalization, aggregation, provenance, and freshness over one-off answer commands.
 
 ## Local Skills
 - Use the `warcraft` skill for root wrapper and provider-routing work. See `skills/warcraft/SKILL.md`.
