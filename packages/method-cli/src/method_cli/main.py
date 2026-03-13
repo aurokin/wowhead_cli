@@ -8,6 +8,7 @@ from typing import Any
 import typer
 
 from method_cli.client import MethodClient, guide_ref_parts, load_method_cache_settings_from_env
+from method_cli.page_parser import UNSUPPORTED_ROOT_GUIDE_SLUGS, classify_guide_family
 from warcraft_core.output import emit
 from warcraft_content.article_discovery import (
     article_candidate,
@@ -27,10 +28,18 @@ app = typer.Typer(add_completion=False, help="Method.gg guide CLI.")
 
 SEARCH_TYPE_NAME = "Guide"
 SUPPORTED_SCOPE = {
-    "content_families": ["class_guides"],
+    "content_families": [
+        "class_guide",
+        "profession_guide",
+        "delve_guide",
+        "reputation_guide",
+        "article_guide",
+    ],
     "url_patterns": ["/guides/<slug>", "/guides/<slug>/<section>"],
+    "unsupported_roots": sorted(UNSUPPORTED_ROOT_GUIDE_SLUGS),
     "notes": [
         "search and resolve are limited to the currently supported Method guide families",
+        "tier-list and world-of-warcraft roots are intentionally excluded because they currently use unsupported index-style templates",
         "premium, login, and non-guide Method surfaces are intentionally out of scope",
     ],
 }
@@ -75,18 +84,34 @@ def _guide_ref_parts_or_fail(ctx: typer.Context, guide_ref: str) -> tuple[str, s
 
 def _fetch_guide_page_or_fail(ctx: typer.Context, client: MethodClient, guide_ref: str) -> dict[str, Any]:
     try:
-        return client.fetch_guide_page(guide_ref)
+        payload = client.fetch_guide_page(guide_ref)
     except ValueError as exc:
         _fail(ctx, "invalid_guide_ref", str(exc))
         raise AssertionError("unreachable")
+    if payload["guide"].get("supported_surface") is False:
+        _fail(
+            ctx,
+            "unsupported_guide_surface",
+            f"Unsupported Method guide surface for slug={payload['guide']['slug']!r} family={payload['guide'].get('content_family')!r}.",
+        )
+        raise AssertionError("unreachable")
+    return payload
 
 
 def _fetch_guide_pages_or_fail(ctx: typer.Context, client: MethodClient, guide_ref: str) -> dict[str, Any]:
     try:
-        return _fetch_guide_pages(client, guide_ref)
+        payload = _fetch_guide_pages(client, guide_ref)
     except ValueError as exc:
         _fail(ctx, "invalid_guide_ref", str(exc))
         raise AssertionError("unreachable")
+    if payload["guide"].get("supported_surface") is False:
+        _fail(
+            ctx,
+            "unsupported_guide_surface",
+            f"Unsupported Method guide surface for slug={payload['guide']['slug']!r} family={payload['guide'].get('content_family')!r}.",
+        )
+        raise AssertionError("unreachable")
+    return payload
 
 
 def _normalize_query(query: str) -> str:
@@ -115,6 +140,9 @@ def _search_results(client: MethodClient, query: str, *, limit: int) -> tuple[st
     matches: list[dict[str, Any]] = []
     for row in client.sitemap_guides():
         slug = row["slug"]
+        content_family = classify_guide_family(slug)
+        if content_family == "unsupported_index":
+            continue
         name = row["name"]
         candidate = f"{name.lower()} {slug.replace('-', ' ')}"
         score = _score_text_match(normalized_query, candidate)
@@ -129,16 +157,16 @@ def _search_results(client: MethodClient, query: str, *, limit: int) -> tuple[st
             reasons.append("all_terms_match")
         if score <= 0:
             continue
-        matches.append(
-            article_candidate(
-                ref=slug,
-                name=name,
-                url=row["url"],
-                score=score,
-                reasons=reasons,
-                provider_command="method",
-            )
+        candidate_row = article_candidate(
+            ref=slug,
+            name=name,
+            url=row["url"],
+            score=score,
+            reasons=reasons,
+            provider_command="method",
         )
+        candidate_row["metadata"]["content_family"] = content_family
+        matches.append(candidate_row)
     sort_article_candidates(matches)
     return normalized_query, matches[:limit], len(matches)
 

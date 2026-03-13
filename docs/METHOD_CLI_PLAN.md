@@ -55,24 +55,27 @@ Current practical access model:
 - `method guide-query <bundle> "<query>"`
 
 Current supported surface:
-- class/spec guide discovery through top-level `/guides/<slug>`
-- section traversal through `/guides/<slug>/<section>`
-- local export/query over those guides
+- supported root guide/article pages under `/guides/<slug>`
+- supported section traversal under `/guides/<slug>/<section>`
+- local export/query over supported guide/article pages
+- currently validated families include class guides and profession guides
 
 Explicitly out of scope for now:
 - premium/login
 - account-linked features
 - premium-only workflows
+- unsupported index-style roots such as `tier-list` and `world-of-warcraft`
 
 ## Supported Scope Target
 
 To call `method` fully functioning, the supported scope needs to be explicit.
 
 Phase-1 supported scope:
-- top-level class/spec guide pages under `/guides/<slug>`
-- linked section pages under `/guides/<slug>/<section>`
-- reliable search/resolve for those guides
-- reliable guide, guide-full, export, and query behavior
+- supported root guide/article pages under `/guides/<slug>`
+- linked section pages under `/guides/<slug>/<section>` when those pages belong to a supported guide family
+- reliable search/resolve for supported guide/article pages
+- reliable guide, guide-full, export, and query behavior for supported pages
+- explicit structured failure for unsupported index-style roots
 
 Phase-2 supported scope:
 - other Method guide families that fit the same article model, if live research confirms stable patterns
@@ -137,9 +140,9 @@ It is:
 
 ## Main Gaps
 
-1. Discovery is narrower than the site surface.
-- current search only indexes root guide URLs from the sitemap
-- this works for the current guide family, but it will miss other Method content families unless we intentionally add them
+1. Discovery still needs family-aware tuning.
+- current search indexes supported root guide URLs from the sitemap
+- this is much broader than class guides alone, but ranking still needs to understand guide families better
 
 2. Parser resilience is too template-specific.
 - current extraction depends on a small set of exact selectors for navigation, article body, patch, update date, and author
@@ -149,8 +152,8 @@ It is:
 - current tests are mostly mocked/parser tests
 - we need live contract checks for Method itself, not just wrapper/shared behavior
 
-4. Unsupported content is not described precisely enough.
-- we should distinguish “supported guide family” from “Method site content we do not support”
+4. Supported and unsupported Method surfaces need continued refinement.
+- we now distinguish supported guide families from unsupported index-style roots, but more family review is still needed
 
 ## Quality Gates
 
@@ -197,13 +200,14 @@ Fixture gates:
 4. Add parser fallback behavior or explicit structured failures for missing metadata/selectors.
 
 Acceptance criteria:
-- current guide-family support is well documented
+- current supported Method guide/article families are well documented
 - live and recorded tests cover the real contract
 - parser regressions are more likely to fail tests than silently degrade
+- unsupported index roots fail clearly instead of returning empty article payloads
 
 ### Phase 2: Improve Discovery And Unsupported-Surface Handling
 
-1. Review Method sitemap and navigation families beyond the current top-level guide roots.
+1. Review Method sitemap and navigation families beyond the currently supported roots.
 2. Decide which additional Method content families belong in scope.
 3. Add clear unsupported-surface handling for everything else.
 4. Expand search/resolve only when the new surface is intentionally supported.

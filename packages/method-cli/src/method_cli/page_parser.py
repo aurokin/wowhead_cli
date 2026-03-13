@@ -9,6 +9,24 @@ from bs4 import BeautifulSoup, Tag
 
 METHOD_BASE_URL = "https://www.method.gg"
 SUPPORTED_GUIDE_PATH_RE = re.compile(r"^/guides/(?P<slug>[^/]+)(?:/(?P<section>[^/?#]+))?/?$")
+CLASS_TOKENS = {
+    "death-knight",
+    "demon-hunter",
+    "demonhunter",
+    "druid",
+    "evoker",
+    "hunter",
+    "mage",
+    "monk",
+    "paladin",
+    "priest",
+    "rogue",
+    "shaman",
+    "warlock",
+    "warrior",
+}
+UNSUPPORTED_ROOT_GUIDE_SLUGS = {"tier-list", "world-of-warcraft"}
+WRITTEN_BY_RE = re.compile(r"^Written by\s+(?P<author>.+?)\s*-\s*(?P<date>\d{1,2}(?:st|nd|rd|th)\s+\w+,?\s+\d{4})$")
 WOWHEAD_LINK_RE = re.compile(
     r"^(?P<entity_type>achievement|currency|faction|item|mount|npc|object|pet|quest|spell|zone)=(?P<id>\d+)(?:/|$)"
 )
@@ -39,6 +57,20 @@ def guide_ref_parts(guide_ref: str) -> tuple[str, str | None]:
 def guide_url(slug: str, section_slug: str | None = None) -> str:
     suffix = f"/{section_slug}" if section_slug else ""
     return f"{METHOD_BASE_URL}/guides/{slug}{suffix}"
+
+
+def classify_guide_family(slug: str) -> str:
+    if slug in UNSUPPORTED_ROOT_GUIDE_SLUGS:
+        return "unsupported_index"
+    if slug.endswith("-profession-guide"):
+        return "profession_guide"
+    if slug.endswith("-delve-guide"):
+        return "delve_guide"
+    if slug.endswith("-renown-reputation-guide") or slug.endswith("-reputation-guide"):
+        return "reputation_guide"
+    if any(slug.endswith(f"-{token}") for token in CLASS_TOKENS):
+        return "class_guide"
+    return "article_guide"
 
 
 def _meta_content(soup: BeautifulSoup, **attrs: str) -> str | None:
@@ -231,11 +263,22 @@ def _extract_linked_entities(article: Tag, *, source_url: str) -> list[dict[str,
     return sorted(items.values(), key=lambda row: (row["type"], row["id"]))
 
 
+def _normalize_author_and_last_updated(author: str | None, last_updated: str | None) -> tuple[str | None, str | None]:
+    if isinstance(author, str):
+        match = WRITTEN_BY_RE.match(author)
+        if match:
+            normalized_author = clean_text(match.group("author"))
+            normalized_date = clean_text(match.group("date"))
+            return normalized_author, last_updated or normalized_date
+    return author, last_updated
+
+
 def parse_guide_page(html: str, *, source_url: str) -> dict[str, Any]:
     soup = BeautifulSoup(html, "html.parser")
     canonical_url = _link_href(soup, rel="canonical") or source_url
     canonical_url = urljoin(METHOD_BASE_URL, canonical_url)
     guide_slug, section_slug = guide_ref_parts(canonical_url)
+    content_family = classify_guide_family(guide_slug)
     page_title = clean_text(_meta_content(soup, property="og:title")) or clean_text(soup.title.get_text(" ", strip=True) if soup.title else None)
     description = _meta_content(soup, name="description")
     navigation = _extract_navigation(soup, current_url=canonical_url)
@@ -244,6 +287,7 @@ def parse_guide_page(html: str, *, source_url: str) -> dict[str, Any]:
     patch = _first_text(soup, (".guide-author", ".guides-titles .guide-author"))
     last_updated = _first_text(soup, (".guide-update-date", ".guides-titles .guide-update-date"))
     author = _first_text(soup, (".guides-author-block .author-name", ".author-name", "[itemprop='author']"))
+    author, last_updated = _normalize_author_and_last_updated(author, last_updated)
     article_tag = _article_tag(soup)
     article_html = ""
     article_text = ""
@@ -271,6 +315,8 @@ def parse_guide_page(html: str, *, source_url: str) -> dict[str, Any]:
             "author": author,
             "last_updated": last_updated,
             "patch": patch,
+            "content_family": content_family,
+            "supported_surface": content_family != "unsupported_index",
         },
         "navigation": navigation,
         "article": {

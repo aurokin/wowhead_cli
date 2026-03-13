@@ -22,7 +22,7 @@ Use the local `warcraft` command as the root entrypoint when the caller does not
 
 Current provider state:
 - `wowhead`: ready
-- `method`: ready for supported guide-family search, resolve, fetch, export, and local query
+- `method`: ready for supported guide/article-family search, resolve, fetch, export, and local query
 - `icy-veins`: ready for guide search, resolve, fetch, export, and local query
 - `raiderio`: ready for search, resolve, direct character, guild, and Mythic+ runs lookups
 - `warcraft-wiki`: ready for article search, resolve, fetch, export, and local query
@@ -47,7 +47,8 @@ Current provider state:
 - Use `doctor` to confirm provider readiness before relying on a provider.
 - Preserve provider provenance in your reasoning. Do not describe `warcraft` results as source-neutral.
 - Use `method` when you need article-style guide content that is easier to traverse than the equivalent Wowhead guide surface.
-- Treat `method` as scoped to currently supported guide-family pages, not all Method.gg content.
+- Treat `method` as scoped to currently supported guide/article families, not all Method.gg content.
+- If a Method root acts like an index surface rather than a real guide/article page, expect a structured `unsupported_guide_surface` failure instead of empty content.
 - Use `icy-veins` when you need article-style guide content with page-family navigation and table-of-contents structure that may be easier to traverse than the equivalent Wowhead guide surface.
 - Use `raiderio` when you already know the region, realm, and character or guild you want, and need direct profile or Mythic+ run data.
 - Use `warcraft-wiki` when you need general reference material, lore, systems pages, or addon/API documentation.

@@ -124,12 +124,14 @@ method guide-query ./tmp/method-mistweaver "tea serenity"
 
 Method guide behavior:
 - `search` and `resolve` work against the Method guide sitemap
-- the currently supported Method surface is guide-family content under `/guides/<slug>` and `/guides/<slug>/<section>`
+- the currently supported Method surface is supported guide/article content under `/guides/<slug>` and `/guides/<slug>/<section>`
+- currently validated supported families include class guides and profession guides
 - `guide` returns the requested page summary with navigation and linked-entity preview
 - `guide-full` walks the guide navigation and returns all discovered guide pages
 - `guide-export` writes a local guide bundle under `./method_exports/` by default
 - `guide-query` searches exported Method bundles across sections, navigation links, and linked entities
 - unsupported Method URLs such as premium or account pages return structured `invalid_guide_ref` errors
+- unsupported index-style roots such as `tier-list` return structured `unsupported_guide_surface` errors
 
 ## Icy Veins Commands
 

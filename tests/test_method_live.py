@@ -15,6 +15,7 @@ pytestmark = pytest.mark.live
 LIVE_ENABLED = os.getenv("WOWHEAD_LIVE_TESTS", "").strip().lower() in {"1", "true", "yes", "on"}
 runner = CliRunner()
 GUIDE_REF = "mistweaver-monk"
+SECONDARY_GUIDE_REF = "midnight-alchemy-profession-guide"
 
 
 def _require_live() -> None:
@@ -95,9 +96,21 @@ def test_live_method_guide_full_contract() -> None:
 
 def test_live_method_unsupported_surface_contract() -> None:
     _require_live()
-    result = runner.invoke(app, ["guide", "https://www.method.gg/premium"])
+    result = runner.invoke(app, ["guide", "tier-list"])
 
     assert result.exit_code == 1
     payload = json.loads(result.stderr or result.output)
     assert payload["ok"] is False
-    assert payload["error"]["code"] == "invalid_guide_ref"
+    assert payload["error"]["code"] == "unsupported_guide_surface"
+
+
+def test_live_method_secondary_supported_family_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", SECONDARY_GUIDE_REF])
+
+    assert payload["guide"]["slug"] == SECONDARY_GUIDE_REF
+    assert payload["guide"]["content_family"] == "profession_guide"
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["author"] == "Roguery"
+    assert payload["guide"]["last_updated"] == "5th March 2026"
+    assert payload["article"]["section_count"] >= 1

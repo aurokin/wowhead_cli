@@ -6,7 +6,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from method_cli.main import app
-from method_cli.page_parser import parse_guide_page, parse_sitemap_guides
+from method_cli.page_parser import classify_guide_family, parse_guide_page, parse_sitemap_guides
 
 runner = CliRunner()
 
@@ -106,8 +106,32 @@ SITEMAP_XML = """
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://www.method.gg/guides/mistweaver-monk</loc></url>
   <url><loc>https://www.method.gg/guides/mistweaver-monk/talents</loc></url>
+  <url><loc>https://www.method.gg/guides/tier-list</loc></url>
+  <url><loc>https://www.method.gg/guides/midnight-alchemy-profession-guide</loc></url>
   <url><loc>https://www.method.gg/guides/restoration-shaman</loc></url>
 </urlset>
+"""
+
+PROFESSION_HTML = """
+<html>
+  <head>
+    <title>Midnight Alchemy Profession Guide</title>
+    <meta name="description" content="Alchemy guide.">
+    <meta property="og:title" content="Midnight Alchemy Profession Guide">
+    <link rel="canonical" href="https://www.method.gg/guides/midnight-alchemy-profession-guide">
+  </head>
+  <body>
+    <div class="guide-header-text">
+      <h1 class="guide--title">Midnight Alchemy Profession Guide</h1>
+      <span class="author-name">Written by Roguery - 5th March 2026</span>
+    </div>
+    <article class="guide-main-content mount-guide-content">
+      <p>Alchemy intro.</p>
+      <h2>Leveling Midnight Alchemy</h2>
+      <p>Use herbs.</p>
+    </article>
+  </body>
+</html>
 """
 
 
@@ -125,8 +149,10 @@ def _error_payload(result) -> dict[str, object]:
 def test_parse_sitemap_guides_filters_intro_pages() -> None:
     guides = parse_sitemap_guides(SITEMAP_XML)
     assert guides == [
+        {"slug": "midnight-alchemy-profession-guide", "name": "Midnight Alchemy Profession Guide", "url": "https://www.method.gg/guides/midnight-alchemy-profession-guide"},
         {"slug": "mistweaver-monk", "name": "Mistweaver Monk", "url": "https://www.method.gg/guides/mistweaver-monk"},
         {"slug": "restoration-shaman", "name": "Restoration Shaman", "url": "https://www.method.gg/guides/restoration-shaman"},
+        {"slug": "tier-list", "name": "Tier List", "url": "https://www.method.gg/guides/tier-list"},
     ]
 
 
@@ -154,6 +180,24 @@ def test_parse_guide_page_supports_metadata_and_article_fallback_selectors() -> 
     assert payload["article"]["sections"][0]["title"] == "Introduction"
 
 
+def test_parse_guide_page_normalizes_profession_author_and_family() -> None:
+    payload = parse_guide_page(
+        PROFESSION_HTML,
+        source_url="https://www.method.gg/guides/midnight-alchemy-profession-guide",
+    )
+    assert payload["guide"]["author"] == "Roguery"
+    assert payload["guide"]["last_updated"] == "5th March 2026"
+    assert payload["guide"]["content_family"] == "profession_guide"
+    assert payload["guide"]["supported_surface"] is True
+
+
+def test_classify_guide_family_marks_unsupported_indexes() -> None:
+    assert classify_guide_family("mistweaver-monk") == "class_guide"
+    assert classify_guide_family("midnight-alchemy-profession-guide") == "profession_guide"
+    assert classify_guide_family("tier-list") == "unsupported_index"
+    assert classify_guide_family("world-of-warcraft") == "unsupported_index"
+
+
 def test_method_search_command_uses_sitemap_guides(monkeypatch) -> None:
     monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: parse_sitemap_guides(SITEMAP_XML))
     result = runner.invoke(app, ["search", "mistweaver monk guide", "--limit", "5"])
@@ -163,6 +207,7 @@ def test_method_search_command_uses_sitemap_guides(monkeypatch) -> None:
     assert payload["count"] == 1
     assert payload["results"][0]["id"] == "mistweaver-monk"
     assert payload["results"][0]["follow_up"]["recommended_command"] == "method guide mistweaver-monk"
+    assert payload["results"][0]["metadata"]["content_family"] == "class_guide"
 
 
 def test_method_resolve_command_returns_best_guide(monkeypatch) -> None:
@@ -173,6 +218,15 @@ def test_method_resolve_command_returns_best_guide(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["resolved"] is True
     assert payload["next_command"] == "method guide mistweaver-monk"
+
+
+def test_method_search_excludes_unsupported_index_roots(monkeypatch) -> None:
+    monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: parse_sitemap_guides(SITEMAP_XML))
+    result = runner.invoke(app, ["search", "tier list"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert all(row["id"] != "tier-list" for row in payload["results"])
 
 
 def test_method_guide_and_guide_full(monkeypatch) -> None:
@@ -230,3 +284,32 @@ def test_method_guide_export_invalid_ref_returns_structured_error(tmp_path: Path
     payload = _error_payload(result)
     assert payload["ok"] is False
     assert payload["error"]["code"] == "invalid_guide_ref"
+
+
+def test_method_guide_unsupported_surface_returns_structured_error(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "method_cli.main.MethodClient.fetch_guide_page",
+        lambda self, guide_ref: {
+            "page": {"title": "Tier List", "description": "desc", "canonical_url": "https://www.method.gg/guides/tier-list/mythic-plus"},
+            "guide": {
+                "slug": "tier-list",
+                "page_url": "https://www.method.gg/guides/tier-list/mythic-plus",
+                "section_slug": "mythic-plus",
+                "section_title": "Mythic Plus",
+                "author": None,
+                "last_updated": None,
+                "patch": None,
+                "content_family": "unsupported_index",
+                "supported_surface": False,
+            },
+            "navigation": [],
+            "article": {"html": "", "text": "", "headings": [], "sections": []},
+            "linked_entities": [],
+        },
+    )
+    result = runner.invoke(app, ["guide", "tier-list"])
+    assert result.exit_code == 1
+
+    payload = _error_payload(result)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "unsupported_guide_surface"
