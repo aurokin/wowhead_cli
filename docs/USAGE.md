@@ -9,7 +9,9 @@ The goal is to keep the README short and keep detailed usage notes close to actu
 ```bash
 warcraft doctor
 warcraft search "defias"
+warcraft search "guild us illidan Liquid" --compact --ranking-debug
 warcraft resolve "fairbreeze favors"
+warcraft resolve "character us illidan Roguecane" --compact --ranking-debug
 warcraft wowhead search "defias"
 warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
@@ -51,6 +53,9 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - the flattened `warcraft search` result list is globally sorted by a tunable wrapper ranking layer that combines provider score, query intent, provider family, and result kind
 - flattened wrapper results now include `wrapper_ranking` so agents can inspect why a provider/result surfaced first
 - `warcraft resolve` uses the same wrapper ranking layer on top of provider confidence instead of trusting provider registration order
+- use `--compact` on `warcraft search` or `warcraft resolve` when you want the wrapper decision without the full per-provider payloads
+- use `--ranking-debug` when you want compact ranking summaries for the top wrapper candidates
+- wrapper ranking policy can be overridden with `~/.config/warcraft/wrapper_ranking.json`
 
 `warcraft doctor` reports:
 - wrapper health

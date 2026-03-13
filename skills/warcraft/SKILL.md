@@ -59,8 +59,10 @@ Current provider state:
 - Use `simc analysis-packet` when you want the compact agent-facing summary instead of assembling branch and intent outputs manually.
 - Use `simc first-cast` and `simc log-actions` when you need to validate opener timing against real SimC execution instead of relying only on static APL reasoning.
 - `warcraft search` now uses a tunable wrapper ranking layer on top of provider scores, with query-intent, provider-family, and result-kind boosts.
+- the wrapper ranking layer also includes provider-specific intent boosts, for example character queries favoring `raiderio` and guild queries favoring `wowprogress`.
 - inspect `wrapper_ranking` in wrapper results when ranking behavior matters.
 - `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result after applying the same wrapper ranking layer.
+- use `warcraft search --compact --ranking-debug` or `warcraft resolve --compact --ranking-debug` when you want the ranking explanation without the full per-provider payloads.
 
 ## Examples
 

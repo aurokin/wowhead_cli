@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
+
 from warcraft_core.provider_contract import (
     candidate_score,
+    compact_wrapper_candidate,
     confidence_rank,
     decorate_resolve_payload,
     decorate_search_result,
+    load_wrapper_ranking_policy,
     query_intents,
     resolve_payload_sort_key,
     search_result_sort_key,
@@ -81,6 +85,47 @@ def test_search_result_sort_key_prefers_wrapper_ranking_when_present() -> None:
 
     assert rows[0]["provider"] == "wowprogress"
     assert rows[0]["wrapper_ranking"]["score"] > rows[1]["wrapper_ranking"]["score"]
+
+
+def test_load_wrapper_ranking_policy_allows_json_override(tmp_path) -> None:
+    override_path = tmp_path / "wrapper_ranking.json"
+    override_path.write_text(
+        json.dumps(
+            {
+                "provider_kind_boosts": {
+                    "wowprogress": {"guild": 99},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    policy = load_wrapper_ranking_policy(override_path=override_path)
+
+    assert policy["provider_kind_boosts"]["wowprogress"]["guild"] == 99
+    assert policy["provider_kind_boosts"]["raiderio"]["character"] == 12
+
+
+def test_compact_wrapper_candidate_keeps_ranking_and_follow_up() -> None:
+    compact = compact_wrapper_candidate(
+        {
+            "provider": "wowprogress",
+            "kind": "guild",
+            "name": "Liquid",
+            "id": "guild:1",
+            "follow_up": {"command": "wowprogress guild us illidan Liquid"},
+            "wrapper_ranking": {
+                "score": 88,
+                "reasons": ["provider_score:20"],
+                "intents": ["guild_profile"],
+                "provider_family": "profile",
+            },
+        }
+    )
+
+    assert compact["provider"] == "wowprogress"
+    assert compact["follow_up_command"] == "wowprogress guild us illidan Liquid"
+    assert compact["wrapper_ranking"]["score"] == 88
 
 
 def test_resolve_payload_sort_key_prefers_resolved_then_confidence_then_wrapper_score() -> None:

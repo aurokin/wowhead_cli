@@ -12,7 +12,14 @@ from wowprogress_cli.main import app as wowprogress_app
 
 from method_cli.main import app as method_app
 from warcraft_core.output import emit
-from warcraft_core.provider_contract import decorate_resolve_payload, decorate_search_result, resolve_payload_sort_key, search_result_sort_key
+from warcraft_core.provider_contract import (
+    compact_resolve_match,
+    compact_wrapper_candidate,
+    decorate_resolve_payload,
+    decorate_search_result,
+    resolve_payload_sort_key,
+    search_result_sort_key,
+)
 from warcraft_cli.providers import global_doctor_payload, list_providers, provider_resolve, provider_search
 from wowhead_cli.main import app as wowhead_app
 
@@ -57,6 +64,8 @@ def search(
     ctx: typer.Context,
     query: str = typer.Argument(..., help="Search across available providers."),
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum provider-local results to request."),
+    compact: bool = typer.Option(False, "--compact", help="Return a smaller wrapper payload with compact candidates."),
+    ranking_debug: bool = typer.Option(False, "--ranking-debug", help="Include compact wrapper ranking summaries for the returned candidates."),
 ) -> None:
     providers: list[dict[str, Any]] = []
     flattened: list[dict[str, Any]] = []
@@ -74,14 +83,20 @@ def search(
                 if isinstance(row, dict):
                     flattened.append(decorate_search_result(query, {"provider": registration.name, **row}))
     flattened.sort(key=search_result_sort_key)
+    top = flattened[:limit]
+    if compact:
+        top = [compact_wrapper_candidate(row) for row in top]
+    payload: dict[str, Any] = {
+        "query": query,
+        "provider_count": len(providers),
+        "providers": [] if compact else providers,
+        "count": len(flattened),
+        "results": top,
+    }
+    if ranking_debug:
+        payload["ranking_debug"] = [compact_wrapper_candidate(row) for row in flattened[:limit]]
     _emit(
-        {
-            "query": query,
-            "provider_count": len(providers),
-            "providers": providers,
-            "count": len(flattened),
-            "results": flattened,
-        },
+        payload,
         pretty=_pretty(ctx),
     )
 
@@ -91,6 +106,8 @@ def resolve(
     ctx: typer.Context,
     query: str = typer.Argument(..., help="Resolve a query across available providers."),
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum provider-local candidates to request."),
+    compact: bool = typer.Option(False, "--compact", help="Return a smaller wrapper payload with a compact match summary."),
+    ranking_debug: bool = typer.Option(False, "--ranking-debug", help="Include compact wrapper ranking summaries for resolved candidates."),
 ) -> None:
     providers: list[dict[str, Any]] = []
     resolved_candidates: list[tuple[str, dict[str, Any]]] = []
@@ -109,17 +126,21 @@ def resolve(
     resolved_candidates.sort(key=lambda row: resolve_payload_sort_key(row[0], row[1]))
     best_provider = resolved_candidates[0][0] if resolved_candidates else None
     best_payload = resolved_candidates[0][1] if resolved_candidates else None
+    match = compact_resolve_match(best_payload) if compact else (best_payload.get("match") if isinstance(best_payload, dict) else None)
+    payload: dict[str, Any] = {
+        "query": query,
+        "provider_count": len(providers),
+        "resolved": best_payload is not None,
+        "provider": best_provider,
+        "match": match,
+        "next_command": best_payload.get("next_command") if isinstance(best_payload, dict) else None,
+        "confidence": best_payload.get("confidence") if isinstance(best_payload, dict) else None,
+        "providers": [] if compact else providers,
+    }
+    if ranking_debug:
+        payload["ranking_debug"] = [compact_resolve_match(row[1]) for row in resolved_candidates[:limit] if compact_resolve_match(row[1]) is not None]
     _emit(
-        {
-            "query": query,
-            "provider_count": len(providers),
-            "resolved": best_payload is not None,
-            "provider": best_provider,
-            "match": best_payload.get("match") if isinstance(best_payload, dict) else None,
-            "next_command": best_payload.get("next_command") if isinstance(best_payload, dict) else None,
-            "confidence": best_payload.get("confidence") if isinstance(best_payload, dict) else None,
-            "providers": providers,
-        },
+        payload,
         pretty=_pretty(ctx),
     )
 

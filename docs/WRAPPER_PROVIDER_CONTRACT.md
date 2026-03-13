@@ -110,8 +110,14 @@ Search result ordering rules:
 - provider-local ranking stays provider-specific
 - the wrapper may apply a thin, tunable cross-provider ranking layer on top of provider-local scores
 - that wrapper layer should be query-aware and use signals like provider family, result kind, and structured query hints
+- that wrapper layer may also use provider-specific boosts for certain intents, such as preferring `raiderio` for character-profile queries and `wowprogress` for guild-profile queries
 - wrapper ranking must stay inspectable in output, not hidden behind opaque ordering
 - the wrapper should not invent a fake universal content model beyond that thin ranking/orchestration layer
+
+Ranking policy location:
+- default policy lives in shared code
+- optional local override file: `~/.config/warcraft/wrapper_ranking.json`
+- override files should only tune weights and mappings, not redefine provider contracts
 
 ## Resolve Rules
 
@@ -126,6 +132,11 @@ Resolve selection rules:
 - prefer higher provider-reported confidence first
 - use the tunable wrapper ranking layer, then the provider-reported match score, as tie-breakers
 - preserve the chosen provider's `match`, `next_command`, and confidence instead of flattening them
+
+Debuggability rules:
+- `warcraft search --ranking-debug` should expose compact ranking summaries for the top wrapper candidates
+- `warcraft resolve --ranking-debug` should expose the ranked resolved candidates the wrapper considered
+- `warcraft search --compact` and `warcraft resolve --compact` should omit bulky provider payloads while keeping the wrapper decision surface intact
 
 ## Doctor Rules
 
