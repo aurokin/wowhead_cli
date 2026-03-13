@@ -148,6 +148,7 @@ icy-veins guide-query ./tmp/icy-mistweaver "vivify"
 
 Icy Veins guide behavior:
 - `search` and `resolve` work against the Icy Veins WoW sitemap for supported guide families
+- broad class and role queries now prefer the corresponding class hub or role guide, while specialized queries like easy mode or leveling penalize those broad hubs
 - supported families now include:
   - class hubs
   - role guides
@@ -164,6 +165,7 @@ Icy Veins guide behavior:
   - class hubs and role guides stay on the current page
   - spec-family pages walk the related family navigation only
 - unsupported or bad WoW refs fail with a structured `invalid_guide_ref`
+- representative real-page fixtures now cover supported and intentionally unsupported Icy Veins WoW page shapes
 - `guide-export` writes a local guide bundle under `./icy-veins_exports/` by default
 - `guide-query` searches exported Icy Veins bundles across sections, navigation links, and linked entities
 

@@ -87,6 +87,47 @@ def _score_family_match(query: str, *, content_family: str | None) -> tuple[int,
     reasons: list[str] = []
     terms = _query_terms(query)
     joined = f" {query.lower()} "
+    specialized_terms = {
+        "easy",
+        "mode",
+        "leveling",
+        "pvp",
+        "build",
+        "builds",
+        "talent",
+        "talents",
+        "rotation",
+        "cooldown",
+        "cooldowns",
+        "abilities",
+        "stats",
+        "gems",
+        "enchants",
+        "consumables",
+        "gear",
+        "bis",
+        "resources",
+        "mythic+",
+        "mythic",
+        "plus",
+        "macros",
+        "addons",
+        "ui",
+        "simulation",
+        "simulations",
+        "sim",
+        "raid",
+        "remix",
+        "torghast",
+        "expansion",
+        "midnight",
+    }
+    if content_family == "class_hub" and len(terms) == 1 and not (terms & specialized_terms):
+        score += 18
+        reasons.append("family_class_hub")
+    if content_family == "role_guide" and len(terms) == 1 and ({"healing", "tank", "dps"} & terms):
+        score += 18
+        reasons.append("family_role_guide")
     if "easy" in terms and "mode" in terms and content_family == "easy_mode":
         score += 28
         reasons.append("family_easy_mode")
@@ -135,6 +176,9 @@ def _score_family_match(query: str, *, content_family: str | None) -> tuple[int,
     if content_family == "special_event_guide" and ({"remix", "torghast"} & terms):
         score += 18
         reasons.append("family_special_event")
+    if content_family in {"class_hub", "role_guide"} and (terms & specialized_terms):
+        score -= 14
+        reasons.append("penalty_broad_hub")
     if content_family == "raid_guide" and "raid" not in terms:
         score -= 12
         reasons.append("penalty_raid_variant")

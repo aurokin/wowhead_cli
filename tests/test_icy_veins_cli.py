@@ -378,6 +378,24 @@ def test_icy_veins_search_command_uses_sitemap_guides(monkeypatch) -> None:
     assert payload["results"][0]["follow_up"]["recommended_command"] == "icy-veins guide mistweaver-monk-pve-healing-guide"
 
 
+def test_icy_veins_search_command_boosts_broad_hubs_for_broad_queries(monkeypatch) -> None:
+    sitemap = parse_sitemap_guides(SITEMAP_XML) + [
+        {
+            "slug": "monk-guide",
+            "name": "Monk Guide",
+            "url": "https://www.icy-veins.com/wow/monk-guide",
+            "content_family": "class_hub",
+        },
+    ]
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: sitemap)
+    result = runner.invoke(app, ["search", "monk guide", "--limit", "5"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["id"] == "monk-guide"
+    assert "family_class_hub" in payload["results"][0]["ranking"]["match_reasons"]
+
+
 def test_icy_veins_resolve_command_returns_best_guide(monkeypatch) -> None:
     monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: parse_sitemap_guides(SITEMAP_XML))
     result = runner.invoke(app, ["resolve", "mistweaver monk guide"])
@@ -386,6 +404,25 @@ def test_icy_veins_resolve_command_returns_best_guide(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["resolved"] is True
     assert payload["next_command"] == "icy-veins guide mistweaver-monk-pve-healing-guide"
+
+
+def test_icy_veins_resolve_command_prefers_role_hubs_for_broad_role_queries(monkeypatch) -> None:
+    sitemap = parse_sitemap_guides(SITEMAP_XML) + [
+        {
+            "slug": "healing-guide",
+            "name": "Healing Guide",
+            "url": "https://www.icy-veins.com/wow/healing-guide",
+            "content_family": "role_guide",
+        },
+    ]
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: sitemap)
+    result = runner.invoke(app, ["resolve", "healing guide"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "healing-guide"
+    assert "family_role_guide" in payload["match"]["ranking"]["match_reasons"]
 
 
 def test_icy_veins_resolve_command_prefers_easy_mode_when_query_matches(monkeypatch) -> None:
@@ -411,6 +448,31 @@ def test_icy_veins_resolve_command_prefers_easy_mode_when_query_matches(monkeypa
     assert payload["match"]["id"] == "fury-warrior-pve-dps-easy-mode"
     assert payload["resolved"] is True
     assert payload["next_command"] == "icy-veins guide fury-warrior-pve-dps-easy-mode"
+
+
+def test_icy_veins_search_penalizes_broad_hubs_for_specialized_queries(monkeypatch) -> None:
+    sitemap = parse_sitemap_guides(SITEMAP_XML) + [
+        {
+            "slug": "fury-warrior-pve-dps-easy-mode",
+            "name": "Fury Warrior PvE DPS Easy Mode",
+            "url": "https://www.icy-veins.com/wow/fury-warrior-pve-dps-easy-mode",
+            "content_family": "easy_mode",
+        },
+        {
+            "slug": "warrior-guide",
+            "name": "Warrior Guide",
+            "url": "https://www.icy-veins.com/wow/warrior-guide",
+            "content_family": "class_hub",
+        },
+    ]
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: sitemap)
+    result = runner.invoke(app, ["search", "fury warrior easy mode", "--limit", "5"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["id"] == "fury-warrior-pve-dps-easy-mode"
+    last_match = next(row for row in payload["results"] if row["id"] == "warrior-guide")
+    assert "penalty_broad_hub" in last_match["ranking"]["match_reasons"]
 
 
 def test_icy_veins_guide_and_guide_full(monkeypatch) -> None:

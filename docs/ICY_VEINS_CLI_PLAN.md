@@ -30,16 +30,18 @@ Current strengths:
 - search and resolve work for many common guide queries
 - guide-family navigation and page TOC extraction work on many pages
 - explicit family metadata is now emitted on supported pages
+- supported families are now explicitly defined in the implementation and docs
 - class hubs and role guides now have local-only traversal instead of over-expanding in `guide-full`
+- broad class and role queries now prefer the corresponding class hub or role guide, while specialized families penalize those broad hubs
 - unsupported or bad WoW refs now fail with structured `invalid_guide_ref`
 - dedicated Icy Veins live tests now exist
+- recorded real-page fixtures now exist across representative supported and intentionally unsupported WoW page shapes
 - local bundle export/query works
 
 Current weaknesses:
-- supported page families are not explicitly defined
 - family-aware ranking is still too generic across some supported families
-- recorded-fixture coverage is still not as deep as Method
-- family scope is not yet enforced by the same depth of recorded page-shape fixtures as Method
+- recorded-fixture coverage is better now, but still not yet as deep as Method
+- family scope is stronger now, but still needs more depth around less-common supported families
 
 ## Research Summary
 
@@ -157,7 +159,7 @@ These should:
 - fixed for unsupported/unclassified WoW slugs and 404 guide fetches
 
 4. Discovery/ranking is too generic for some families.
-- `easy mode`, `raid guide`, and special-event pages need family-aware ranking instead of only slug text matching.
+- `easy mode`, `raid guide`, and special-event pages need continued family-aware ranking refinement instead of only slug text matching.
 
 5. Documentation is not explicit enough.
 - improved in `docs/USAGE.md`
