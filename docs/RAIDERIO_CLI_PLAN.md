@@ -72,19 +72,19 @@ This should be an API-first service:
 2. guild profile lookup
 3. one mythic-plus runs path
 4. `doctor`
-5. structured `coming_soon` search/resolve so the wrapper contract is satisfied without inventing undocumented lookup behavior
+5. conservative search/resolve built on the live site search surface
 
 ## Deferred To Later Phases
 
 - app-key / elevated-rate-limit support
-- free-text search if Raider.IO exposes or justifies a stable search path
+- stronger realm/region-aware discovery heuristics if the current search surface proves too shallow
 - broader leaderboard coverage
 - live-tracking endpoints
 
 ## Risks
 
 - region/realm/name resolution needs clear CLI ergonomics
-- free-text discovery may not map to a documented Raider.IO endpoint
+- live site search is usable now, but it is not part of the documented `/api/v1` developer surface
 - auth/app-key support should not distort the initial provider shape
 - rate-limit policy needs to be explicit from day one
 

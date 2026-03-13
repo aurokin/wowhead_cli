@@ -24,7 +24,7 @@ Current provider state:
 - `wowhead`: ready
 - `method`: ready for guide search, resolve, fetch, export, and local query
 - `icy-veins`: ready for guide search, resolve, fetch, export, and local query
-- `raiderio`: ready for direct character, guild, and Mythic+ runs lookups; `search` and `resolve` are structured `coming_soon` in phase 1
+- `raiderio`: ready for search, resolve, direct character, guild, and Mythic+ runs lookups
 - `warcraft-wiki`: ready for article search, resolve, fetch, export, and local query
 - `wowprogress`: ready for direct guild, character, and PvE leaderboard lookups; `search` and `resolve` are structured `coming_soon` in phase 1
 - `simc`: ready for local repo inspection, repo resolution/config, managed checkout, version, spec-files, decode-build, APL list/graph/talent inspection, action tracing, prune/branch/intent analysis, branch comparison, analysis packets, first-cast timing, log inspection, and sync/build/run, with `search` and `resolve` structured `coming_soon`

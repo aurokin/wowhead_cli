@@ -20,17 +20,122 @@ def test_raiderio_doctor_reports_phase_one_capabilities() -> None:
     assert payload["auth"]["required"] is False
     assert payload["auth"]["deferred"] is True
     assert payload["capabilities"]["character"] == "ready"
-    assert payload["capabilities"]["search"] == "coming_soon"
+    assert payload["capabilities"]["search"] == "ready"
 
 
-def test_raiderio_search_is_structured_coming_soon() -> None:
-    result = runner.invoke(raiderio_app, ["search", "liquid"])
+def test_raiderio_search_returns_ranked_matches(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "raiderio_cli.main.RaiderIOClient.search",
+        lambda self, *, term, kind=None: {
+            "matches": [
+                {
+                    "type": "guild",
+                    "name": "Liquid",
+                    "data": {
+                        "id": 1,
+                        "name": "Liquid",
+                        "displayName": "Liquid",
+                        "faction": "horde",
+                        "region": {"slug": "us", "name": "United States & Oceania"},
+                        "realm": {"slug": "illidan", "name": "Illidan"},
+                        "path": "/guilds/us/illidan/Liquid",
+                    },
+                },
+                {
+                    "type": "guild",
+                    "name": "Liquid",
+                    "data": {
+                        "id": 2,
+                        "name": "Liquid",
+                        "displayName": "Liquid",
+                        "faction": "alliance",
+                        "region": {"slug": "us", "name": "United States & Oceania"},
+                        "realm": {"slug": "gnomeregan", "name": "Gnomeregan"},
+                        "path": "/guilds/us/gnomeregan/Liquid",
+                    },
+                },
+            ]
+        },
+    )
+    result = runner.invoke(raiderio_app, ["search", "Liquid guild", "--limit", "5"])
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["coming_soon"] is True
-    assert payload["count"] == 0
-    assert payload["results"] == []
+    assert payload["count"] == 2
+    assert payload["results"][0]["kind"] == "guild"
+    assert payload["results"][0]["realm"] == "illidan"
+    assert "type_hint" in payload["results"][0]["ranking"]["match_reasons"]
+    assert payload["results"][0]["follow_up"]["command"] == "raiderio guild us illidan Liquid"
+
+
+def test_raiderio_resolve_returns_conservative_next_command(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "raiderio_cli.main.RaiderIOClient.search",
+        lambda self, *, term, kind=None: {
+            "matches": [
+                {
+                    "type": "character",
+                    "name": "Roguecane",
+                    "data": {
+                        "id": 39943,
+                        "name": "Roguecane",
+                        "faction": "horde",
+                        "region": {"slug": "us", "name": "United States & Oceania"},
+                        "realm": {"slug": "illidan", "name": "Illidan"},
+                        "class": {"name": "Rogue", "slug": "rogue"},
+                    },
+                }
+            ]
+        },
+    )
+    result = runner.invoke(raiderio_app, ["resolve", "Roguecane"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["confidence"] == "high"
+    assert payload["next_command"] == "raiderio character us illidan Roguecane"
+
+
+def test_raiderio_resolve_stays_unresolved_for_ambiguous_match_set(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "raiderio_cli.main.RaiderIOClient.search",
+        lambda self, *, term, kind=None: {
+            "matches": [
+                {
+                    "type": "guild",
+                    "name": "Liquid",
+                    "data": {
+                        "id": 1,
+                        "name": "Liquid",
+                        "displayName": "Liquid",
+                        "faction": "horde",
+                        "region": {"slug": "us", "name": "United States & Oceania"},
+                        "realm": {"slug": "illidan", "name": "Illidan"},
+                        "path": "/guilds/us/illidan/Liquid",
+                    },
+                },
+                {
+                    "type": "guild",
+                    "name": "Liquid",
+                    "data": {
+                        "id": 2,
+                        "name": "Liquid",
+                        "displayName": "Liquid",
+                        "faction": "horde",
+                        "region": {"slug": "us", "name": "United States & Oceania"},
+                        "realm": {"slug": "area-52", "name": "Area 52"},
+                        "path": "/guilds/us/area-52/Liquid",
+                    },
+                },
+            ]
+        },
+    )
+    result = runner.invoke(raiderio_app, ["resolve", "Liquid guild"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is False
+    assert payload["next_command"] is None
+    assert payload["fallback_search_command"] == 'raiderio search "Liquid"'
 
 
 def test_raiderio_character_summary(monkeypatch) -> None:

@@ -11,6 +11,7 @@ from warcraft_api.http import DEFAULT_RETRY_ATTEMPTS, request_with_retries
 from warcraft_content.paths import provider_cache_root
 
 RAIDERIO_BASE_URL = "https://raider.io/api/v1"
+RAIDERIO_SITE_BASE_URL = "https://raider.io"
 DEFAULT_CACHE_DIR = provider_cache_root("raiderio") / "http"
 DEFAULT_CHARACTER_FIELDS = ",".join(
     (
@@ -116,6 +117,23 @@ class RaiderIOClient:
         self._write_cache(key, payload, ttl_seconds=ttl_seconds)
         return payload
 
+    def _get_site_json(self, path: str, *, params: dict[str, Any], namespace: str, ttl_seconds: int) -> dict[str, Any]:
+        key = self._cache_key(namespace, params)
+        cached = self._read_cache(key)
+        if isinstance(cached, dict):
+            return cached
+        response = request_with_retries(
+            self._client(),
+            f"{RAIDERIO_SITE_BASE_URL}{path}",
+            params=params,
+            retry_attempts=self._retry_attempts,
+        )
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError(f"Unexpected Raider.IO response shape for {path}.")
+        self._write_cache(key, payload, ttl_seconds=ttl_seconds)
+        return payload
+
     def character_profile(self, *, region: str, realm: str, name: str, fields: str = DEFAULT_CHARACTER_FIELDS) -> dict[str, Any]:
         return self._get_json(
             "/characters/profile",
@@ -155,4 +173,15 @@ class RaiderIOClient:
             params=params,
             namespace="mythic_plus_runs",
             ttl_seconds=self._mplus_runs_ttl,
+        )
+
+    def search(self, *, term: str, kind: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {"term": term}
+        if kind and kind != "all":
+            params["type"] = kind
+        return self._get_site_json(
+            "/api/search",
+            params=params,
+            namespace="search",
+            ttl_seconds=self._static_ttl,
         )

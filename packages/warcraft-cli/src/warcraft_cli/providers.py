@@ -62,7 +62,7 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         command="raiderio",
         language="python",
         status="partial",
-        description="Raider.IO API provider with direct character, guild, and mythic-plus runs lookups.",
+        description="Raider.IO API provider with search, resolve, character, guild, and mythic-plus runs lookups.",
         app=raiderio_app,
         doctor_args=("doctor",),
     ),

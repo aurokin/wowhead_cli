@@ -40,7 +40,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `method` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
 - `icy-veins` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
 - `raiderio` is now a real phase-1 API provider for direct character, guild, and Mythic+ runs lookups.
-- `raiderio` search and resolve currently return structured `coming_soon` payloads in phase 1.
+- `raiderio` now includes real search and conservative resolve on top of the live site search surface.
 - `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, article export, and local query.
 - `wowprogress` is now a real phase-1 rankings provider for direct guild, character, and PvE leaderboard lookups.
 - `wowprogress` search and resolve currently return structured `coming_soon` payloads in phase 1.
@@ -155,10 +155,11 @@ raiderio mythic-plus-runs --region world --dungeon all --page 0
 
 Raider.IO phase-1 behavior:
 - `doctor` reports cache config and phase-1 capability state
+- `search` returns ranked character and guild matches with follow-up commands
+- `resolve` picks a next command conservatively and falls back to `search` when the match set is ambiguous
 - `character` returns a compact profile summary with guild, Mythic+, and raid progression context
 - `guild` returns a compact guild profile with raid progression, raid rankings, and roster preview
 - `mythic-plus-runs` returns ranked Mythic+ run summaries from the documented API endpoint
-- `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until Raider.IO discovery is implemented
 
 ## Warcraft Wiki Commands
 

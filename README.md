@@ -52,6 +52,7 @@ warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
 warcraft icy-veins search "mistweaver monk guide"
 warcraft raiderio character us illidan Roguecane
+warcraft raiderio search "Roguecane"
 warcraft warcraft-wiki article "World of Warcraft API"
 warcraft wowprogress guild us illidan Liquid
 warcraft simc doctor

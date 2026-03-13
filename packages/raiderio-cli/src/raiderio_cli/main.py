@@ -62,22 +62,173 @@ def _handle_http_error(ctx: typer.Context, exc: httpx.HTTPStatusError) -> None:
     _fail(ctx, code, message, status=1)
 
 
-def _coming_soon_payload(*, provider: str, query: str, command_hint: str) -> dict[str, Any]:
+def _normalize_search_query(query: str) -> tuple[str, str | None]:
+    tokens = [token for token in query.strip().split() if token]
+    type_hint: str | None = None
+    kept: list[str] = []
+    for token in tokens:
+        lower = token.lower()
+        if lower in {"guild", "guilds"}:
+            type_hint = "guild"
+            continue
+        if lower in {"character", "characters", "char"}:
+            type_hint = "character"
+            continue
+        kept.append(token)
+    normalized = " ".join(kept).strip() or query.strip()
+    return normalized, type_hint
+
+
+def _match_reasons(
+    *,
+    query: str,
+    type_hint: str | None,
+    kind: str,
+    name: str,
+    region: str | None,
+    realm: str | None,
+) -> tuple[int, list[str]]:
+    lowered_query = query.lower()
+    name_lower = name.lower()
+    combined = " ".join(part for part in (name, realm or "", region or "") if part).lower()
+    score = 0
+    reasons: list[str] = []
+    if lowered_query == name_lower:
+        score += 50
+        reasons.append("exact_name")
+    elif lowered_query in name_lower:
+        score += 25
+        reasons.append("name_contains_query")
+    query_terms = [part for part in lowered_query.split() if part]
+    if query_terms and all(term in combined for term in query_terms):
+        score += 20
+        reasons.append("all_terms_match")
+    if realm and any(term == realm.lower() for term in query_terms):
+        score += 10
+        reasons.append("realm_match")
+    if region and any(term == region.lower() for term in query_terms):
+        score += 8
+        reasons.append("region_match")
+    if type_hint and type_hint == kind:
+        score += 15
+        reasons.append("type_hint")
+    return score, reasons
+
+
+def _follow_up_for_match(kind: str, region: str | None, realm: str | None, name: str) -> dict[str, Any]:
+    base = {
+        "provider": "raiderio",
+        "kind": kind,
+    }
+    if kind == "character" and region and realm:
+        return {
+            **base,
+            "surface": "character",
+            "command": f"raiderio character {region} {realm} {name}",
+        }
+    if kind == "guild" and region and realm:
+        return {
+            **base,
+            "surface": "guild",
+            "command": f"raiderio guild {region} {realm} {name}",
+        }
     return {
-        "provider": provider,
+        **base,
+        "surface": None,
+        "command": None,
+    }
+
+
+def _search_results_payload(query: str, raw_matches: list[dict[str, Any]], *, type_hint: str | None, limit: int) -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+    for row in raw_matches:
+        kind = str(row.get("type") or "").strip().lower()
+        if kind not in {"character", "guild"}:
+            continue
+        data = row.get("data") if isinstance(row.get("data"), dict) else {}
+        region_row = data.get("region") if isinstance(data.get("region"), dict) else {}
+        realm_row = data.get("realm") if isinstance(data.get("realm"), dict) else {}
+        class_row = data.get("class") if isinstance(data.get("class"), dict) else {}
+        name = str(data.get("displayName") or data.get("name") or row.get("name") or "").strip()
+        region = str(region_row.get("slug") or "").strip() or None
+        realm = str(realm_row.get("slug") or "").strip() or None
+        score, reasons = _match_reasons(
+            query=query,
+            type_hint=type_hint,
+            kind=kind,
+            name=name,
+            region=region,
+            realm=realm,
+        )
+        path = data.get("path")
+        profile_url = f"https://raider.io{path}" if isinstance(path, str) and path.startswith("/") else None
+        results.append(
+            {
+                "provider": "raiderio",
+                "kind": kind,
+                "id": data.get("id"),
+                "name": name,
+                "region": region,
+                "region_name": region_row.get("name"),
+                "realm": realm,
+                "realm_name": realm_row.get("name"),
+                "faction": data.get("faction"),
+                "class_name": class_row.get("name"),
+                "class_slug": class_row.get("slug"),
+                "profile_url": profile_url,
+                "path": path,
+                "ranking": {
+                    "score": score,
+                    "match_reasons": reasons,
+                },
+                "follow_up": _follow_up_for_match(kind, region, realm, name),
+            }
+        )
+    results.sort(key=lambda item: (-int(((item.get("ranking") or {}).get("score")) or 0), str(item.get("kind") or ""), str(item.get("name") or "")))
+    top = results[:limit]
+    return {
+        "provider": "raiderio",
         "query": query,
         "search_query": query,
-        "count": 0,
-        "results": [],
-        "candidates": [],
-        "resolved": False,
-        "confidence": "none",
-        "match": None,
-        "next_command": None,
-        "fallback_search_command": None,
-        "coming_soon": True,
-        "message": "Free-text discovery is not implemented yet for Raider.IO phase 1. Use direct character or guild commands.",
-        "suggested_command": command_hint,
+        "count": len(results),
+        "results": top,
+        "truncated": len(results) > limit,
+    }
+
+
+def _resolve_payload(search_payload: dict[str, Any], *, limit: int) -> dict[str, Any]:
+    results = search_payload.get("results")
+    if not isinstance(results, list):
+        results = []
+    top = results[:limit]
+    if not top:
+        return {
+            "provider": "raiderio",
+            "query": search_payload.get("query"),
+            "search_query": search_payload.get("search_query"),
+            "resolved": False,
+            "confidence": "none",
+            "match": None,
+            "next_command": None,
+            "fallback_search_command": f'raiderio search "{search_payload.get("search_query")}"',
+            "candidates": [],
+        }
+    best = top[0]
+    best_score = int((((best.get("ranking") or {}).get("score")) or 0))
+    second_score = int(((((top[1].get("ranking") or {}).get("score")) if len(top) > 1 else 0) or 0))
+    follow_up = best.get("follow_up") if isinstance(best.get("follow_up"), dict) else {}
+    resolved = bool(follow_up.get("command")) and (best_score >= 45 and (len(top) == 1 or best_score - second_score >= 15))
+    confidence = "high" if resolved else ("medium" if best_score >= 30 else "low")
+    return {
+        "provider": "raiderio",
+        "query": search_payload.get("query"),
+        "search_query": search_payload.get("search_query"),
+        "resolved": resolved,
+        "confidence": confidence if top else "none",
+        "match": best,
+        "next_command": follow_up.get("command") if resolved else None,
+        "fallback_search_command": None if resolved else f'raiderio search "{search_payload.get("search_query")}"',
+        "candidates": top,
     }
 
 
@@ -181,8 +332,8 @@ def doctor(ctx: typer.Context) -> None:
                 "deferred": True,
             },
             "capabilities": {
-                "search": "coming_soon",
-                "resolve": "coming_soon",
+                "search": "ready",
+                "resolve": "ready",
                 "character": "ready",
                 "guild": "ready",
                 "mythic_plus_runs": "ready",
@@ -207,19 +358,46 @@ def doctor(ctx: typer.Context) -> None:
 @app.command("search")
 def search(
     ctx: typer.Context,
-    query: str = typer.Argument(..., help="Free-text query. Structured discovery is deferred for Raider.IO phase 1."),
-    limit: int = typer.Option(5, "--limit", min=1, max=50, help="Unused in phase 1."),
+    query: str = typer.Argument(..., help="Free-text character or guild query."),
+    limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum results to return."),
+    kind: str = typer.Option("all", "--kind", help="Optional result kind: all, character, or guild."),
 ) -> None:
-    _emit(ctx, _coming_soon_payload(provider="raiderio", query=query, command_hint="raiderio character us illidan Roguecane"))
+    if kind not in {"all", "character", "guild"}:
+        _fail(ctx, "invalid_query", "--kind must be one of: all, character, guild")
+        return
+    normalized_query, type_hint = _normalize_search_query(query)
+    effective_kind = type_hint or kind
+    try:
+        with _client(ctx) as client:
+            payload = client.search(term=normalized_query, kind=effective_kind)
+    except httpx.HTTPStatusError as exc:
+        _handle_http_error(ctx, exc)
+        return
+    raw_matches = payload.get("matches") if isinstance(payload.get("matches"), list) else []
+    _emit(ctx, _search_results_payload(normalized_query, raw_matches, type_hint=type_hint, limit=limit))
 
 
 @app.command("resolve")
 def resolve(
     ctx: typer.Context,
-    query: str = typer.Argument(..., help="Free-text query. Structured resolution is deferred for Raider.IO phase 1."),
-    limit: int = typer.Option(5, "--limit", min=1, max=50, help="Unused in phase 1."),
+    query: str = typer.Argument(..., help="Free-text character or guild query."),
+    limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum candidates to return."),
+    kind: str = typer.Option("all", "--kind", help="Optional result kind: all, character, or guild."),
 ) -> None:
-    _emit(ctx, _coming_soon_payload(provider="raiderio", query=query, command_hint="raiderio guild us illidan Liquid"))
+    if kind not in {"all", "character", "guild"}:
+        _fail(ctx, "invalid_query", "--kind must be one of: all, character, guild")
+        return
+    normalized_query, type_hint = _normalize_search_query(query)
+    effective_kind = type_hint or kind
+    try:
+        with _client(ctx) as client:
+            payload = client.search(term=normalized_query, kind=effective_kind)
+    except httpx.HTTPStatusError as exc:
+        _handle_http_error(ctx, exc)
+        return
+    raw_matches = payload.get("matches") if isinstance(payload.get("matches"), list) else []
+    search_payload = _search_results_payload(normalized_query, raw_matches, type_hint=type_hint, limit=limit)
+    _emit(ctx, _resolve_payload(search_payload, limit=limit))
 
 
 @app.command("character")
