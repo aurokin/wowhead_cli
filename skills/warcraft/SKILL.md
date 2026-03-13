@@ -62,6 +62,8 @@ Current provider state:
 - Use `raiderio` when you already know the region, realm, and character or guild you want, and need direct profile or Mythic+ run data.
 - For exact Raider.IO lookups, prefer structured queries like `character us illidan Roguecane` or `guild us illidan Liquid`; the provider now probes direct profile surfaces for those.
 - Use `warcraft-wiki` when you need general reference material, lore, systems pages, or addon/API documentation.
+- `warcraft-wiki` now does family-aware ranking for programming and systems queries, so `CreateFrame`, `OnKeyDown`, `World of Warcraft API`, `Expansion`, and `Renown` style queries should route more cleanly than generic article search.
+- `warcraft-wiki article` and `article-full` now expose `reference` metadata, which is especially useful for programming pages because it can include a signature, summary, arguments, returns, examples, and patch-change sections when the page provides them.
 - Use `wowprogress` when you have or can supply structured `region realm name` inputs and need progression, roster, or leaderboard context rather than guide content.
 - Use `simc` when you need local SimulationCraft repo inspection, build decoding, or direct binary execution against a local profile.
 - Use `simc repo` when you need to understand or change which local SimulationCraft checkout is active.

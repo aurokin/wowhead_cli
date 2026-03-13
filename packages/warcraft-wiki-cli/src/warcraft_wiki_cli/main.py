@@ -21,7 +21,7 @@ from warcraft_content.article_discovery import (
 )
 from warcraft_core.output import emit
 from warcraft_wiki_cli.client import WarcraftWikiAPIError, WarcraftWikiClient, load_warcraft_wiki_cache_settings_from_env
-from warcraft_wiki_cli.page_parser import article_slug, normalize_article_ref
+from warcraft_wiki_cli.page_parser import article_slug, classify_article_family, normalize_article_ref
 
 app = typer.Typer(add_completion=False, help="Warcraft Wiki reference CLI.")
 
@@ -69,19 +69,46 @@ def _normalize_query(query: str) -> str:
     return normalized or query.strip().lower()
 
 
-def _score_text_match(query: str, title: str, snippet: str, *, ordinal: int) -> tuple[int, list[str]]:
+def _query_intents(query: str) -> set[str]:
+    lowered = query.lower()
+    intents: set[str] = set()
+    if any(token in lowered for token in ("api", "function", "widget", "framexml", "lua", "cvar", "xml", "handler", "event", "addon")):
+        intents.add("programming")
+    if any(token in lowered for token in ("patch", "changes", "hotfix")):
+        intents.add("patch")
+    if any(token in lowered for token in ("zone", "zones", "renown", "housing", "profession", "expansion", "faction")):
+        intents.add("systems")
+    if any(token in lowered for token in ("lore", "story", "character", "characters")):
+        intents.add("lore")
+    return intents
+
+
+def _score_text_match(query: str, title: str, snippet: str, *, ordinal: int) -> tuple[int, list[str], str]:
     haystack = f"{title.lower()} {snippet.lower()}".strip()
+    family = classify_article_family(title)
     score = max(0, 40 - ordinal * 2)
     reasons: list[str] = []
+    intents = _query_intents(query)
+    normalized_query = query.replace(" ", "")
+    normalized_title = title.lower().replace(" ", "").replace("_", "")
     if title.lower() == query:
         score += 50
         reasons.append("exact_title")
+    if family == "api_function" and normalized_title == f"api{normalized_query}":
+        score += 40
+        reasons.append("exact_api_title")
+    if family == "ui_handler" and normalized_title == f"uihandler{normalized_query}":
+        score += 40
+        reasons.append("exact_handler_title")
     if title.lower().startswith(query):
         score += 20
         reasons.append("title_prefix")
     if query in title.lower():
         score += 12
         reasons.append("title_contains_query")
+    if normalized_query and normalized_query in normalized_title:
+        score += 10
+        reasons.append("normalized_title_match")
     terms = [term for term in query.split() if term]
     if terms and all(term in haystack for term in terms):
         score += 10
@@ -89,7 +116,36 @@ def _score_text_match(query: str, title: str, snippet: str, *, ordinal: int) -> 
     if snippet and any(term in snippet.lower() for term in terms):
         score += 4
         reasons.append("snippet_match")
-    return score, reasons
+    if "programming" in intents and family in {"api_function", "ui_handler", "framework_page", "xml_schema", "cvar", "api_changes", "howto_programming"}:
+        score += 20
+        reasons.append("intent_programming")
+    if "systems" in intents and family in {"system_reference", "expansion_reference", "profession_reference", "class_reference", "faction_reference", "zone_reference"}:
+        score += 18
+        reasons.append("intent_systems")
+    if "patch" in intents and family in {"patch_reference", "api_changes"}:
+        score += 18
+        reasons.append("intent_patch")
+    if "lore" in intents and family == "lore_reference":
+        score += 16
+        reasons.append("intent_lore")
+    if family == "api_function":
+        score += 8
+        reasons.append("family_api_function")
+    elif family == "ui_handler":
+        score += 8
+        reasons.append("family_ui_handler")
+    elif family in {
+        "framework_page",
+        "system_reference",
+        "expansion_reference",
+        "profession_reference",
+        "class_reference",
+        "zone_reference",
+        "patch_reference",
+    }:
+        score += 4
+        reasons.append(f"family_{family}")
+    return score, reasons, family
 
 
 def _search_results(client: WarcraftWikiClient, query: str, *, limit: int) -> tuple[str, list[dict[str, Any]], int]:
@@ -98,7 +154,7 @@ def _search_results(client: WarcraftWikiClient, query: str, *, limit: int) -> tu
     matches: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         title = row["title"]
-        score, reasons = _score_text_match(normalized_query, title, row.get("snippet") or "", ordinal=index)
+        score, reasons, family = _score_text_match(normalized_query, title, row.get("snippet") or "", ordinal=index)
         if score <= 0:
             continue
         matches.append(
@@ -113,6 +169,7 @@ def _search_results(client: WarcraftWikiClient, query: str, *, limit: int) -> tu
                 type_name="Article",
                 entity_type="article",
                 metadata_key="title",
+                metadata={"title": title, "content_family": family},
             )
         )
     matches.sort(key=lambda row: (-int(row["ranking"]["score"]), row["name"], row["id"]))
@@ -124,10 +181,12 @@ def _build_article_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
     page = dict(page_payload["page"])
     navigation = list((page_payload.get("navigation") or {}).get("items") or [])
     content = dict(page_payload["article_content"])
+    reference = dict(page_payload.get("reference") or {})
     linked_entities = list(page_payload["linked_entities"])
     return {
         "article": article,
         "page": page,
+        "reference": reference,
         "navigation": {
             "count": len(navigation),
             "items": navigation[:25],
@@ -164,11 +223,13 @@ def _fetch_article_payload(client: WarcraftWikiClient, article_ref: str) -> dict
     return {
         "article": article,
         "page": dict(initial["page"]),
+        "reference": dict(initial.get("reference") or {}),
         "navigation": dict(initial["navigation"]),
         "pages": [
             {
                 "article_meta": dict(initial["article"]),
                 "page": dict(initial["page"]),
+                "reference": dict(initial.get("reference") or {}),
                 "article": dict(initial["article_content"]),
             }
         ],

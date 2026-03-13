@@ -223,10 +223,12 @@ warcraft-wiki article-query ./tmp/wiki-api "framexml"
 
 Warcraft Wiki behavior:
 - `search` and `resolve` use the MediaWiki search API
-- `article` returns a compact article summary with section navigation and linked wiki-article preview
-- `article-full` returns the parsed article payload used for local export
+- `search` and `resolve` now apply family-aware ranking for programming pages like `API_CreateFrame`, `UIHANDLER_OnKeyDown`, and framework/system reference pages like `World of Warcraft API`, `Expansion`, and `Renown`
+- `article` returns a compact article summary with section navigation, linked wiki-article preview, and extracted `reference` metadata
+- `article-full` returns the parsed article payload used for local export, including top-level and per-page `reference` metadata
 - `article-export` writes a local article bundle under `./warcraft-wiki_exports/` by default
 - `article-query` searches exported wiki bundles across sections, navigation links, and linked entities
+- programming pages now strip low-value wiki chrome more aggressively and filter edit-action links from linked-entity output
 
 ## WowProgress Commands
 

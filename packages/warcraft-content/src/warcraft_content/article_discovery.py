@@ -40,7 +40,13 @@ def article_candidate(
     type_name: str = "Guide",
     entity_type: str = "guide",
     metadata_key: str = "slug",
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    payload_metadata = {
+        metadata_key: ref,
+    }
+    if metadata:
+        payload_metadata.update(metadata)
     return {
         "id": ref,
         "name": name,
@@ -51,9 +57,7 @@ def article_candidate(
             "score": score,
             "match_reasons": reasons,
         },
-        "metadata": {
-            metadata_key: ref,
-        },
+        "metadata": payload_metadata,
         "follow_up": article_follow_up(provider_command, ref, surface=surface),
     }
 

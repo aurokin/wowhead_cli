@@ -10,6 +10,51 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 
 WIKI_BASE_URL = "https://warcraft.wiki.gg"
 
+PROGRAMMING_FRAMEWORK_TITLES = {
+    "world of warcraft api",
+    "warcraft wiki:api",
+    "widget api",
+    "widget script handlers",
+    "framexml functions",
+    "framexml api",
+    "lua functions",
+    "lua api",
+    "xml schema",
+    "console variables",
+    "events",
+    "hyperlinks",
+    "macro commands",
+    "ui escape sequences",
+    "warcraft wiki:interface customization",
+    "user interface customization guide",
+    "ui faq/addon author resources",
+    "howtos",
+}
+
+SYSTEM_REFERENCE_TITLES = {
+    "renown",
+    "zone scaling",
+    "housing",
+    "profession",
+    "expansion",
+}
+
+CLASS_REFERENCE_TITLES = {
+    "death knight",
+    "demon hunter",
+    "druid",
+    "evoker",
+    "hunter",
+    "mage",
+    "monk",
+    "paladin",
+    "priest",
+    "rogue",
+    "shaman",
+    "warlock",
+    "warrior",
+}
+
 
 def normalize_article_ref(article_ref: str) -> str:
     value = article_ref.strip()
@@ -42,6 +87,45 @@ def article_slug(title: str) -> str:
 def article_url(title: str) -> str:
     normalized = normalize_article_ref(title).replace(" ", "_")
     return f"{WIKI_BASE_URL}/wiki/{quote(normalized, safe='/:()')}"
+
+
+def _normalized_title_key(title: str) -> str:
+    return normalize_article_ref(title).strip().lower()
+
+
+def classify_article_family(title: str) -> str:
+    normalized = _normalized_title_key(title)
+    if normalized.startswith("api "):
+        return "api_function"
+    if normalized.startswith("uihandler "):
+        return "ui_handler"
+    if normalized.endswith("/api changes") or normalized == "api change summaries":
+        return "api_changes"
+    if normalized.startswith("patch ") and ("api changes" not in normalized):
+        return "patch_reference"
+    if normalized in PROGRAMMING_FRAMEWORK_TITLES:
+        if normalized in {"warcraft wiki:interface customization", "user interface customization guide", "ui faq/addon author resources", "howtos"}:
+            return "howto_programming"
+        if normalized == "xml schema":
+            return "xml_schema"
+        if normalized == "console variables":
+            return "cvar"
+        return "framework_page"
+    if normalized in CLASS_REFERENCE_TITLES:
+        return "class_reference"
+    if normalized in SYSTEM_REFERENCE_TITLES:
+        if normalized == "expansion":
+            return "expansion_reference"
+        if normalized == "profession":
+            return "profession_reference"
+        if normalized == "zone scaling":
+            return "zone_reference"
+        return "system_reference"
+    if normalized.startswith("world of warcraft:") or normalized.startswith("warcraft:"):
+        return "lore_reference"
+    if "guide" in normalized or "howto" in normalized or "tutorial" in normalized:
+        return "guide_reference"
+    return "general_article"
 
 
 def _strip_html(html_text: str) -> str:
@@ -161,6 +245,8 @@ def _extract_linked_entities(root: Tag) -> list[dict[str, Any]]:
         href = str(link.get("href") or "")
         if not href.startswith("/wiki/"):
             continue
+        if "action=edit" in href or "veaction=edit" in href:
+            continue
         if href.startswith("/wiki/File:") or href.startswith("/wiki/Category:") or href.startswith("/wiki/Special:"):
             continue
         if href.startswith("/wiki/Help:") or href.startswith("/wiki/Template:"):
@@ -178,6 +264,64 @@ def _extract_linked_entities(root: Tag) -> list[dict[str, Any]]:
     return sorted(entities.values(), key=lambda row: str(row["id"]).lower())
 
 
+def _clean_root(root: Tag, *, family: str) -> Tag:
+    cleaned = BeautifulSoup(str(root), "html.parser")
+    output = cleaned.select_one(".mw-parser-output") or cleaned
+    for selector in (".mw-editsection", ".toc", ".noprint", ".mw-empty-elt", "style", "script"):
+        for tag in output.select(selector):
+            tag.decompose()
+    if family in {"api_function", "ui_handler", "framework_page", "xml_schema", "cvar", "api_changes", "howto_programming"}:
+        for tag in output.select(".nomobile, .thumb, .gallery, .mw-references-wrap"):
+            tag.decompose()
+        children = [child for child in output.children if isinstance(child, Tag)]
+        for child in children[:3]:
+            text = child.get_text(" ", strip=True)
+            normalized = text.lower()
+            if (
+                "main menu" in normalized
+                or ("game types" in normalized and "wowprogramming" in normalized)
+                or ("wow api" in normalized and "framexml api" in normalized)
+            ):
+                child.decompose()
+    return output
+
+
+def _section_lookup(sections: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    lookup: dict[str, dict[str, Any]] = {}
+    for section in sections:
+        title = str(section.get("title") or "").strip().lower().replace(" ", "_")
+        if title:
+            lookup[title] = section
+    return lookup
+
+
+def _first_code_block_text(root: Tag) -> str | None:
+    block = root.select_one(".mw-highlight")
+    if block is None:
+        return None
+    text = block.get_text(" ", strip=True)
+    return text or None
+
+
+def extract_reference_metadata(*, title: str, text: str, sections: list[dict[str, Any]], root: Tag) -> dict[str, Any]:
+    family = classify_article_family(title)
+    metadata: dict[str, Any] = {"content_family": family}
+    if family not in {"api_function", "ui_handler", "framework_page", "xml_schema", "cvar", "api_changes", "howto_programming"}:
+        return metadata
+    section_map = _section_lookup(sections)
+    metadata["programming_reference"] = True
+    metadata["signature"] = _first_code_block_text(root)
+    metadata["summary"] = sections[0]["text"] if sections else text[:240]
+    metadata["arguments"] = section_map.get("arguments", {}).get("text")
+    metadata["returns"] = section_map.get("returns", {}).get("text")
+    metadata["details"] = section_map.get("details", {}).get("text")
+    metadata["example"] = section_map.get("example", {}).get("text")
+    metadata["patch_changes"] = section_map.get("patch_changes", {}).get("text")
+    metadata["see_also"] = section_map.get("see_also", {}).get("text")
+    metadata["references"] = section_map.get("references", {}).get("text")
+    return metadata
+
+
 def parse_article_page(payload: dict[str, Any], *, source_title: str) -> dict[str, Any]:
     parse = payload.get("parse") if isinstance(payload.get("parse"), dict) else {}
     title = str(parse.get("title") or source_title).strip()
@@ -187,11 +331,13 @@ def parse_article_page(payload: dict[str, Any], *, source_title: str) -> dict[st
     root = soup.select_one(".mw-parser-output")
     if root is None:
         root = soup.div if soup.div is not None else soup
+    family = classify_article_family(title)
+    root = _clean_root(root, family=family)
     headings, sections = _extract_sections(root)
     text = root.get_text(" ", strip=True)
     navigation = [
         {
-            "title": str(row.get("line") or ""),
+            "title": _strip_html(str(row.get("line") or "")),
             "url": f"{article_url(title)}#{row.get('anchor')}",
             "section_slug": str(row.get("anchor") or ""),
             "active": True,
@@ -209,6 +355,7 @@ def parse_article_page(payload: dict[str, Any], *, source_title: str) -> dict[st
             "section_slug": article_slug(title),
             "section_title": display_title or title,
             "page_count": 1,
+            "content_family": family,
         },
         "page": {
             "title": display_title or title,
@@ -225,6 +372,7 @@ def parse_article_page(payload: dict[str, Any], *, source_title: str) -> dict[st
             "headings": headings,
             "sections": sections,
         },
+        "reference": extract_reference_metadata(title=title, text=text, sections=sections, root=root),
         "linked_entities": _extract_linked_entities(root),
         "citations": {
             "page": article_url(title),

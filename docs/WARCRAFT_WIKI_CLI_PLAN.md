@@ -2,7 +2,7 @@
 
 ## Status
 
-`warcraft-wiki` is now implemented as a working provider, but it is still operating mostly as a generic article source.
+`warcraft-wiki` is now implemented as a working provider and is partway through the shift from a generic article source to a family-aware reference CLI.
 
 Current command surface:
 - `warcraft-wiki doctor`
@@ -15,9 +15,10 @@ Current command surface:
 
 Current quality notes:
 - search and article retrieval work for broad wiki pages
-- programming pages like `API_CreateFrame` are reachable now, but they are not yet treated as a first-class programming surface
-- MediaWiki article extraction is still generic enough that page chrome and low-value links can leak into programming-oriented results
-- non-programming wiki coverage is broad in theory, but not yet intentionally classified into supported families the way `method` and `icy-veins` are
+- programming pages like `API_CreateFrame` and `UIHANDLER_OnKeyDown` now rank and resolve as first-class programming surfaces
+- programming extraction now strips the worst wiki chrome and filters edit-action links from linked entities
+- non-programming wiki coverage now includes explicit classification for key system/reference families like `Expansion`, `Profession`, `Renown`, `Zone_scaling`, and class pages
+- `article` and `article-full` now expose extracted `reference` metadata so programming and system pages are easier for agents to traverse
 
 ## Why Add It
 
@@ -143,27 +144,14 @@ The important point is that these families do not all need different commands im
 ## Current Gaps
 
 Programming gaps:
-- API and UI pages are still treated like generic articles
-- `resolve "CreateFrame"` does not yet confidently resolve to `API CreateFrame`
-- article text still includes too much wiki chrome for programming pages
-- linked entities still include low-value action links like `?action=edit`
-- programming pages do not expose typed metadata like:
-  - signature
-  - arguments
-  - returns
-  - examples
-  - patch changes
-  - references
+- programming page extraction is still heuristic rather than template-aware
+- typed metadata is strongest for straightforward API/function pages and still needs broader validation across framework and patch-change pages
+- there is still no dedicated typed command surface like `api` or `event`; programming support currently rides on the generic `article` surfaces
 
 Non-programming gaps:
-- non-programming families are not yet intentionally classified
-- search and resolve do not yet distinguish:
-  - systems reference
-  - lore reference
-  - patch/history pages
-  - guide/howto pages
-- there is no clear support boundary for what non-programming surfaces are intentionally in scope versus merely reachable
-- tests are still generic article tests rather than family-aware contract tests
+- faction, zone, lore, and guide-style family coverage still needs deeper validation
+- search and resolve are stronger for systems/programming pages than for the broader historical/lore surface
+- the support boundary for non-programming pages is clearer now, but still not fully validated family-by-family
 
 ## Completion Plan
 

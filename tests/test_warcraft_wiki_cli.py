@@ -19,6 +19,7 @@ def _page_payload() -> dict[str, object]:
             "section_slug": "world-of-warcraft-api",
             "section_title": "World of Warcraft API",
             "page_count": 1,
+            "content_family": "framework_page",
         },
         "page": {
             "title": "World of Warcraft API",
@@ -37,6 +38,11 @@ def _page_payload() -> dict[str, object]:
             "text": "API systems FrameXML reference.",
             "headings": [{"title": "API systems", "level": 2, "ordinal": 1, "anchor": "API_systems"}],
             "sections": [{"title": "API systems", "level": 2, "ordinal": 1, "anchor": "API_systems", "text": "FrameXML reference.", "html": "<p>FrameXML reference.</p>"}],
+        },
+        "reference": {
+            "content_family": "framework_page",
+            "programming_reference": True,
+            "summary": "FrameXML reference.",
         },
         "linked_entities": [
             {"type": "wiki_article", "id": "UIOBJECT Frame", "name": "UIOBJECT Frame", "url": "https://warcraft.wiki.gg/wiki/UIOBJECT_Frame"},
@@ -71,6 +77,7 @@ def test_warcraft_wiki_search_and_resolve(monkeypatch) -> None:
     assert search_result.exit_code == 0
     search_payload = json.loads(search_result.stdout)
     assert search_payload["results"][0]["entity_type"] == "article"
+    assert search_payload["results"][0]["metadata"]["content_family"] == "framework_page"
 
     resolve_result = runner.invoke(warcraft_wiki_app, ["resolve", "world of warcraft api"])
     assert resolve_result.exit_code == 0
@@ -87,6 +94,8 @@ def test_warcraft_wiki_article_and_export(monkeypatch, tmp_path) -> None:
     article_payload = json.loads(article_result.stdout)
     assert article_payload["article"]["title"] == "World of Warcraft API"
     assert article_payload["content"]["section_count"] == 1
+    assert article_payload["reference"]["content_family"] == "framework_page"
+    assert article_payload["reference"]["programming_reference"] is True
 
     export_dir = tmp_path / "wiki-article"
     export_result = runner.invoke(warcraft_wiki_app, ["article-export", "World of Warcraft API", "--out", str(export_dir)])
@@ -94,6 +103,12 @@ def test_warcraft_wiki_article_and_export(monkeypatch, tmp_path) -> None:
     export_payload = json.loads(export_result.stdout)
     assert export_payload["article"]["slug"] == "world-of-warcraft-api"
     assert export_payload["counts"]["sections"] == 1
+
+    article_full_result = runner.invoke(warcraft_wiki_app, ["article-full", "World of Warcraft API"])
+    assert article_full_result.exit_code == 0
+    article_full_payload = json.loads(article_full_result.stdout)
+    assert article_full_payload["reference"]["content_family"] == "framework_page"
+    assert article_full_payload["pages"][0]["reference"]["programming_reference"] is True
 
 
 def test_warcraft_wiki_article_query(monkeypatch, tmp_path) -> None:
@@ -107,3 +122,68 @@ def test_warcraft_wiki_article_query(monkeypatch, tmp_path) -> None:
     payload = json.loads(query_result.stdout)
     assert payload["article"]["title"] == "World of Warcraft API"
     assert payload["match_counts"]["sections"] >= 1
+
+
+def test_warcraft_wiki_search_prefers_api_page_for_function_query(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            3,
+            [
+                {"title": "API CreateFrame", "pageid": 1, "snippet": "Creates a Frame object.", "url": "https://warcraft.wiki.gg/wiki/API_CreateFrame"},
+                {"title": "Widget script handlers", "pageid": 2, "snippet": "OnClick and OnKeyDown handlers.", "url": "https://warcraft.wiki.gg/wiki/Widget_script_handlers"},
+                {"title": "Create a WoW AddOn in 15 Minutes", "pageid": 3, "snippet": "AddOn tutorial.", "url": "https://warcraft.wiki.gg/wiki/Create_a_WoW_AddOn_in_15_Minutes"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["resolve", "CreateFrame"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "API CreateFrame"
+    assert payload["next_command"] == "warcraft-wiki article 'API CreateFrame'"
+
+
+def test_warcraft_wiki_search_prefers_handler_page_for_handler_query(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            3,
+            [
+                {"title": "Widget script handlers", "pageid": 1, "snippet": "OnClick and OnKeyDown handlers.", "url": "https://warcraft.wiki.gg/wiki/Widget_script_handlers"},
+                {"title": "UIHANDLER OnKeyDown", "pageid": 2, "snippet": "Fires when a key is pressed.", "url": "https://warcraft.wiki.gg/wiki/UIHANDLER_OnKeyDown"},
+                {"title": "OnUpdate", "pageid": 3, "snippet": "Widget update handler.", "url": "https://warcraft.wiki.gg/wiki/UIHANDLER_OnUpdate"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["resolve", "OnKeyDown"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "UIHANDLER OnKeyDown"
+    assert payload["match"]["metadata"]["content_family"] == "ui_handler"
+
+
+def test_warcraft_wiki_search_prefers_system_reference_for_system_query(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            3,
+            [
+                {"title": "Renown", "pageid": 1, "snippet": "Reputation-like progression system.", "url": "https://warcraft.wiki.gg/wiki/Renown"},
+                {"title": "Expansion", "pageid": 2, "snippet": "Game expansion overview.", "url": "https://warcraft.wiki.gg/wiki/Expansion"},
+                {"title": "World of Warcraft API", "pageid": 3, "snippet": "Programming reference.", "url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["search", "renown"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["id"] == "Renown"
+    assert payload["results"][0]["metadata"]["content_family"] == "system_reference"
