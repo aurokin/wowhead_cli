@@ -2,7 +2,7 @@
 
 ## Status
 
-`warcraft-wiki` is now implemented as a working provider and is partway through the shift from a generic article source to a family-aware reference CLI.
+`warcraft-wiki` is now implemented as a working family-aware reference CLI across both programming and non-programming Warcraft Wiki surfaces.
 
 Current command surface:
 - `warcraft-wiki doctor`
@@ -10,12 +10,19 @@ Current command surface:
 - `warcraft-wiki resolve`
 - `warcraft-wiki article`
 - `warcraft-wiki article-full`
+- `warcraft-wiki api`
+- `warcraft-wiki api-full`
+- `warcraft-wiki event`
+- `warcraft-wiki event-full`
 - `warcraft-wiki article-export`
 - `warcraft-wiki article-query`
 
 Current quality notes:
 - search and article retrieval work for broad wiki pages
 - programming pages like `API_CreateFrame` and `UIHANDLER_OnKeyDown` now rank and resolve as first-class programming surfaces
+- typed programming surfaces now exist for high-signal lookups:
+  - `api` / `api-full`
+  - `event` / `event-full`
 - programming extraction now strips the worst wiki chrome and filters edit-action links from linked entities
 - non-programming wiki coverage now includes explicit classification for key system/reference families like `Expansion`, `Profession`, `Renown`, `Zone_scaling`, and class pages
 - `article` and `article-full` now expose extracted `reference` metadata so programming and system pages are easier for agents to traverse
@@ -94,6 +101,10 @@ This is now treated as a reference/documentation service backed by the MediaWiki
 - `warcraft-wiki resolve "<query>"`
 - `warcraft-wiki article <title-or-url>`
 - `warcraft-wiki article-full <title-or-url>`
+- `warcraft-wiki api <query>`
+- `warcraft-wiki api-full <query>`
+- `warcraft-wiki event <query>`
+- `warcraft-wiki event-full <query>`
 - `warcraft-wiki article-export <title-or-url>`
 - `warcraft-wiki article-query <bundle> "<query>"`
 
@@ -158,14 +169,10 @@ The important point is that these families do not all need different commands im
 
 ## Current Gaps
 
-Programming gaps:
+Remaining quality notes:
 - programming page extraction is still heuristic rather than template-aware
-- typed metadata is strongest for straightforward API/function pages and still needs broader validation across framework pages
-- there is still no dedicated typed command surface like `api` or `event`; programming support currently rides on the generic `article` surfaces
-
-Non-programming gaps:
-- search and resolve are stronger for systems/programming pages than for the broader historical/lore surface
-- the support boundary for non-programming pages is clearer now, but still not fully validated family-by-family
+- typed metadata is strongest for straightforward API/function pages and framework pages may still vary more page-to-page than function references
+- non-programming family support is now broad and validated, but Warcraft Wiki remains heterogeneous enough that future family additions should stay test-first
 
 ## Completion Plan
 

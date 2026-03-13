@@ -24,6 +24,15 @@ def test_live_warcraft_wiki_api_search_and_resolve_contract() -> None:
     assert resolve_payload["resolved"] is True
     assert resolve_payload["next_command"] == "warcraft-wiki article 'API CreateFrame'"
 
+    api_payload = payload_for_live(runner, app, ["api", "CreateFrame"], provider_name="Warcraft Wiki")
+    assert api_payload["article"]["content_family"] == "api_function"
+    assert api_payload["resolved_surface"] == "api"
+
+    api_full_payload = payload_for_live(runner, app, ["api-full", "CreateFrame"], provider_name="Warcraft Wiki")
+    assert api_full_payload["article"]["content_family"] == "api_function"
+    assert api_full_payload["resolved_surface"] == "api"
+    assert api_full_payload["reference"]["signature"] is not None
+
 
 def test_live_warcraft_wiki_handler_resolve_contract() -> None:
     require_live("Warcraft Wiki")
@@ -32,6 +41,14 @@ def test_live_warcraft_wiki_handler_resolve_contract() -> None:
     assert payload["resolved"] is True
     assert payload["match"]["metadata"]["content_family"] == "ui_handler"
     assert payload["match"]["id"] == "UIHANDLER OnKeyDown"
+
+    event_payload = payload_for_live(runner, app, ["event", "OnKeyDown"], provider_name="Warcraft Wiki")
+    assert event_payload["article"]["content_family"] == "ui_handler"
+    assert event_payload["resolved_surface"] == "event"
+
+    event_full_payload = payload_for_live(runner, app, ["event-full", "OnKeyDown"], provider_name="Warcraft Wiki")
+    assert event_full_payload["article"]["content_family"] == "ui_handler"
+    assert event_full_payload["resolved_surface"] == "event"
 
 
 def test_live_warcraft_wiki_faction_query_cleanup_contract() -> None:
@@ -65,6 +82,29 @@ def test_live_warcraft_wiki_api_changes_article_contract() -> None:
     assert payload["content"]["section_count"] >= 5
 
 
+def test_live_warcraft_wiki_framework_and_xml_api_contracts() -> None:
+    require_live("Warcraft Wiki")
+
+    framework_payload = payload_for_live(runner, app, ["api", "World of Warcraft API"], provider_name="Warcraft Wiki")
+    assert framework_payload["article"]["content_family"] == "framework_page"
+    assert framework_payload["resolved_surface"] == "api"
+    assert framework_payload["reference"]["programming_reference"] is True
+
+    xml_payload = payload_for_live(runner, app, ["api", "XML schema"], provider_name="Warcraft Wiki")
+    assert xml_payload["article"]["content_family"] == "xml_schema"
+    assert xml_payload["resolved_surface"] == "api"
+    assert xml_payload["reference"]["programming_reference"] is True
+
+
+def test_live_warcraft_wiki_framework_event_contract() -> None:
+    require_live("Warcraft Wiki")
+    payload = payload_for_live(runner, app, ["event", "Events"], provider_name="Warcraft Wiki")
+
+    assert payload["article"]["content_family"] == "framework_page"
+    assert payload["resolved_surface"] == "event"
+    assert payload["reference"]["programming_reference"] is True
+
+
 def test_live_warcraft_wiki_programming_howto_contract() -> None:
     require_live("Warcraft Wiki")
     payload = payload_for_live(runner, app, ["article", "Create a WoW AddOn in 15 Minutes"], provider_name="Warcraft Wiki")
@@ -94,6 +134,13 @@ def test_live_warcraft_wiki_expansion_article_contract() -> None:
     assert payload["reference"]["content_family"] == "expansion_reference"
     assert payload["reference"]["summary"] is not None
     assert payload["content"]["section_count"] >= 2
+
+
+def test_live_warcraft_wiki_redirect_article_contract() -> None:
+    require_live("Warcraft Wiki")
+    payload = payload_for_live(runner, app, ["article", "Legion"], provider_name="Warcraft Wiki")
+    assert payload["article"]["title"] == "World of Warcraft: Legion"
+    assert payload["article"]["content_family"] == "expansion_reference"
 
 
 def test_live_warcraft_wiki_class_article_contract() -> None:

@@ -47,7 +47,6 @@ Active next step:
 - tighten `icy-veins` until its supported families, traversal rules, reliability, and test coverage are strong enough to treat it as fully covered
 - add conservative wrapper-level expansion filtering so agents can trust version-scoped results
 - build reusable analytics systems for profile and leaderboard providers instead of one-off answer commands
-- turn `warcraft-wiki` into a family-aware reference provider across both programming and non-programming wiki surfaces
 - focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
 
 ## Planning Documents

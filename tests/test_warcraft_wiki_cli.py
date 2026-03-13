@@ -51,6 +51,75 @@ def _page_payload() -> dict[str, object]:
     }
 
 
+def _ui_handler_payload() -> dict[str, object]:
+    return {
+        "article": {
+            "title": "UIHANDLER OnKeyDown",
+            "slug": "uihandler-onkeydown",
+            "display_title": "UIHANDLER OnKeyDown",
+            "page_url": "https://warcraft.wiki.gg/wiki/UIHANDLER_OnKeyDown",
+            "section_slug": "uihandler-onkeydown",
+            "section_title": "UIHANDLER OnKeyDown",
+            "page_count": 1,
+            "content_family": "ui_handler",
+        },
+        "page": {
+            "title": "UIHANDLER OnKeyDown",
+            "description": "Handler reference",
+            "canonical_url": "https://warcraft.wiki.gg/wiki/UIHANDLER_OnKeyDown",
+        },
+        "navigation": {"count": 0, "items": []},
+        "article_content": {
+            "html": "<p>Fires when a key is pressed.</p>",
+            "text": "Fires when a key is pressed.",
+            "headings": [],
+            "sections": [{"title": "Introduction", "level": 1, "ordinal": 1, "anchor": "Introduction", "text": "Fires when a key is pressed.", "html": "<p>Fires when a key is pressed.</p>"}],
+        },
+        "reference": {
+            "content_family": "ui_handler",
+            "programming_reference": True,
+            "summary": "Fires when a key is pressed.",
+        },
+        "linked_entities": [],
+        "citations": {"page": "https://warcraft.wiki.gg/wiki/UIHANDLER_OnKeyDown"},
+    }
+
+
+def _api_payload() -> dict[str, object]:
+    return {
+        "article": {
+            "title": "API CreateFrame",
+            "slug": "api-createframe",
+            "display_title": "API CreateFrame",
+            "page_url": "https://warcraft.wiki.gg/wiki/API_CreateFrame",
+            "section_slug": "api-createframe",
+            "section_title": "API CreateFrame",
+            "page_count": 1,
+            "content_family": "api_function",
+        },
+        "page": {
+            "title": "API CreateFrame",
+            "description": "Creates a Frame object.",
+            "canonical_url": "https://warcraft.wiki.gg/wiki/API_CreateFrame",
+        },
+        "navigation": {"count": 0, "items": []},
+        "article_content": {
+            "html": "<p>Creates a Frame object.</p>",
+            "text": "Creates a Frame object.",
+            "headings": [],
+            "sections": [{"title": "Introduction", "level": 1, "ordinal": 1, "anchor": "Introduction", "text": "Creates a Frame object.", "html": "<p>Creates a Frame object.</p>"}],
+        },
+        "reference": {
+            "content_family": "api_function",
+            "programming_reference": True,
+            "summary": "Creates a Frame object.",
+            "signature": "frame = CreateFrame(frameType)",
+        },
+        "linked_entities": [],
+        "citations": {"page": "https://warcraft.wiki.gg/wiki/API_CreateFrame"},
+    }
+
+
 def test_warcraft_wiki_doctor_reports_ready_capabilities() -> None:
     result = runner.invoke(warcraft_wiki_app, ["doctor"])
     assert result.exit_code == 0
@@ -58,6 +127,8 @@ def test_warcraft_wiki_doctor_reports_ready_capabilities() -> None:
     payload = json.loads(result.stdout)
     assert payload["provider"] == "warcraft-wiki"
     assert payload["capabilities"]["search"] == "ready"
+    assert payload["capabilities"]["api"] == "ready"
+    assert payload["capabilities"]["event"] == "ready"
     assert payload["capabilities"]["article_query"] == "ready"
 
 
@@ -109,6 +180,141 @@ def test_warcraft_wiki_article_and_export(monkeypatch, tmp_path) -> None:
     article_full_payload = json.loads(article_full_result.stdout)
     assert article_full_payload["reference"]["content_family"] == "framework_page"
     assert article_full_payload["pages"][0]["reference"]["programming_reference"] is True
+
+
+def test_warcraft_wiki_api_and_event_commands(monkeypatch) -> None:
+    def fake_fetch(self, article_ref):  # noqa: ANN001
+        normalized = str(article_ref)
+        if "OnKeyDown" in normalized:
+            return _ui_handler_payload()
+        return _api_payload()
+
+    monkeypatch.setattr("warcraft_wiki_cli.main.WarcraftWikiClient.fetch_article_page", fake_fetch)
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            2,
+            [
+                {"title": "API CreateFrame", "pageid": 1, "snippet": "Creates a Frame object.", "url": "https://warcraft.wiki.gg/wiki/API_CreateFrame"},
+                {"title": "UIHANDLER OnKeyDown", "pageid": 2, "snippet": "Fires when a key is pressed.", "url": "https://warcraft.wiki.gg/wiki/UIHANDLER_OnKeyDown"},
+            ],
+        ),
+    )
+
+    api_result = runner.invoke(warcraft_wiki_app, ["api", "CreateFrame"])
+    assert api_result.exit_code == 0
+    api_payload = json.loads(api_result.stdout)
+    assert api_payload["article"]["title"] == "API CreateFrame"
+    assert api_payload["resolved_surface"] == "api"
+    assert api_payload["resolved_from"] == "direct_fetch"
+
+    api_full_result = runner.invoke(warcraft_wiki_app, ["api-full", "CreateFrame"])
+    assert api_full_result.exit_code == 0
+    api_full_payload = json.loads(api_full_result.stdout)
+    assert api_full_payload["article"]["title"] == "API CreateFrame"
+    assert api_full_payload["resolved_surface"] == "api"
+
+    event_result = runner.invoke(warcraft_wiki_app, ["event", "OnKeyDown"])
+    assert event_result.exit_code == 0
+    event_payload = json.loads(event_result.stdout)
+    assert event_payload["article"]["title"] == "UIHANDLER OnKeyDown"
+    assert event_payload["article"]["content_family"] == "ui_handler"
+    assert event_payload["resolved_surface"] == "event"
+
+    event_full_result = runner.invoke(warcraft_wiki_app, ["event-full", "OnKeyDown"])
+    assert event_full_result.exit_code == 0
+    event_full_payload = json.loads(event_full_result.stdout)
+    assert event_full_payload["article"]["title"] == "UIHANDLER OnKeyDown"
+    assert event_full_payload["reference"]["content_family"] == "ui_handler"
+
+
+def test_warcraft_wiki_typed_commands_reject_wrong_family(monkeypatch) -> None:
+    lore_payload = {
+        "article": {
+            "title": "Jaina Proudmoore",
+            "slug": "jaina-proudmoore",
+            "display_title": "Jaina Proudmoore",
+            "page_url": "https://warcraft.wiki.gg/wiki/Jaina_Proudmoore",
+            "section_slug": "jaina-proudmoore",
+            "section_title": "Jaina Proudmoore",
+            "page_count": 1,
+            "content_family": "lore_reference",
+        },
+        "page": {
+            "title": "Jaina Proudmoore",
+            "description": "Lore page.",
+            "canonical_url": "https://warcraft.wiki.gg/wiki/Jaina_Proudmoore",
+        },
+        "navigation": {"count": 0, "items": []},
+        "article_content": {
+            "html": "<p>Archmage of the Kirin Tor.</p>",
+            "text": "Archmage of the Kirin Tor.",
+            "headings": [],
+            "sections": [{"title": "Introduction", "level": 1, "ordinal": 1, "anchor": "Introduction", "text": "Archmage of the Kirin Tor.", "html": "<p>Archmage of the Kirin Tor.</p>"}],
+        },
+        "reference": {"content_family": "lore_reference", "summary": "Archmage of the Kirin Tor."},
+        "linked_entities": [],
+        "citations": {"page": "https://warcraft.wiki.gg/wiki/Jaina_Proudmoore"},
+    }
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.fetch_article_page",
+        lambda self, article_ref: lore_payload,
+    )
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            1,
+            [
+                {
+                    "title": "Jaina Proudmoore",
+                    "pageid": 1,
+                    "snippet": "Lore reference page.",
+                    "url": "https://warcraft.wiki.gg/wiki/Jaina_Proudmoore",
+                }
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["event", "Jaina Proudmoore"])
+    assert result.exit_code == 1
+
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_event_ref"
+
+
+def test_warcraft_wiki_api_command_supports_framework_pages(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.fetch_article_page",
+        lambda self, article_ref: _page_payload(),
+    )
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            2,
+            [
+                {
+                    "title": "World of Warcraft API",
+                    "pageid": 1,
+                    "snippet": "Framework overview.",
+                    "url": "https://warcraft.wiki.gg/wiki/World_of_Warcraft_API",
+                },
+                {
+                    "title": "API CreateFrame",
+                    "pageid": 2,
+                    "snippet": "Function reference.",
+                    "url": "https://warcraft.wiki.gg/wiki/API_CreateFrame",
+                },
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["api", "World of Warcraft API"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["article"]["title"] == "World of Warcraft API"
+    assert payload["article"]["content_family"] == "framework_page"
+    assert payload["resolved_surface"] == "api"
 
 
 def test_warcraft_wiki_article_query(monkeypatch, tmp_path) -> None:

@@ -28,6 +28,8 @@ warcraft raiderio character us illidan Roguecane
 warcraft raiderio guild us illidan Liquid
 warcraft warcraft-wiki search "world of warcraft api"
 warcraft warcraft-wiki article "World of Warcraft API"
+warcraft warcraft-wiki api "CreateFrame"
+warcraft warcraft-wiki event "OnKeyDown"
 warcraft wowprogress guild us illidan Liquid
 warcraft wowprogress leaderboard pve us --limit 10
 warcraft simc doctor
@@ -50,7 +52,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `icy-veins` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
 - `raiderio` is now a real phase-1 API provider for direct character, guild, and Mythic+ runs lookups.
 - `raiderio` now includes real search and conservative resolve on top of the live site search surface.
-- `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, article export, and local query.
+- `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, typed `api` / `event` lookups, article export, and local query.
 - `wowprogress` is now a real phase-1 rankings provider with structured search, conservative resolve, and direct guild, character, and PvE leaderboard lookups.
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
@@ -217,6 +219,10 @@ warcraft-wiki search "world of warcraft api"
 warcraft-wiki resolve "world of warcraft api"
 warcraft-wiki article "World of Warcraft API"
 warcraft-wiki article-full "World of Warcraft API"
+warcraft-wiki api "CreateFrame"
+warcraft-wiki api-full "XML schema"
+warcraft-wiki event "OnKeyDown"
+warcraft-wiki event-full "Events"
 warcraft-wiki article-export "World of Warcraft API" --out ./tmp/wiki-api
 warcraft-wiki article-query ./tmp/wiki-api "framexml"
 ```
@@ -225,12 +231,15 @@ Warcraft Wiki behavior:
 - `search` and `resolve` use the MediaWiki search API
 - `search` and `resolve` now apply family-aware ranking for programming pages like `API_CreateFrame`, `UIHANDLER_OnKeyDown`, and framework/system reference pages like `World of Warcraft API`, `Expansion`, and `Renown`
 - `search` and `resolve` now also clean out low-value leading family hint terms like `faction`, `lore`, `guide`, `zone`, `profession`, `class`, and `expansion` when there is a stronger article target underneath, and report the cleanup in `excluded_terms`
+- `api` and `api-full` are the preferred typed programming surfaces for API functions, framework pages, XML schema pages, console-variable reference pages, and API-change pages
+- `event` and `event-full` are the preferred typed programming surfaces for UI handler pages and event/framework pages
 - `article` returns a compact article summary with section navigation, linked wiki-article preview, and extracted `reference` metadata
 - `article-full` returns the parsed article payload used for local export, including top-level and per-page `reference` metadata
 - `article-export` writes a local article bundle under `./warcraft-wiki_exports/` by default
 - `article-query` searches exported wiki bundles across sections, navigation links, and linked entities
 - programming pages now strip low-value wiki chrome more aggressively and filter edit-action links from linked-entity output
 - `reference` metadata is now useful beyond API pages: programming howtos, API-change pages, class pages, profession pages, faction pages, zone pages, expansion pages, systems pages, guide pages, and lore pages all expose at least a family-aware summary, and some pages also expose `patch_changes`, `see_also`, and `references`
+- redirect-backed article lookups now follow MediaWiki redirects, so short refs like `Legion` resolve to canonical pages like `World of Warcraft: Legion`
 
 ## WowProgress Commands
 

@@ -25,6 +25,9 @@ from warcraft_wiki_cli.page_parser import article_slug, classify_article_family,
 
 app = typer.Typer(add_completion=False, help="Warcraft Wiki reference CLI.")
 
+API_REFERENCE_FAMILIES = {"api_function", "framework_page", "xml_schema", "cvar", "api_changes"}
+EVENT_REFERENCE_FAMILIES = {"ui_handler", "framework_page"}
+
 QUERY_FAMILY_HINT_TERMS = {
     "article",
     "articles",
@@ -264,6 +267,10 @@ def _build_article_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
 
 def _fetch_article_payload(client: WarcraftWikiClient, article_ref: str) -> dict[str, Any]:
     initial = client.fetch_article_page(article_ref)
+    return _article_payload_from_initial(initial)
+
+
+def _article_payload_from_initial(initial: dict[str, Any]) -> dict[str, Any]:
     article = dict(initial["article"])
     article["page_count"] = 1
     return {
@@ -285,6 +292,100 @@ def _fetch_article_payload(client: WarcraftWikiClient, article_ref: str) -> dict
         },
         "citations": dict(initial["citations"]),
     }
+
+
+def _typed_search_queries(query: str, *, surface: str) -> list[str]:
+    normalized = normalize_article_ref(query)
+    candidates = [normalized]
+    lowered = normalized.lower()
+    if surface == "api":
+        if not lowered.startswith("api "):
+            candidates.append(f"API {normalized}")
+    elif surface == "event":
+        if not lowered.startswith("uihandler "):
+            candidates.append(f"UIHANDLER {normalized}")
+        if lowered != "events":
+            candidates.append(f"event {normalized}")
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        value = candidate.strip()
+        if value and value.lower() not in seen:
+            ordered.append(value)
+            seen.add(value.lower())
+    return ordered
+
+
+def _typed_article_payload(
+    client: WarcraftWikiClient,
+    query: str,
+    *,
+    surface: str,
+    full: bool,
+    limit: int = 10,
+) -> dict[str, Any]:
+    allowed_families = API_REFERENCE_FAMILIES if surface == "api" else EVENT_REFERENCE_FAMILIES
+    direct_refs = _typed_search_queries(query, surface=surface)
+    for candidate_ref in direct_refs:
+        try:
+            initial = client.fetch_article_page(candidate_ref)
+        except WarcraftWikiAPIError:
+            continue
+        if initial["article"]["content_family"] in allowed_families:
+            payload = _article_payload_from_initial(initial)
+            result = payload if full else _build_article_summary(initial)
+            result["query"] = query
+            result["search_queries"] = direct_refs
+            result["resolved_from"] = "direct_fetch"
+            result["resolved_surface"] = surface
+            return result
+
+    ranked: dict[str, dict[str, Any]] = {}
+    query_trace: list[str] = []
+    total_count = 0
+    for search_query in _typed_search_queries(query, surface=surface):
+        normalized_query, _excluded_terms, rows, total_count_part = _search_results(client, search_query, limit=limit)
+        query_trace.append(normalized_query)
+        total_count = max(total_count, total_count_part)
+        for row in rows:
+            family = str((row.get("metadata") or {}).get("content_family") or "")
+            if family not in allowed_families:
+                continue
+            existing = ranked.get(row["id"])
+            if existing is None or int(row["ranking"]["score"]) > int(existing["ranking"]["score"]):
+                ranked[row["id"]] = row
+
+    results = sorted(ranked.values(), key=lambda row: (-int(row["ranking"]["score"]), row["name"], row["id"]))[:limit]
+    top = results[0] if results else None
+    second = results[1] if len(results) > 1 else None
+    top_score = int((top or {}).get("ranking", {}).get("score") or 0)
+    second_score = int((second or {}).get("ranking", {}).get("score") or 0)
+    resolved = top is not None and (top_score >= 70 or top_score >= second_score + 18)
+    if not resolved or top is None:
+        raise WarcraftWikiAPIError(
+            f"invalid_{surface}_ref",
+            f"Unable to resolve {surface} reference from query: {query}",
+        )
+
+    initial = client.fetch_article_page(str(top["id"]))
+    if initial["article"]["content_family"] not in allowed_families:
+        raise WarcraftWikiAPIError(
+            f"invalid_{surface}_ref",
+            f"Resolved article is not a supported {surface} reference: {initial['article']['title']}",
+        )
+    payload = _article_payload_from_initial(initial)
+    result = payload if full else _build_article_summary(initial)
+    result["query"] = query
+    result["search_queries"] = query_trace
+    result["resolved_from"] = "search"
+    result["resolved_surface"] = surface
+    result["resolution"] = {
+        "resolved": True,
+        "match": top,
+        "candidates": results,
+        "count": total_count,
+    }
+    return result
 
 
 def _default_export_dir(article_title: str) -> Path:
@@ -319,6 +420,10 @@ def doctor(ctx: typer.Context) -> None:
                 "resolve": "ready",
                 "article": "ready",
                 "article_full": "ready",
+                "api": "ready",
+                "api_full": "ready",
+                "event": "ready",
+                "event_full": "ready",
                 "article_export": "ready",
                 "article_query": "ready",
             },
@@ -395,6 +500,62 @@ def article_full(ctx: typer.Context, article_ref: str = typer.Argument(..., help
     try:
         with _client(ctx) as client:
             payload = _fetch_article_payload(client, article_ref)
+    except WarcraftWikiAPIError as exc:
+        _handle_api_error(ctx, exc)
+        return
+    _emit(ctx, payload)
+
+
+@app.command("api")
+def api_reference(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="API or programming reference query, title, or URL."),
+) -> None:
+    try:
+        with _client(ctx) as client:
+            payload = _typed_article_payload(client, query, surface="api", full=False)
+    except WarcraftWikiAPIError as exc:
+        _handle_api_error(ctx, exc)
+        return
+    _emit(ctx, payload)
+
+
+@app.command("api-full")
+def api_reference_full(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="API or programming reference query, title, or URL."),
+) -> None:
+    try:
+        with _client(ctx) as client:
+            payload = _typed_article_payload(client, query, surface="api", full=True)
+    except WarcraftWikiAPIError as exc:
+        _handle_api_error(ctx, exc)
+        return
+    _emit(ctx, payload)
+
+
+@app.command("event")
+def event_reference(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Event or UI handler query, title, or URL."),
+) -> None:
+    try:
+        with _client(ctx) as client:
+            payload = _typed_article_payload(client, query, surface="event", full=False)
+    except WarcraftWikiAPIError as exc:
+        _handle_api_error(ctx, exc)
+        return
+    _emit(ctx, payload)
+
+
+@app.command("event-full")
+def event_reference_full(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Event or UI handler query, title, or URL."),
+) -> None:
+    try:
+        with _client(ctx) as client:
+            payload = _typed_article_payload(client, query, surface="event", full=True)
     except WarcraftWikiAPIError as exc:
         _handle_api_error(ctx, exc)
         return

@@ -121,6 +121,7 @@ class WarcraftWikiClient:
                 "page": title,
                 "prop": "text|sections|displaytitle",
                 "format": "json",
+                "redirects": 1,
             },
         )
         return parse_article_page(payload, source_title=title)
