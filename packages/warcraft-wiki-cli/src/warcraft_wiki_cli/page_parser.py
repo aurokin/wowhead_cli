@@ -6,7 +6,7 @@ from html import unescape
 from typing import Any
 from urllib.parse import quote, unquote, urljoin, urlparse
 
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
 WIKI_BASE_URL = "https://warcraft.wiki.gg"
 
@@ -284,7 +284,12 @@ def _extract_linked_entities(root: Tag) -> list[dict[str, Any]]:
 def _clean_root(root: Tag, *, family: str) -> Tag:
     cleaned = BeautifulSoup(str(root), "html.parser")
     output = cleaned.select_one(".mw-parser-output") or cleaned
+    for comment in output.find_all(string=lambda value: isinstance(value, Comment)):
+        comment.extract()
     for selector in (".mw-editsection", ".toc", ".noprint", ".mw-empty-elt", "style", "script"):
+        for tag in output.select(selector):
+            tag.decompose()
+    for selector in (".navbox", ".vertical-navbox", ".infobox", ".catlinks", ".mw-hidden-catlinks"):
         for tag in output.select(selector):
             tag.decompose()
     if family in {"api_function", "ui_handler", "framework_page", "xml_schema", "cvar", "api_changes", "howto_programming"}:
@@ -314,6 +319,17 @@ def _refine_article_family(*, title: str, family: str, headings: list[dict[str, 
         return "lore_reference"
     if "reputation" in titles and ({"members", "organization", "history"} & titles):
         return "faction_reference"
+    zone_markers = {
+        "geography",
+        "maps and subregions",
+        "adjacent regions",
+        "quest and travel hubs",
+        "notable characters",
+        "battle pets",
+        "wild creatures",
+    }
+    if len(zone_markers & titles) >= 2:
+        return "zone_reference"
     if normalized == "faction":
         return "faction_reference"
     return family

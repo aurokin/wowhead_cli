@@ -40,6 +40,7 @@ QUERY_FAMILY_HINT_TERMS = {
     "tutorial",
     "tutorials",
 }
+CONDITIONAL_FAMILY_HINT_TERMS = {"zone", "zones"}
 
 
 @dataclass(slots=True)
@@ -85,8 +86,15 @@ def _normalize_query(query: str) -> tuple[str, list[str]]:
     tokens = [token for token in re.split(r"\s+", base) if token]
     excluded_terms: list[str] = []
     kept_terms = list(tokens)
-    while kept_terms and kept_terms[0] in QUERY_FAMILY_HINT_TERMS:
-        excluded_terms.append(kept_terms.pop(0))
+    while kept_terms:
+        head = kept_terms[0]
+        if head in QUERY_FAMILY_HINT_TERMS:
+            excluded_terms.append(kept_terms.pop(0))
+            continue
+        if head in CONDITIONAL_FAMILY_HINT_TERMS and len(kept_terms) >= 3 and kept_terms[1] != "scaling":
+            excluded_terms.append(kept_terms.pop(0))
+            continue
+        break
     normalized = " ".join(kept_terms).strip()
     if not normalized:
         normalized = re.sub(r"\s+", " ", base).strip() or query.strip().lower()
@@ -142,6 +150,9 @@ def _score_text_match(original_query: str, query: str, title: str, snippet: str,
     if terms and all(term in haystack for term in terms):
         score += 10
         reasons.append("all_terms_match")
+    if terms and all(term in title.lower() for term in terms) and family in {"howto_programming", "guide_reference"}:
+        score += 36
+        reasons.append("guide_title_terms")
     if snippet and any(term in snippet.lower() for term in terms):
         score += 4
         reasons.append("snippet_match")
@@ -179,7 +190,8 @@ def _score_text_match(original_query: str, query: str, title: str, snippet: str,
 
 def _search_results(client: WarcraftWikiClient, query: str, *, limit: int) -> tuple[str, list[str], list[dict[str, Any]], int]:
     normalized_query, excluded_terms = _normalize_query(query)
-    total_count, rows = client.search_articles(normalized_query, limit=limit)
+    fetch_limit = max(limit * 5, 25)
+    total_count, rows = client.search_articles(normalized_query, limit=fetch_limit)
     matches: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         title = row["title"]

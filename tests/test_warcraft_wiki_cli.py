@@ -278,6 +278,28 @@ def test_warcraft_wiki_resolve_prefers_lore_result_after_hint_cleanup(monkeypatc
     assert payload["match"]["id"] == "Jaina Proudmoore"
 
 
+def test_warcraft_wiki_search_excludes_zone_hint_terms(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            2,
+            [
+                {"title": "Elwynn Forest", "pageid": 1, "snippet": "Alliance starting zone in the Eastern Kingdoms.", "url": "https://warcraft.wiki.gg/wiki/Elwynn_Forest"},
+                {"title": "Elwyn", "pageid": 2, "snippet": "Separate article.", "url": "https://warcraft.wiki.gg/wiki/Elwyn"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["resolve", "zone elwynn forest"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["search_query"] == "elwynn forest"
+    assert payload["excluded_terms"] == ["zone"]
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "Elwynn Forest"
+
+
 def test_warcraft_wiki_search_prefers_programming_howto_for_addon_query(monkeypatch) -> None:
     monkeypatch.setattr(
         "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
@@ -297,4 +319,28 @@ def test_warcraft_wiki_search_prefers_programming_howto_for_addon_query(monkeypa
     payload = json.loads(result.stdout)
     assert payload["resolved"] is True
     assert payload["match"]["id"] == "Create a WoW AddOn in 15 Minutes"
+    assert payload["match"]["metadata"]["content_family"] == "howto_programming"
+
+
+def test_warcraft_wiki_search_prefers_specific_programming_guide_title(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            3,
+            [
+                {"title": "HOWTOs", "pageid": 1, "snippet": "Programming howto index.", "url": "https://warcraft.wiki.gg/wiki/HOWTOs"},
+                {"title": "User interface", "pageid": 2, "snippet": "General UI page.", "url": "https://warcraft.wiki.gg/wiki/User_interface"},
+                {"title": "User interface customization guide", "pageid": 3, "snippet": "Customize the WoW user interface.", "url": "https://warcraft.wiki.gg/wiki/User_interface_customization_guide"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["resolve", "guide interface customization"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["search_query"] == "interface customization"
+    assert payload["excluded_terms"] == ["guide"]
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "User interface customization guide"
     assert payload["match"]["metadata"]["content_family"] == "howto_programming"

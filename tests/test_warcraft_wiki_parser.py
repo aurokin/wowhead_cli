@@ -198,3 +198,42 @@ def test_parse_article_page_refines_general_family_to_lore_reference() -> None:
     assert parsed["article"]["content_family"] == "lore_reference"
     assert parsed["reference"]["content_family"] == "lore_reference"
     assert parsed["reference"]["patch_changes"] == "Patch 8.1.0 updated her model."
+
+
+def test_parse_article_page_refines_general_family_to_zone_reference_and_strips_comments() -> None:
+    payload = {
+        "parse": {
+            "title": "Elwynn Forest",
+            "displaytitle": "<span class='mw-page-title-main'>Elwynn Forest</span>",
+            "sections": [
+                {"line": "Geography", "anchor": "Geography"},
+                {"line": "Maps and subregions", "anchor": "Maps_and_subregions"},
+                {"line": "Quest and travel hubs", "anchor": "Quest_and_travel_hubs"},
+                {"line": "Patch changes", "anchor": "Patch_changes"},
+            ],
+            "text": {
+                "*": """
+                <div class="mw-parser-output">
+                  <table class="infobox"><tr><td>Zone infobox content</td></tr></table>
+                  <p>Elwynn Forest is a human starting zone.</p>
+                  <h2><span class="mw-headline" id="Geography">Geography</span></h2>
+                  <p>Forests and rivers.</p>
+                  <h2><span class="mw-headline" id="Maps_and_subregions">Maps and subregions</span></h2>
+                  <p>Goldshire and Northshire.</p>
+                  <h2><span class="mw-headline" id="Quest_and_travel_hubs">Quest and travel hubs</span></h2>
+                  <p>Goldshire questing hub.</p>
+                  <h2><span class="mw-headline" id="Patch_changes">Patch changes</span></h2>
+                  <p>Patch 7.3.5 added scaling.</p>
+                </div>
+                <!-- Saved in parser cache with key something -->
+                """
+            },
+        }
+    }
+
+    parsed = parse_article_page(payload, source_title="Elwynn Forest")
+
+    assert parsed["article"]["content_family"] == "zone_reference"
+    assert parsed["reference"]["content_family"] == "zone_reference"
+    assert "Zone infobox content" not in parsed["article_content"]["text"]
+    assert "Saved in parser cache" not in parsed["article_content"]["text"]

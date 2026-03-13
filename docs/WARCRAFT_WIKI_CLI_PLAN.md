@@ -20,6 +20,7 @@ Current quality notes:
 - non-programming wiki coverage now includes explicit classification for key system/reference families like `Expansion`, `Profession`, `Renown`, `Zone_scaling`, and class pages
 - `article` and `article-full` now expose extracted `reference` metadata so programming and system pages are easier for agents to traverse
 - family-hint query cleanup now helps lore/faction/guide phrasing resolve to the underlying article instead of ranking the generic family word too highly
+- zone-hint query cleanup now helps pages like `Elwynn Forest` resolve cleanly instead of letting the family word pollute search
 - validated live/reference coverage now includes:
   - API functions
   - UI handlers
@@ -30,6 +31,8 @@ Current quality notes:
   - class pages
   - faction pages
   - lore pages
+  - zone pages
+  - guide-style pages
 
 ## Why Add It
 
@@ -160,7 +163,6 @@ Programming gaps:
 - there is still no dedicated typed command surface like `api` or `event`; programming support currently rides on the generic `article` surfaces
 
 Non-programming gaps:
-- guide-style family coverage still needs deeper validation
 - search and resolve are stronger for systems/programming pages than for the broader historical/lore surface
 - the support boundary for non-programming pages is clearer now, but still not fully validated family-by-family
 

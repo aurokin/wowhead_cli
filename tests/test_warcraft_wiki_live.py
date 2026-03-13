@@ -128,3 +128,27 @@ def test_live_warcraft_wiki_lore_query_cleanup_and_article_contract() -> None:
     assert payload["article"]["content_family"] == "lore_reference"
     assert payload["reference"]["content_family"] == "lore_reference"
     assert payload["reference"]["patch_changes"] is not None
+
+
+def test_live_warcraft_wiki_zone_query_cleanup_and_article_contract() -> None:
+    require_live("Warcraft Wiki")
+    resolve_payload = payload_for_live(runner, app, ["resolve", "zone elwynn forest", "--limit", "10"], provider_name="Warcraft Wiki")
+    assert resolve_payload["search_query"] == "elwynn forest"
+    assert resolve_payload["excluded_terms"] == ["zone"]
+    assert resolve_payload["resolved"] is True
+    assert resolve_payload["match"]["id"] == "Elwynn Forest"
+
+    payload = payload_for_live(runner, app, ["article", "Elwynn Forest"], provider_name="Warcraft Wiki")
+    assert payload["article"]["content_family"] == "zone_reference"
+    assert payload["reference"]["content_family"] == "zone_reference"
+    assert payload["reference"]["patch_changes"] is not None
+
+
+def test_live_warcraft_wiki_guide_query_cleanup_and_article_contract() -> None:
+    require_live("Warcraft Wiki")
+    resolve_payload = payload_for_live(runner, app, ["resolve", "guide interface customization", "--limit", "10"], provider_name="Warcraft Wiki")
+    assert resolve_payload["search_query"] == "interface customization"
+    assert resolve_payload["excluded_terms"] == ["guide"]
+    assert resolve_payload["resolved"] is True
+    assert resolve_payload["match"]["id"] == "User interface customization guide"
+    assert resolve_payload["match"]["metadata"]["content_family"] == "howto_programming"
