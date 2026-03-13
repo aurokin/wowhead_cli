@@ -169,6 +169,7 @@ Icy Veins guide behavior:
 - representative real-page fixtures now cover supported and intentionally unsupported Icy Veins WoW page shapes
 - PvP and stat-priority pages are now part of the validated supported family set
 - resources, macros/addons, Mythic+ tips, and simulations are now also part of the validated supported family set
+- leveling, builds/talents, rotation, gems/enchants/consumables, and spell-summary pages are now also part of the validated supported family set
 - `guide-export` writes a local guide bundle under `./icy-veins_exports/` by default
 - `guide-query` searches exported Icy Veins bundles across sections, navigation links, and linked entities
 

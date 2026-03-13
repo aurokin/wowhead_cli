@@ -39,12 +39,13 @@ Current strengths:
 - recorded real-page fixtures now exist across representative supported and intentionally unsupported WoW page shapes
 - PvP and stat-priority families are now explicitly validated by recorded and live coverage
 - resources, macros/addons, Mythic+ tips, and simulations are now also explicitly validated by recorded and live coverage
+- leveling, builds/talents, rotation, gems/enchants/consumables, and spell-summary pages are now also explicitly validated by recorded and live coverage
 - local bundle export/query works
 
 Current weaknesses:
 - family-aware ranking is still too generic across some supported families
 - recorded-fixture coverage is better now, but still not yet as deep as Method
-- family scope is stronger now, but still needs more depth around less-common supported families
+- family scope is strong across the main supported families, but still needs more depth around rarer edge-case templates
 
 ## Research Summary
 

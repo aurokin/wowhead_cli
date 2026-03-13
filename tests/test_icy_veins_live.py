@@ -18,8 +18,13 @@ SPEC_GUIDE_REF = "mistweaver-monk-pve-healing-guide"
 CLASS_HUB_REF = "monk-guide"
 ROLE_GUIDE_REF = "healing-guide"
 EASY_MODE_REF = "fury-warrior-pve-dps-easy-mode"
+LEVELING_REF = "mistweaver-monk-leveling-guide"
 PVP_REF = "mistweaver-monk-pvp-guide"
+SPEC_BUILDS_TALENTS_REF = "mistweaver-monk-pve-healing-spec-builds-talents"
+ROTATION_REF = "mistweaver-monk-pve-healing-rotation-cooldowns-abilities"
 STAT_PRIORITY_REF = "mistweaver-monk-pve-healing-stat-priority"
+GEMS_ENCHANTS_CONSUMABLES_REF = "mistweaver-monk-pve-healing-gems-enchants-consumables"
+SPELL_SUMMARY_REF = "mistweaver-monk-pve-healing-spell-summary"
 RESOURCES_REF = "mistweaver-monk-resources"
 MACROS_ADDONS_REF = "mistweaver-monk-pve-healing-macros-addons"
 MYTHIC_PLUS_TIPS_REF = "mistweaver-monk-pve-healing-mythic-plus-tips"
@@ -144,12 +149,62 @@ def test_live_icy_pvp_guide_contract() -> None:
     assert payload["article"]["section_count"] >= 1
 
 
+def test_live_icy_leveling_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", LEVELING_REF])
+
+    assert payload["guide"]["slug"] == LEVELING_REF
+    assert payload["guide"]["content_family"] == "leveling"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
+def test_live_icy_spec_builds_talents_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", SPEC_BUILDS_TALENTS_REF])
+
+    assert payload["guide"]["slug"] == SPEC_BUILDS_TALENTS_REF
+    assert payload["guide"]["content_family"] == "spec_builds_talents"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
+def test_live_icy_rotation_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", ROTATION_REF])
+
+    assert payload["guide"]["slug"] == ROTATION_REF
+    assert payload["guide"]["content_family"] == "rotation_guide"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
 def test_live_icy_stat_priority_contract() -> None:
     _require_live()
     payload = _payload_for(["guide", STAT_PRIORITY_REF])
 
     assert payload["guide"]["slug"] == STAT_PRIORITY_REF
     assert payload["guide"]["content_family"] == "stat_priority"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
+def test_live_icy_gems_enchants_consumables_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", GEMS_ENCHANTS_CONSUMABLES_REF])
+
+    assert payload["guide"]["slug"] == GEMS_ENCHANTS_CONSUMABLES_REF
+    assert payload["guide"]["content_family"] == "gems_enchants_consumables"
+    assert payload["guide"]["traversal_scope"] == "family_navigation"
+    assert payload["article"]["section_count"] >= 1
+
+
+def test_live_icy_spell_summary_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", SPELL_SUMMARY_REF])
+
+    assert payload["guide"]["slug"] == SPELL_SUMMARY_REF
+    assert payload["guide"]["content_family"] == "spell_summary"
     assert payload["guide"]["traversal_scope"] == "family_navigation"
     assert payload["article"]["section_count"] >= 1
 
