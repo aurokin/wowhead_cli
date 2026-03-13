@@ -42,7 +42,8 @@ Validated shared so far:
 - article/reference bundle export/query outside class guides
 
 Active next step:
-- review whether any local-tool analysis helpers should be shared later within the repo, then decide the next provider after `simc`
+- continue improving existing providers and wrapper discovery quality
+- focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
 
 ## Planning Documents
 
@@ -58,6 +59,8 @@ Active next step:
 - [WowProgress CLI plan](/home/auro/code/wowhead_cli/docs/WOWPROGRESS_CLI_PLAN.md)
 - [Warcraft Wiki CLI plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_WIKI_CLI_PLAN.md)
 - [Blizzard API CLI plan](/home/auro/code/wowhead_cli/docs/BLIZZARD_API_CLI_PLAN.md)
+- [Undermine Exchange CLI plan](/home/auro/code/wowhead_cli/docs/UNDERMINE_EXCHANGE_CLI_PLAN.md)
+- [RaidPlan CLI plan](/home/auro/code/wowhead_cli/docs/RAIDPLAN_CLI_PLAN.md)
 - [SimulationCraft CLI plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md)
 - [SimulationCraft migration inventory](/home/auro/code/wowhead_cli/docs/SIMC_MIGRATION_INVENTORY.md)
 - [SimulationCraft implementation plan](/home/auro/code/wowhead_cli/docs/SIMC_IMPLEMENTATION_PLAN.md)
@@ -83,6 +86,8 @@ Active next step:
 | WowProgress | Server-rendered rankings and profile pages | Build as a rankings/profile CLI with guild, character, and progress lookups plus cached leaderboard slices | [Plan](/home/auro/code/wowhead_cli/docs/WOWPROGRESS_CLI_PLAN.md) |
 | Warcraft Wiki | Server-rendered MediaWiki pages plus wiki metadata | Build as a reference CLI for lore, systems, and addon/API documentation with article export/query | [Plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_WIKI_CLI_PLAN.md) |
 | Blizzard API | Official authenticated game-data and profile APIs | Build as an API-first CLI for canonical game data, profile data, and auth-aware official lookups | [Plan](/home/auro/code/wowhead_cli/docs/BLIZZARD_API_CLI_PLAN.md) |
+| Undermine Exchange | Market-data web workflows and auction-oriented views | Build as a market-data CLI for item, commodity, and price-history lookups once the public surface is stable | [Plan](/home/auro/code/wowhead_cli/docs/UNDERMINE_EXCHANGE_CLI_PLAN.md) |
+| RaidPlan | Planning/editor workflow with shareable encounter plans | Build as a read-first planning CLI for public plan fetch, export, and query before attempting editing flows | [Plan](/home/auro/code/wowhead_cli/docs/RAIDPLAN_CLI_PLAN.md) |
 | SimulationCraft | Local Git repo, readonly source inspection, local builds, local command execution | Build as a local-tool CLI with readonly source analysis, sync/build/run workflows, build decoding, and agent-facing APL reasoning helpers | [Plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md) |
 | Raidbots | Web workflow built around SimulationCraft input and result pages | Start with result/report parsing and workflow helpers, then evaluate deeper automation carefully | [Plan](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md) |
 | Warcraft Logs | Authenticated API with complex query workflows | Build as an API-first CLI with typed query helpers, auth management, and reusable report patterns | [Plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md) |
@@ -120,6 +125,8 @@ A good end state is:
 - `packages/wowprogress-cli`
 - `packages/warcraft-wiki-cli`
 - `packages/blizzard-api-cli`
+- `packages/undermine-exchange-cli`
+- `packages/raidplan-cli`
 - `packages/simc-cli`
 - `packages/raidbots-cli`
 - `packages/warcraftlogs-cli`
@@ -131,6 +138,8 @@ A good end state is:
 - `skills/wowprogress/`
 - `skills/warcraft-wiki/`
 - `skills/blizzard-api/`
+- `skills/undermine-exchange/`
+- `skills/raidplan/`
 - `skills/simc/`
 - `skills/raidbots/`
 - `skills/warcraftlogs/`
@@ -229,6 +238,8 @@ Next:
 12. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
 13. Add `blizzard-api` as the canonical official data provider for supported game-data and profile lookups once we are ready to tackle auth. Use it to validate OAuth, region handling, and namespace-aware API patterns. See [BLIZZARD_API_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/BLIZZARD_API_CLI_PLAN.md).
 14. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
+15. Add `undermine-exchange` once the public market-data surface is stable enough to plan against. See [UNDERMINE_EXCHANGE_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/UNDERMINE_EXCHANGE_CLI_PLAN.md).
+16. Add `raidplan` as a planning/workflow provider once we decide to tackle read-first public plan extraction. See [RAIDPLAN_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDPLAN_CLI_PLAN.md).
 
 ## Research Anchors
 
@@ -250,7 +261,7 @@ These are the high-level sources used to shape the plan:
 ## Lower-Priority Candidates
 
 - `archon`
-  - likely overlaps heavily with `warcraftlogs` and should be revisited after that ecosystem is in place
+ - likely overlaps heavily with `warcraftlogs` and should be revisited after that ecosystem is in place
 - `mythictrap`
   - strong raid-guide source, but less broad than `method` or `icy-veins`
 - `dataforazeroth`
