@@ -12,8 +12,6 @@ from method_cli.page_parser import UNSUPPORTED_ROOT_GUIDE_SLUGS, classify_guide_
 from warcraft_core.output import emit
 from warcraft_content.article_discovery import (
     article_candidate,
-    article_resolve_payload,
-    article_search_payload,
     merge_article_linked_entities,
     sort_article_candidates,
 )
@@ -22,6 +20,12 @@ from warcraft_content.article_bundle import (
     load_article_bundle,
     query_article_bundle,
     write_article_bundle,
+)
+from warcraft_content.article_provider_cli import (
+    build_article_resolve_response,
+    build_article_search_response,
+    fail_with_error,
+    unsupported_guide_surface_message,
 )
 
 app = typer.Typer(add_completion=False, help="Method.gg guide CLI.")
@@ -73,8 +77,7 @@ def _emit(ctx: typer.Context, payload: dict[str, Any], *, err: bool = False) -> 
 
 
 def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> None:
-    _emit(ctx, {"ok": False, "error": {"code": code, "message": message}}, err=True)
-    raise typer.Exit(status)
+    fail_with_error(lambda payload, err: _emit(ctx, payload, err=err), code=code, message=message, status=status)
 
 
 def _client(ctx: typer.Context) -> MethodClient:
@@ -103,7 +106,11 @@ def _fetch_guide_page_or_fail(ctx: typer.Context, client: MethodClient, guide_re
         _fail(
             ctx,
             "unsupported_guide_surface",
-            f"Unsupported Method guide surface for slug={payload['guide']['slug']!r} family={payload['guide'].get('content_family')!r}.",
+            unsupported_guide_surface_message(
+                provider_name="Method",
+                slug=payload["guide"]["slug"],
+                content_family=payload["guide"].get("content_family"),
+            ),
         )
         raise AssertionError("unreachable")
     return payload
@@ -119,7 +126,11 @@ def _fetch_guide_pages_or_fail(ctx: typer.Context, client: MethodClient, guide_r
         _fail(
             ctx,
             "unsupported_guide_surface",
-            f"Unsupported Method guide surface for slug={payload['guide']['slug']!r} family={payload['guide'].get('content_family')!r}.",
+            unsupported_guide_surface_message(
+                provider_name="Method",
+                slug=payload["guide"]["slug"],
+                content_family=payload["guide"].get("content_family"),
+            ),
         )
         raise AssertionError("unreachable")
     return payload
@@ -368,9 +379,13 @@ def search(
 ) -> None:
     with _client(ctx) as client:
         normalized_query, results, total_count, scope_hint = _search_results(client, query, limit=limit)
-    payload = article_search_payload(query=query, search_query=normalized_query, results=results, total_count=total_count)
-    if scope_hint is not None:
-        payload["scope_hint"] = scope_hint
+    payload = build_article_search_response(
+        query=query,
+        search_query=normalized_query,
+        results=results,
+        total_count=total_count,
+        scope_hint=scope_hint,
+    )
     _emit(ctx, payload)
 
 
@@ -389,17 +404,15 @@ def resolve(
     resolved = top is not None and (top_score >= 50 or top_score >= second_score + 15)
     _emit(
         ctx,
-        {
-            **article_resolve_payload(
+        build_article_resolve_response(
             provider_command="method",
             query=query,
             search_query=normalized_query,
             results=results,
             total_count=total_count,
             resolved=resolved,
-            ),
-            **({"scope_hint": scope_hint} if scope_hint is not None else {}),
-        },
+            scope_hint=scope_hint,
+        ),
     )
 
 

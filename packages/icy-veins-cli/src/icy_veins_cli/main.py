@@ -12,8 +12,6 @@ from icy_veins_cli.client import IcyVeinsClient, guide_ref_parts, load_icy_veins
 from icy_veins_cli.page_parser import classify_guide_slug, guide_traversal_scope
 from warcraft_content.article_discovery import (
     article_candidate,
-    article_resolve_payload,
-    article_search_payload,
     merge_article_linked_entities,
     sort_article_candidates,
 )
@@ -22,6 +20,11 @@ from warcraft_content.article_bundle import (
     load_article_bundle,
     query_article_bundle,
     write_article_bundle,
+)
+from warcraft_content.article_provider_cli import (
+    build_article_resolve_response,
+    build_article_search_response,
+    fail_with_error,
 )
 from warcraft_core.output import emit
 
@@ -76,8 +79,7 @@ def _emit(ctx: typer.Context, payload: dict[str, Any], *, err: bool = False) -> 
 
 
 def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> None:
-    _emit(ctx, {"ok": False, "error": {"code": code, "message": message}}, err=True)
-    raise typer.Exit(status)
+    fail_with_error(lambda payload, err: _emit(ctx, payload, err=err), code=code, message=message, status=status)
 
 
 def _client(ctx: typer.Context) -> IcyVeinsClient:
@@ -473,9 +475,13 @@ def search(
 ) -> None:
     with _client(ctx) as client:
         normalized_query, results, total_count, scope_hint = _search_results(client, query, limit=limit)
-    payload = article_search_payload(query=query, search_query=normalized_query, results=results, total_count=total_count)
-    if scope_hint is not None:
-        payload["scope_hint"] = scope_hint
+    payload = build_article_search_response(
+        query=query,
+        search_query=normalized_query,
+        results=results,
+        total_count=total_count,
+        scope_hint=scope_hint,
+    )
     _emit(ctx, payload)
 
 
@@ -500,17 +506,15 @@ def resolve(
     )
     _emit(
         ctx,
-        {
-            **article_resolve_payload(
-                provider_command="icy-veins",
-                query=query,
-                search_query=normalized_query,
-                results=results,
-                total_count=total_count,
-                resolved=resolved,
-            ),
-            **({"scope_hint": scope_hint} if scope_hint is not None else {}),
-        }
+        build_article_resolve_response(
+            provider_command="icy-veins",
+            query=query,
+            search_query=normalized_query,
+            results=results,
+            total_count=total_count,
+            resolved=resolved,
+            scope_hint=scope_hint,
+        ),
     )
 
 
