@@ -34,6 +34,16 @@ def test_live_warcraft_wiki_handler_resolve_contract() -> None:
     assert payload["match"]["id"] == "UIHANDLER OnKeyDown"
 
 
+def test_live_warcraft_wiki_faction_query_cleanup_contract() -> None:
+    require_live("Warcraft Wiki")
+    payload = payload_for_live(runner, app, ["resolve", "faction argent dawn", "--limit", "5"], provider_name="Warcraft Wiki")
+
+    assert payload["search_query"] == "argent dawn"
+    assert payload["excluded_terms"] == ["faction"]
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "Argent Dawn"
+
+
 def test_live_warcraft_wiki_programming_article_contract() -> None:
     require_live("Warcraft Wiki")
     payload = payload_for_live(runner, app, ["article", "API_CreateFrame"], provider_name="Warcraft Wiki")
@@ -94,3 +104,27 @@ def test_live_warcraft_wiki_class_article_contract() -> None:
     assert payload["reference"]["content_family"] == "class_reference"
     assert payload["reference"]["patch_changes"] is not None
     assert payload["content"]["section_count"] >= 10
+
+
+def test_live_warcraft_wiki_faction_article_contract() -> None:
+    require_live("Warcraft Wiki")
+    payload = payload_for_live(runner, app, ["article", "Argent Dawn"], provider_name="Warcraft Wiki")
+
+    assert payload["article"]["content_family"] == "faction_reference"
+    assert payload["reference"]["content_family"] == "faction_reference"
+    assert payload["reference"]["patch_changes"] is not None
+    assert payload["content"]["section_count"] >= 8
+
+
+def test_live_warcraft_wiki_lore_query_cleanup_and_article_contract() -> None:
+    require_live("Warcraft Wiki")
+    resolve_payload = payload_for_live(runner, app, ["resolve", "lore jaina proudmoore", "--limit", "5"], provider_name="Warcraft Wiki")
+    assert resolve_payload["search_query"] == "jaina proudmoore"
+    assert resolve_payload["excluded_terms"] == ["lore"]
+    assert resolve_payload["resolved"] is True
+    assert resolve_payload["match"]["id"] == "Jaina Proudmoore"
+
+    payload = payload_for_live(runner, app, ["article", "Jaina Proudmoore"], provider_name="Warcraft Wiki")
+    assert payload["article"]["content_family"] == "lore_reference"
+    assert payload["reference"]["content_family"] == "lore_reference"
+    assert payload["reference"]["patch_changes"] is not None

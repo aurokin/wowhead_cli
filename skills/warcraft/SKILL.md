@@ -63,6 +63,7 @@ Current provider state:
 - For exact Raider.IO lookups, prefer structured queries like `character us illidan Roguecane` or `guild us illidan Liquid`; the provider now probes direct profile surfaces for those.
 - Use `warcraft-wiki` when you need general reference material, lore, systems pages, or addon/API documentation.
 - `warcraft-wiki` now does family-aware ranking for programming and systems queries, so `CreateFrame`, `OnKeyDown`, `World of Warcraft API`, `Expansion`, and `Renown` style queries should route more cleanly than generic article search.
+- `warcraft-wiki` also cleans family-hint query words like `faction`, `lore`, and `guide` when they would otherwise dilute a stronger article match, and surfaces those removals in `excluded_terms`.
 - `warcraft-wiki article` and `article-full` now expose `reference` metadata, which is especially useful for programming pages because it can include a signature, summary, arguments, returns, examples, and patch-change sections when the page provides them.
 - that `reference` metadata is also now useful on validated non-programming pages like `Renown`, `Expansion`, and `Druid`, where it can expose family-aware summaries and patch/reference sections without making the agent parse the whole page first.
 - Use `wowprogress` when you have or can supply structured `region realm name` inputs and need progression, roster, or leaderboard context rather than guide content.

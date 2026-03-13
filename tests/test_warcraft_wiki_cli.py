@@ -211,6 +211,73 @@ def test_warcraft_wiki_search_prefers_system_reference_for_system_query(monkeypa
     assert payload["results"][0]["metadata"]["content_family"] == "system_reference"
 
 
+def test_warcraft_wiki_search_excludes_family_hint_terms(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            2,
+            [
+                {"title": "Argent Dawn", "pageid": 1, "snippet": "The Argent Dawn is a faction.", "url": "https://warcraft.wiki.gg/wiki/Argent_Dawn"},
+                {"title": "Faction", "pageid": 2, "snippet": "General faction article.", "url": "https://warcraft.wiki.gg/wiki/Faction"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["search", "faction argent dawn"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["search_query"] == "argent dawn"
+    assert payload["excluded_terms"] == ["faction"]
+    assert payload["normalization_hint"] == "excluded_family_hint_terms"
+    assert payload["results"][0]["id"] == "Argent Dawn"
+
+
+def test_warcraft_wiki_search_keeps_trailing_guide_term(monkeypatch) -> None:
+    seen_queries: list[str] = []
+
+    def fake_search(self, query, limit):  # noqa: ANN001
+        seen_queries.append(query)
+        return (
+            1,
+            [
+                {"title": "Mistweaver Monk PvE Healing Guide", "pageid": 1, "snippet": "Guide page.", "url": "https://warcraft.wiki.gg/wiki/Mistweaver_Monk_PvE_Healing_Guide"},
+            ],
+        )
+
+    monkeypatch.setattr("warcraft_wiki_cli.main.WarcraftWikiClient.search_articles", fake_search)
+
+    result = runner.invoke(warcraft_wiki_app, ["search", "mistweaver monk guide"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert seen_queries == ["mistweaver monk guide"]
+    assert payload["search_query"] == "mistweaver monk guide"
+    assert "excluded_terms" not in payload
+
+
+def test_warcraft_wiki_resolve_prefers_lore_result_after_hint_cleanup(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (
+            2,
+            [
+                {"title": "Jaina Proudmoore", "pageid": 1, "snippet": "Leader of the Kirin Tor.", "url": "https://warcraft.wiki.gg/wiki/Jaina_Proudmoore"},
+                {"title": "Jaina Proudmoore: Tides of War", "pageid": 2, "snippet": "Novel.", "url": "https://warcraft.wiki.gg/wiki/Jaina_Proudmoore:_Tides_of_War"},
+            ],
+        ),
+    )
+
+    result = runner.invoke(warcraft_wiki_app, ["resolve", "lore jaina proudmoore"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["search_query"] == "jaina proudmoore"
+    assert payload["excluded_terms"] == ["lore"]
+    assert payload["resolved"] is True
+    assert payload["match"]["id"] == "Jaina Proudmoore"
+
+
 def test_warcraft_wiki_search_prefers_programming_howto_for_addon_query(monkeypatch) -> None:
     monkeypatch.setattr(
         "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",

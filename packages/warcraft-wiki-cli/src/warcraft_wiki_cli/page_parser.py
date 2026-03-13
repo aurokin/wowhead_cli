@@ -303,6 +303,22 @@ def _clean_root(root: Tag, *, family: str) -> Tag:
     return output
 
 
+def _refine_article_family(*, title: str, family: str, headings: list[dict[str, Any]], sections: list[dict[str, Any]]) -> str:
+    if family != "general_article":
+        return family
+    normalized = _normalized_title_key(title)
+    section_titles = {str(section.get("title") or "").strip().lower() for section in sections}
+    heading_titles = {str(heading.get("title") or "").strip().lower() for heading in headings}
+    titles = section_titles | heading_titles
+    if "biography" in titles:
+        return "lore_reference"
+    if "reputation" in titles and ({"members", "organization", "history"} & titles):
+        return "faction_reference"
+    if normalized == "faction":
+        return "faction_reference"
+    return family
+
+
 def _section_lookup(sections: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     lookup: dict[str, dict[str, Any]] = {}
     for section in sections:
@@ -320,8 +336,7 @@ def _first_code_block_text(root: Tag) -> str | None:
     return text or None
 
 
-def extract_reference_metadata(*, title: str, text: str, sections: list[dict[str, Any]], root: Tag) -> dict[str, Any]:
-    family = classify_article_family(title)
+def extract_reference_metadata(*, title: str, family: str, text: str, sections: list[dict[str, Any]], root: Tag) -> dict[str, Any]:
     metadata: dict[str, Any] = {"content_family": family}
     section_map = _section_lookup(sections)
     metadata["summary"] = sections[0]["text"] if sections else text[:240]
@@ -351,6 +366,7 @@ def parse_article_page(payload: dict[str, Any], *, source_title: str) -> dict[st
     family = classify_article_family(title)
     root = _clean_root(root, family=family)
     headings, sections = _extract_sections(root)
+    family = _refine_article_family(title=title, family=family, headings=headings, sections=sections)
     text = root.get_text(" ", strip=True)
     navigation = [
         {
@@ -389,7 +405,7 @@ def parse_article_page(payload: dict[str, Any], *, source_title: str) -> dict[st
             "headings": headings,
             "sections": sections,
         },
-        "reference": extract_reference_metadata(title=title, text=text, sections=sections, root=root),
+        "reference": extract_reference_metadata(title=title, family=family, text=text, sections=sections, root=root),
         "linked_entities": _extract_linked_entities(root),
         "citations": {
             "page": article_url(title),

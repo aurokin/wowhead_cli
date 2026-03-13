@@ -25,6 +25,22 @@ from warcraft_wiki_cli.page_parser import article_slug, classify_article_family,
 
 app = typer.Typer(add_completion=False, help="Warcraft Wiki reference CLI.")
 
+QUERY_FAMILY_HINT_TERMS = {
+    "article",
+    "articles",
+    "faction",
+    "factions",
+    "guide",
+    "guides",
+    "lore",
+    "reference",
+    "references",
+    "story",
+    "stories",
+    "tutorial",
+    "tutorials",
+}
+
 
 @dataclass(slots=True)
 class RuntimeConfig:
@@ -63,10 +79,19 @@ def _handle_api_error(ctx: typer.Context, exc: WarcraftWikiAPIError) -> None:
     _fail(ctx, code, exc.message, status=status)
 
 
-def _normalize_query(query: str) -> str:
-    normalized = re.sub(r"\b(wiki|article|articles)\b", " ", query.lower())
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    return normalized or query.strip().lower()
+def _normalize_query(query: str) -> tuple[str, list[str]]:
+    lowered = query.lower()
+    base = re.sub(r"\bwiki\b", " ", lowered)
+    tokens = [token for token in re.split(r"\s+", base) if token]
+    excluded_terms: list[str] = []
+    kept_terms = list(tokens)
+    while kept_terms and kept_terms[0] in QUERY_FAMILY_HINT_TERMS:
+        excluded_terms.append(kept_terms.pop(0))
+    normalized = " ".join(kept_terms).strip()
+    if not normalized:
+        normalized = re.sub(r"\s+", " ", base).strip() or query.strip().lower()
+        excluded_terms = []
+    return normalized, excluded_terms
 
 
 def _collapsed_text(value: str) -> str:
@@ -87,12 +112,12 @@ def _query_intents(query: str) -> set[str]:
     return intents
 
 
-def _score_text_match(query: str, title: str, snippet: str, *, ordinal: int) -> tuple[int, list[str], str]:
+def _score_text_match(original_query: str, query: str, title: str, snippet: str, *, ordinal: int) -> tuple[int, list[str], str]:
     haystack = f"{title.lower()} {snippet.lower()}".strip()
     family = classify_article_family(title)
     score = max(0, 40 - ordinal * 2)
     reasons: list[str] = []
-    intents = _query_intents(query)
+    intents = _query_intents(original_query)
     normalized_query = _collapsed_text(query)
     normalized_title = _collapsed_text(title)
     if title.lower() == query:
@@ -152,13 +177,13 @@ def _score_text_match(query: str, title: str, snippet: str, *, ordinal: int) -> 
     return score, reasons, family
 
 
-def _search_results(client: WarcraftWikiClient, query: str, *, limit: int) -> tuple[str, list[dict[str, Any]], int]:
-    normalized_query = _normalize_query(query)
+def _search_results(client: WarcraftWikiClient, query: str, *, limit: int) -> tuple[str, list[str], list[dict[str, Any]], int]:
+    normalized_query, excluded_terms = _normalize_query(query)
     total_count, rows = client.search_articles(normalized_query, limit=limit)
     matches: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         title = row["title"]
-        score, reasons, family = _score_text_match(normalized_query, title, row.get("snippet") or "", ordinal=index)
+        score, reasons, family = _score_text_match(query, normalized_query, title, row.get("snippet") or "", ordinal=index)
         if score <= 0:
             continue
         matches.append(
@@ -177,7 +202,7 @@ def _search_results(client: WarcraftWikiClient, query: str, *, limit: int) -> tu
             )
         )
     matches.sort(key=lambda row: (-int(row["ranking"]["score"]), row["name"], row["id"]))
-    return normalized_query, matches[:limit], total_count
+    return normalized_query, excluded_terms, matches[:limit], total_count
 
 
 def _build_article_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
@@ -302,8 +327,12 @@ def search(
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum results to return."),
 ) -> None:
     with _client(ctx) as client:
-        normalized_query, results, total_count = _search_results(client, query, limit=limit)
-    _emit(ctx, article_search_payload(query=query, search_query=normalized_query, results=results, total_count=total_count))
+        normalized_query, excluded_terms, results, total_count = _search_results(client, query, limit=limit)
+    payload = article_search_payload(query=query, search_query=normalized_query, results=results, total_count=total_count)
+    if excluded_terms:
+        payload["excluded_terms"] = excluded_terms
+        payload["normalization_hint"] = "excluded_family_hint_terms"
+    _emit(ctx, payload)
 
 
 @app.command("resolve")
@@ -313,23 +342,24 @@ def resolve(
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum candidates to inspect."),
 ) -> None:
     with _client(ctx) as client:
-        normalized_query, results, total_count = _search_results(client, query, limit=limit)
+        normalized_query, excluded_terms, results, total_count = _search_results(client, query, limit=limit)
     top = results[0] if results else None
     second = results[1] if len(results) > 1 else None
     top_score = top["ranking"]["score"] if top else 0
     second_score = second["ranking"]["score"] if second else 0
     resolved = top is not None and (top_score >= 70 or top_score >= second_score + 18)
-    _emit(
-        ctx,
-        article_resolve_payload(
-            provider_command="warcraft-wiki",
-            query=query,
-            search_query=normalized_query,
-            results=results,
-            total_count=total_count,
-            resolved=resolved,
-        ),
+    payload = article_resolve_payload(
+        provider_command="warcraft-wiki",
+        query=query,
+        search_query=normalized_query,
+        results=results,
+        total_count=total_count,
+        resolved=resolved,
     )
+    if excluded_terms:
+        payload["excluded_terms"] = excluded_terms
+        payload["normalization_hint"] = "excluded_family_hint_terms"
+    _emit(ctx, payload)
 
 
 @app.command("article")

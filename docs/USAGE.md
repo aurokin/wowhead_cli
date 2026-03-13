@@ -224,12 +224,13 @@ warcraft-wiki article-query ./tmp/wiki-api "framexml"
 Warcraft Wiki behavior:
 - `search` and `resolve` use the MediaWiki search API
 - `search` and `resolve` now apply family-aware ranking for programming pages like `API_CreateFrame`, `UIHANDLER_OnKeyDown`, and framework/system reference pages like `World of Warcraft API`, `Expansion`, and `Renown`
+- `search` and `resolve` now also clean out low-value family hint terms like `faction`, `lore`, and `guide` when there is a stronger article target underneath, and report the cleanup in `excluded_terms`
 - `article` returns a compact article summary with section navigation, linked wiki-article preview, and extracted `reference` metadata
 - `article-full` returns the parsed article payload used for local export, including top-level and per-page `reference` metadata
 - `article-export` writes a local article bundle under `./warcraft-wiki_exports/` by default
 - `article-query` searches exported wiki bundles across sections, navigation links, and linked entities
 - programming pages now strip low-value wiki chrome more aggressively and filter edit-action links from linked-entity output
-- `reference` metadata is now useful beyond API pages: programming howtos, API-change pages, class pages, expansion pages, and systems pages all expose at least a family-aware summary, and some pages also expose `patch_changes`, `see_also`, and `references`
+- `reference` metadata is now useful beyond API pages: programming howtos, API-change pages, class pages, faction pages, expansion pages, systems pages, and lore pages all expose at least a family-aware summary, and some pages also expose `patch_changes`, `see_also`, and `references`
 
 ## WowProgress Commands
 

@@ -132,3 +132,69 @@ def test_parse_article_page_extracts_non_programming_reference_metadata() -> Non
     assert parsed["reference"]["patch_changes"] == "Patch 10.0.0 adjusted forms."
     assert parsed["reference"]["see_also"] == "Druid abilities"
     assert parsed["reference"]["references"] == "Chronicle."
+
+
+def test_parse_article_page_refines_general_family_to_faction_reference() -> None:
+    payload = {
+        "parse": {
+            "title": "Argent Dawn",
+            "displaytitle": "<span class='mw-page-title-main'>Argent Dawn</span>",
+            "sections": [
+                {"line": "History", "anchor": "History"},
+                {"line": "Members", "anchor": "Members"},
+                {"line": "Reputation", "anchor": "Reputation"},
+                {"line": "Patch changes", "anchor": "Patch_changes"},
+            ],
+            "text": {
+                "*": """
+                <div class="mw-parser-output">
+                  <p>The Argent Dawn is a holy order.</p>
+                  <h2><span class="mw-headline" id="History">History</span></h2>
+                  <p>Founded to fight the Scourge.</p>
+                  <h2><span class="mw-headline" id="Members">Members</span></h2>
+                  <p>Tirion Fordring.</p>
+                  <h2><span class="mw-headline" id="Reputation">Reputation</span></h2>
+                  <p>Faction rewards and standing.</p>
+                  <h2><span class="mw-headline" id="Patch_changes">Patch changes</span></h2>
+                  <p>Patch 3.0.2 updated reputation.</p>
+                </div>
+                """
+            },
+        }
+    }
+
+    parsed = parse_article_page(payload, source_title="Argent Dawn")
+
+    assert parsed["article"]["content_family"] == "faction_reference"
+    assert parsed["reference"]["content_family"] == "faction_reference"
+    assert parsed["reference"]["summary"].startswith("The Argent Dawn is a holy order.")
+
+
+def test_parse_article_page_refines_general_family_to_lore_reference() -> None:
+    payload = {
+        "parse": {
+            "title": "Jaina Proudmoore",
+            "displaytitle": "<span class='mw-page-title-main'>Jaina Proudmoore</span>",
+            "sections": [
+                {"line": "Biography", "anchor": "Biography"},
+                {"line": "Patch changes", "anchor": "Patch_changes"},
+            ],
+            "text": {
+                "*": """
+                <div class="mw-parser-output">
+                  <p>Jaina Proudmoore is a powerful sorceress.</p>
+                  <h2><span class="mw-headline" id="Biography">Biography</span></h2>
+                  <p>Leader of the Kirin Tor.</p>
+                  <h2><span class="mw-headline" id="Patch_changes">Patch changes</span></h2>
+                  <p>Patch 8.1.0 updated her model.</p>
+                </div>
+                """
+            },
+        }
+    }
+
+    parsed = parse_article_page(payload, source_title="Jaina Proudmoore")
+
+    assert parsed["article"]["content_family"] == "lore_reference"
+    assert parsed["reference"]["content_family"] == "lore_reference"
+    assert parsed["reference"]["patch_changes"] == "Patch 8.1.0 updated her model."
