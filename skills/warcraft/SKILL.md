@@ -48,6 +48,7 @@ Current provider state:
 - Preserve provider provenance in your reasoning. Do not describe `warcraft` results as source-neutral.
 - Use `method` when you need article-style guide content that is easier to traverse than the equivalent Wowhead guide surface.
 - Treat `method` as scoped to currently supported guide/article families, not all Method.gg content.
+- Validated Method families currently include class guides, profession guides, and delve guides.
 - If a Method root acts like an index surface rather than a real guide/article page, expect a structured `unsupported_guide_surface` failure instead of empty content.
 - Use `icy-veins` when you need article-style guide content with page-family navigation and table-of-contents structure that may be easier to traverse than the equivalent Wowhead guide surface.
 - Use `raiderio` when you already know the region, realm, and character or guild you want, and need direct profile or Mythic+ run data.
