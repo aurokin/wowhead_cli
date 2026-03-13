@@ -22,7 +22,7 @@ If a user asks for `wotlk`, `classic`, or `retail`, and the wrapper returns a re
 ## Current State
 
 - `wowhead` has a real expansion-routing model and a tested expansion profile system.
-- `warcraft` does not expose a global expansion flag.
+- `warcraft` now exposes a global expansion flag for wrapper `doctor`, `search`, `resolve`, and passthrough enforcement.
 - Other providers do not yet advertise whether they are:
   - expansion-aware
   - retail-only
@@ -63,7 +63,6 @@ Examples right now:
 - `icy-veins`
 - `raiderio`
 - `wowprogress`
-- `warcraft-wiki`
 
 Expected behavior:
 - does not switch content source by expansion
@@ -178,16 +177,28 @@ This feature needs strong contract tests before rollout.
 - update wrapper/provider contract
 - add provider registry metadata only
 
+Status:
+- completed
+
 ### Phase 2
 
 - add `warcraft --expansion`
 - apply expansion filtering to wrapper `search` and `resolve`
 - surface included/excluded provider metadata
 
+Status:
+- completed
+
 ### Phase 3
 
 - add doctor reporting for expansion support
 - add compact/debug output for expansion filtering decisions
+
+Status:
+- in progress
+- `doctor` support is done
+- compact/debug support now includes `--expansion-debug`
+- provider-by-provider policy review remains
 
 ### Phase 4
 

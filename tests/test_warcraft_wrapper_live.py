@@ -44,3 +44,38 @@ def test_live_warcraft_resolve_expansion_filter_does_not_resolve_to_retail_only_
     assert payload["provider"] in {None, "wowhead"}
     assert payload["provider"] != "wowprogress"
     assert payload["provider"] != "raiderio"
+
+
+@pytest.mark.live
+def test_live_warcraft_search_retail_filter_is_not_same_as_unfiltered_search() -> None:
+    payload = _payload_for(["--expansion", "retail", "search", "mistweaver monk guide", "--limit", "5"])
+
+    assert payload["requested_expansion"] == "retail"
+    assert payload["expansion_filter_active"] is True
+    assert set(payload["included_providers"]) == {
+        "wowhead",
+        "method",
+        "icy-veins",
+        "raiderio",
+        "wowprogress",
+    }
+    assert {row["provider"] for row in payload["excluded_providers"]} == {"warcraft-wiki", "simc"}
+    assert all(row["provider"] != "warcraft-wiki" for row in payload["results"])
+
+
+@pytest.mark.live
+def test_live_warcraft_resolve_retail_filter_can_use_fixed_retail_provider() -> None:
+    payload = _payload_for(["--expansion", "retail", "resolve", "guild us illidan Liquid", "--limit", "3"])
+
+    assert payload["requested_expansion"] == "retail"
+    assert payload["expansion_filter_active"] is True
+    assert set(payload["included_providers"]) == {
+        "wowhead",
+        "method",
+        "icy-veins",
+        "raiderio",
+        "wowprogress",
+    }
+    assert {row["provider"] for row in payload["excluded_providers"]} == {"warcraft-wiki", "simc"}
+    assert payload["provider"] in {"wowprogress", "raiderio", "wowhead", None}
+    assert payload["provider"] != "warcraft-wiki"

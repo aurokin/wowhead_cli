@@ -68,6 +68,26 @@ def test_warcraft_doctor_reports_expansion_filtering_state() -> None:
     }
 
 
+def test_warcraft_doctor_reports_retail_filter_state() -> None:
+    result = runner.invoke(warcraft_app, ["--expansion", "retail", "doctor"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["wrapper"]["requested_expansion"] == "retail"
+    assert payload["wrapper"]["expansion_filter_active"] is True
+    assert set(payload["included_providers"]) == {
+        "wowhead",
+        "method",
+        "icy-veins",
+        "raiderio",
+        "wowprogress",
+    }
+    assert {row["provider"] for row in payload["excluded_providers"]} == {
+        "warcraft-wiki",
+        "simc",
+    }
+
+
 def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
     def fake_search(self, query: str):  # noqa: ANN001
         return {
@@ -226,6 +246,99 @@ def test_warcraft_search_compact_expansion_debug(monkeypatch) -> None:
     assert snapshot["wowhead"]["allowed"] is True
     assert snapshot["method"]["allowed"] is False
     assert snapshot["method"]["exclusion_reason"] == "provider_fixed_to_other_expansion"
+
+
+def test_warcraft_search_retail_filter_keeps_fixed_retail_providers_and_excludes_none(monkeypatch) -> None:
+    def fake_wowhead_search(self, query: str):  # noqa: ANN001
+        return {
+            "search": query,
+            "results": [
+                {
+                    "id": 19019,
+                    "name": "Thunderfury",
+                    "entity_type": "item",
+                    "ranking": {"score": 20, "match_reasons": ["name_contains_query"]},
+                },
+            ],
+        }
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", fake_wowhead_search)
+    monkeypatch.setattr(
+        "method_cli.main.MethodClient.sitemap_guides",
+        lambda self: [{"slug": "mistweaver-monk", "name": "Mistweaver Monk", "url": "https://www.method.gg/guides/mistweaver-monk"}],
+    )
+    monkeypatch.setattr(
+        "icy_veins_cli.main.IcyVeinsClient.sitemap_guides",
+        lambda self: [{"slug": "mistweaver-monk-pve-healing-guide", "name": "Mistweaver Monk PvE Healing Guide", "url": "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide"}],
+    )
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.search", lambda self, *, term, kind=None: {"matches": []})
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (_ for _ in ()).throw(AssertionError("warcraft-wiki should be excluded under explicit retail filtering")),
+    )
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.probe_search_route", lambda self, *, region, realm, name, obj_type: None)
+
+    result = runner.invoke(warcraft_app, ["--expansion", "retail", "search", "mistweaver monk guide", "--limit", "5"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["requested_expansion"] == "retail"
+    assert payload["expansion_filter_active"] is True
+    assert set(payload["included_providers"]) == {
+        "wowhead",
+        "method",
+        "icy-veins",
+        "raiderio",
+        "wowprogress",
+    }
+    assert {row["provider"] for row in payload["excluded_providers"]} == {"warcraft-wiki", "simc"}
+    results = {row["provider"] for row in payload["results"]}
+    assert {"method", "icy-veins"} & results
+
+
+def test_warcraft_resolve_retail_filter_keeps_fixed_retail_profile_provider(monkeypatch) -> None:
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", lambda self, query: {"search": query, "results": []})
+    monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr(
+        "raiderio_cli.main.RaiderIOClient.search",
+        lambda self, *, term, kind=None: {"matches": []},
+    )
+    monkeypatch.setattr(
+        "warcraft_wiki_cli.main.WarcraftWikiClient.search_articles",
+        lambda self, query, limit: (_ for _ in ()).throw(AssertionError("warcraft-wiki should be excluded under explicit retail filtering")),
+    )
+    monkeypatch.setattr(
+        "wowprogress_cli.main.WowProgressClient.probe_search_route",
+        lambda self, *, region, realm, name, obj_type: {
+            "_search_kind": "guild",
+            "guild": {
+                "name": "Liquid",
+                "region": "us",
+                "realm": "illidan",
+                "faction": "Horde",
+                "page_url": "https://www.wowprogress.com/guild/us/illidan/Liquid",
+            },
+        }
+        if obj_type == "guild"
+        else None,
+    )
+
+    result = runner.invoke(warcraft_app, ["--expansion", "retail", "resolve", "guild us illidan Liquid"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["requested_expansion"] == "retail"
+    assert payload["expansion_filter_active"] is True
+    assert payload["provider"] == "wowprogress"
+    assert set(payload["included_providers"]) == {
+        "wowhead",
+        "method",
+        "icy-veins",
+        "raiderio",
+        "wowprogress",
+    }
+    assert {row["provider"] for row in payload["excluded_providers"]} == {"warcraft-wiki", "simc"}
 
 
 def test_warcraft_search_prefers_profile_provider_for_structured_guild_queries(monkeypatch) -> None:
