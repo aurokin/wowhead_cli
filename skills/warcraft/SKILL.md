@@ -63,6 +63,7 @@ Current provider state:
 - inspect `wrapper_ranking` in wrapper results when ranking behavior matters.
 - `warcraft resolve` does not just trust provider order; it prefers the strongest resolved provider result after applying the same wrapper ranking layer.
 - use `warcraft search --compact --ranking-debug` or `warcraft resolve --compact --ranking-debug` when you want the ranking explanation without the full per-provider payloads.
+- for narrow cases like leaderboard queries, the wrapper may emit a synthetic direct-route candidate even when the provider does not expose a native search surface for that exact query family.
 
 ## Examples
 

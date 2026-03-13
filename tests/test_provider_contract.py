@@ -12,6 +12,7 @@ from warcraft_core.provider_contract import (
     query_intents,
     resolve_payload_sort_key,
     search_result_sort_key,
+    synthetic_search_candidates,
     wrapper_search_ranking,
 )
 
@@ -43,6 +44,7 @@ def test_query_intents_detect_structured_profile_and_reference() -> None:
     assert "structured_profile" in query_intents("guild us illidan Liquid")
     assert "guild_profile" in query_intents("guild us illidan Liquid")
     assert "reference" in query_intents("world of warcraft api")
+    assert "structured_profile" not in query_intents("world of warcraft api")
 
 
 def test_wrapper_search_ranking_boosts_reference_provider_for_api_queries() -> None:
@@ -126,6 +128,15 @@ def test_compact_wrapper_candidate_keeps_ranking_and_follow_up() -> None:
     assert compact["provider"] == "wowprogress"
     assert compact["follow_up_command"] == "wowprogress guild us illidan Liquid"
     assert compact["wrapper_ranking"]["score"] == 88
+
+
+def test_synthetic_search_candidates_adds_leaderboard_route() -> None:
+    candidates = synthetic_search_candidates("leaderboard us illidan")
+
+    assert len(candidates) == 1
+    assert candidates[0]["provider"] == "wowprogress"
+    assert candidates[0]["kind"] == "leaderboard"
+    assert candidates[0]["follow_up"]["command"] == "wowprogress leaderboard pve us --realm illidan"
 
 
 def test_resolve_payload_sort_key_prefers_resolved_then_confidence_then_wrapper_score() -> None:

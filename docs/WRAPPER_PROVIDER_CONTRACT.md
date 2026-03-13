@@ -111,6 +111,7 @@ Search result ordering rules:
 - the wrapper may apply a thin, tunable cross-provider ranking layer on top of provider-local scores
 - that wrapper layer should be query-aware and use signals like provider family, result kind, and structured query hints
 - that wrapper layer may also use provider-specific boosts for certain intents, such as preferring `raiderio` for character-profile queries and `wowprogress` for guild-profile queries
+- the wrapper may add synthetic direct-route candidates for narrow query families when a provider has a strong direct command surface but not a native search API for that family
 - wrapper ranking must stay inspectable in output, not hidden behind opaque ordering
 - the wrapper should not invent a fake universal content model beyond that thin ranking/orchestration layer
 

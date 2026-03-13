@@ -56,6 +56,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - use `--compact` on `warcraft search` or `warcraft resolve` when you want the wrapper decision without the full per-provider payloads
 - use `--ranking-debug` when you want compact ranking summaries for the top wrapper candidates
 - wrapper ranking policy can be overridden with `~/.config/warcraft/wrapper_ranking.json`
+- the wrapper may synthesize a direct provider route when a provider has a strong direct command but no native search surface for that query family, such as `wowprogress leaderboard pve ...`
 
 `warcraft doctor` reports:
 - wrapper health

@@ -186,6 +186,22 @@ def test_warcraft_search_compact_and_ranking_debug(monkeypatch) -> None:
     assert payload["ranking_debug"][0]["wrapper_ranking"]["provider_family"] == "profile"
 
 
+def test_warcraft_search_adds_synthetic_wowprogress_leaderboard_candidate(monkeypatch) -> None:
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", lambda self, query: {"search": query, "results": []})
+    monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.search", lambda self, *, term, kind=None: {"matches": []})
+    monkeypatch.setattr("warcraft_wiki_cli.main.WarcraftWikiClient.search_articles", lambda self, query, limit: (0, []))
+
+    result = runner.invoke(warcraft_app, ["search", "leaderboard us illidan", "--compact", "--ranking-debug"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["provider"] == "wowprogress"
+    assert payload["results"][0]["kind"] == "leaderboard"
+    assert payload["results"][0]["follow_up_command"] == "wowprogress leaderboard pve us --realm illidan"
+
+
 def test_warcraft_resolve_prefers_stronger_later_provider(monkeypatch) -> None:
     def fake_wowhead_search(self, query: str):  # noqa: ANN001
         return {
@@ -388,6 +404,23 @@ def test_warcraft_resolve_compact_and_ranking_debug(monkeypatch) -> None:
     assert payload["providers"] == []
     assert payload["match"]["provider"] == "wowprogress"
     assert payload["ranking_debug"][0]["provider"] == "wowprogress"
+
+
+def test_warcraft_resolve_adds_synthetic_wowprogress_leaderboard_route(monkeypatch) -> None:
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", lambda self, query: {"search": query, "results": []})
+    monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.search", lambda self, *, term, kind=None: {"matches": []})
+    monkeypatch.setattr("warcraft_wiki_cli.main.WarcraftWikiClient.search_articles", lambda self, query, limit: (0, []))
+
+    result = runner.invoke(warcraft_app, ["resolve", "leaderboard us illidan", "--compact", "--ranking-debug"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["provider"] == "wowprogress"
+    assert payload["next_command"] == "wowprogress leaderboard pve us --realm illidan"
+    assert payload["match"]["kind"] == "leaderboard"
 
 
 def test_warcraft_passthrough_to_wowhead(monkeypatch) -> None:

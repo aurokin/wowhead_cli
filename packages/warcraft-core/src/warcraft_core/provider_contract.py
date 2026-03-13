@@ -20,6 +20,7 @@ DEFAULT_WRAPPER_RANKING_POLICY: dict[str, Any] = {
         "simc": "local_tool",
     },
     "known_region_terms": ["us", "eu", "kr", "tw", "cn", "world"],
+    "structured_profile_second_token_blocklist": ["of", "the", "warcraft", "wiki", "api", "guide", "guides", "article", "articles"],
     "intent_keywords": {
         "guide": ["guide", "guides", "build", "builds", "rotation", "talent", "talents", "bis"],
         "reference": ["wiki", "article", "articles", "api", "addon", "addons", "lua", "reference", "lore", "story"],
@@ -126,6 +127,9 @@ def _normalize_policy(policy: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "provider_families": {str(key): str(value) for key, value in dict(policy.get("provider_families") or {}).items()},
         "known_region_terms": frozenset(str(value).lower() for value in list(policy.get("known_region_terms") or [])),
+        "structured_profile_second_token_blocklist": frozenset(
+            str(value).lower() for value in list(policy.get("structured_profile_second_token_blocklist") or [])
+        ),
         "intent_keywords": {
             str(intent): frozenset(str(keyword).lower() for keyword in list(keywords))
             for intent, keywords in dict(policy.get("intent_keywords") or {}).items()
@@ -205,7 +209,11 @@ def query_intents(query: str) -> list[str]:
         if tokens & keywords:
             intents.add(intent)
     ordered_tokens = [token for token in normalized.split() if token]
-    if len(ordered_tokens) >= 3 and ordered_tokens[0] in policy["known_region_terms"]:
+    if (
+        len(ordered_tokens) >= 3
+        and ordered_tokens[0] in policy["known_region_terms"]
+        and ordered_tokens[1] not in policy["structured_profile_second_token_blocklist"]
+    ):
         intents.add("structured_profile")
     if {"guild", "character"} & tokens:
         intents.add("structured_profile")
@@ -306,6 +314,65 @@ def compact_resolve_match(payload: Mapping[str, Any] | None) -> dict[str, Any] |
     if payload.get("confidence") is not None:
         compact["confidence"] = payload.get("confidence")
     return compact
+
+
+def synthetic_search_candidates(query: str) -> list[dict[str, Any]]:
+    normalized, tokens = _query_tokens(query)
+    ordered_tokens = [token for token in normalized.split() if token]
+    if "leaderboard" not in tokens:
+        return []
+    region = next((token for token in ordered_tokens if token in load_wrapper_ranking_policy()["known_region_terms"] and token != "world"), None)
+    if region is None:
+        return []
+    realm: str | None = None
+    region_index = ordered_tokens.index(region)
+    trailing = ordered_tokens[region_index + 1 :]
+    if trailing and trailing[0] not in {"leaderboard", "pve"}:
+        realm = trailing[0]
+    command = f"wowprogress leaderboard pve {region}"
+    if realm:
+        command += f" --realm {realm}"
+    display_name = f"{region.upper()} PvE Leaderboard" if realm is None else f"{region.upper()} {realm.title()} PvE Leaderboard"
+    candidate = {
+        "provider": "wowprogress",
+        "kind": "leaderboard",
+        "id": f"wowprogress:leaderboard:pve:{region}:{realm or ''}",
+        "name": display_name,
+        "region": region,
+        "realm": realm,
+        "ranking": {"score": 60, "match_reasons": ["wrapper_direct_route", "leaderboard_query"]},
+        "follow_up": {
+            "provider": "wowprogress",
+            "kind": "leaderboard",
+            "surface": "leaderboard",
+            "command": command,
+        },
+    }
+    return [candidate]
+
+
+def synthetic_resolve_payloads(query: str) -> list[tuple[str, dict[str, Any]]]:
+    payloads: list[tuple[str, dict[str, Any]]] = []
+    for candidate in synthetic_search_candidates(query):
+        decorated = decorate_search_result(query, candidate)
+        follow_up = decorated.get("follow_up") if isinstance(decorated.get("follow_up"), Mapping) else {}
+        payloads.append(
+            (
+                "wowprogress",
+                {
+                    "provider": "wowprogress",
+                    "query": query,
+                    "search_query": query,
+                    "resolved": True,
+                    "confidence": "high",
+                    "match": decorated,
+                    "next_command": follow_up.get("command"),
+                    "fallback_search_command": None,
+                    "wrapper_ranking": decorated.get("wrapper_ranking"),
+                },
+            )
+        )
+    return payloads
 
 
 def decorate_search_result(query: str, row: Mapping[str, Any]) -> dict[str, Any]:

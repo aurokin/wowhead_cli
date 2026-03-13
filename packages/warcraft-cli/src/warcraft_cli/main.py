@@ -19,6 +19,8 @@ from warcraft_core.provider_contract import (
     decorate_search_result,
     resolve_payload_sort_key,
     search_result_sort_key,
+    synthetic_resolve_payloads,
+    synthetic_search_candidates,
 )
 from warcraft_cli.providers import global_doctor_payload, list_providers, provider_resolve, provider_search
 from wowhead_cli.main import app as wowhead_app
@@ -82,6 +84,8 @@ def search(
             for row in payload.get("results", []) or []:
                 if isinstance(row, dict):
                     flattened.append(decorate_search_result(query, {"provider": registration.name, **row}))
+    for row in synthetic_search_candidates(query):
+        flattened.append(decorate_search_result(query, row))
     flattened.sort(key=search_result_sort_key)
     top = flattened[:limit]
     if compact:
@@ -123,6 +127,7 @@ def resolve(
         )
         if isinstance(payload, dict) and payload.get("resolved"):
             resolved_candidates.append((registration.name, decorate_resolve_payload(query, registration.name, payload)))
+    resolved_candidates.extend(synthetic_resolve_payloads(query))
     resolved_candidates.sort(key=lambda row: resolve_payload_sort_key(row[0], row[1]))
     best_provider = resolved_candidates[0][0] if resolved_candidates else None
     best_payload = resolved_candidates[0][1] if resolved_candidates else None
