@@ -43,6 +43,7 @@ Validated shared so far:
 
 Active next step:
 - continue improving existing providers and wrapper discovery quality
+- tighten `method` until its supported scope, reliability, and test coverage are strong enough to treat it as fully covered
 - focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
 
 ## Planning Documents

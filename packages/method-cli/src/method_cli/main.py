@@ -26,6 +26,14 @@ from warcraft_content.article_bundle import (
 app = typer.Typer(add_completion=False, help="Method.gg guide CLI.")
 
 SEARCH_TYPE_NAME = "Guide"
+SUPPORTED_SCOPE = {
+    "content_families": ["class_guides"],
+    "url_patterns": ["/guides/<slug>", "/guides/<slug>/<section>"],
+    "notes": [
+        "search and resolve are limited to the currently supported Method guide families",
+        "premium, login, and non-guide Method surfaces are intentionally out of scope",
+    ],
+}
 
 
 @dataclass(slots=True)
@@ -54,6 +62,30 @@ def _client(ctx: typer.Context) -> MethodClient:
         return MethodClient()
     except ValueError as exc:
         _fail(ctx, "invalid_cache_config", str(exc))
+        raise AssertionError("unreachable")
+
+
+def _guide_ref_parts_or_fail(ctx: typer.Context, guide_ref: str) -> tuple[str, str | None]:
+    try:
+        return guide_ref_parts(guide_ref)
+    except ValueError as exc:
+        _fail(ctx, "invalid_guide_ref", str(exc))
+        raise AssertionError("unreachable")
+
+
+def _fetch_guide_page_or_fail(ctx: typer.Context, client: MethodClient, guide_ref: str) -> dict[str, Any]:
+    try:
+        return client.fetch_guide_page(guide_ref)
+    except ValueError as exc:
+        _fail(ctx, "invalid_guide_ref", str(exc))
+        raise AssertionError("unreachable")
+
+
+def _fetch_guide_pages_or_fail(ctx: typer.Context, client: MethodClient, guide_ref: str) -> dict[str, Any]:
+    try:
+        return _fetch_guide_pages(client, guide_ref)
+    except ValueError as exc:
+        _fail(ctx, "invalid_guide_ref", str(exc))
         raise AssertionError("unreachable")
 
 
@@ -233,6 +265,7 @@ def doctor(ctx: typer.Context) -> None:
                 "guide_export": "ready",
                 "guide_query": "ready",
             },
+            "supported_scope": SUPPORTED_SCOPE,
             "cache": {
                 "enabled": settings.enabled,
                 "backend": settings.backend,
@@ -288,14 +321,14 @@ def resolve(
 @app.command("guide")
 def guide(ctx: typer.Context, guide_ref: str = typer.Argument(..., help="Guide slug or Method.gg guide URL.")) -> None:
     with _client(ctx) as client:
-        payload = _build_guide_summary(client.fetch_guide_page(guide_ref))
+        payload = _build_guide_summary(_fetch_guide_page_or_fail(ctx, client, guide_ref))
     _emit(ctx, payload)
 
 
 @app.command("guide-full")
 def guide_full(ctx: typer.Context, guide_ref: str = typer.Argument(..., help="Guide slug or Method.gg guide URL.")) -> None:
     with _client(ctx) as client:
-        payload = _fetch_guide_pages(client, guide_ref)
+        payload = _fetch_guide_pages_or_fail(ctx, client, guide_ref)
     _emit(ctx, payload)
 
 
@@ -305,10 +338,10 @@ def guide_export(
     guide_ref: str = typer.Argument(..., help="Guide slug or Method.gg guide URL."),
     out: Path | None = typer.Option(None, "--out", help="Output directory. Defaults to ./method_exports/guide-<slug>."),
 ) -> None:
-    slug, _section_slug = guide_ref_parts(guide_ref)
+    slug, _section_slug = _guide_ref_parts_or_fail(ctx, guide_ref)
     export_dir = out.expanduser() if out is not None else _default_export_dir(slug)
     with _client(ctx) as client:
-        payload = _fetch_guide_pages(client, guide_ref)
+        payload = _fetch_guide_pages_or_fail(ctx, client, guide_ref)
     manifest = write_article_bundle(payload, provider="method", export_dir=export_dir)
     _emit(
         ctx,

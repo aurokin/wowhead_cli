@@ -8,6 +8,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup, Tag
 
 METHOD_BASE_URL = "https://www.method.gg"
+SUPPORTED_GUIDE_PATH_RE = re.compile(r"^/guides/(?P<slug>[^/]+)(?:/(?P<section>[^/?#]+))?/?$")
 WOWHEAD_LINK_RE = re.compile(
     r"^(?P<entity_type>achievement|currency|faction|item|mount|npc|object|pet|quest|spell|zone)=(?P<id>\d+)(?:/|$)"
 )
@@ -29,7 +30,7 @@ def guide_ref_parts(guide_ref: str) -> tuple[str, str | None]:
         path = parsed.path
     else:
         path = raw if raw.startswith("/") else f"/guides/{raw}"
-    match = re.match(r"^/guides/(?P<slug>[^/]+)(?:/(?P<section>[^/?#]+))?/?$", path)
+    match = SUPPORTED_GUIDE_PATH_RE.match(path)
     if not match:
         raise ValueError(f"Unsupported Method guide reference: {guide_ref}")
     return match.group("slug"), match.group("section")
@@ -62,7 +63,7 @@ def _extract_navigation(soup: BeautifulSoup, *, current_url: str) -> list[dict[s
     current_path = urlparse(current_url).path.rstrip("/")
     items: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
-    for ordinal, anchor in enumerate(soup.select("ul.guide-navigation a"), start=1):
+    for ordinal, anchor in enumerate(soup.select("ul.guide-navigation a, .guide-navigation a"), start=1):
         href = anchor.get("href")
         if not isinstance(href, str):
             continue
@@ -92,14 +93,26 @@ def _extract_navigation(soup: BeautifulSoup, *, current_url: str) -> list[dict[s
 
 
 def _article_tag(soup: BeautifulSoup) -> Tag | None:
-    article = soup.select_one("article.guide-main-content")
+    article = soup.select_one("article.guide-main-content, .guide-main-content")
     if isinstance(article, Tag):
         return article
     return None
 
 
+def _first_text(soup: BeautifulSoup, selectors: tuple[str, ...]) -> str | None:
+    for selector in selectors:
+        tag = soup.select_one(selector)
+        if not isinstance(tag, Tag):
+            continue
+        text = clean_text(tag.get_text(" ", strip=True))
+        if text:
+            return text
+    return None
+
+
 def _clone_article(article: Tag) -> Tag:
-    cloned = BeautifulSoup(str(article), "html.parser").find("article")
+    soup = BeautifulSoup(str(article), "html.parser")
+    cloned = soup.find("article") or soup.find(class_="guide-main-content")
     if not isinstance(cloned, Tag):
         raise ValueError("Failed to clone Method article node.")
     for node in cloned.select("script, style, noscript, .premium-video, .mobile-video-wrap"):
@@ -228,18 +241,9 @@ def parse_guide_page(html: str, *, source_url: str) -> dict[str, Any]:
     navigation = _extract_navigation(soup, current_url=canonical_url)
     active_nav = next((item for item in navigation if item["active"]), None)
     display_section_title = active_nav["title"] if active_nav is not None else (section_slug or "Introduction").replace("-", " ").title()
-    patch = None
-    patch_tag = soup.select_one(".guide-author")
-    if isinstance(patch_tag, Tag):
-        patch = clean_text(patch_tag.get_text(" ", strip=True))
-    last_updated = None
-    update_tag = soup.select_one(".guide-update-date")
-    if isinstance(update_tag, Tag):
-        last_updated = clean_text(update_tag.get_text(" ", strip=True))
-    author = None
-    author_tag = soup.select_one(".guides-author-block .author-name")
-    if isinstance(author_tag, Tag):
-        author = clean_text(author_tag.get_text(" ", strip=True))
+    patch = _first_text(soup, (".guide-author", ".guides-titles .guide-author"))
+    last_updated = _first_text(soup, (".guide-update-date", ".guides-titles .guide-update-date"))
+    author = _first_text(soup, (".guides-author-block .author-name", ".author-name", "[itemprop='author']"))
     article_tag = _article_tag(soup)
     article_html = ""
     article_text = ""

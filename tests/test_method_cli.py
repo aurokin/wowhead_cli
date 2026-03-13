@@ -74,6 +74,34 @@ TALENTS_HTML = """
 </html>
 """
 
+INTRO_HTML_WITH_FALLBACK_METADATA = """
+<html>
+  <head>
+    <title>Method Mistweaver Monk Guide - Introduction - Midnight 12.0.1</title>
+    <meta name="description" content="Learn the Mistweaver Monk basics.">
+    <meta property="og:title" content="Method Mistweaver Monk Guide - Introduction - Midnight 12.0.1">
+    <link rel="canonical" href="https://www.method.gg/guides/mistweaver-monk">
+  </head>
+  <body>
+    <nav>
+      <div class="guide-navigation">
+        <a href="/guides/mistweaver-monk">Introduction</a>
+        <a href="/guides/mistweaver-monk/talents">Talents</a>
+      </div>
+    </nav>
+    <div class="guides-titles">
+      <div class="guide-author">Patch 12.0.1</div>
+      <div class="guide-update-date">Last Updated: 26th Feb, 2026</div>
+    </div>
+    <div class="author-name">Tincell</div>
+    <div class="guide-main-content">
+      <h2>Introduction</h2>
+      <p>Intro copy for Mistweaver Monk.</p>
+    </div>
+  </body>
+</html>
+"""
+
 SITEMAP_XML = """
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://www.method.gg/guides/mistweaver-monk</loc></url>
@@ -87,6 +115,11 @@ def _fake_fetch_guide_page(guide_ref: str) -> dict[str, object]:
     if str(guide_ref).endswith("/talents"):
         return parse_guide_page(TALENTS_HTML, source_url="https://www.method.gg/guides/mistweaver-monk/talents")
     return parse_guide_page(INTRO_HTML, source_url="https://www.method.gg/guides/mistweaver-monk")
+
+
+def _error_payload(result) -> dict[str, object]:
+    raw = result.stderr or result.output
+    return json.loads(raw)
 
 
 def test_parse_sitemap_guides_filters_intro_pages() -> None:
@@ -107,6 +140,18 @@ def test_parse_guide_page_extracts_sections_navigation_and_links() -> None:
     assert payload["article"]["sections"][0]["title"] == "Introduction"
     assert payload["linked_entities"][0]["type"] == "spell"
     assert payload["linked_entities"][0]["id"] == 116670
+
+
+def test_parse_guide_page_supports_metadata_and_article_fallback_selectors() -> None:
+    payload = parse_guide_page(
+        INTRO_HTML_WITH_FALLBACK_METADATA,
+        source_url="https://www.method.gg/guides/mistweaver-monk",
+    )
+    assert payload["guide"]["author"] == "Tincell"
+    assert payload["guide"]["patch"] == "Patch 12.0.1"
+    assert payload["guide"]["last_updated"] == "Last Updated: 26th Feb, 2026"
+    assert payload["navigation"][0]["title"] == "Introduction"
+    assert payload["article"]["sections"][0]["title"] == "Introduction"
 
 
 def test_method_search_command_uses_sitemap_guides(monkeypatch) -> None:
@@ -167,3 +212,21 @@ def test_method_guide_export_and_query(monkeypatch, tmp_path: Path) -> None:
     assert section_query.exit_code == 0
     section_payload = json.loads(section_query.stdout)
     assert section_payload["match_counts"]["sections"] >= 1
+
+
+def test_method_guide_invalid_ref_returns_structured_error() -> None:
+    result = runner.invoke(app, ["guide", "https://www.method.gg/premium"])
+    assert result.exit_code == 1
+
+    payload = _error_payload(result)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_guide_ref"
+
+
+def test_method_guide_export_invalid_ref_returns_structured_error(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["guide-export", "https://www.method.gg/premium", "--out", str(tmp_path / "out")])
+    assert result.exit_code == 1
+
+    payload = _error_payload(result)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_guide_ref"
