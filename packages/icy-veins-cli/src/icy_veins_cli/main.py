@@ -28,6 +28,24 @@ from warcraft_core.output import emit
 app = typer.Typer(add_completion=False, help="Icy Veins guide CLI.")
 
 SEARCH_TYPE_NAME = "Guide"
+UNSUPPORTED_QUERY_HINTS = {
+    "patch_notes": {
+        "keywords": {"patch", "notes"},
+        "message": "Icy Veins patch-note and news-like WoW pages are currently out of scope for the supported guide surface.",
+    },
+    "class_changes": {
+        "keywords": {"class", "changes"},
+        "message": "Icy Veins latest-class-changes style WoW pages are currently out of scope for the supported guide surface.",
+    },
+    "hotfixes": {
+        "keywords": {"hotfix", "hotfixes"},
+        "message": "Icy Veins hotfix and news-like WoW pages are currently out of scope for the supported guide surface.",
+    },
+    "news": {
+        "keywords": {"news"},
+        "message": "Icy Veins news-like WoW pages are currently out of scope for the supported guide surface.",
+    },
+}
 NEUTRAL_SLUG_TERMS = {
     "guide",
     "guides",
@@ -78,6 +96,20 @@ def _normalize_query(query: str) -> str:
 
 def _query_terms(query: str) -> set[str]:
     return {term for term in re.split(r"[^a-z0-9+]+", query.lower()) if term}
+
+
+def _unsupported_scope_hint(query: str) -> dict[str, Any] | None:
+    terms = _query_terms(query)
+    if not terms:
+        return None
+    for code, config in UNSUPPORTED_QUERY_HINTS.items():
+        keywords = set(config["keywords"])
+        if keywords <= terms:
+            return {
+                "code": code,
+                "message": config["message"],
+            }
+    return None
 
 
 def _score_family_match(query: str, *, content_family: str | None) -> tuple[int, list[str]]:
@@ -225,8 +257,11 @@ def _score_text_match(query: str, candidate: str, *, slug: str) -> tuple[int, li
         score -= len(penalty_terms) * 3
     return score, reasons
 
-def _search_results(client: IcyVeinsClient, query: str, *, limit: int) -> tuple[str, list[dict[str, Any]], int]:
+def _search_results(client: IcyVeinsClient, query: str, *, limit: int) -> tuple[str, list[dict[str, Any]], int, dict[str, Any] | None]:
     normalized_query = _normalize_query(query)
+    scope_hint = _unsupported_scope_hint(normalized_query)
+    if scope_hint is not None:
+        return normalized_query, [], 0, scope_hint
     matches: list[dict[str, Any]] = []
     for row in client.sitemap_guides():
         slug = row["slug"]
@@ -237,6 +272,8 @@ def _search_results(client: IcyVeinsClient, query: str, *, limit: int) -> tuple[
         family_score, family_reasons = _score_family_match(normalized_query, content_family=content_family)
         score += family_score
         reasons.extend(family_reasons)
+        if normalized_query and reasons and set(reasons) <= {"intro_guide", "specialized_guide"}:
+            continue
         if score <= 0:
             continue
         candidate_row = article_candidate(
@@ -250,7 +287,7 @@ def _search_results(client: IcyVeinsClient, query: str, *, limit: int) -> tuple[
         candidate_row["metadata"]["content_family"] = content_family
         matches.append(candidate_row)
     sort_article_candidates(matches)
-    return normalized_query, matches[:limit], len(matches)
+    return normalized_query, matches[:limit], len(matches), None
 
 
 def _build_guide_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
@@ -435,8 +472,11 @@ def search(
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum results to return."),
 ) -> None:
     with _client(ctx) as client:
-        normalized_query, results, total_count = _search_results(client, query, limit=limit)
-    _emit(ctx, article_search_payload(query=query, search_query=normalized_query, results=results, total_count=total_count))
+        normalized_query, results, total_count, scope_hint = _search_results(client, query, limit=limit)
+    payload = article_search_payload(query=query, search_query=normalized_query, results=results, total_count=total_count)
+    if scope_hint is not None:
+        payload["scope_hint"] = scope_hint
+    _emit(ctx, payload)
 
 
 @app.command("resolve")
@@ -446,7 +486,7 @@ def resolve(
     limit: int = typer.Option(5, "--limit", min=1, max=50, help="Maximum candidates to inspect."),
 ) -> None:
     with _client(ctx) as client:
-        normalized_query, results, total_count = _search_results(client, query, limit=limit)
+        normalized_query, results, total_count, scope_hint = _search_results(client, query, limit=limit)
     top = results[0] if results else None
     second = results[1] if len(results) > 1 else None
     top_score = top["ranking"]["score"] if top else 0
@@ -460,14 +500,17 @@ def resolve(
     )
     _emit(
         ctx,
-        article_resolve_payload(
-            provider_command="icy-veins",
-            query=query,
-            search_query=normalized_query,
-            results=results,
-            total_count=total_count,
-            resolved=resolved,
-        ),
+        {
+            **article_resolve_payload(
+                provider_command="icy-veins",
+                query=query,
+                search_query=normalized_query,
+                results=results,
+                total_count=total_count,
+                resolved=resolved,
+            ),
+            **({"scope_hint": scope_hint} if scope_hint is not None else {}),
+        }
     )
 
 

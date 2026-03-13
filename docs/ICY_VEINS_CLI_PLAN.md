@@ -34,6 +34,7 @@ Current strengths:
 - class hubs and role guides now have local-only traversal instead of over-expanding in `guide-full`
 - broad class and role queries now prefer the corresponding class hub or role guide, while specialized families penalize those broad hubs
 - unsupported or bad WoW refs now fail with structured `invalid_guide_ref`
+- unsupported query families like patch notes, class changes, hotfixes, and news now return a `scope_hint` instead of misleading guide matches
 - dedicated Icy Veins live tests now exist
 - recorded real-page fixtures now exist across representative supported and intentionally unsupported WoW page shapes
 - local bundle export/query works
@@ -160,6 +161,7 @@ These should:
 
 4. Discovery/ranking is too generic for some families.
 - `easy mode`, `raid guide`, and special-event pages need continued family-aware ranking refinement instead of only slug text matching.
+- unsupported query intent detection should stay explicit so news-like WoW queries do not silently degrade back into guide matches.
 
 5. Documentation is not explicit enough.
 - improved in `docs/USAGE.md`

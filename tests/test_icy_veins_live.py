@@ -147,3 +147,12 @@ def test_live_icy_invalid_ref_contract() -> None:
     payload = json.loads(result.stderr or result.output)
     assert payload["ok"] is False
     assert payload["error"]["code"] == "invalid_guide_ref"
+
+
+def test_live_icy_unsupported_query_scope_hint() -> None:
+    _require_live()
+    payload = _payload_for(["search", "patch notes", "--limit", "5"])
+
+    assert payload["count"] == 0
+    assert payload["results"] == []
+    assert payload["scope_hint"]["code"] == "patch_notes"

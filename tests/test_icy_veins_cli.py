@@ -475,6 +475,29 @@ def test_icy_veins_search_penalizes_broad_hubs_for_specialized_queries(monkeypat
     assert "penalty_broad_hub" in last_match["ranking"]["match_reasons"]
 
 
+def test_icy_veins_search_returns_scope_hint_for_unsupported_query_family(monkeypatch) -> None:
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: parse_sitemap_guides(SITEMAP_XML))
+    result = runner.invoke(app, ["search", "patch notes", "--limit", "5"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 0
+    assert payload["results"] == []
+    assert payload["scope_hint"]["code"] == "patch_notes"
+
+
+def test_icy_veins_resolve_returns_scope_hint_for_unsupported_query_family(monkeypatch) -> None:
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: parse_sitemap_guides(SITEMAP_XML))
+    result = runner.invoke(app, ["resolve", "latest class changes", "--limit", "5"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is False
+    assert payload["count"] == 0
+    assert payload["candidates"] == []
+    assert payload["scope_hint"]["code"] == "class_changes"
+
+
 def test_icy_veins_guide_and_guide_full(monkeypatch) -> None:
     monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.fetch_guide_page", lambda self, guide_ref: _fake_fetch_guide_page(guide_ref))
     guide_result = runner.invoke(app, ["guide", "mistweaver-monk-pve-healing-guide"])

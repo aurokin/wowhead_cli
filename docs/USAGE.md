@@ -165,6 +165,7 @@ Icy Veins guide behavior:
   - class hubs and role guides stay on the current page
   - spec-family pages walk the related family navigation only
 - unsupported or bad WoW refs fail with a structured `invalid_guide_ref`
+- unsupported Icy Veins query families such as `patch notes` or `latest class changes` now return a `scope_hint` and no search candidates
 - representative real-page fixtures now cover supported and intentionally unsupported Icy Veins WoW page shapes
 - `guide-export` writes a local guide bundle under `./icy-veins_exports/` by default
 - `guide-query` searches exported Icy Veins bundles across sections, navigation links, and linked entities
