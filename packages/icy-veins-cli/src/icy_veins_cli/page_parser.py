@@ -12,6 +12,24 @@ ICY_VEINS_BASE_URL = "https://www.icy-veins.com"
 WOWHEAD_LINK_RE = re.compile(
     r"^(?P<entity_type>achievement|currency|faction|item|mount|npc|object|pet|quest|spell|zone)=(?P<id>\d+)(?:/|$)"
 )
+CLASS_HUB_SLUGS = {
+    "death-knight-guide",
+    "demon-hunter-guide",
+    "druid-guide",
+    "evoker-guide",
+    "hunter-guide",
+    "mage-guide",
+    "monk-guide",
+    "paladin-guide",
+    "priest-guide",
+    "rogue-guide",
+    "shaman-guide",
+    "warlock-guide",
+    "warrior-guide",
+}
+ROLE_GUIDE_SLUGS = {
+    "healing-guide",
+}
 GUIDE_KEYWORDS = (
     "guide",
     "easy-mode",
@@ -37,6 +55,22 @@ DISPLAY_TOKEN_MAP = {
     "mythic": "Mythic",
     "plus": "Plus",
 }
+SUBPAGE_SUFFIX_FAMILIES = (
+    ("-spec-builds-talents", "spec_builds_talents"),
+    ("-rotation-cooldowns-abilities", "rotation_guide"),
+    ("-stat-priority", "stat_priority"),
+    ("-gems-enchants-consumables", "gems_enchants_consumables"),
+    ("-gear-best-in-slot", "gear_best_in_slot"),
+    ("-spell-summary", "spell_summary"),
+    ("-resources", "resources"),
+    ("-mythic-plus-tips", "mythic_plus_tips"),
+    ("-macros-addons", "macros_addons"),
+    ("-simulations", "simulations"),
+)
+SPECIAL_EVENT_KEYWORDS = (
+    "remix-guide",
+    "torghast-guide",
+)
 
 
 def clean_text(value: str | None) -> str | None:
@@ -76,6 +110,44 @@ def slug_display_name(slug: str) -> str:
         replacement = DISPLAY_TOKEN_MAP.get(part.lower())
         tokens.append(replacement if replacement is not None else part.capitalize())
     return " ".join(tokens) or slug
+
+
+def classify_guide_slug(slug: str) -> str | None:
+    normalized = slug.strip().lower()
+    if not normalized:
+        return None
+    if normalized in CLASS_HUB_SLUGS:
+        return "class_hub"
+    if normalized in ROLE_GUIDE_SLUGS:
+        return "role_guide"
+    if normalized.endswith("-easy-mode"):
+        return "easy_mode"
+    if normalized.endswith("-leveling-guide"):
+        return "leveling"
+    if "-pvp-guide" in normalized:
+        return "pvp"
+    for suffix, family in SUBPAGE_SUFFIX_FAMILIES:
+        if normalized.endswith(suffix):
+            return family
+    if normalized.endswith("-raid-guide"):
+        return "raid_guide"
+    if normalized.endswith("-the-war-within-pve-guide"):
+        return "expansion_guide"
+    if any(keyword in normalized for keyword in SPECIAL_EVENT_KEYWORDS):
+        return "special_event_guide"
+    if normalized.endswith("-guide"):
+        return "spec_guide"
+    return None
+
+
+def is_supported_guide_slug(slug: str) -> bool:
+    return classify_guide_slug(slug) is not None
+
+
+def guide_traversal_scope(content_family: str | None) -> str:
+    if content_family in {"class_hub", "role_guide"}:
+        return "current_page"
+    return "family_navigation"
 
 
 def _meta_content(soup: BeautifulSoup, **attrs: str) -> str | None:
@@ -247,6 +319,8 @@ def _extract_headings(article: Tag) -> list[dict[str, Any]]:
     for node in article.find_all(["div", "h2", "h3", "h4"]):
         if not isinstance(node, Tag):
             continue
+        if node.name in {"h2", "h3", "h4"} and isinstance(node.parent, Tag) and "heading_container" in (node.parent.get("class") or []):
+            continue
         heading = _heading_from_tag(node)
         if heading is None:
             continue
@@ -360,6 +434,7 @@ def parse_guide_page(html: str, *, source_url: str) -> dict[str, Any]:
     canonical_url = _link_href(soup, rel="canonical") or source_url
     canonical_url = urljoin(ICY_VEINS_BASE_URL, canonical_url)
     slug = guide_ref_parts(canonical_url)
+    content_family = classify_guide_slug(slug)
     article_json = _parse_json_ld_article(soup) or {}
     data_layer = _extract_data_layer(soup)
     page_title = clean_text(article_json.get("headline")) or _meta_content(soup, property="og:title") or clean_text(
@@ -419,6 +494,9 @@ def parse_guide_page(html: str, *, source_url: str) -> dict[str, Any]:
             "page_url": canonical_url,
             "section_slug": slug,
             "section_title": section_title,
+            "content_family": content_family,
+            "supported_surface": content_family is not None,
+            "traversal_scope": guide_traversal_scope(content_family),
             "author": author_name,
             "last_updated": last_updated,
             "published_at": published_at,
@@ -451,7 +529,10 @@ def parse_sitemap_guides(xml_text: str) -> list[dict[str, Any]]:
             continue
         if slug in seen:
             continue
-        if not any(keyword in slug for keyword in GUIDE_KEYWORDS):
+        content_family = classify_guide_slug(slug)
+        if content_family is None and not any(keyword in slug for keyword in GUIDE_KEYWORDS):
+            continue
+        if content_family is None:
             continue
         seen.add(slug)
         guides.append(
@@ -459,6 +540,7 @@ def parse_sitemap_guides(xml_text: str) -> list[dict[str, Any]]:
                 "slug": slug,
                 "name": slug_display_name(slug),
                 "url": url,
+                "content_family": content_family,
             }
         )
     guides.sort(key=lambda row: row["name"].lower())

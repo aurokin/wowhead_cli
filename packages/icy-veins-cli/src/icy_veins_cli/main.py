@@ -5,9 +5,11 @@ from pathlib import Path
 import re
 from typing import Any
 
+import httpx
 import typer
 
 from icy_veins_cli.client import IcyVeinsClient, guide_ref_parts, load_icy_veins_cache_settings_from_env
+from icy_veins_cli.page_parser import classify_guide_slug, guide_traversal_scope
 from warcraft_content.article_discovery import (
     article_candidate,
     article_resolve_payload,
@@ -74,6 +76,76 @@ def _normalize_query(query: str) -> str:
     return normalized or query.strip().lower()
 
 
+def _query_terms(query: str) -> set[str]:
+    return {term for term in re.split(r"[^a-z0-9+]+", query.lower()) if term}
+
+
+def _score_family_match(query: str, *, content_family: str | None) -> tuple[int, list[str]]:
+    if not query or not content_family:
+        return 0, []
+    score = 0
+    reasons: list[str] = []
+    terms = _query_terms(query)
+    joined = f" {query.lower()} "
+    if "easy" in terms and "mode" in terms and content_family == "easy_mode":
+        score += 28
+        reasons.append("family_easy_mode")
+    if "leveling" in terms and content_family == "leveling":
+        score += 24
+        reasons.append("family_leveling")
+    if "pvp" in terms and content_family == "pvp":
+        score += 24
+        reasons.append("family_pvp")
+    if content_family == "spec_builds_talents" and ({"build", "builds", "talent", "talents"} & terms):
+        score += 24
+        reasons.append("family_builds_talents")
+    if content_family == "rotation_guide" and ({"rotation", "cooldown", "cooldowns", "abilities"} & terms):
+        score += 24
+        reasons.append("family_rotation")
+    if content_family == "stat_priority" and (" stat priority " in joined or " stats " in joined):
+        score += 24
+        reasons.append("family_stat_priority")
+    if content_family == "gems_enchants_consumables" and ({"gems", "enchants", "consumables"} & terms):
+        score += 24
+        reasons.append("family_gems_enchants")
+    if content_family == "gear_best_in_slot" and ({"gear", "bis"} & terms or " best in slot " in joined):
+        score += 24
+        reasons.append("family_gear")
+    if content_family == "spell_summary" and (" spell summary " in joined or " spell list " in joined or " glossary " in joined):
+        score += 24
+        reasons.append("family_spell_summary")
+    if content_family == "resources" and "resources" in terms:
+        score += 18
+        reasons.append("family_resources")
+    if content_family == "mythic_plus_tips" and ("mythic+" in joined or " mythic plus " in joined):
+        score += 18
+        reasons.append("family_mythic_plus")
+    if content_family == "macros_addons" and ({"macros", "addons", "ui"} & terms or "add-ons" in query.lower()):
+        score += 18
+        reasons.append("family_macros_addons")
+    if content_family == "simulations" and ({"simulation", "simulations", "sim"} & terms):
+        score += 18
+        reasons.append("family_simulations")
+    if content_family == "raid_guide" and "raid" in terms:
+        score += 18
+        reasons.append("family_raid_guide")
+    if content_family == "expansion_guide" and (" war within " in joined or " midnight " in joined or " expansion " in terms):
+        score += 18
+        reasons.append("family_expansion_guide")
+    if content_family == "special_event_guide" and ({"remix", "torghast"} & terms):
+        score += 18
+        reasons.append("family_special_event")
+    if content_family == "raid_guide" and "raid" not in terms:
+        score -= 12
+        reasons.append("penalty_raid_variant")
+    if content_family in {"expansion_guide", "special_event_guide"} and not (
+        {"remix", "torghast", "midnight", "expansion"} & terms or " war within " in joined
+    ):
+        score -= 10
+        reasons.append("penalty_specialized_variant")
+    return score, reasons
+
+
 def _score_text_match(query: str, candidate: str, *, slug: str) -> tuple[int, list[str]]:
     if not query or not candidate:
         return 0, []
@@ -115,20 +187,24 @@ def _search_results(client: IcyVeinsClient, query: str, *, limit: int) -> tuple[
     for row in client.sitemap_guides():
         slug = row["slug"]
         name = row["name"]
+        content_family = row.get("content_family")
         candidate = f"{name.lower()} {slug.replace('-', ' ')}"
         score, reasons = _score_text_match(normalized_query, candidate, slug=slug)
+        family_score, family_reasons = _score_family_match(normalized_query, content_family=content_family)
+        score += family_score
+        reasons.extend(family_reasons)
         if score <= 0:
             continue
-        matches.append(
-            article_candidate(
-                ref=slug,
-                name=name,
-                url=row["url"],
-                score=score,
-                reasons=reasons,
-                provider_command="icy-veins",
-            )
+        candidate_row = article_candidate(
+            ref=slug,
+            name=name,
+            url=row["url"],
+            score=score,
+            reasons=reasons,
+            provider_command="icy-veins",
         )
+        candidate_row["metadata"]["content_family"] = content_family
+        matches.append(candidate_row)
     sort_article_candidates(matches)
     return normalized_query, matches[:limit], len(matches)
 
@@ -175,9 +251,40 @@ def _build_guide_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
         "citations": citations,
     }
 
+
+def _guide_ref_slug(guide_ref: str) -> str:
+    return guide_ref_parts(guide_ref)
+
+
+def _ensure_supported_guide_ref(ctx: typer.Context, guide_ref: str) -> tuple[str, str]:
+    try:
+        slug = _guide_ref_slug(guide_ref)
+    except ValueError as exc:
+        _fail(ctx, "invalid_guide_ref", str(exc))
+        raise AssertionError("unreachable")
+    content_family = classify_guide_slug(slug)
+    if content_family is None:
+        _fail(ctx, "invalid_guide_ref", f"Unsupported Icy Veins guide reference: {guide_ref}")
+        raise AssertionError("unreachable")
+    return slug, content_family
+
+
+def _fetch_supported_guide_page(ctx: typer.Context, client: IcyVeinsClient, guide_ref: str) -> dict[str, Any]:
+    _ensure_supported_guide_ref(ctx, guide_ref)
+    try:
+        return client.fetch_guide_page(guide_ref)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            _fail(ctx, "invalid_guide_ref", f"Guide not found: {guide_ref}")
+        _fail(ctx, "upstream_fetch_failed", f"Icy Veins request failed with status {exc.response.status_code}")
+        raise AssertionError("unreachable")
+
+
 def _fetch_guide_pages(client: IcyVeinsClient, guide_ref: str) -> dict[str, Any]:
     initial = client.fetch_guide_page(guide_ref)
-    nav_items = initial["navigation"] or [
+    traversal_scope = guide_traversal_scope(initial["guide"].get("content_family"))
+    nav_items = initial["navigation"] if traversal_scope == "family_navigation" else []
+    nav_items = nav_items or [
         {
             "title": initial["guide"]["section_title"],
             "url": initial["guide"]["page_url"],
@@ -304,6 +411,7 @@ def resolve(
     resolved = top is not None and (
         top_score >= 50
         or top_score >= second_score + 15
+        or ("family_easy_mode" in top_reasons and top_score >= second_score + 10 and top_score >= 35)
         or ("intro_guide" in top_reasons and top_score >= second_score + 6 and top_score >= 30)
     )
     _emit(
@@ -322,14 +430,21 @@ def resolve(
 @app.command("guide")
 def guide(ctx: typer.Context, guide_ref: str = typer.Argument(..., help="Guide slug or Icy Veins guide URL.")) -> None:
     with _client(ctx) as client:
-        payload = _build_guide_summary(client.fetch_guide_page(guide_ref))
+        payload = _build_guide_summary(_fetch_supported_guide_page(ctx, client, guide_ref))
     _emit(ctx, payload)
 
 
 @app.command("guide-full")
 def guide_full(ctx: typer.Context, guide_ref: str = typer.Argument(..., help="Guide slug or Icy Veins guide URL.")) -> None:
+    _ensure_supported_guide_ref(ctx, guide_ref)
     with _client(ctx) as client:
-        payload = _fetch_guide_pages(client, guide_ref)
+        try:
+            payload = _fetch_guide_pages(client, guide_ref)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                _fail(ctx, "invalid_guide_ref", f"Guide not found: {guide_ref}")
+            _fail(ctx, "upstream_fetch_failed", f"Icy Veins request failed with status {exc.response.status_code}")
+            raise AssertionError("unreachable")
     _emit(ctx, payload)
 
 
@@ -339,10 +454,16 @@ def guide_export(
     guide_ref: str = typer.Argument(..., help="Guide slug or Icy Veins guide URL."),
     out: Path | None = typer.Option(None, "--out", help="Output directory. Defaults to ./icy-veins_exports/guide-<slug>."),
 ) -> None:
-    slug = guide_ref_parts(guide_ref)
+    slug, _ = _ensure_supported_guide_ref(ctx, guide_ref)
     export_dir = out.expanduser() if out is not None else _default_export_dir(slug)
     with _client(ctx) as client:
-        payload = _fetch_guide_pages(client, guide_ref)
+        try:
+            payload = _fetch_guide_pages(client, guide_ref)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                _fail(ctx, "invalid_guide_ref", f"Guide not found: {guide_ref}")
+            _fail(ctx, "upstream_fetch_failed", f"Icy Veins request failed with status {exc.response.status_code}")
+            raise AssertionError("unreachable")
     manifest = write_article_bundle(payload, provider="icy-veins", export_dir=export_dir)
     _emit(
         ctx,

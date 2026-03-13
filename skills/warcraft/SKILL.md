@@ -52,6 +52,7 @@ Current provider state:
 - If a Method query clearly targets an unsupported family like tier lists, expect a `scope_hint` with no search candidates.
 - If a Method root acts like an index surface rather than a real guide/article page, expect a structured `unsupported_guide_surface` failure instead of empty content.
 - Use `icy-veins` when you need article-style guide content with page-family navigation and table-of-contents structure that may be easier to traverse than the equivalent Wowhead guide surface.
+- `icy-veins` now intentionally supports more than just spec landing guides: class hubs, role guides, easy mode, leveling, PvP, spec subpages, raid guides, and special-event guide pages like Remix or Torghast.
 - Use `raiderio` when you already know the region, realm, and character or guild you want, and need direct profile or Mythic+ run data.
 - Use `warcraft-wiki` when you need general reference material, lore, systems pages, or addon/API documentation.
 - Use `wowprogress` when you have or can supply structured `region realm name` inputs and need progression, roster, or leaderboard context rather than guide content.

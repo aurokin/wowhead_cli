@@ -147,9 +147,23 @@ icy-veins guide-query ./tmp/icy-mistweaver "vivify"
 ```
 
 Icy Veins guide behavior:
-- `search` and `resolve` work against the Icy Veins sitemap for WoW guide-like pages
-- `guide` returns the requested page summary with guide-family navigation, page TOC, and linked-entity preview
-- `guide-full` walks the guide-family navigation and returns all discovered guide pages
+- `search` and `resolve` work against the Icy Veins WoW sitemap for supported guide families
+- supported families now include:
+  - class hubs
+  - role guides
+  - spec guides
+  - easy mode pages
+  - leveling guides
+  - PvP guides
+  - spec subpages such as builds, rotation, stat priority, gems, gear, spell summary, resources, Mythic+ tips, macros/addons, and simulations
+  - raid guides
+  - expansion guides
+  - special-event guides such as Remix and Torghast pages
+- `guide` returns the requested page summary with family metadata, page TOC, and linked-entity preview
+- `guide-full` is family-aware:
+  - class hubs and role guides stay on the current page
+  - spec-family pages walk the related family navigation only
+- unsupported or bad WoW refs fail with a structured `invalid_guide_ref`
 - `guide-export` writes a local guide bundle under `./icy-veins_exports/` by default
 - `guide-query` searches exported Icy Veins bundles across sections, navigation links, and linked entities
 
