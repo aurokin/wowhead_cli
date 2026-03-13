@@ -5,14 +5,13 @@
 `method` is implemented and working, but it is not yet a fully covered Method.gg provider.
 
 Current strengths:
-- guide search, resolve, fetch, multi-page guide-full, export, and local bundle query all work for the current supported guide family
+- guide search, resolve, fetch, multi-page guide-full, export, and local bundle query all work for the current supported Method guide/article families
 - it validates the shared article bundle and article discovery layers
 
 Current limits:
-- discovery is effectively guide-only and sitemap-rooted
+- discovery is sitemap-rooted and still needs family-aware tuning
 - parsing assumes the current Method guide template
-- live coverage is thin compared with `wowhead`
-- non-guide Method content families are not yet part of the supported surface
+- some Method content families are still not intentionally reviewed and classified yet
 - premium/login are intentionally out of scope
 
 ## Why Method First
