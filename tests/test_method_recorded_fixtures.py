@@ -65,6 +65,20 @@ def test_recorded_reputation_guide_fixture_contract() -> None:
     assert payload["linked_entities"][0]["id"] == 246734
 
 
+def test_recorded_article_guide_fixture_contract() -> None:
+    payload = parse_guide_page(
+        _load("article_guide.html"),
+        source_url="https://www.method.gg/guides/world-of-warcraft-midnight-season-1-dungeon-locations",
+    )
+
+    assert payload["guide"]["slug"] == "world-of-warcraft-midnight-season-1-dungeon-locations"
+    assert payload["guide"]["content_family"] == "article_guide"
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["author"] == "Tayder"
+    assert payload["guide"]["last_updated"] == "26th February 2026"
+    assert len(payload["article"]["sections"]) >= 1
+
+
 def test_recorded_unsupported_index_fixture_contract() -> None:
     payload = parse_guide_page(
         _load("unsupported_index.html"),

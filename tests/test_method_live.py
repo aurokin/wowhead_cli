@@ -17,6 +17,7 @@ runner = CliRunner()
 GUIDE_REF = "mistweaver-monk"
 SECONDARY_GUIDE_REF = "midnight-alchemy-profession-guide"
 TERTIARY_GUIDE_REF = "harati-renown-reputation-guide"
+QUATERNARY_GUIDE_REF = "world-of-warcraft-midnight-season-1-dungeon-locations"
 
 
 def _require_live() -> None:
@@ -136,3 +137,15 @@ def test_live_method_reputation_family_contract() -> None:
     assert payload["guide"]["author"] == "Roguery"
     assert payload["guide"]["last_updated"] == "26th February 2026"
     assert payload["linked_entities"]["count"] >= 1
+
+
+def test_live_method_article_family_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guide", QUATERNARY_GUIDE_REF])
+
+    assert payload["guide"]["slug"] == QUATERNARY_GUIDE_REF
+    assert payload["guide"]["content_family"] == "article_guide"
+    assert payload["guide"]["supported_surface"] is True
+    assert payload["guide"]["author"] == "Tayder"
+    assert payload["guide"]["last_updated"] == "26th February 2026"
+    assert payload["article"]["section_count"] >= 1

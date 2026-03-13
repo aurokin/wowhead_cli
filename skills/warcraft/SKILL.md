@@ -48,7 +48,7 @@ Current provider state:
 - Preserve provider provenance in your reasoning. Do not describe `warcraft` results as source-neutral.
 - Use `method` when you need article-style guide content that is easier to traverse than the equivalent Wowhead guide surface.
 - Treat `method` as scoped to currently supported guide/article families, not all Method.gg content.
-- Validated Method families currently include class guides, profession guides, delve guides, and reputation guides.
+- Validated Method families currently include class guides, profession guides, delve guides, reputation guides, and article guides.
 - If a Method query clearly targets an unsupported family like tier lists, expect a `scope_hint` with no search candidates.
 - If a Method root acts like an index surface rather than a real guide/article page, expect a structured `unsupported_guide_surface` failure instead of empty content.
 - Use `icy-veins` when you need article-style guide content with page-family navigation and table-of-contents structure that may be easier to traverse than the equivalent Wowhead guide surface.
