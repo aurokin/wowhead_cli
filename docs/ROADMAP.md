@@ -162,7 +162,6 @@ A good end state is:
 - `packages/raidbots-cli`
 - `packages/warcraftlogs-cli`
 - `skills/warcraft/`
-- `skills/wowhead/`
 - `skills/method/`
 - `skills/icy-veins/`
 - `skills/raiderio/`
