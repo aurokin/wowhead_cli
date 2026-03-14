@@ -1266,6 +1266,53 @@ def _search_follow_up(candidate: dict[str, Any], *, query: str, expansion: Expan
     }
 
 
+def _exact_match_score(normalized_query: str, *, name_normalized: str, display_normalized: str) -> tuple[int, list[str]]:
+    if normalized_query and name_normalized == normalized_query:
+        return 30, ["exact_name"]
+    if normalized_query and display_normalized == normalized_query:
+        return 26, ["exact_display_name"]
+    return 0, []
+
+
+def _prefix_and_contains_score(normalized_query: str, *, name_normalized: str, display_normalized: str) -> tuple[int, list[str]]:
+    if normalized_query and name_normalized.startswith(normalized_query):
+        return 10, ["name_prefix"]
+    if normalized_query and display_normalized.startswith(normalized_query):
+        return 8, ["display_name_prefix"]
+    if normalized_query and name_normalized and normalized_query in name_normalized:
+        return 14, ["name_contains_query"]
+    if normalized_query and display_normalized and normalized_query in display_normalized:
+        return 12, ["display_name_contains_query"]
+    return 0, []
+
+
+def _term_match_score(terms: set[str], *, haystacks: list[str]) -> tuple[int, list[str]]:
+    if not terms or not haystacks:
+        return 0, []
+    joined = " ".join(haystacks)
+    if all(term in joined for term in terms):
+        return len(terms) * 3, ["all_terms_match"]
+    return 0, []
+
+
+def _type_hint_score(query: str, *, entity_type: str | None) -> tuple[int, list[str]]:
+    hinted_types = _search_type_hints(query)
+    if entity_type in hinted_types:
+        return 9, ["type_hint"]
+    return 0, []
+
+
+def _popularity_score(popularity: int, *, entity_type: str | None) -> tuple[int, list[str]]:
+    reasons: list[str] = []
+    score = 0
+    if popularity > 0:
+        score += min(6, int(math.log10(popularity + 1) * 2))
+        reasons.append("popularity")
+    if entity_type is not None:
+        score += 1
+    return score, reasons
+
+
 def _search_result_score_and_reasons(
     row: dict[str, Any], *, query: str, ranking_query: str
 ) -> tuple[int, list[str]]:
@@ -1283,44 +1330,15 @@ def _search_result_score_and_reasons(
     reasons: list[str] = []
     score = 0
 
-    if normalized_query and name_normalized == normalized_query:
-        score += 30
-        reasons.append("exact_name")
-    elif normalized_query and display_normalized == normalized_query:
-        score += 26
-        reasons.append("exact_display_name")
-
-    if normalized_query and name_normalized.startswith(normalized_query):
-        score += 10
-        reasons.append("name_prefix")
-    elif normalized_query and display_normalized.startswith(normalized_query):
-        score += 8
-        reasons.append("display_name_prefix")
-
-    if normalized_query and name_normalized and normalized_query in name_normalized:
-        score += 14
-        reasons.append("name_contains_query")
-    elif normalized_query and display_normalized and normalized_query in display_normalized:
-        score += 12
-        reasons.append("display_name_contains_query")
-
-    if terms and haystacks:
-        joined = " ".join(haystacks)
-        if all(term in joined for term in terms):
-            score += len(terms) * 3
-            reasons.append("all_terms_match")
-
-    hinted_types = _search_type_hints(query)
-    if entity_type in hinted_types:
-        score += 9
-        reasons.append("type_hint")
-
-    if popularity > 0:
-        score += min(6, int(math.log10(popularity + 1) * 2))
-        reasons.append("popularity")
-
-    if entity_type is not None:
-        score += 1
+    for part_score, part_reasons in (
+        _exact_match_score(normalized_query, name_normalized=name_normalized, display_normalized=display_normalized),
+        _prefix_and_contains_score(normalized_query, name_normalized=name_normalized, display_normalized=display_normalized),
+        _term_match_score(terms, haystacks=haystacks),
+        _type_hint_score(query, entity_type=entity_type),
+        _popularity_score(popularity, entity_type=entity_type),
+    ):
+        score += part_score
+        reasons.extend(part_reasons)
 
     unique_reasons: list[str] = []
     seen: set[str] = set()
@@ -1441,22 +1459,36 @@ def _resolve_next_command(candidate: dict[str, Any], *, expansion: ExpansionProf
 def _resolve_confidence(candidates: list[dict[str, Any]], *, entity_types: tuple[str, ...]) -> str:
     if not candidates:
         return "none"
-    top_score = int(candidates[0].get("ranking", {}).get("score") or 0)
+    top_ranking = candidates[0].get("ranking", {})
+    top_score = int(top_ranking.get("score") or 0)
     second_score = int(candidates[1].get("ranking", {}).get("score") or 0) if len(candidates) > 1 else 0
     margin = top_score - second_score
-    reasons = set(candidates[0].get("ranking", {}).get("match_reasons") or [])
-
-    if "exact_name" in reasons or "exact_display_name" in reasons:
-        if margin >= 4 or second_score == 0:
-            return "high"
-        return "medium"
-    if top_score >= 24 and margin >= 6:
+    reasons = set(top_ranking.get("match_reasons") or [])
+    if _is_high_confidence_exact_match(reasons, margin=margin, second_score=second_score):
         return "high"
-    if entity_types and top_score >= 18 and margin >= 4:
+    if _is_high_confidence_score(top_score, margin=margin):
         return "high"
-    if top_score >= 18 and margin >= 4:
+    if _is_filtered_high_confidence(entity_types, top_score=top_score, margin=margin):
+        return "high"
+    if _is_medium_confidence_score(top_score, margin=margin):
         return "medium"
     return "low"
+
+
+def _is_high_confidence_exact_match(reasons: set[str], *, margin: int, second_score: int) -> bool:
+    return ("exact_name" in reasons or "exact_display_name" in reasons) and (margin >= 4 or second_score == 0)
+
+
+def _is_high_confidence_score(top_score: int, *, margin: int) -> bool:
+    return top_score >= 24 and margin >= 6
+
+
+def _is_filtered_high_confidence(entity_types: tuple[str, ...], *, top_score: int, margin: int) -> bool:
+    return bool(entity_types) and top_score >= 18 and margin >= 4
+
+
+def _is_medium_confidence_score(top_score: int, *, margin: int) -> bool:
+    return top_score >= 18 and margin >= 4
 
 
 def _truncate_preview(value: str, *, max_chars: int = 220) -> str:

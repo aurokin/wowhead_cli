@@ -6,7 +6,19 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from wowhead_cli.main import app
+from wowhead_cli.main import (
+    _exact_match_score,
+    _is_filtered_high_confidence,
+    _is_high_confidence_exact_match,
+    _is_high_confidence_score,
+    _is_medium_confidence_score,
+    _popularity_score,
+    _prefix_and_contains_score,
+    _search_result_score_and_reasons,
+    _term_match_score,
+    _type_hint_score,
+    app,
+)
 from wowhead_cli.wowhead_client import WowheadClient
 
 runner = CliRunner()
@@ -1047,6 +1059,90 @@ def test_search_results_include_follow_up_guidance(monkeypatch) -> None:
             "wowhead comments item 19019",
         ],
     }
+
+
+def test_exact_match_score_prefers_exact_name_over_display_name() -> None:
+    score, reasons = _exact_match_score(
+        "createframe",
+        name_normalized="createframe",
+        display_normalized="api createframe",
+    )
+    assert score == 30
+    assert reasons == ["exact_name"]
+
+
+def test_prefix_and_contains_score_prefers_name_prefix_before_contains() -> None:
+    score, reasons = _prefix_and_contains_score(
+        "create",
+        name_normalized="createframe",
+        display_normalized="api createframe",
+    )
+    assert score == 10
+    assert reasons == ["name_prefix"]
+
+
+def test_term_match_score_requires_all_terms() -> None:
+    score, reasons = _term_match_score({"world", "api"}, haystacks=["world of warcraft api", "reference"])
+    assert score == 6
+    assert reasons == ["all_terms_match"]
+
+    score, reasons = _term_match_score({"world", "api", "dragonflight"}, haystacks=["world of warcraft api", "reference"])
+    assert score == 0
+    assert reasons == []
+
+
+def test_type_hint_score_boosts_matching_entity_type() -> None:
+    score, reasons = _type_hint_score("quest thunderfury", entity_type="quest")
+    assert score == 9
+    assert reasons == ["type_hint"]
+
+    score, reasons = _type_hint_score("quest thunderfury", entity_type="item")
+    assert score == 0
+    assert reasons == []
+
+
+def test_popularity_score_adds_reason_and_entity_bonus() -> None:
+    score, reasons = _popularity_score(999, entity_type="item")
+    assert score >= 1
+    assert reasons == ["popularity"]
+
+    score, reasons = _popularity_score(0, entity_type="item")
+    assert score == 1
+    assert reasons == []
+
+
+def test_search_result_score_and_reasons_composes_helper_scores() -> None:
+    score, reasons = _search_result_score_and_reasons(
+        {
+            "type": 5,
+            "id": 86739,
+            "name": "Fairbreeze Favors",
+            "displayName": "Fairbreeze Favors",
+            "typeName": "Quest",
+            "popularity": 999,
+        },
+        query="quest fairbreeze favors",
+        ranking_query="quest fairbreeze favors",
+    )
+    assert score > 0
+    assert "all_terms_match" in reasons
+    assert "type_hint" in reasons
+    assert "popularity" in reasons
+
+
+def test_resolve_confidence_policy_helpers_cover_exact_filtered_and_medium_cases() -> None:
+    assert _is_high_confidence_exact_match({"exact_name"}, margin=4, second_score=20) is True
+    assert _is_high_confidence_exact_match({"exact_display_name"}, margin=0, second_score=0) is True
+    assert _is_high_confidence_exact_match({"all_terms_match"}, margin=10, second_score=0) is False
+
+    assert _is_high_confidence_score(24, margin=6) is True
+    assert _is_high_confidence_score(23, margin=6) is False
+
+    assert _is_filtered_high_confidence(("guide",), top_score=18, margin=4) is True
+    assert _is_filtered_high_confidence((), top_score=18, margin=4) is False
+
+    assert _is_medium_confidence_score(18, margin=4) is True
+    assert _is_medium_confidence_score(17, margin=4) is False
 
 
 
