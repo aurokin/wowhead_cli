@@ -20,15 +20,17 @@ The wrapper/provider boundary is defined in [WRAPPER_PROVIDER_CONTRACT.md](/home
 Completed:
 - shared package split into `warcraft-core`, `warcraft-api`, and `warcraft-content`
 - working `warcraft` wrapper
-- working `wowhead` provider in package form
-- working `method` provider
-- working `icy-veins` provider
-- working `raiderio` phase-1 provider
-- working `warcraft-wiki` provider
-- working `wowprogress` phase-1 provider
-- working `simc` phase-1 provider
-- working `simc` phase-3 runtime helpers
-- working `simc` repo resolution and managed checkout flow
+- working `wowhead` provider in package form with:
+  - entity, guide, comments, compare, and bundle workflows
+  - guide-category discovery with filtering and sorting
+  - timeline-native `news` / `blue-tracker` with detail fetches
+  - maintainable tool-state coverage for `talent-calc`, `profession-tree`, `dressing-room`, and `profiler`
+- working `method` provider with explicit supported-family boundaries and live/fixture coverage
+- working `icy-veins` provider with explicit supported-family boundaries and live/fixture coverage
+- working `raiderio` provider with direct lookup, search/resolve, and first analytics primitives
+- working `warcraft-wiki` provider with typed programming/reference surfaces and broad family coverage
+- working `wowprogress` provider with direct lookup, search/resolve, and first analytics primitives
+- working `simc` provider with readonly source analysis, runtime helpers, and managed checkout flow
 - root `warcraft` skill
 
 Validated shared so far:
@@ -40,20 +42,29 @@ Validated shared so far:
 - article search/resolve payload shaping and follow-up contracts
 - article linked-entity merge across multi-page guides
 - article/reference bundle export/query outside class guides
+- article-provider CLI support helpers
+- article-provider test scaffolding
+- wrapper expansion filtering and provider expansion metadata
+- wrapper ranking policy with tunable provider-family and intent weighting
+- shared path/XDG helpers
+- sample-backed analytics direction for profile and leaderboard providers
 
 Active next step:
 - continue improving existing providers and wrapper discovery quality
-- do a deeper `wowhead` quality and feature pass so the most mature provider also becomes the most complete one
-- tighten `method` until its supported scope, reliability, and test coverage are strong enough to treat it as fully covered
-- tighten `icy-veins` until its supported families, traversal rules, reliability, and test coverage are strong enough to treat it as fully covered
-- add conservative wrapper-level expansion filtering so agents can trust version-scoped results
 - build reusable analytics systems for profile and leaderboard providers instead of one-off answer commands
 - focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
-- for `wowhead`, prioritize:
-  - expand guide-category discovery beyond the first listing slice
-  - deepen `news` and `blue-tracker` beyond the first timeline listing slice
-  - stop tool work at stable `dressing-room` / `profiler` state inspection unless a later product decision justifies deeper reverse-engineering
-  - revisit database-family browse/filter commands only if a concrete bulk browse/filter workflow needs them
+- roadmap cleanup after the recent provider quality passes
+- for `raiderio`, prioritize:
+  - deeper sample-backed analytics
+  - clearer season-aware leaderboard workflows
+  - richer normalized run/profile snapshots where the source supports them
+- for `wowprogress`, prioritize:
+  - deeper sample-backed analytics
+  - guild/profile aggregation that is faster and clearer than browser workflows
+  - reliability and normalization improvements around rankings/profile slices
+- keep `wowhead` at the maintainability boundary now documented in [WOWHEAD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WOWHEAD_CLI_PLAN.md):
+  - continue only on straightforward structured extraction
+  - do not push `dressing-room` / `profiler` into reverse-engineering work without an explicit product decision
 
 ## Planning Documents
 

@@ -26,6 +26,8 @@ Co-Authored-By: OpenAI Codex <noreply@openai.com>
 - Do not bolt on “smart answers” for analytics-heavy questions.
 - Build reliable, sample-backed analytics primitives that agents can trust and compose.
 - Prefer systems like sampling, normalization, aggregation, provenance, and freshness over one-off answer commands.
+- Skills are for CLI consumers and workflow usage.
+- Keep repo maintenance, roadmap, packaging, and internal architecture rules out of skill docs.
 
 ## Local Skills
 - Use the `warcraft` skill for root wrapper and provider-routing work. See `skills/warcraft/SKILL.md`.
