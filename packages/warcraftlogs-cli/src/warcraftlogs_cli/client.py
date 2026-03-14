@@ -1,0 +1,617 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import time
+from dataclasses import dataclass
+from typing import Any
+
+import httpx
+from warcraft_api.cache import CacheSettings, CacheTTLConfig, build_cache_store, load_prefixed_cache_settings_from_env
+from warcraft_api.http import DEFAULT_RETRY_ATTEMPTS, request_with_retries
+from warcraft_content.paths import provider_cache_root
+from warcraft_core.env import find_env_file, load_env_file
+from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug
+
+DEFAULT_CACHE_DIR = provider_cache_root("warcraftlogs") / "http"
+
+RATE_LIMIT_QUERY = """
+query RateLimit {
+  rateLimitData {
+    limitPerHour
+    pointsSpentThisHour
+    pointsResetIn
+  }
+}
+"""
+
+REGIONS_QUERY = """
+query Regions {
+  worldData {
+    regions {
+      id
+      compactName
+      name
+      slug
+    }
+  }
+}
+"""
+
+SERVER_QUERY = """
+query Server($region: String!, $slug: String!) {
+  worldData {
+    server(region: $region, slug: $slug) {
+      id
+      name
+      normalizedName
+      slug
+      region {
+        id
+        compactName
+        name
+        slug
+      }
+      subregion {
+        id
+        name
+      }
+      connectedRealmID
+      seasonID
+    }
+  }
+}
+"""
+
+ZONES_QUERY = """
+query Zones($expansionId: Int) {
+  worldData {
+    zones(expansion_id: $expansionId) {
+      id
+      name
+      frozen
+      expansion {
+        id
+        name
+      }
+      difficulties {
+        id
+        name
+        sizes
+      }
+      encounters {
+        id
+        name
+        journalID
+      }
+    }
+  }
+}
+"""
+
+ENCOUNTER_QUERY = """
+query Encounter($id: Int!) {
+  worldData {
+    encounter(id: $id) {
+      id
+      name
+      journalID
+      zone {
+        id
+        name
+        expansion {
+          id
+          name
+        }
+      }
+    }
+  }
+}
+"""
+
+GUILD_QUERY = """
+query Guild($name: String!, $serverSlug: String!, $serverRegion: String!, $zoneId: Int) {
+  guildData {
+    guild(name: $name, serverSlug: $serverSlug, serverRegion: $serverRegion) {
+      id
+      name
+      description
+      competitionMode
+      stealthMode
+      tags {
+        id
+        name
+      }
+      faction {
+        id
+        name
+      }
+      server {
+        id
+        name
+        normalizedName
+        slug
+        region {
+          id
+          compactName
+          name
+          slug
+        }
+        subregion {
+          id
+          name
+        }
+      }
+      zoneRanking(zoneId: $zoneId) {
+        progress {
+          worldRank {
+            number
+            color
+          }
+          regionRank {
+            number
+            color
+          }
+          serverRank {
+            number
+            color
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+CHARACTER_QUERY = """
+query Character($name: String!, $serverSlug: String!, $serverRegion: String!) {
+  characterData {
+    character(name: $name, serverSlug: $serverSlug, serverRegion: $serverRegion) {
+      id
+      canonicalID
+      name
+      level
+      classID
+      hidden
+      faction {
+        id
+        name
+      }
+      guildRank
+      server {
+        id
+        name
+        normalizedName
+        slug
+        region {
+          id
+          compactName
+          name
+          slug
+        }
+        subregion {
+          id
+          name
+        }
+        connectedRealmID
+        seasonID
+      }
+      guilds {
+        id
+        name
+        server {
+          id
+          name
+          normalizedName
+          slug
+          region {
+            id
+            compactName
+            name
+            slug
+          }
+          subregion {
+            id
+            name
+          }
+          connectedRealmID
+          seasonID
+        }
+      }
+    }
+  }
+}
+"""
+
+REPORT_QUERY = """
+query Report($code: String!, $allowUnlisted: Boolean) {
+  reportData {
+    report(code: $code, allowUnlisted: $allowUnlisted) {
+      code
+      title
+      startTime
+      endTime
+      visibility
+      archiveStatus
+      segments
+      exportedSegments
+      zone {
+        id
+        name
+      }
+      guild {
+        id
+        name
+        server {
+          slug
+          region {
+            slug
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+REPORT_FIGHTS_QUERY = """
+query ReportFights($code: String!, $difficulty: Int, $allowUnlisted: Boolean) {
+  reportData {
+    report(code: $code, allowUnlisted: $allowUnlisted) {
+      code
+      title
+      zone {
+        id
+        name
+      }
+      fights(difficulty: $difficulty) {
+        id
+        name
+        encounterID
+        difficulty
+        kill
+        completeRaid
+        startTime
+        endTime
+        fightPercentage
+        bossPercentage
+        averageItemLevel
+        size
+      }
+    }
+  }
+}
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class WarcraftLogsSiteProfile:
+    key: str
+    label: str
+    root_url: str
+    oauth_token_url: str
+    api_url: str
+
+
+RETAIL_PROFILE = WarcraftLogsSiteProfile(
+    key="retail",
+    label="Retail / Main",
+    root_url="https://www.warcraftlogs.com",
+    oauth_token_url="https://www.warcraftlogs.com/oauth/token",
+    api_url="https://www.warcraftlogs.com/api/v2/client",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class WarcraftLogsAuthConfig:
+    client_id: str | None
+    client_secret: str | None
+    env_file: str | None
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.client_id and self.client_secret)
+
+
+class WarcraftLogsClientError(RuntimeError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def load_warcraftlogs_auth_config(*, start_dir: str | None = None) -> WarcraftLogsAuthConfig:
+    env_path = load_env_file(start_dir=start_dir)
+    client_id = os.getenv("WARCRAFTLOGS_CLIENT_ID")
+    client_secret = os.getenv("WARCRAFTLOGS_CLIENT_SECRET")
+    return WarcraftLogsAuthConfig(
+        client_id=client_id.strip() if client_id else None,
+        client_secret=client_secret.strip() if client_secret else None,
+        env_file=str(env_path) if env_path is not None else None,
+    )
+
+
+def load_warcraftlogs_cache_settings_from_env() -> tuple[CacheSettings, int, int, int]:
+    settings = load_prefixed_cache_settings_from_env(
+        env_prefix="WARCRAFTLOGS",
+        default_cache_dir=DEFAULT_CACHE_DIR,
+        default_redis_prefix="warcraftlogs_cli",
+        ttl_defaults=CacheTTLConfig(
+            search_suggestions=900,
+            entity_page_html=300,
+            guide_page_html=21600,
+            page_html=300,
+        ),
+        ttl_env_overrides={
+            "search_suggestions": "WARCRAFTLOGS_METADATA_CACHE_TTL_SECONDS",
+            "entity_page_html": "WARCRAFTLOGS_GUILD_CACHE_TTL_SECONDS",
+            "guide_page_html": "WARCRAFTLOGS_STATIC_CACHE_TTL_SECONDS",
+            "page_html": "WARCRAFTLOGS_REPORT_CACHE_TTL_SECONDS",
+        },
+    )
+    return (
+        settings,
+        settings.ttls.search_suggestions,
+        settings.ttls.entity_page_html,
+        settings.ttls.guide_page_html,
+    )
+
+
+class WarcraftLogsClient:
+    def __init__(
+        self,
+        *,
+        site: WarcraftLogsSiteProfile = RETAIL_PROFILE,
+        timeout_seconds: float = 20.0,
+        retry_attempts: int = DEFAULT_RETRY_ATTEMPTS,
+    ) -> None:
+        auth = load_warcraftlogs_auth_config()
+        if not auth.configured:
+            env_hint = auth.env_file or str(find_env_file() or ".env.local")
+            raise ValueError(
+                "Missing Warcraft Logs credentials. Set WARCRAFTLOGS_CLIENT_ID and WARCRAFTLOGS_CLIENT_SECRET "
+                f"(for example in {env_hint})."
+            )
+        self._site = site
+        self._http_client: httpx.Client | None = None
+        self._timeout_seconds = timeout_seconds
+        self._retry_attempts = max(1, retry_attempts)
+        self._client_id = auth.client_id or ""
+        self._client_secret = auth.client_secret or ""
+        self._access_token: str | None = None
+        self._token_expires_at = 0.0
+        settings, metadata_ttl, guild_ttl, static_ttl = load_warcraftlogs_cache_settings_from_env()
+        self._cache_settings = settings
+        self._cache_store = build_cache_store(settings) if settings.enabled else None
+        self._metadata_ttl = metadata_ttl
+        self._guild_ttl = guild_ttl
+        self._static_ttl = static_ttl
+
+    def close(self) -> None:
+        if self._http_client is not None:
+            self._http_client.close()
+            self._http_client = None
+
+    def __enter__(self) -> WarcraftLogsClient:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.close()
+
+    def _client(self) -> httpx.Client:
+        if self._http_client is None:
+            self._http_client = httpx.Client(timeout=self._timeout_seconds, follow_redirects=True)
+        return self._http_client
+
+    def _cache_key(self, namespace: str, payload: dict[str, Any]) -> str:
+        raw = json.dumps({"site": self._site.key, "namespace": namespace, "payload": payload}, sort_keys=True, separators=(",", ":"))
+        return f"{namespace}:{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
+
+    def _read_cache(self, key: str) -> Any | None:
+        if self._cache_store is None:
+            return None
+        return self._cache_store.get(key)
+
+    def _write_cache(self, key: str, payload: Any, *, ttl_seconds: int) -> None:
+        if self._cache_store is None:
+            return
+        self._cache_store.set(key, payload, ttl_seconds=ttl_seconds)
+
+    def _token(self) -> str:
+        now = time.time()
+        if self._access_token and now < self._token_expires_at - 60:
+            return self._access_token
+        response = request_with_retries(
+            self._client(),
+            self._site.oauth_token_url,
+            method="POST",
+            data={"grant_type": "client_credentials"},
+            auth=(self._client_id, self._client_secret),
+            retry_attempts=self._retry_attempts,
+        )
+        payload = response.json()
+        token = payload.get("access_token")
+        expires_in = payload.get("expires_in", 3600)
+        if not isinstance(token, str) or not token:
+            raise WarcraftLogsClientError("auth_failed", "Warcraft Logs token response did not include an access token.")
+        self._access_token = token
+        self._token_expires_at = now + int(expires_in)
+        return token
+
+    def _graphql(
+        self,
+        *,
+        operation_name: str,
+        query: str,
+        variables: dict[str, Any] | None,
+        namespace: str,
+        ttl_seconds: int,
+    ) -> dict[str, Any]:
+        cache_payload = {"operation_name": operation_name, "variables": variables or {}}
+        cache_key = self._cache_key(namespace, cache_payload)
+        cached = self._read_cache(cache_key)
+        if isinstance(cached, dict):
+            return cached
+        response = request_with_retries(
+            self._client(),
+            self._site.api_url,
+            method="POST",
+            retry_attempts=self._retry_attempts,
+            headers={
+                "Authorization": f"Bearer {self._token()}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "operationName": operation_name,
+                "query": query,
+                "variables": variables or {},
+            },
+        )
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise WarcraftLogsClientError("invalid_response", f"Unexpected Warcraft Logs response shape for {operation_name}.")
+        errors = payload.get("errors")
+        if isinstance(errors, list) and errors:
+            first = errors[0]
+            message = first.get("message") if isinstance(first, dict) else None
+            raise WarcraftLogsClientError("graphql_error", message or f"Warcraft Logs returned GraphQL errors for {operation_name}.")
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise WarcraftLogsClientError("invalid_response", f"Warcraft Logs returned no data for {operation_name}.")
+        self._write_cache(cache_key, data, ttl_seconds=ttl_seconds)
+        return data
+
+    def rate_limit(self) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="RateLimit",
+            query=RATE_LIMIT_QUERY,
+            variables=None,
+            namespace="rate_limit",
+            ttl_seconds=60,
+        )
+        payload = data.get("rateLimitData")
+        if not isinstance(payload, dict):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs rate limit data was not available.")
+        return payload
+
+    def regions(self) -> list[dict[str, Any]]:
+        data = self._graphql(
+            operation_name="Regions",
+            query=REGIONS_QUERY,
+            variables=None,
+            namespace="regions",
+            ttl_seconds=self._static_ttl,
+        )
+        world_data = data.get("worldData")
+        regions = world_data.get("regions") if isinstance(world_data, dict) else None
+        if not isinstance(regions, list):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs region data was not available.")
+        return [region for region in regions if isinstance(region, dict)]
+
+    def server(self, *, region: str, slug: str) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="Server",
+            query=SERVER_QUERY,
+            variables={"region": normalize_region(region), "slug": primary_realm_slug(slug)},
+            namespace="server",
+            ttl_seconds=self._static_ttl,
+        )
+        world_data = data.get("worldData")
+        server = world_data.get("server") if isinstance(world_data, dict) else None
+        if not isinstance(server, dict):
+            raise WarcraftLogsClientError("not_found", f"Server {slug!r} was not found for region {region!r}.")
+        return server
+
+    def zones(self, *, expansion_id: int | None = None) -> list[dict[str, Any]]:
+        data = self._graphql(
+            operation_name="Zones",
+            query=ZONES_QUERY,
+            variables={"expansionId": expansion_id},
+            namespace="zones",
+            ttl_seconds=self._static_ttl,
+        )
+        world_data = data.get("worldData")
+        zones = world_data.get("zones") if isinstance(world_data, dict) else None
+        if not isinstance(zones, list):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs zone data was not available.")
+        return [zone for zone in zones if isinstance(zone, dict)]
+
+    def encounter(self, *, encounter_id: int) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="Encounter",
+            query=ENCOUNTER_QUERY,
+            variables={"id": encounter_id},
+            namespace="encounter",
+            ttl_seconds=self._static_ttl,
+        )
+        world_data = data.get("worldData")
+        encounter = world_data.get("encounter") if isinstance(world_data, dict) else None
+        if not isinstance(encounter, dict):
+            raise WarcraftLogsClientError("not_found", f"Encounter {encounter_id!r} was not found.")
+        return encounter
+
+    def guild(self, *, region: str, realm: str, name: str, zone_id: int | None = None) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="Guild",
+            query=GUILD_QUERY,
+            variables={
+                "name": normalize_name(name),
+                "serverSlug": primary_realm_slug(realm),
+                "serverRegion": normalize_region(region),
+                "zoneId": zone_id,
+            },
+            namespace="guild",
+            ttl_seconds=self._guild_ttl,
+        )
+        guild_data = data.get("guildData")
+        guild = guild_data.get("guild") if isinstance(guild_data, dict) else None
+        if not isinstance(guild, dict):
+            raise WarcraftLogsClientError("not_found", f"Guild {name!r} was not found on {region}/{realm}.")
+        return guild
+
+    def character(self, *, region: str, realm: str, name: str) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="Character",
+            query=CHARACTER_QUERY,
+            variables={
+                "name": normalize_name(name),
+                "serverSlug": primary_realm_slug(realm),
+                "serverRegion": normalize_region(region),
+            },
+            namespace="character",
+            ttl_seconds=self._guild_ttl,
+        )
+        character_data = data.get("characterData")
+        character = character_data.get("character") if isinstance(character_data, dict) else None
+        if not isinstance(character, dict):
+            raise WarcraftLogsClientError("not_found", f"Character {name!r} was not found on {region}/{realm}.")
+        return character
+
+    def report(self, *, code: str, allow_unlisted: bool = False) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="Report",
+            query=REPORT_QUERY,
+            variables={"code": code.strip(), "allowUnlisted": allow_unlisted},
+            namespace="report",
+            ttl_seconds=self._guild_ttl,
+        )
+        report_data = data.get("reportData")
+        report = report_data.get("report") if isinstance(report_data, dict) else None
+        if not isinstance(report, dict):
+            raise WarcraftLogsClientError("not_found", f"Report {code!r} was not found.")
+        return report
+
+    def report_fights(self, *, code: str, difficulty: int | None = None, allow_unlisted: bool = False) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="ReportFights",
+            query=REPORT_FIGHTS_QUERY,
+            variables={"code": code.strip(), "difficulty": difficulty, "allowUnlisted": allow_unlisted},
+            namespace="report_fights",
+            ttl_seconds=self._guild_ttl,
+        )
+        report_data = data.get("reportData")
+        report = report_data.get("report") if isinstance(report_data, dict) else None
+        if not isinstance(report, dict):
+            raise WarcraftLogsClientError("not_found", f"Report {code!r} was not found.")
+        return report

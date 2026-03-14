@@ -4,7 +4,7 @@ import random
 import time
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -42,13 +42,22 @@ def request_with_retries(
     client: httpx.Client,
     url: str,
     *,
+    method: str = "GET",
     params: dict[str, Any] | None = None,
     retry_attempts: int = DEFAULT_RETRY_ATTEMPTS,
+    **request_kwargs: Any,
 ) -> httpx.Response:
     attempts = max(1, retry_attempts)
+    request_method = method.strip().upper() or "GET"
     for attempt in range(1, attempts + 1):
         try:
-            response = client.get(url, params=params)
+            method_func = getattr(client, request_method.lower(), None)
+            if callable(method_func):
+                response = cast(httpx.Response, method_func(url, params=params, **request_kwargs))
+            else:
+                response = client.request(request_method, url, params=params, **request_kwargs)
+            if not isinstance(response, httpx.Response):
+                raise TypeError(f"HTTP client returned unexpected response type for {request_method} {url!r}.")
         except httpx.RequestError:
             if attempt >= attempts:
                 raise

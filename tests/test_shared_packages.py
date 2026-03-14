@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import httpx
-
 from icy_veins_cli.client import load_icy_veins_cache_settings_from_env
 from method_cli.client import load_method_cache_settings_from_env
 from warcraft_api.cache import CacheTTLConfig, load_prefixed_cache_settings_from_env
 from warcraft_api.http import request_with_retries, retry_after_seconds
+from warcraft_core.env import load_env_file
 
 
 def test_load_prefixed_cache_settings_from_env_builds_provider_specific_settings(
@@ -130,3 +131,60 @@ def test_request_with_retries_falls_back_to_backoff_without_retry_after(monkeypa
 
     assert response.status_code == 200
     assert sleep_calls == [0.75]
+
+
+def test_request_with_retries_supports_post_requests() -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict[str, object]]] = []
+
+        def post(self, url: str, params=None, **kwargs):  # noqa: ANN001
+            self.calls.append((url, {"params": params, **kwargs}))
+            return httpx.Response(
+                200,
+                text="ok",
+                request=httpx.Request("POST", url),
+            )
+
+    client = FakeClient()
+    response = request_with_retries(
+        client,
+        "https://example.invalid/token",
+        method="POST",
+        data={"grant_type": "client_credentials"},
+        retry_attempts=1,
+    )
+
+    assert response.status_code == 200
+    assert client.calls == [
+        (
+            "https://example.invalid/token",
+            {
+                "params": None,
+                "data": {"grant_type": "client_credentials"},
+            },
+        )
+    ]
+
+
+def test_load_env_file_loads_local_gitignored_env(monkeypatch, tmp_path: Path) -> None:
+    env_file = tmp_path / ".env.local"
+    env_file.write_text(
+        "\n".join(
+            [
+                "# comment",
+                "WARCRAFTLOGS_CLIENT_ID=test-id",
+                "export WARCRAFTLOGS_CLIENT_SECRET='test-secret'",
+            ]
+        )
+        + "\n"
+    )
+
+    monkeypatch.delenv("WARCRAFTLOGS_CLIENT_ID", raising=False)
+    monkeypatch.delenv("WARCRAFTLOGS_CLIENT_SECRET", raising=False)
+
+    loaded = load_env_file(start_dir=tmp_path)
+
+    assert loaded == env_file
+    assert os.environ["WARCRAFTLOGS_CLIENT_ID"] == "test-id"
+    assert os.environ["WARCRAFTLOGS_CLIENT_SECRET"] == "test-secret"

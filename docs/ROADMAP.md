@@ -30,6 +30,7 @@ Completed:
 - working `raiderio` provider with direct lookup, search/resolve, and first analytics primitives
 - working `warcraft-wiki` provider with typed programming/reference surfaces and broad family coverage
 - working `wowprogress` provider with direct lookup, search/resolve, and first analytics primitives
+- working `warcraftlogs` provider with retail-only public OAuth + GraphQL metadata, guild, character, and report lookups
 - working `simc` provider with readonly source analysis, runtime helpers, and managed checkout flow
 - root `warcraft` skill
 
@@ -54,6 +55,11 @@ Active next step:
 - build reusable analytics systems for profile and leaderboard providers instead of one-off answer commands
 - add static quality tooling from [LINTING_AND_COMPLEXITY_PLAN.md](/home/auro/code/wowhead_cli/docs/LINTING_AND_COMPLEXITY_PLAN.md) so refactor targets are easier to identify and prioritize
 - focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
+- expand `warcraftlogs` from the current retail public slice toward the planned full official feature set:
+  - more world/static metadata
+  - deeper guild and character ranking surfaces
+  - broader report workflows
+  - user auth after the public contract is tighter
 - roadmap cleanup after the recent provider quality passes
 - for `raiderio`, prioritize:
   - deeper sample-backed analytics
@@ -117,7 +123,7 @@ Active next step:
 | CurseForge | Addon/mod discovery pages plus file and release metadata | Build as a read-first addon metadata CLI for search, project, file, changelog, and compatibility lookups | [Plan](/home/auro/code/wowhead_cli/docs/CURSEFORGE_CLI_PLAN.md) |
 | SimulationCraft | Local Git repo, readonly source inspection, local builds, local command execution | Build as a local-tool CLI with readonly source analysis, sync/build/run workflows, build decoding, and agent-facing APL reasoning helpers | [Plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md) |
 | Raidbots | Web workflow built around SimulationCraft input and result pages | Start with result/report parsing and workflow helpers, then evaluate deeper automation carefully | [Plan](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md) |
-| Warcraft Logs | Official OAuth 2.0 + GraphQL API with public and user-auth endpoints | Build as an API-first CLI with typed guild, character, report, rankings, world-data, and auth workflows over the official API | [Plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md) |
+| Warcraft Logs | Official OAuth 2.0 + GraphQL API with public and user-auth endpoints | Build as an API-first CLI with typed guild, character, report, rankings, world-data, and auth workflows over the official API; current implementation is retail-only public OAuth + GraphQL | [Plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md) |
 
 ## What The Research Suggests
 

@@ -38,6 +38,7 @@ raiderio = "raiderio_cli.main:run"
 warcraft-wiki = "warcraft_wiki_cli.main:run"
 wowprogress = "wowprogress_cli.main:run"
 simc = "simc_cli.main:run"
+warcraftlogs = "warcraftlogs_cli.main:run"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -72,7 +73,7 @@ files = [
   "packages/warcraft-api/src/warcraft_api",
   "packages/warcraft-content/src/warcraft_content",
 ]
-mypy_path = "packages/warcraft-core/src:packages/warcraft-api/src:packages/warcraft-content/src:packages/warcraft-cli/src:packages/wowhead-cli/src:packages/method-cli/src:packages/icy-veins-cli/src:packages/raiderio-cli/src:packages/warcraft-wiki-cli/src:packages/wowprogress-cli/src:packages/simc-cli/src"
+mypy_path = "packages/warcraft-core/src:packages/warcraft-api/src:packages/warcraft-content/src:packages/warcraft-cli/src:packages/wowhead-cli/src:packages/method-cli/src:packages/icy-veins-cli/src:packages/raiderio-cli/src:packages/warcraft-wiki-cli/src:packages/wowprogress-cli/src:packages/simc-cli/src:packages/warcraftlogs-cli/src"
 check_untyped_defs = true
 ignore_missing_imports = true
 no_implicit_optional = true
@@ -95,4 +96,5 @@ packages = [
   "packages/warcraft-wiki-cli/src/warcraft_wiki_cli",
   "packages/wowprogress-cli/src/wowprogress_cli",
   "packages/simc-cli/src/simc_cli",
+  "packages/warcraftlogs-cli/src/warcraftlogs_cli",
 ]

@@ -15,7 +15,36 @@ The CLI should become the fastest trustworthy path for:
 ## Current State
 
 Implemented today:
-- planning only
+- retail-only phase-1 standalone provider
+- official OAuth client-credentials auth against the public GraphQL endpoint
+- local `.env.local` loading for:
+  - `WARCRAFTLOGS_CLIENT_ID`
+  - `WARCRAFTLOGS_CLIENT_SECRET`
+- commands:
+  - `warcraftlogs doctor`
+  - `warcraftlogs rate-limit`
+  - `warcraftlogs regions`
+  - `warcraftlogs server`
+  - `warcraftlogs zones`
+  - `warcraftlogs encounter`
+  - `warcraftlogs guild`
+  - `warcraftlogs character`
+  - `warcraftlogs report`
+  - `warcraftlogs report-fights`
+- unit coverage for the current JSON contract
+- live coverage for:
+  - `regions`
+  - `server`
+  - `guild`
+
+Current intentional boundary:
+- standalone only for now
+- not yet wired into the `warcraft` wrapper
+- retail/main site profile only
+- public endpoint only
+- typed fields only; no raw GraphQL passthrough
+- no user auth yet
+- no classic/fresh site-profile routing yet
 
 What changed in the research baseline:
 - we now have a local rendered docs dump under `research/warcraftlogs-docs/`
@@ -26,6 +55,23 @@ What changed in the research baseline:
 - the dump confirms Warcraft Logs has an official OAuth 2.0 + GraphQL integration surface that is broad enough for a full CLI
 
 This means `warcraftlogs` should be planned as an official integration first, with scraping treated only as a fallback for unsupported site workflows.
+
+## Immediate Next Steps
+
+Highest-value next implementation slices:
+- `zone <id>`
+- `expansions`
+- `guild-rankings`
+- `character-rankings`
+- `reports`
+- `report-events`
+- `report-table`
+- `report-graph`
+
+After that:
+- user-auth plumbing
+- wrapper integration
+- future site-profile routing for `classic` and `fresh`
 
 ## Site Variant Research
 

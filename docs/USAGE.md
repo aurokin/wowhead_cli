@@ -35,6 +35,9 @@ warcraft warcraft-wiki api "CreateFrame"
 warcraft warcraft-wiki event "OnKeyDown"
 warcraft wowprogress guild us illidan Liquid
 warcraft wowprogress leaderboard pve us --limit 10
+warcraftlogs doctor
+warcraftlogs regions
+warcraftlogs guild us illidan Liquid
 warcraft simc doctor
 warcraft simc version
 warcraft simc spec-files mistweaver
@@ -57,6 +60,8 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `raiderio` now includes real search and conservative resolve on top of the live site search surface.
 - `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, typed `api` / `event` lookups, article export, and local query.
 - `wowprogress` is now a real rankings provider with structured search, conservative resolve, direct guild/character/PvE leaderboard lookups, and its first sample-backed leaderboard analytics primitives.
+- `warcraftlogs` is now a real phase-1 official API provider with retail-only OAuth client-credentials auth plus typed world metadata, guild, character, and report lookups.
+- `warcraftlogs` is intentionally standalone for now; wrapper integration is deferred until the provider surface and future site-profile routing are broader.
 - `warcraft guild` is now a first-class merged guild workflow that normalizes region/realm/name input and reports Raider.IO and WowProgress source disagreements explicitly.
 - `warcraft guild-history` and `warcraft guild-ranks` currently use WowProgress as the historical raid source and preserve that provenance in the payload.
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
@@ -412,6 +417,42 @@ WowProgress phase-1 behavior:
 - filtered guild-profile analytics preserve source and excluded profile counts so narrower slices stay explicit
 - `distribution` and `threshold` stay sample-backed and caveated rather than pretending to answer higher-level questions directly
 - WowProgress search is intentionally structured instead of broad free text because the site-native search surface is heavily constrained and less reliable than direct route resolution
+
+## Warcraft Logs Commands
+
+```bash
+warcraftlogs doctor
+warcraftlogs rate-limit
+warcraftlogs regions
+warcraftlogs server us illidan
+warcraftlogs zones
+warcraftlogs zones --expansion-id 12
+warcraftlogs encounter 3012
+warcraftlogs guild us illidan Liquid
+warcraftlogs guild us illidan Liquid --zone-id 38
+warcraftlogs character us illidan Roguecane
+warcraftlogs report abcdefgh
+warcraftlogs report-fights abcdefgh --difficulty 5
+```
+
+Warcraft Logs phase-1 behavior:
+- `warcraftlogs` currently targets the retail/main site profile only
+- auth is the official public OAuth client-credentials flow
+- credentials must be configured:
+  - `WARCRAFTLOGS_CLIENT_ID`
+  - `WARCRAFTLOGS_CLIENT_SECRET`
+- the CLI automatically loads a local `.env.local` when present
+- `doctor` reports auth status plus the active site profile
+- `rate-limit` exposes the official queryable API rate-limit state
+- `regions`, `server`, `zones`, and `encounter` are the first typed world-metadata slice
+- `guild` returns official guild identity, server/faction details, guild tags, and current zone progress ranks when available
+- `character` currently stays on reliable typed fields:
+  - faction
+  - guild rank
+  - server
+  - guild memberships
+- `report` and `report-fights` are the first typed report-inspection slice
+- wrapper integration is intentionally deferred for now
 
 ## SimulationCraft Commands
 

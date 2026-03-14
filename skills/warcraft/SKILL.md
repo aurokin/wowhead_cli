@@ -29,6 +29,7 @@ Use `warcraft` first when the caller does not already know which provider they n
 | `raiderio` | character/guild profiles, Mythic+, sampled run analytics | `warcraft raiderio character ...`, `warcraft raiderio sample ...` |
 | `warcraft-wiki` | API docs, events, systems, lore, reference pages | `warcraft warcraft-wiki api ...`, `warcraft warcraft-wiki article ...` |
 | `wowprogress` | progression, rankings, guild/profile analytics | `warcraft guild ...`, `warcraft wowprogress guild ...`, `warcraft wowprogress sample ...` |
+| `warcraftlogs` | official raid-log API, world metadata, guild/character/report lookups | `warcraftlogs doctor`, `warcraftlogs guild ...`, `warcraftlogs report-fights ...` |
 | `simc` | local SimulationCraft inspection, exact-build priority analysis, APL comparison, and runs | `warcraft simc doctor`, `warcraft simc priority ...`, `warcraft simc compare-apls ...` |
 
 ## Routing Rules
@@ -48,6 +49,7 @@ Use `warcraft` first when the caller does not already know which provider they n
 - `raiderio`: see [references/raiderio.md](/home/auro/code/wowhead_cli/skills/warcraft/references/raiderio.md)
 - `warcraft-wiki`: see [references/warcraft-wiki.md](/home/auro/code/wowhead_cli/skills/warcraft/references/warcraft-wiki.md)
 - `wowprogress`: see [references/wowprogress.md](/home/auro/code/wowhead_cli/skills/warcraft/references/wowprogress.md)
+- `warcraftlogs`: see [references/warcraftlogs.md](/home/auro/code/wowhead_cli/skills/warcraft/references/warcraftlogs.md)
 - `simc`: see [references/simc.md](/home/auro/code/wowhead_cli/skills/warcraft/references/simc.md)
 
 ## Notes
