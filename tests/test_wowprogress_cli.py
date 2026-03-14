@@ -5,7 +5,16 @@ import json
 from typer.testing import CliRunner
 
 from wowprogress_cli.client import WowProgressClient
-from wowprogress_cli.main import _guild_profile_matches_filters, _normalized_encounter_values, app as wowprogress_app
+from wowprogress_cli.main import (
+    _candidate_from_probe,
+    _distinct_result_kinds,
+    _guild_profile_matches_filters,
+    _normalized_encounter_values,
+    _resolve_confidence_label,
+    _resolve_is_confident,
+    _sorted_search_candidates,
+    app as wowprogress_app,
+)
 
 runner = CliRunner()
 
@@ -62,6 +71,49 @@ def test_wowprogress_search_returns_ranked_structured_results(monkeypatch) -> No
     assert payload["results"][0]["follow_up"]["command"] == "wowprogress guild us illidan Liquid"
     assert "type_hint" in payload["results"][0]["ranking"]["match_reasons"]
     assert payload["normalized_candidates"][0] == {"region": "us", "realm": "illidan", "name": "Liquid"}
+
+
+def test_wowprogress_candidate_from_probe_builds_character_shape() -> None:
+    candidate = _candidate_from_probe(
+        "us illidan Imonthegcd",
+        kind_hint="character",
+        payload={
+            "_search_kind": "character",
+            "character": {
+                "name": "Imonthegcd",
+                "region": "us",
+                "realm": "illidan",
+                "guild_name": "Liquid",
+                "class_name": "Mage",
+                "page_url": "https://www.wowprogress.com/character/us/illidan/Imonthegcd",
+            },
+        },
+        query_region="us",
+        query_realm="illidan",
+        query_name="Imonthegcd",
+    )
+    assert candidate["kind"] == "character"
+    assert candidate["profile_url"] == "https://www.wowprogress.com/character/us/illidan/Imonthegcd"
+    assert "type_hint" in candidate["ranking"]["match_reasons"]
+
+
+def test_wowprogress_search_and_resolve_helpers_cover_ambiguity() -> None:
+    sorted_rows = _sorted_search_candidates(
+        [
+            {"kind": "guild", "name": "Liquid", "ranking": {"score": 40}},
+            {"kind": "character", "name": "Liquid", "ranking": {"score": 55}},
+        ]
+    )
+    assert sorted_rows[0]["kind"] == "character"
+    assert _distinct_result_kinds(sorted_rows) == ["character", "guild"]
+
+    best = {"ranking": {"score": 60}, "follow_up": {"command": "wowprogress character us illidan Liquid"}}
+    second = {"ranking": {"score": 30}, "follow_up": {"command": "wowprogress guild us illidan Liquid"}}
+    assert _resolve_is_confident(best=best, second=second, query_kind="character", distinct_kinds=["character"]) is True
+    assert _resolve_is_confident(best=best, second=second, query_kind=None, distinct_kinds=["character", "guild"]) is False
+    assert _resolve_confidence_label(best, resolved=True) == "high"
+    assert _resolve_confidence_label({"ranking": {"score": 40}}, resolved=False) == "medium"
+    assert _resolve_confidence_label({"ranking": {"score": 20}}, resolved=False) == "low"
 
 
 def test_wowprogress_resolve_stays_conservative_when_multiple_results(monkeypatch) -> None:
