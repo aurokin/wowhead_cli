@@ -1146,6 +1146,51 @@ def _distribution_values(metric: str, runs: list[dict[str, Any]]) -> tuple[list[
     return roster_values, unit, False
 
 
+def _player_numeric_distribution_values(metric: str, players: list[dict[str, Any]]) -> tuple[list[int], str] | None:
+    if metric == "appearance_count":
+        return [int(player["appearance_count"]) for player in players if isinstance(player.get("appearance_count"), int)], "players"
+    if metric == "top_mythic_level":
+        return [int(player["top_mythic_level"]) for player in players if isinstance(player.get("top_mythic_level"), int)], "players"
+    return None
+
+
+def _player_tag_distribution_values(metric: str, players: list[dict[str, Any]]) -> tuple[list[str], str] | None:
+    if metric == "class":
+        return [
+            str(value)
+            for player in players
+            for value in (player.get("class_slugs") if isinstance(player.get("class_slugs"), list) else [])
+            if value
+        ], "player_class_tags"
+    if metric == "spec":
+        return [
+            str(value)
+            for player in players
+            for value in (player.get("spec_slugs") if isinstance(player.get("spec_slugs"), list) else [])
+            if value
+        ], "player_spec_tags"
+    if metric == "role":
+        return [
+            str(value)
+            for player in players
+            for value in (player.get("roles") if isinstance(player.get("roles"), list) else [])
+            if value
+        ], "player_role_tags"
+    return None
+
+
+def _player_distribution_values(metric: str, players: list[dict[str, Any]]) -> tuple[list[int] | list[str], str, bool]:
+    numeric_values = _player_numeric_distribution_values(metric, players)
+    if numeric_values is not None:
+        values, unit = numeric_values
+        return values, unit, True
+    tag_values = _player_tag_distribution_values(metric, players)
+    if tag_values is not None:
+        values, unit = tag_values
+        return values, unit, False
+    return [str(player.get("region") or "unknown") for player in players], "players", False
+
+
 def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
     sample = _sample_summary(runs, meta=meta)
     values, unit, numeric = _distribution_values(metric, runs)
@@ -1174,39 +1219,12 @@ def _player_distribution_payload(
     player_sampling: dict[str, Any],
 ) -> dict[str, Any]:
     sample = _player_sample_summary(players, runs=runs, meta=meta, filtering=filtering, player_sampling=player_sampling)
-    if metric == "appearance_count":
-        values = [int(player["appearance_count"]) for player in players if isinstance(player.get("appearance_count"), int)]
-        distribution = _numeric_distribution(values, unit="players")
-    elif metric == "top_mythic_level":
-        values = [int(player["top_mythic_level"]) for player in players if isinstance(player.get("top_mythic_level"), int)]
-        distribution = _numeric_distribution(values, unit="players")
-    elif metric == "class":
-        values = [
-            str(value)
-            for player in players
-            for value in (player.get("class_slugs") if isinstance(player.get("class_slugs"), list) else [])
-            if value
-        ]
-        distribution = _categorical_distribution(values, unit="player_class_tags")
-    elif metric == "spec":
-        values = [
-            str(value)
-            for player in players
-            for value in (player.get("spec_slugs") if isinstance(player.get("spec_slugs"), list) else [])
-            if value
-        ]
-        distribution = _categorical_distribution(values, unit="player_spec_tags")
-    elif metric == "role":
-        values = [
-            str(value)
-            for player in players
-            for value in (player.get("roles") if isinstance(player.get("roles"), list) else [])
-            if value
-        ]
-        distribution = _categorical_distribution(values, unit="player_role_tags")
-    else:
-        values = [str(player.get("region") or "unknown") for player in players]
-        distribution = _categorical_distribution(values, unit="players")
+    values, unit, numeric = _player_distribution_values(metric, players)
+    distribution = (
+        _numeric_distribution(values, unit=unit)  # type: ignore[arg-type]
+        if numeric
+        else _categorical_distribution(values, unit=unit)  # type: ignore[arg-type]
+    )
     return _distribution_response(
         kind="mythic_plus_players_distribution",
         metric=metric,

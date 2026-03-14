@@ -10,6 +10,7 @@ from raiderio_cli.main import (
     _dedupe_search_candidates,
     _distribution_values,
     _player_snapshots,
+    _player_distribution_values,
     _ranking_roster_entry,
     _resolve_candidate_is_confident,
     _resolve_confidence_label,
@@ -182,6 +183,34 @@ def test_raiderio_distribution_values_cover_numeric_and_composition_metrics() ->
     values, unit, numeric = _distribution_values("player_region", runs)
     assert values == ["eu", "eu"]
     assert unit == "roster_entries"
+    assert numeric is False
+
+
+def test_raiderio_player_distribution_values_cover_numeric_and_tag_metrics() -> None:
+    players = [
+        {
+            "appearance_count": 2,
+            "top_mythic_level": 26,
+            "class_slugs": ["druid"],
+            "spec_slugs": ["balance"],
+            "roles": ["dps"],
+            "region": "eu",
+        }
+    ]
+
+    values, unit, numeric = _player_distribution_values("appearance_count", players)
+    assert values == [2]
+    assert unit == "players"
+    assert numeric is True
+
+    values, unit, numeric = _player_distribution_values("class", players)
+    assert values == ["druid"]
+    assert unit == "player_class_tags"
+    assert numeric is False
+
+    values, unit, numeric = _player_distribution_values("unknown", players)
+    assert values == ["eu"]
+    assert unit == "players"
     assert numeric is False
 
 
