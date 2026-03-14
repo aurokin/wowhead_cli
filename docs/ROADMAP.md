@@ -52,6 +52,7 @@ Validated shared so far:
 Active next step:
 - continue improving existing providers and wrapper discovery quality
 - build reusable analytics systems for profile and leaderboard providers instead of one-off answer commands
+- add static quality tooling from [LINTING_AND_COMPLEXITY_PLAN.md](/home/auro/code/wowhead_cli/docs/LINTING_AND_COMPLEXITY_PLAN.md) so refactor targets are easier to identify and prioritize
 - focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
 - roadmap cleanup after the recent provider quality passes
 - for `raiderio`, prioritize:
@@ -73,6 +74,7 @@ Active next step:
 - [Migration checklist](/home/auro/code/wowhead_cli/docs/MIGRATION_CHECKLIST.md)
 - [Wrapper provider contract](/home/auro/code/wowhead_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
 - [Expansion filtering plan](/home/auro/code/wowhead_cli/docs/EXPANSION_FILTERING_PLAN.md)
+- [Linting and complexity plan](/home/auro/code/wowhead_cli/docs/LINTING_AND_COMPLEXITY_PLAN.md)
 - [Warcraft wrapper plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md)
 - [Wowhead CLI plan](/home/auro/code/wowhead_cli/docs/WOWHEAD_CLI_PLAN.md)
 - [Method.gg CLI plan](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md)
