@@ -12,7 +12,9 @@ Current command surface:
 - `raiderio guild`
 - `raiderio mythic-plus-runs`
 - `raiderio sample mythic-plus-runs`
+- `raiderio sample mythic-plus-players`
 - `raiderio distribution mythic-plus-runs`
+- `raiderio distribution mythic-plus-players`
 - `raiderio threshold mythic-plus-runs`
 
 Current quality notes:
@@ -23,6 +25,7 @@ Current quality notes:
 - the first threshold-style primitive now exists for sampled Mythic+ run score and level estimation
 - sampled run analytics now support explicit post-sample filters for level, score, roster role, class, spec, and player region
 - filtered outputs preserve source-run counts and excluded-run counts so narrower slices stay provenance-safe
+- deduped player snapshots now exist on top of sampled runs, so agents can work with participant-level appearance and class/spec slices instead of only raw run rows
 - leaderboard, broader Mythic+ surfaces, and richer profile workflows are still later-phase work
 
 ## Next Quality Direction

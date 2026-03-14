@@ -78,3 +78,23 @@ def test_live_raiderio_filtered_sample_contract() -> None:
     assert payload["query"]["filters"]["level_min"] == 20
     assert payload["query"]["filters"]["contains_role"] == ["healer"]
     assert payload["sample"]["filtering"]["source_run_count"] >= payload["sample"]["filtering"]["returned_run_count"]
+
+
+@pytest.mark.live
+def test_live_raiderio_sample_mythic_plus_players_contract() -> None:
+    payload = _payload_for(["sample", "mythic-plus-players", "--pages", "1", "--limit", "20", "--player-limit", "25"])
+
+    assert payload["kind"] == "mythic_plus_players_sample"
+    assert payload["sample"]["run_count"] >= 1
+    assert payload["sample"]["player_count"] >= 1
+    assert len(payload["players"]) >= 1
+
+
+@pytest.mark.live
+def test_live_raiderio_distribution_mythic_plus_players_contract() -> None:
+    payload = _payload_for(["distribution", "mythic-plus-players", "--metric", "class", "--pages", "1", "--limit", "20"])
+
+    assert payload["kind"] == "mythic_plus_players_distribution"
+    assert payload["metric"] == "class"
+    assert payload["distribution"]["unit"] == "player_class_tags"
+    assert len(payload["distribution"]["rows"]) >= 1

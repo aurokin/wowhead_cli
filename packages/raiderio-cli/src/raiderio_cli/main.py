@@ -777,6 +777,114 @@ def _sample_summary(runs: list[dict[str, Any]], *, meta: dict[str, Any]) -> dict
     }
 
 
+def _player_snapshots(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    players: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for run in runs:
+        mythic_level = run.get("mythic_level")
+        score = run.get("score")
+        completed_at = run.get("completed_at")
+        dungeon = run.get("dungeon")
+        dungeon_slug = run.get("dungeon_slug")
+        roster = run.get("roster") if isinstance(run.get("roster"), list) else []
+        for entry in roster:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get("name") or "").strip()
+            realm = str(entry.get("realm") or "").strip().lower()
+            region = str(entry.get("region") or "").strip().lower()
+            if not name or not realm or not region:
+                continue
+            key = (region, realm, name)
+            snapshot = players.get(key)
+            if snapshot is None:
+                snapshot = {
+                    "name": name,
+                    "realm": realm,
+                    "region": region,
+                    "profile_url": entry.get("profile_url"),
+                    "appearance_count": 0,
+                    "roles": [],
+                    "class_slugs": [],
+                    "spec_slugs": [],
+                    "top_mythic_level": None,
+                    "top_score": None,
+                    "latest_completed_at": None,
+                    "dungeons": [],
+                    "dungeon_slugs": [],
+                }
+                players[key] = snapshot
+            snapshot["appearance_count"] += 1
+            role = str(entry.get("role") or "").strip().lower()
+            if role and role not in snapshot["roles"]:
+                snapshot["roles"].append(role)
+            class_slug = str(entry.get("class_slug") or entry.get("class_name") or "").strip().lower().replace(" ", "-")
+            if class_slug and class_slug not in snapshot["class_slugs"]:
+                snapshot["class_slugs"].append(class_slug)
+            spec_slug = str(entry.get("spec_slug") or entry.get("spec_name") or "").strip().lower().replace(" ", "-")
+            if spec_slug and spec_slug not in snapshot["spec_slugs"]:
+                snapshot["spec_slugs"].append(spec_slug)
+            if isinstance(mythic_level, int):
+                current_top = snapshot.get("top_mythic_level")
+                if not isinstance(current_top, int) or mythic_level > current_top:
+                    snapshot["top_mythic_level"] = mythic_level
+            if isinstance(score, (int, float)):
+                current_score = snapshot.get("top_score")
+                if not isinstance(current_score, (int, float)) or float(score) > float(current_score):
+                    snapshot["top_score"] = float(score)
+            if isinstance(completed_at, str):
+                latest = snapshot.get("latest_completed_at")
+                if not isinstance(latest, str) or completed_at > latest:
+                    snapshot["latest_completed_at"] = completed_at
+            if isinstance(dungeon, str) and dungeon and dungeon not in snapshot["dungeons"]:
+                snapshot["dungeons"].append(dungeon)
+            if isinstance(dungeon_slug, str) and dungeon_slug and dungeon_slug not in snapshot["dungeon_slugs"]:
+                snapshot["dungeon_slugs"].append(dungeon_slug)
+    snapshots = list(players.values())
+    snapshots.sort(
+        key=lambda row: (
+            -int(row.get("appearance_count") or 0),
+            -(int(row.get("top_mythic_level")) if isinstance(row.get("top_mythic_level"), int) else -1),
+            str(row.get("name") or ""),
+        )
+    )
+    return snapshots
+
+
+def _player_sample_summary(players: list[dict[str, Any]], *, runs: list[dict[str, Any]], meta: dict[str, Any], filtering: dict[str, Any]) -> dict[str, Any]:
+    appearance_counts = [int(player["appearance_count"]) for player in players if isinstance(player.get("appearance_count"), int)]
+    top_levels = [int(player["top_mythic_level"]) for player in players if isinstance(player.get("top_mythic_level"), int)]
+    classes = sorted({value for player in players for value in (player.get("class_slugs") if isinstance(player.get("class_slugs"), list) else []) if value})
+    specs = sorted({value for player in players for value in (player.get("spec_slugs") if isinstance(player.get("spec_slugs"), list) else []) if value})
+    summary = {
+        **_sample_summary(runs, meta=meta),
+        "filtering": filtering,
+        "player_count": len(players),
+        "unique_class_count": len(classes),
+        "unique_spec_count": len(specs),
+        "classes": classes,
+        "specs": specs,
+        "appearance_count": None,
+        "top_mythic_level": None,
+    }
+    if appearance_counts:
+        sorted_counts = sorted(appearance_counts)
+        summary["appearance_count"] = {
+            "min": sorted_counts[0],
+            "max": sorted_counts[-1],
+            "average": round(sum(sorted_counts) / len(sorted_counts), 2),
+            "median": median(sorted_counts),
+        }
+    if top_levels:
+        sorted_levels = sorted(top_levels)
+        summary["top_mythic_level"] = {
+            "min": sorted_levels[0],
+            "max": sorted_levels[-1],
+            "average": round(sum(sorted_levels) / len(sorted_levels), 2),
+            "median": median(sorted_levels),
+        }
+    return summary
+
+
 def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
     if metric == "mythic_level":
         values = [int(run["mythic_level"]) for run in runs if isinstance(run.get("mythic_level"), int)]
@@ -860,6 +968,82 @@ def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict
             "unit": unit,
             "rows": _count_map(values),
             "statistics": None,
+        },
+        "freshness": {
+            "sampled_at": meta["sampled_at"],
+            "cache_ttl_seconds": meta["cache_ttl_seconds"],
+        },
+        "citations": {
+            "leaderboard_urls": meta["leaderboard_urls"],
+        },
+    }
+
+
+def _player_distribution_payload(
+    metric: str,
+    players: list[dict[str, Any]],
+    *,
+    runs: list[dict[str, Any]],
+    meta: dict[str, Any],
+    query: dict[str, Any],
+    filtering: dict[str, Any],
+) -> dict[str, Any]:
+    if metric == "appearance_count":
+        values = [int(player["appearance_count"]) for player in players if isinstance(player.get("appearance_count"), int)]
+        rows = _count_map([str(value) for value in values])
+        stats = None
+        if values:
+            sorted_values = sorted(values)
+            stats = {
+                "min": sorted_values[0],
+                "max": sorted_values[-1],
+                "average": round(sum(sorted_values) / len(sorted_values), 2),
+                "median": median(sorted_values),
+            }
+        unit = "players"
+    elif metric == "top_mythic_level":
+        values = [int(player["top_mythic_level"]) for player in players if isinstance(player.get("top_mythic_level"), int)]
+        rows = _count_map([str(value) for value in values])
+        stats = None
+        if values:
+            sorted_values = sorted(values)
+            stats = {
+                "min": sorted_values[0],
+                "max": sorted_values[-1],
+                "average": round(sum(sorted_values) / len(sorted_values), 2),
+                "median": median(sorted_values),
+            }
+        unit = "players"
+    elif metric == "class":
+        values = [str(value) for player in players for value in (player.get("class_slugs") if isinstance(player.get("class_slugs"), list) else []) if value]
+        rows = _count_map(values)
+        stats = None
+        unit = "player_class_tags"
+    elif metric == "spec":
+        values = [str(value) for player in players for value in (player.get("spec_slugs") if isinstance(player.get("spec_slugs"), list) else []) if value]
+        rows = _count_map(values)
+        stats = None
+        unit = "player_spec_tags"
+    elif metric == "role":
+        values = [str(value) for player in players for value in (player.get("roles") if isinstance(player.get("roles"), list) else []) if value]
+        rows = _count_map(values)
+        stats = None
+        unit = "player_role_tags"
+    else:
+        values = [str(player.get("region") or "unknown") for player in players]
+        rows = _count_map(values)
+        stats = None
+        unit = "players"
+    return {
+        "provider": "raiderio",
+        "kind": "mythic_plus_players_distribution",
+        "metric": metric,
+        "query": query,
+        "sample": _player_sample_summary(players, runs=runs, meta=meta, filtering=filtering),
+        "distribution": {
+            "unit": unit,
+            "rows": rows,
+            "statistics": stats,
         },
         "freshness": {
             "sampled_at": meta["sampled_at"],
@@ -1005,7 +1189,9 @@ def doctor(ctx: typer.Context) -> None:
                 "guild": "ready",
                 "mythic_plus_runs": "ready",
                 "sample_mythic_plus_runs": "ready",
+                "sample_mythic_plus_players": "ready",
                 "distribution_mythic_plus_runs": "ready",
+                "distribution_mythic_plus_players": "ready",
                 "threshold_mythic_plus_runs": "ready",
             },
             "cache": {
@@ -1339,6 +1525,92 @@ def sample_mythic_plus_runs(
     )
 
 
+@sample_app.command("mythic-plus-players")
+def sample_mythic_plus_players(
+    ctx: typer.Context,
+    season: str = typer.Option("", "--season", help="Season slug. Defaults to Raider.IO current default season."),
+    region: str = typer.Option("world", "--region", help="Region slug such as world, us, or eu."),
+    dungeon: str = typer.Option("all", "--dungeon", help="Dungeon slug or all."),
+    affixes: str = typer.Option("", "--affixes", help="Affix slug, fortified, tyrannical, current, or all."),
+    page: int = typer.Option(0, "--page", min=0, help="Starting page of rankings to request."),
+    pages: int = typer.Option(1, "--pages", min=1, max=10, help="Number of pages to sample."),
+    limit: int = typer.Option(100, "--limit", min=1, max=200, help="Maximum runs to retain in the source sample."),
+    player_limit: int = typer.Option(100, "--player-limit", min=1, max=500, help="Maximum player snapshots to retain after deduping."),
+    level_min: int | None = typer.Option(None, "--level-min", min=0, help="Retain only runs at or above this Mythic+ level."),
+    level_max: int | None = typer.Option(None, "--level-max", min=0, help="Retain only runs at or below this Mythic+ level."),
+    score_min: float | None = typer.Option(None, "--score-min", help="Retain only runs at or above this sampled run score."),
+    score_max: float | None = typer.Option(None, "--score-max", help="Retain only runs at or below this sampled run score."),
+    contains_role: list[str] | None = typer.Option(None, "--contains-role", help="Retain only runs containing at least one roster role. Repeatable."),
+    contains_class: list[str] | None = typer.Option(None, "--contains-class", help="Retain only runs containing at least one class slug or name. Repeatable."),
+    contains_spec: list[str] | None = typer.Option(None, "--contains-spec", help="Retain only runs containing at least one spec slug or name. Repeatable."),
+    player_region: list[str] | None = typer.Option(None, "--player-region", help="Retain only runs containing at least one player from the given region. Repeatable."),
+) -> None:
+    try:
+        with _client(ctx) as client:
+            runs, meta = _sample_mythic_plus_runs(
+                client,
+                season=season or None,
+                region=region,
+                dungeon=dungeon,
+                affixes=affixes or None,
+                page=page,
+                pages=pages,
+                limit=limit,
+            )
+    except httpx.HTTPStatusError as exc:
+        _handle_http_error(ctx, exc)
+        return
+    runs, filtering = _filtered_runs(
+        runs,
+        level_min=level_min,
+        level_max=level_max,
+        score_min=score_min,
+        score_max=score_max,
+        contains_role=contains_role,
+        contains_class=contains_class,
+        contains_spec=contains_spec,
+        player_region=player_region,
+    )
+    players = _player_snapshots(runs)[:player_limit]
+    query = {
+        "season": meta.get("season") or season or None,
+        "region": region,
+        "dungeon": dungeon,
+        "affixes": affixes or None,
+        "page": page,
+        "pages": pages,
+        "limit": limit,
+        "player_limit": player_limit,
+        "filters": _analytics_filter_query(
+            level_min=level_min,
+            level_max=level_max,
+            score_min=score_min,
+            score_max=score_max,
+            contains_role=contains_role,
+            contains_class=contains_class,
+            contains_spec=contains_spec,
+            player_region=player_region,
+        ),
+    }
+    _emit(
+        ctx,
+        {
+            "provider": "raiderio",
+            "kind": "mythic_plus_players_sample",
+            "query": query,
+            "sample": _player_sample_summary(players, runs=runs, meta=meta, filtering=filtering),
+            "players": players,
+            "freshness": {
+                "sampled_at": meta["sampled_at"],
+                "cache_ttl_seconds": meta["cache_ttl_seconds"],
+            },
+            "citations": {
+                "leaderboard_urls": meta["leaderboard_urls"],
+            },
+        },
+    )
+
+
 @distribution_app.command("mythic-plus-runs")
 def distribution_mythic_plus_runs(
     ctx: typer.Context,
@@ -1411,6 +1683,80 @@ def distribution_mythic_plus_runs(
     if isinstance(payload.get("sample"), dict):
         payload["sample"]["filtering"] = filtering
     _emit(ctx, payload)
+
+
+@distribution_app.command("mythic-plus-players")
+def distribution_mythic_plus_players(
+    ctx: typer.Context,
+    metric: str = typer.Option("appearance_count", "--metric", help="Distribution metric: appearance_count, top_mythic_level, class, spec, role, or player_region."),
+    season: str = typer.Option("", "--season", help="Season slug. Defaults to Raider.IO current default season."),
+    region: str = typer.Option("world", "--region", help="Region slug such as world, us, or eu."),
+    dungeon: str = typer.Option("all", "--dungeon", help="Dungeon slug or all."),
+    affixes: str = typer.Option("", "--affixes", help="Affix slug, fortified, tyrannical, current, or all."),
+    page: int = typer.Option(0, "--page", min=0, help="Starting page of rankings to request."),
+    pages: int = typer.Option(1, "--pages", min=1, max=10, help="Number of pages to sample."),
+    limit: int = typer.Option(100, "--limit", min=1, max=200, help="Maximum runs to retain in the source sample."),
+    player_limit: int = typer.Option(100, "--player-limit", min=1, max=500, help="Maximum player snapshots to retain after deduping."),
+    level_min: int | None = typer.Option(None, "--level-min", min=0, help="Retain only runs at or above this Mythic+ level."),
+    level_max: int | None = typer.Option(None, "--level-max", min=0, help="Retain only runs at or below this Mythic+ level."),
+    score_min: float | None = typer.Option(None, "--score-min", help="Retain only runs at or above this sampled run score."),
+    score_max: float | None = typer.Option(None, "--score-max", help="Retain only runs at or below this sampled run score."),
+    contains_role: list[str] | None = typer.Option(None, "--contains-role", help="Retain only runs containing at least one roster role. Repeatable."),
+    contains_class: list[str] | None = typer.Option(None, "--contains-class", help="Retain only runs containing at least one class slug or name. Repeatable."),
+    contains_spec: list[str] | None = typer.Option(None, "--contains-spec", help="Retain only runs containing at least one spec slug or name. Repeatable."),
+    player_region: list[str] | None = typer.Option(None, "--player-region", help="Retain only runs containing at least one player from the given region. Repeatable."),
+) -> None:
+    if metric not in {"appearance_count", "top_mythic_level", "class", "spec", "role", "player_region"}:
+        _fail(ctx, "invalid_query", "--metric must be one of: appearance_count, top_mythic_level, class, spec, role, player_region")
+        return
+    try:
+        with _client(ctx) as client:
+            runs, meta = _sample_mythic_plus_runs(
+                client,
+                season=season or None,
+                region=region,
+                dungeon=dungeon,
+                affixes=affixes or None,
+                page=page,
+                pages=pages,
+                limit=limit,
+            )
+    except httpx.HTTPStatusError as exc:
+        _handle_http_error(ctx, exc)
+        return
+    runs, filtering = _filtered_runs(
+        runs,
+        level_min=level_min,
+        level_max=level_max,
+        score_min=score_min,
+        score_max=score_max,
+        contains_role=contains_role,
+        contains_class=contains_class,
+        contains_spec=contains_spec,
+        player_region=player_region,
+    )
+    players = _player_snapshots(runs)[:player_limit]
+    query = {
+        "season": meta.get("season") or season or None,
+        "region": region,
+        "dungeon": dungeon,
+        "affixes": affixes or None,
+        "page": page,
+        "pages": pages,
+        "limit": limit,
+        "player_limit": player_limit,
+        "filters": _analytics_filter_query(
+            level_min=level_min,
+            level_max=level_max,
+            score_min=score_min,
+            score_max=score_max,
+            contains_role=contains_role,
+            contains_class=contains_class,
+            contains_spec=contains_spec,
+            player_region=player_region,
+        ),
+    }
+    _emit(ctx, _player_distribution_payload(metric, players, runs=runs, meta=meta, query=query, filtering=filtering))
 
 
 @threshold_app.command("mythic-plus-runs")

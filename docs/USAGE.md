@@ -275,9 +275,11 @@ raiderio guild us illidan Liquid
 raiderio mythic-plus-runs --region world --dungeon all --page 0
 raiderio sample mythic-plus-runs --pages 2 --limit 40
 raiderio sample mythic-plus-runs --pages 2 --limit 40 --level-min 25 --contains-spec balance
+raiderio sample mythic-plus-players --pages 2 --limit 40 --player-limit 100
 raiderio distribution mythic-plus-runs --metric dungeon --pages 2 --limit 40
 raiderio distribution mythic-plus-runs --metric spec --pages 2 --limit 40
 raiderio distribution mythic-plus-runs --metric class --pages 2 --limit 40 --player-region eu
+raiderio distribution mythic-plus-players --metric class --pages 2 --limit 40
 raiderio threshold mythic-plus-runs --metric score --value 560 --pages 2 --limit 40
 ```
 
@@ -295,6 +297,12 @@ Raider.IO phase-1 behavior:
   - freshness
   - leaderboard provenance
   - optional post-sample filtering for level, score, roster role, class, spec, and player region
+- `sample mythic-plus-players` derives normalized player snapshots from the sampled run roster set and returns:
+  - unique sampled participants
+  - appearance counts
+  - top sampled run level
+  - class/spec/role tags
+  - dungeon coverage
 - `distribution mythic-plus-runs` derives distributions from the sampled run set and currently supports:
   - `mythic_level`
   - `dungeon`
@@ -304,6 +312,13 @@ Raider.IO phase-1 behavior:
   - `spec`
   - `composition`
   - `class_composition`
+- `distribution mythic-plus-players` derives player-level distributions from deduped sampled participants and currently supports:
+  - `appearance_count`
+  - `top_mythic_level`
+  - `class`
+  - `spec`
+  - `role`
+  - `player_region`
 - `threshold mythic-plus-runs` is the first threshold-style primitive and estimates:
   - sampled Mythic+ levels near a target run score
   - sampled run scores near a target Mythic+ level
