@@ -1,5 +1,7 @@
 research/wowhead-clis/
 research/warcraftlogs-docs/
+research/warcraftlogs-docs-classic/
+research/warcraftlogs-docs-fresh/
 .playwright-cli/
 .generated-skills/
 .venv/

@@ -126,6 +126,7 @@ This is the conservative starting point.
 | `wowprogress` | `fixed` | `retail` | Current supported surfaces are retail-focused |
 | `warcraft-wiki` | `none` initially | none | Mixed reference content needs deliberate policy before opt-in |
 | `simc` | `none` initially | none | Local analysis is versioned differently and should not be forced into wrapper expansion search yet |
+| `warcraftlogs` | future `fixed retail`, later `profiled` | phase 1 `retail`; phase 3 review for `classic` and `fresh` | Official API exists, but variant-to-wrapper-expansion mapping is intentionally deferred |
 
 This matrix should be treated as contract, not inference.
 
@@ -170,6 +171,7 @@ This feature needs strong contract tests before rollout.
 - `warcraft --expansion retail search ...` still returns expected `wowhead` results
 - `warcraft --expansion wotlk search ...` only returns `wowhead` results unless more providers are added intentionally
 - `warcraft --expansion wotlk resolve ...` never resolves to a retail-only provider
+- future `warcraftlogs` integration should begin as retail-only until site profiles and wrapper expansion-key mapping are reviewed
 
 ## Rollout Plan
 
@@ -242,3 +244,6 @@ The safe default is:
 - conservative filtering
 - explicit exclusions
 - no silent widening of scope
+
+Future vocabulary note:
+- providers like `warcraftlogs` may require expanding the wrapper expansion vocabulary when official product/site variants do not map cleanly onto the current keys

@@ -168,6 +168,10 @@ The wrapper must not silently widen scope.
 
 `retail` is a real explicit filter, not equivalent to “no expansion filter”.
 
+Future provider note:
+- some providers may require profile-based routing that is not a clean copy of the current wowhead-centric expansion vocabulary
+- `warcraftlogs` is the current example: planning research shows retail, classic, and fresh site profiles, but wrapper expansion-key mapping for those variants is still intentionally deferred
+
 ## Expansion Output Rules
 
 When expansion filtering is active, wrapper output should preserve:

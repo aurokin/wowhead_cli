@@ -10,8 +10,12 @@ from urllib.parse import urlparse
 
 
 DEFAULT_OUT_DIR = Path("research/warcraftlogs-docs")
-LANDING_URL = "https://www.warcraftlogs.com/api/docs"
-GRAPHQL_INDEX_URL = "https://www.warcraftlogs.com/v2-api-docs/warcraft/"
+DEFAULT_SITE = "retail"
+SITE_BASE_URLS = {
+    "retail": "https://www.warcraftlogs.com",
+    "classic": "https://classic.warcraftlogs.com",
+    "fresh": "https://fresh.warcraftlogs.com",
+}
 
 
 def _run_playwright(args: list[str]) -> str:
@@ -50,11 +54,19 @@ def _write_page_dump(base_dir: Path, bucket: str, data: dict[str, object]) -> No
     txt_path.write_text(str(data.get("text", "")) + "\n")
 
 
-def _open_session() -> None:
+def _landing_url(base_url: str) -> str:
+    return f"{base_url}/api/docs"
+
+
+def _graphql_index_url(base_url: str) -> str:
+    return f"{base_url}/v2-api-docs/warcraft/"
+
+
+def _open_session(landing_url: str) -> None:
     _run_playwright(
         [
             "open",
-            LANDING_URL,
+            landing_url,
             "--browser",
             "chrome",
             "--headed",
@@ -80,11 +92,12 @@ def _page_dump() -> dict[str, object]:
     return payload
 
 
-def _graphql_links() -> list[str]:
+def _graphql_links(base_url: str) -> list[str]:
+    graphql_prefix = f"{base_url}/v2-api-docs/warcraft/"
     output = _run_playwright(
         [
             "eval",
-            "() => Array.from(document.querySelectorAll(\"a[href]\"), a => a.href).filter(h => h.includes(\"/v2-api-docs/warcraft/\")).filter((h, i, arr) => arr.indexOf(h) === i)",
+            f"() => Array.from(document.querySelectorAll(\"a[href]\"), a => a.href).filter(h => h.startsWith(\"{graphql_prefix}\")).filter((h, i, arr) => arr.indexOf(h) === i)",
         ]
     )
     payload = _extract_result_json(output)
@@ -93,23 +106,28 @@ def _graphql_links() -> list[str]:
     return [str(item) for item in payload]
 
 
-def dump_docs(out_dir: Path) -> None:
+def dump_docs(out_dir: Path, *, base_url: str, site: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    _open_session()
+    landing_url = _landing_url(base_url)
+    graphql_index_url = _graphql_index_url(base_url)
 
-    _goto(LANDING_URL)
+    _open_session(landing_url)
+
+    _goto(landing_url)
     landing = _page_dump()
     _write_page_dump(out_dir, "landing", landing)
 
-    _goto(GRAPHQL_INDEX_URL)
+    _goto(graphql_index_url)
     graphql_index = _page_dump()
     _write_page_dump(out_dir, "graphql-warcraft", graphql_index)
 
-    links = _graphql_links()
+    links = _graphql_links(base_url)
     manifest = {
-        "landing_url": LANDING_URL,
-        "graphql_index_url": GRAPHQL_INDEX_URL,
+        "site": site,
+        "base_url": base_url,
+        "landing_url": landing_url,
+        "graphql_index_url": graphql_index_url,
         "graphql_page_count": len(links),
         "graphql_links": links,
     }
@@ -124,8 +142,17 @@ def dump_docs(out_dir: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Dump rendered Warcraft Logs docs via playwright-cli.")
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="Output directory for the docs dump.")
+    parser.add_argument(
+        "--site",
+        choices=sorted(SITE_BASE_URLS),
+        default=DEFAULT_SITE,
+        help="Which Warcraft Logs site variant to dump.",
+    )
+    parser.add_argument("--base-url", help="Optional explicit base URL override for the site variant.")
     args = parser.parse_args()
-    dump_docs(Path(args.out_dir).expanduser().resolve())
+    site = str(args.site)
+    base_url = str(args.base_url or SITE_BASE_URLS[site]).rstrip("/")
+    dump_docs(Path(args.out_dir).expanduser().resolve(), base_url=base_url, site=site)
 
 
 if __name__ == "__main__":

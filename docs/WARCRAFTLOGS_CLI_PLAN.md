@@ -19,10 +19,82 @@ Implemented today:
 
 What changed in the research baseline:
 - we now have a local rendered docs dump under `research/warcraftlogs-docs/`
+- we now also have local rendered docs dumps under:
+  - `research/warcraftlogs-docs-classic/`
+  - `research/warcraftlogs-docs-fresh/`
 - the dump is produced by [dump_warcraftlogs_docs.py](/home/auro/code/wowhead_cli/scripts/dump_warcraftlogs_docs.py)
 - the dump confirms Warcraft Logs has an official OAuth 2.0 + GraphQL integration surface that is broad enough for a full CLI
 
 This means `warcraftlogs` should be planned as an official integration first, with scraping treated only as a fallback for unsupported site workflows.
+
+## Site Variant Research
+
+We now have rendered docs dumps for:
+- retail:
+  - `https://www.warcraftlogs.com`
+- classic:
+  - `https://classic.warcraftlogs.com`
+- fresh:
+  - `https://fresh.warcraftlogs.com`
+
+Current research result:
+- all three sites expose the same OAuth docs content
+- all three sites expose the same normalized GraphQL schema surface
+- all three manifests currently contain `110` normalized GraphQL docs pages
+
+This is an important architectural result:
+- retail/classic/fresh should not become separate CLI packages
+- they should become site profiles inside one `warcraftlogs` provider
+- the split is operational and product-scoped, not schema-scoped
+
+## Variant Strategy
+
+Recommended long-term provider shape:
+- one provider: `warcraftlogs`
+- future site profiles:
+  - `retail`
+  - `classic`
+  - `fresh`
+
+The provider should eventually route:
+- base site URL
+- OAuth endpoints
+- GraphQL endpoint root
+- provider policy metadata
+
+through a site-profile layer rather than command duplication.
+
+## Expansion Filter Planning
+
+This provider needs explicit wrapper-expansion planning before it is added to `warcraft`.
+
+Recommended policy:
+- phase 1:
+  - retail-only implementation
+  - if routed through `warcraft`, classify as `fixed` to `retail`
+- phase 2:
+  - keep retail-only wrapper behavior
+- phase 3:
+  - add `classic` and `fresh` site profiles
+  - reclassify `warcraftlogs` from `fixed retail` to `profiled`
+
+Important consequence:
+- the current wrapper expansion vocabulary is still mostly wowhead-shaped
+- `classic-fresh` is not currently a first-class wrapper expansion key
+- we should not pretend the existing wrapper expansion keys already cover all Warcraft Logs site variants cleanly
+
+So phase 3 must include:
+- site-profile routing in `warcraftlogs`
+- wrapper expansion vocabulary review
+- explicit mapping from wrapper expansion keys to Warcraft Logs site profiles
+- provider registry metadata updates in the `warcraft` wrapper
+
+Current planning direction:
+- `retail` -> `www.warcraftlogs.com`
+- classic-family wrapper keys -> `classic.warcraftlogs.com`
+- `classic-fresh` or equivalent future wrapper key -> `fresh.warcraftlogs.com`
+
+This mapping is still a planning target, not an implemented contract.
 
 ## Official Access Model
 
@@ -515,6 +587,17 @@ Instead:
 3. optional raw GraphQL / saved query workflows
 4. report-component exploration if justified
 
+### Phase 6: Variant-Aware Site Profiles
+
+1. add site-profile routing for:
+   - retail
+   - classic
+   - fresh
+2. verify auth and GraphQL endpoint behavior per site profile
+3. decide the wrapper expansion-key mapping needed for classic/fresh
+4. update wrapper provider metadata so `warcraft --expansion ...` can include Warcraft Logs honestly
+5. add live tests for site-profile selection and wrapper expansion behavior
+
 ## What Can Reuse Shared Code
 
 - config and credential storage patterns
@@ -556,6 +639,8 @@ This provider is still a strong reason not to over-generalize API-first services
 ## Local Research Inputs
 
 - rendered docs dump: `research/warcraftlogs-docs/`
+- rendered docs dump: `research/warcraftlogs-docs-classic/`
+- rendered docs dump: `research/warcraftlogs-docs-fresh/`
 - dump script: [dump_warcraftlogs_docs.py](/home/auro/code/wowhead_cli/scripts/dump_warcraftlogs_docs.py)
 
 ## Source Links
