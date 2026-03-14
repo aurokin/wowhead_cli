@@ -26,6 +26,7 @@ Current quality notes:
 - PvE leaderboard sampling, distributions, and threshold estimates now expose freshness, provenance, and explicit caveats instead of pretending to be direct smart-answer surfaces
 - top-leaderboard guild-profile sampling now combines leaderboard context with direct guild-page data so agents can inspect progression, item level, and encounter detail without manually opening multiple browser pages
 - leaderboard and guild-profile samples now report sampling boundaries explicitly instead of implying complete visibility beyond the requested top slice
+- guild-profile analytics now support explicit post-sample filtering for faction, difficulty, world rank, item level, and encounter slices
 
 ## Why Add It
 

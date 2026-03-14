@@ -370,8 +370,10 @@ wowprogress leaderboard pve us --limit 10
 wowprogress leaderboard pve us --realm illidan --limit 10
 wowprogress sample pve-leaderboard --region us --limit 25
 wowprogress sample pve-guild-profiles --region us --limit 10
+wowprogress sample pve-guild-profiles --region us --limit 10 --faction horde --world-rank-max 25
 wowprogress distribution pve-leaderboard --region us --metric progress --limit 25
 wowprogress distribution pve-guild-profiles --region us --metric faction --limit 10
+wowprogress distribution pve-guild-profiles --region us --metric item_level_average --faction horde
 wowprogress threshold pve-leaderboard --region us --metric rank --value 25 --limit 50
 wowprogress threshold pve-guild-profiles --region us --metric world_rank --value 25 --limit 10
 ```
@@ -391,6 +393,13 @@ WowProgress phase-1 behavior:
   - source leaderboard entry count
   - returned guild profile count
   - skipped rows without profile URLs
+- guild-profile analytics now support explicit post-sample filters for:
+  - faction
+  - difficulty
+  - world rank range
+  - item-level range
+  - encounter name
+- filtered guild-profile analytics preserve source and excluded profile counts so narrower slices stay explicit
 - `distribution` and `threshold` stay sample-backed and caveated rather than pretending to answer higher-level questions directly
 - WowProgress search is intentionally structured instead of broad free text because the site-native search surface is heavily constrained and less reliable than direct route resolution
 

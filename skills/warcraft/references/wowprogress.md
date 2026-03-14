@@ -20,6 +20,7 @@
 - rely on `sample`, `distribution`, and `threshold` commands for ranking/progression analysis
 - use the guild-profile analytics surfaces when the browser would require jumping between leaderboard rows and guild pages
 - check the sampling metadata on leaderboard and guild-profile samples so you know how much of the top slice you actually have
+- use guild-profile filters like `--faction`, `--world-rank-max`, or `--encounter` when you need a narrower sampled slice
 
 ## Boundaries
 

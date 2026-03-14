@@ -627,6 +627,121 @@ def test_wowprogress_threshold_pve_guild_profiles(monkeypatch) -> None:
     assert payload["threshold"]["estimate"]["metric"] == "item_level_average"
 
 
+def test_wowprogress_sample_pve_guild_profiles_filters(monkeypatch) -> None:
+    def fake_leaderboard(self, *, region: str, realm: str | None = None, limit: int = 25):  # noqa: ANN001
+        return {
+            "leaderboard": {"kind": "pve", "title": "US Mythic Progress", "region": "us", "realm": None, "active_raid": "Manaforge Omega", "page_url": "https://www.wowprogress.com/pve/us"},
+            "count": 2,
+            "entries": [
+                {"rank": 1, "guild_name": "Liquid", "guild_url": "https://www.wowprogress.com/guild/us/illidan/Liquid", "realm": "US-Illidan", "progress": "8/8 (M)"},
+                {"rank": 2, "guild_name": "Echo", "guild_url": "https://www.wowprogress.com/guild/eu/tarren-mill/Echo", "realm": "EU-Tarren Mill", "progress": "8/8 (M)"},
+            ],
+            "citations": {"page": "https://www.wowprogress.com/pve/us"},
+        }
+
+    def fake_guild_url(self, url: str):  # noqa: ANN001
+        region, realm, name = url.rstrip("/").split("/")[-3:]
+        if name == "Liquid":
+            return {
+                "guild": {"name": name, "region": region, "realm": realm, "faction": "Horde", "page_url": url},
+                "progress": {"summary": "8/8 (M)", "ranks": {"world": "1"}},
+                "item_level": {"average": 724.5},
+                "encounters": {"count": 1, "items": [{"encounter": "Dimensius, the All-Devouring"}]},
+                "citations": {"page": url},
+            }
+        return {
+            "guild": {"name": name, "region": region, "realm": realm, "faction": "Alliance", "page_url": url},
+            "progress": {"summary": "8/8 (M)", "ranks": {"world": "25"}},
+            "item_level": {"average": 721.0},
+            "encounters": {"count": 1, "items": [{"encounter": "Nexus-King Salhadaar"}]},
+            "citations": {"page": url},
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_pve_leaderboard", fake_leaderboard)
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_guild_page_url", fake_guild_url)
+    result = runner.invoke(
+        wowprogress_app,
+        ["sample", "pve-guild-profiles", "--region", "us", "--limit", "10", "--faction", "horde", "--world-rank-max", "10", "--encounter", "dimensius-the-all-devouring"],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["query"]["filters"]["faction"] == ["horde"]
+    assert payload["query"]["filters"]["encounter"] == ["dimensius-the-all-devouring"]
+    assert payload["sample"]["filtering"]["source_profile_count"] == 2
+    assert payload["sample"]["filtering"]["returned_profile_count"] == 1
+    assert payload["guild_profiles"][0]["guild_name"] == "Liquid"
+
+
+def test_wowprogress_distribution_pve_guild_profiles_filters(monkeypatch) -> None:
+    def fake_leaderboard(self, *, region: str, realm: str | None = None, limit: int = 25):  # noqa: ANN001
+        return {
+            "leaderboard": {"kind": "pve", "title": "US Mythic Progress", "region": "us", "realm": None, "active_raid": "Manaforge Omega", "page_url": "https://www.wowprogress.com/pve/us"},
+            "count": 2,
+            "entries": [
+                {"rank": 1, "guild_name": "Liquid", "guild_url": "https://www.wowprogress.com/guild/us/illidan/Liquid", "realm": "US-Illidan", "progress": "8/8 (M)"},
+                {"rank": 2, "guild_name": "Echo", "guild_url": "https://www.wowprogress.com/guild/eu/tarren-mill/Echo", "realm": "EU-Tarren Mill", "progress": "7/8 (M)"},
+            ],
+            "citations": {"page": "https://www.wowprogress.com/pve/us"},
+        }
+
+    def fake_guild_url(self, url: str):  # noqa: ANN001
+        region, realm, name = url.rstrip("/").split("/")[-3:]
+        return {
+            "guild": {"name": name, "region": region, "realm": realm, "faction": "Horde" if name == "Liquid" else "Alliance", "page_url": url},
+            "progress": {"summary": "8/8 (M)" if name == "Liquid" else "7/8 (M)", "ranks": {"world": "1" if name == "Liquid" else "25"}},
+            "item_level": {"average": 724.5 if name == "Liquid" else 721.0},
+            "encounters": {"count": 1, "items": [{"encounter": "Dimensius, the All-Devouring"}]},
+            "citations": {"page": url},
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_pve_leaderboard", fake_leaderboard)
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_guild_page_url", fake_guild_url)
+    result = runner.invoke(
+        wowprogress_app,
+        ["distribution", "pve-guild-profiles", "--region", "us", "--metric", "item_level_average", "--faction", "horde"],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["sample"]["filtering"]["returned_profile_count"] == 1
+    assert payload["distribution"]["statistics"]["max"] == 724.5
+
+
+def test_wowprogress_threshold_pve_guild_profiles_filters_to_empty(monkeypatch) -> None:
+    def fake_leaderboard(self, *, region: str, realm: str | None = None, limit: int = 25):  # noqa: ANN001
+        return {
+            "leaderboard": {"kind": "pve", "title": "US Mythic Progress", "region": "us", "realm": None, "active_raid": "Manaforge Omega", "page_url": "https://www.wowprogress.com/pve/us"},
+            "count": 1,
+            "entries": [
+                {"rank": 1, "guild_name": "Liquid", "guild_url": "https://www.wowprogress.com/guild/us/illidan/Liquid", "realm": "US-Illidan", "progress": "8/8 (M)"},
+            ],
+            "citations": {"page": "https://www.wowprogress.com/pve/us"},
+        }
+
+    def fake_guild_url(self, url: str):  # noqa: ANN001
+        return {
+            "guild": {"name": "Liquid", "region": "us", "realm": "illidan", "faction": "Horde", "page_url": url},
+            "progress": {"summary": "8/8 (M)", "ranks": {"world": "1"}},
+            "item_level": {"average": 724.5},
+            "encounters": {"count": 1, "items": [{"encounter": "Dimensius, the All-Devouring"}]},
+            "citations": {"page": url},
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_pve_leaderboard", fake_leaderboard)
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_guild_page_url", fake_guild_url)
+    result = runner.invoke(
+        wowprogress_app,
+        ["threshold", "pve-guild-profiles", "--region", "us", "--metric", "world_rank", "--value", "10", "--faction", "alliance"],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["sample"]["filtering"]["returned_profile_count"] == 0
+    assert payload["threshold"]["nearest_match_count"] == 0
+    assert payload["threshold"]["estimate"] is None
+
+
 def test_wowprogress_sample_pve_guild_profiles_reports_missing_urls(monkeypatch) -> None:
     def fake_leaderboard(self, *, region: str, realm: str | None = None, limit: int = 25):  # noqa: ANN001
         return {

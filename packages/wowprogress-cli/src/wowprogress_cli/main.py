@@ -393,7 +393,7 @@ def _sample_summary(entries: list[dict[str, Any]], *, meta: dict[str, Any]) -> d
     }
 
 
-def _guild_profile_sample_summary(entries: list[dict[str, Any]], *, meta: dict[str, Any]) -> dict[str, Any]:
+def _guild_profile_sample_summary(entries: list[dict[str, Any]], *, meta: dict[str, Any], filtering: dict[str, Any] | None = None) -> dict[str, Any]:
     item_levels = [float(entry["item_level_average"]) for entry in entries if isinstance(entry.get("item_level_average"), (int, float))]
     world_ranks = [
         int(str((entry.get("progress_ranks") or {}).get("world")).replace(",", ""))
@@ -429,12 +429,117 @@ def _guild_profile_sample_summary(entries: list[dict[str, Any]], *, meta: dict[s
             "skipped_missing_profile_url": meta.get("skipped_missing_profile_url", 0),
             "source_scope": "top leaderboard rows enriched with direct WowProgress guild pages when a profile URL is present",
         },
+        "filtering": filtering,
         "active_raid": meta.get("active_raid"),
         "faction_counts": _count_map([str(entry.get("faction") or "unknown") for entry in entries]),
         "progress_counts": _count_map([str(entry.get("progress") or "unknown") for entry in entries]),
         "difficulty_counts": _count_map([str(entry.get("difficulty") or "unknown") for entry in entries]),
         "item_level_average": item_level_stats,
         "world_progress_rank": world_rank_stats,
+    }
+
+
+def _normalize_slug_filters(values: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    for value in values or []:
+        parts = [part for part in re.split(r"[^a-z0-9]+", value.strip().lower()) if part]
+        cleaned = "-".join(parts)
+        if cleaned and cleaned not in normalized:
+            normalized.append(cleaned)
+    return normalized
+
+
+def _world_rank_value(entry: dict[str, Any]) -> int | None:
+    progress_ranks = entry.get("progress_ranks") if isinstance(entry.get("progress_ranks"), dict) else {}
+    raw = progress_ranks.get("world")
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        cleaned = raw.replace(",", "")
+        if cleaned.isdigit():
+            return int(cleaned)
+    return None
+
+
+def _guild_profile_matches_filters(
+    entry: dict[str, Any],
+    *,
+    faction: list[str],
+    difficulty: list[str],
+    world_rank_min: int | None,
+    world_rank_max: int | None,
+    item_level_min: float | None,
+    item_level_max: float | None,
+    encounter: list[str],
+) -> bool:
+    if faction:
+        faction_value = str(entry.get("faction") or "").strip().lower().replace(" ", "-")
+        if faction_value not in faction:
+            return False
+    if difficulty:
+        difficulty_value = str(entry.get("difficulty") or "").strip().lower().replace(" ", "-")
+        if difficulty_value not in difficulty:
+            return False
+    world_rank = _world_rank_value(entry)
+    if world_rank_min is not None and isinstance(world_rank, int) and world_rank < world_rank_min:
+        return False
+    if world_rank_max is not None and isinstance(world_rank, int) and world_rank > world_rank_max:
+        return False
+    item_level = entry.get("item_level_average")
+    if item_level_min is not None and isinstance(item_level, (int, float)) and float(item_level) < item_level_min:
+        return False
+    if item_level_max is not None and isinstance(item_level, (int, float)) and float(item_level) > item_level_max:
+        return False
+    if encounter:
+        encounter_values = {
+            "-".join(part for part in re.split(r"[^a-z0-9]+", str(row.get("encounter") or "").strip().lower()) if part)
+            for row in (entry.get("encounters") if isinstance(entry.get("encounters"), list) else [])
+            if isinstance(row, dict)
+        }
+        if not any(value in encounter_values for value in encounter):
+            return False
+    return True
+
+
+def _filter_guild_profiles(
+    entries: list[dict[str, Any]],
+    *,
+    faction: list[str] | None,
+    difficulty: list[str] | None,
+    world_rank_min: int | None,
+    world_rank_max: int | None,
+    item_level_min: float | None,
+    item_level_max: float | None,
+    encounter: list[str] | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    normalized_faction = _normalize_slug_filters(faction)
+    normalized_difficulty = _normalize_slug_filters(difficulty)
+    normalized_encounter = _normalize_slug_filters(encounter)
+    filtered = [
+        entry
+        for entry in entries
+        if _guild_profile_matches_filters(
+            entry,
+            faction=normalized_faction,
+            difficulty=normalized_difficulty,
+            world_rank_min=world_rank_min,
+            world_rank_max=world_rank_max,
+            item_level_min=item_level_min,
+            item_level_max=item_level_max,
+            encounter=normalized_encounter,
+        )
+    ]
+    return filtered, {
+        "faction": normalized_faction,
+        "difficulty": normalized_difficulty,
+        "world_rank_min": world_rank_min,
+        "world_rank_max": world_rank_max,
+        "item_level_min": item_level_min,
+        "item_level_max": item_level_max,
+        "encounter": normalized_encounter,
+        "source_profile_count": len(entries),
+        "returned_profile_count": len(filtered),
+        "excluded_profile_count": len(entries) - len(filtered),
     }
 
 
@@ -479,7 +584,7 @@ def _distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: d
     }
 
 
-def _guild_profile_distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
+def _guild_profile_distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any], filtering: dict[str, Any] | None = None) -> dict[str, Any]:
     stats = None
     if metric == "faction":
         values = [str(entry.get("faction") or "unknown") for entry in entries]
@@ -523,7 +628,7 @@ def _guild_profile_distribution_payload(metric: str, entries: list[dict[str, Any
         "kind": "pve_guild_profiles_distribution",
         "metric": metric,
         "query": query,
-        "sample": _guild_profile_sample_summary(entries, meta=meta),
+        "sample": _guild_profile_sample_summary(entries, meta=meta, filtering=filtering),
         "distribution": {
             "unit": "guild_profiles" if metric != "encounter" else "encounters",
             "rows": _count_map(values),
@@ -561,7 +666,16 @@ def _nearest_guild_profile_rows(metric: str, target: float, entries: list[dict[s
     return rows[:limit]
 
 
-def _guild_profile_threshold_payload(metric: str, target: float, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any], nearest_limit: int) -> dict[str, Any]:
+def _guild_profile_threshold_payload(
+    metric: str,
+    target: float,
+    entries: list[dict[str, Any]],
+    *,
+    meta: dict[str, Any],
+    query: dict[str, Any],
+    nearest_limit: int,
+    filtering: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     nearest = _nearest_guild_profile_rows(metric, target, entries, limit=nearest_limit)
     if metric == "item_level_average":
         estimate_metric = "world_rank"
@@ -593,7 +707,7 @@ def _guild_profile_threshold_payload(metric: str, target: float, entries: list[d
         "metric": metric,
         "target": target,
         "query": query,
-        "sample": _guild_profile_sample_summary(entries, meta=meta),
+        "sample": _guild_profile_sample_summary(entries, meta=meta, filtering=filtering),
         "threshold": {
             "nearest_match_count": len(nearest),
             "nearest_matches": [
@@ -1153,6 +1267,13 @@ def sample_pve_guild_profiles(
     region: str = typer.Option(..., "--region", help="Region slug such as world, us, or eu."),
     realm: str | None = typer.Option(None, "--realm", help="Optional realm slug to narrow the PvE leaderboard."),
     limit: int = typer.Option(10, "--limit", min=1, max=25, help="Maximum top leaderboard guild profiles to fetch."),
+    faction: list[str] | None = typer.Option(None, "--faction", help="Retain only guild profiles matching the given faction. Repeatable."),
+    difficulty: list[str] | None = typer.Option(None, "--difficulty", help="Retain only guild profiles matching the given progression difficulty. Repeatable."),
+    world_rank_min: int | None = typer.Option(None, "--world-rank-min", min=1, help="Retain only guild profiles at or above this world rank."),
+    world_rank_max: int | None = typer.Option(None, "--world-rank-max", min=1, help="Retain only guild profiles at or below this world rank."),
+    item_level_min: float | None = typer.Option(None, "--item-level-min", help="Retain only guild profiles at or above this average item level."),
+    item_level_max: float | None = typer.Option(None, "--item-level-max", help="Retain only guild profiles at or below this average item level."),
+    encounter: list[str] | None = typer.Option(None, "--encounter", help="Retain only guild profiles containing the given encounter name. Repeatable."),
 ) -> None:
     try:
         with _client(ctx) as client:
@@ -1160,14 +1281,35 @@ def sample_pve_guild_profiles(
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return
+    entries, filtering = _filter_guild_profiles(
+        entries,
+        faction=faction,
+        difficulty=difficulty,
+        world_rank_min=world_rank_min,
+        world_rank_max=world_rank_max,
+        item_level_min=item_level_min,
+        item_level_max=item_level_max,
+        encounter=encounter,
+    )
     _emit(
         ctx,
         {
             "provider": "wowprogress",
             "kind": "pve_guild_profiles_sample",
-            "query": query,
+            "query": {
+                **query,
+                "filters": {
+                    "faction": filtering["faction"],
+                    "difficulty": filtering["difficulty"],
+                    "world_rank_min": filtering["world_rank_min"],
+                    "world_rank_max": filtering["world_rank_max"],
+                    "item_level_min": filtering["item_level_min"],
+                    "item_level_max": filtering["item_level_max"],
+                    "encounter": filtering["encounter"],
+                },
+            },
             "leaderboard": leaderboard,
-            "sample": _guild_profile_sample_summary(entries, meta=meta),
+            "sample": _guild_profile_sample_summary(entries, meta=meta, filtering=filtering),
             "guild_profiles": entries,
             "freshness": {
                 "sampled_at": meta["sampled_at"],
@@ -1187,6 +1329,13 @@ def distribution_pve_guild_profiles(
     region: str = typer.Option(..., "--region", help="Region slug such as world, us, or eu."),
     realm: str | None = typer.Option(None, "--realm", help="Optional realm slug to narrow the PvE leaderboard."),
     limit: int = typer.Option(10, "--limit", min=1, max=25, help="Maximum top leaderboard guild profiles to fetch."),
+    faction: list[str] | None = typer.Option(None, "--faction", help="Retain only guild profiles matching the given faction. Repeatable."),
+    difficulty: list[str] | None = typer.Option(None, "--difficulty", help="Retain only guild profiles matching the given progression difficulty. Repeatable."),
+    world_rank_min: int | None = typer.Option(None, "--world-rank-min", min=1, help="Retain only guild profiles at or above this world rank."),
+    world_rank_max: int | None = typer.Option(None, "--world-rank-max", min=1, help="Retain only guild profiles at or below this world rank."),
+    item_level_min: float | None = typer.Option(None, "--item-level-min", help="Retain only guild profiles at or above this average item level."),
+    item_level_max: float | None = typer.Option(None, "--item-level-max", help="Retain only guild profiles at or below this average item level."),
+    encounter: list[str] | None = typer.Option(None, "--encounter", help="Retain only guild profiles containing the given encounter name. Repeatable."),
 ) -> None:
     if metric not in {"progress", "faction", "item_level_average", "world_rank", "encounter"}:
         _fail(ctx, "invalid_query", "--metric must be one of: progress, faction, item_level_average, world_rank, encounter")
@@ -1197,13 +1346,35 @@ def distribution_pve_guild_profiles(
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return
+    entries, filtering = _filter_guild_profiles(
+        entries,
+        faction=faction,
+        difficulty=difficulty,
+        world_rank_min=world_rank_min,
+        world_rank_max=world_rank_max,
+        item_level_min=item_level_min,
+        item_level_max=item_level_max,
+        encounter=encounter,
+    )
     _emit(
         ctx,
         _guild_profile_distribution_payload(
             metric,
             entries,
             meta=meta,
-            query=query,
+            query={
+                **query,
+                "filters": {
+                    "faction": filtering["faction"],
+                    "difficulty": filtering["difficulty"],
+                    "world_rank_min": filtering["world_rank_min"],
+                    "world_rank_max": filtering["world_rank_max"],
+                    "item_level_min": filtering["item_level_min"],
+                    "item_level_max": filtering["item_level_max"],
+                    "encounter": filtering["encounter"],
+                },
+            },
+            filtering=filtering,
         ),
     )
 
@@ -1217,6 +1388,13 @@ def threshold_pve_guild_profiles(
     realm: str | None = typer.Option(None, "--realm", help="Optional realm slug to narrow the PvE leaderboard."),
     limit: int = typer.Option(10, "--limit", min=1, max=25, help="Maximum top leaderboard guild profiles to fetch."),
     nearest: int = typer.Option(5, "--nearest", min=1, max=25, help="Maximum nearby guild profiles to include in the threshold estimate."),
+    faction: list[str] | None = typer.Option(None, "--faction", help="Retain only guild profiles matching the given faction. Repeatable."),
+    difficulty: list[str] | None = typer.Option(None, "--difficulty", help="Retain only guild profiles matching the given progression difficulty. Repeatable."),
+    world_rank_min: int | None = typer.Option(None, "--world-rank-min", min=1, help="Retain only guild profiles at or above this world rank."),
+    world_rank_max: int | None = typer.Option(None, "--world-rank-max", min=1, help="Retain only guild profiles at or below this world rank."),
+    item_level_min: float | None = typer.Option(None, "--item-level-min", help="Retain only guild profiles at or above this average item level."),
+    item_level_max: float | None = typer.Option(None, "--item-level-max", help="Retain only guild profiles at or below this average item level."),
+    encounter: list[str] | None = typer.Option(None, "--encounter", help="Retain only guild profiles containing the given encounter name. Repeatable."),
 ) -> None:
     if metric not in {"world_rank", "item_level_average"}:
         _fail(ctx, "invalid_query", "--metric must be one of: world_rank, item_level_average")
@@ -1227,6 +1405,16 @@ def threshold_pve_guild_profiles(
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return
+    entries, filtering = _filter_guild_profiles(
+        entries,
+        faction=faction,
+        difficulty=difficulty,
+        world_rank_min=world_rank_min,
+        world_rank_max=world_rank_max,
+        item_level_min=item_level_min,
+        item_level_max=item_level_max,
+        encounter=encounter,
+    )
     _emit(
         ctx,
         _guild_profile_threshold_payload(
@@ -1234,8 +1422,20 @@ def threshold_pve_guild_profiles(
             value,
             entries,
             meta=meta,
-            query=query,
+            query={
+                **query,
+                "filters": {
+                    "faction": filtering["faction"],
+                    "difficulty": filtering["difficulty"],
+                    "world_rank_min": filtering["world_rank_min"],
+                    "world_rank_max": filtering["world_rank_max"],
+                    "item_level_min": filtering["item_level_min"],
+                    "item_level_max": filtering["item_level_max"],
+                    "encounter": filtering["encounter"],
+                },
+            },
             nearest_limit=nearest,
+            filtering=filtering,
         ),
     )
 

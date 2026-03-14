@@ -141,6 +141,20 @@ def test_live_wowprogress_sample_pve_guild_profiles_contract() -> None:
     assert payload["guild_profiles"][0]["item_level_average"] is not None
 
 
+def test_live_wowprogress_filtered_guild_profiles_contract() -> None:
+    require_live("WowProgress")
+    payload = payload_for_live(
+        runner,
+        app,
+        ["sample", "pve-guild-profiles", "--region", "us", "--limit", "5", "--difficulty", "m"],
+        provider_name="WowProgress",
+    )
+
+    assert payload["kind"] == "pve_guild_profiles_sample"
+    assert payload["query"]["filters"]["difficulty"] == ["m"]
+    assert payload["sample"]["filtering"]["source_profile_count"] >= payload["sample"]["filtering"]["returned_profile_count"]
+
+
 def test_live_wowprogress_distribution_pve_guild_profiles_contract() -> None:
     require_live("WowProgress")
     payload = payload_for_live(
