@@ -8,6 +8,12 @@ from typer.testing import CliRunner
 
 from wowhead_cli.main import (
     _exact_match_score,
+    _guide_comment_matches,
+    _guide_gatherer_matches,
+    _guide_linked_entity_matches,
+    _guide_navigation_matches,
+    _guide_query_top_matches,
+    _guide_section_matches,
     _is_filtered_high_confidence,
     _is_high_confidence_exact_match,
     _is_high_confidence_score,
@@ -1143,6 +1149,96 @@ def test_resolve_confidence_policy_helpers_cover_exact_filtered_and_medium_cases
 
     assert _is_medium_confidence_score(18, margin=4) is True
     assert _is_medium_confidence_score(17, margin=4) is False
+
+
+def test_guide_section_matches_applies_section_title_filter() -> None:
+    matches = _guide_section_matches(
+        sections=[
+            {"title": "Frost Death Knight Overview", "content_text": "Welcome to the guide.", "ordinal": 1, "level": 2},
+            {"title": "BiS Gear", "content_text": "Use high item level gear.", "ordinal": 2, "level": 2},
+        ],
+        query="welcome",
+        section_title_filter="overview",
+    )
+
+    assert len(matches) == 1
+    assert matches[0]["title"] == "Frost Death Knight Overview"
+
+
+def test_guide_linked_entity_matches_respects_source_filter() -> None:
+    matches = _guide_linked_entity_matches(
+        linked_entities=[
+            {
+                "entity_type": "item",
+                "id": 249277,
+                "name": "Bellamy's Final Judgement",
+                "url": "https://www.wowhead.com/item=249277",
+                "citation_url": "https://www.wowhead.com/guide=3143",
+                "sources": ["href", "gatherer"],
+            },
+            {
+                "entity_type": "spell",
+                "id": 49020,
+                "name": "Obliterate",
+                "url": "https://www.wowhead.com/spell=49020",
+                "citation_url": "https://www.wowhead.com/guide=3143",
+                "sources": ["href"],
+            },
+        ],
+        query="bellamy",
+        selected_link_sources=("multi",),
+    )
+
+    assert len(matches) == 1
+    assert matches[0]["name"] == "Bellamy's Final Judgement"
+    assert matches[0]["sources"] == ["gatherer", "href"]
+
+
+def test_guide_navigation_gatherer_and_comment_matches_build_expected_shapes() -> None:
+    navigation_matches = _guide_navigation_matches(
+        navigation_links=[{"label": "BiS Gear", "url": "https://www.wowhead.com/guide/bis", "source_url": None}],
+        query="bis",
+        page_url="https://www.wowhead.com/guide=3143",
+    )
+    assert navigation_matches[0]["kind"] == "navigation"
+    assert navigation_matches[0]["citation_url"] == "https://www.wowhead.com/guide=3143"
+
+    gatherer_matches = _guide_gatherer_matches(
+        gatherer_entities=[
+            {
+                "entity_type": "item",
+                "id": 249277,
+                "name": "Bellamy's Final Judgement",
+                "url": "https://www.wowhead.com/item=249277",
+                "citation_url": "https://www.wowhead.com/guide=3143",
+            }
+        ],
+        query="bellamy",
+    )
+    assert gatherer_matches[0]["kind"] == "gatherer_entity"
+
+    comment_matches = _guide_comment_matches(
+        comments=[{"id": 91, "user": "A", "body": "Solid guide", "citation_url": "https://www.wowhead.com/guide=3143#comments"}],
+        query="solid",
+    )
+    assert comment_matches[0]["kind"] == "comment"
+    assert comment_matches[0]["user"] == "A"
+
+
+def test_guide_query_top_matches_dedupes_entity_results_across_groups() -> None:
+    top = _guide_query_top_matches(
+        match_groups=[
+            [],
+            [],
+            [{"kind": "linked_entity", "score": 50, "entity_type": "spell", "id": 49020, "name": "Obliterate"}],
+            [{"kind": "gatherer_entity", "score": 48, "entity_type": "spell", "id": 49020, "name": "Obliterate"}],
+            [],
+        ],
+        limit=5,
+    )
+
+    assert len(top) == 1
+    assert top[0]["kind"] == "linked_entity"
 
 
 

@@ -1644,143 +1644,144 @@ def _guide_query_top_dedupe_key(row: dict[str, Any]) -> tuple[str, int] | None:
     return entity_type, entity_id
 
 
-def _guide_query_payload(
+def _guide_query_kind_enabled(selected_kinds: tuple[str, ...], value: str) -> bool:
+    if not selected_kinds:
+        return True
+    return value in selected_kinds
+
+
+def _guide_section_matches(
     *,
-    export_dir: Path,
-    corpus: dict[str, Any],
+    sections: list[Any],
     query: str,
-    selected_kinds: tuple[str, ...],
     section_title_filter: str | None,
+) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for row in sections:
+        if not isinstance(row, dict):
+            continue
+        title = row.get("title")
+        if section_title_filter and (not isinstance(title, str) or section_title_filter not in title.lower()):
+            continue
+        score = _score_text_match(query, row.get("title"), row.get("content_text"))
+        if score <= 0:
+            continue
+        matches.append(
+            {
+                "kind": "section",
+                "score": score + _score_text_match(query, row.get("title")),
+                "ordinal": row.get("ordinal"),
+                "level": row.get("level"),
+                "title": row.get("title"),
+                "preview": _truncate_preview(row.get("content_text") or ""),
+                "citation_url": None,
+            }
+        )
+    matches.sort(key=lambda row: (-row["score"], row.get("ordinal") or 0))
+    return matches
+
+
+def _guide_navigation_matches(*, navigation_links: list[Any], query: str, page_url: str | None) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for row in navigation_links:
+        if not isinstance(row, dict):
+            continue
+        score = _score_text_match(query, row.get("label"), row.get("url"))
+        if score <= 0:
+            continue
+        matches.append(
+            {
+                "kind": "navigation",
+                "score": score + _score_text_match(query, row.get("label")),
+                "label": row.get("label"),
+                "url": row.get("url"),
+                "citation_url": row.get("source_url") or page_url,
+            }
+        )
+    matches.sort(key=lambda row: (-row["score"], row.get("label") or ""))
+    return matches
+
+
+def _guide_linked_entity_matches(
+    *,
+    linked_entities: list[Any],
+    query: str,
     selected_link_sources: tuple[str, ...],
-    limit: int,
-) -> dict[str, Any]:
-    def kind_enabled(value: str) -> bool:
-        if not selected_kinds:
-            return True
-        return value in selected_kinds
+) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for row in linked_entities:
+        if not isinstance(row, dict):
+            continue
+        if not _linked_source_filter_matches(row, selected_sources=selected_link_sources):
+            continue
+        score = _linked_entity_query_score(row, query=query)
+        if score <= 0:
+            continue
+        matches.append(
+            {
+                "kind": "linked_entity",
+                "score": score,
+                "entity_type": row.get("entity_type"),
+                "id": row.get("id"),
+                "name": row.get("name"),
+                "url": row.get("url"),
+                "citation_url": row.get("citation_url"),
+                "sources": _link_source_kinds(row),
+            }
+        )
+    matches.sort(key=_guide_query_match_sort_key)
+    return matches
 
-    manifest = corpus["manifest"]
-    page = manifest.get("page") if isinstance(manifest, dict) else {}
-    guide = manifest.get("guide") if isinstance(manifest, dict) else {}
-    page_url = page.get("canonical_url") if isinstance(page, dict) else None
 
-    section_matches: list[dict[str, Any]] = []
-    if kind_enabled("sections"):
-        for row in corpus["sections"]:
-            if not isinstance(row, dict):
-                continue
-            title = row.get("title")
-            if section_title_filter and (
-                not isinstance(title, str) or section_title_filter not in title.lower()
-            ):
-                continue
-            score = _score_text_match(query, row.get("title"), row.get("content_text"))
-            if score <= 0:
-                continue
-            section_matches.append(
-                {
-                    "kind": "section",
-                    "score": score + _score_text_match(query, row.get("title")),
-                    "ordinal": row.get("ordinal"),
-                    "level": row.get("level"),
-                    "title": row.get("title"),
-                    "preview": _truncate_preview(row.get("content_text") or ""),
-                    "citation_url": page_url,
-                }
-            )
-    section_matches.sort(key=lambda row: (-row["score"], row.get("ordinal") or 0))
+def _guide_gatherer_matches(*, gatherer_entities: list[Any], query: str) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for row in gatherer_entities:
+        if not isinstance(row, dict):
+            continue
+        score = _score_text_match(query, row.get("name"), row.get("entity_type"), row.get("url"))
+        if score <= 0:
+            continue
+        matches.append(
+            {
+                "kind": "gatherer_entity",
+                "score": score + _score_text_match(query, row.get("name")),
+                "entity_type": row.get("entity_type"),
+                "id": row.get("id"),
+                "name": row.get("name"),
+                "url": row.get("url"),
+                "citation_url": row.get("citation_url"),
+            }
+        )
+    matches.sort(key=lambda row: (-row["score"], row.get("entity_type") or "", row.get("id") or 0))
+    return matches
 
-    navigation_matches: list[dict[str, Any]] = []
-    if kind_enabled("navigation"):
-        for row in corpus["navigation_links"]:
-            if not isinstance(row, dict):
-                continue
-            score = _score_text_match(query, row.get("label"), row.get("url"))
-            if score <= 0:
-                continue
-            navigation_matches.append(
-                {
-                    "kind": "navigation",
-                    "score": score + _score_text_match(query, row.get("label")),
-                    "label": row.get("label"),
-                    "url": row.get("url"),
-                    "citation_url": row.get("source_url") or page_url,
-                }
-            )
-    navigation_matches.sort(key=lambda row: (-row["score"], row.get("label") or ""))
 
-    linked_entity_matches: list[dict[str, Any]] = []
-    if kind_enabled("linked_entities"):
-        for row in corpus["linked_entities"]:
-            if not isinstance(row, dict):
-                continue
-            if not _linked_source_filter_matches(row, selected_sources=selected_link_sources):
-                continue
-            score = _linked_entity_query_score(row, query=query)
-            if score <= 0:
-                continue
-            linked_entity_matches.append(
-                {
-                    "kind": "linked_entity",
-                    "score": score,
-                    "entity_type": row.get("entity_type"),
-                    "id": row.get("id"),
-                    "name": row.get("name"),
-                    "url": row.get("url"),
-                    "citation_url": row.get("citation_url"),
-                    "sources": _link_source_kinds(row),
-                }
-            )
-    linked_entity_matches.sort(key=_guide_query_match_sort_key)
+def _guide_comment_matches(*, comments: list[Any], query: str) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for row in comments:
+        if not isinstance(row, dict):
+            continue
+        score = _score_text_match(query, row.get("user"), row.get("body"))
+        if score <= 0:
+            continue
+        matches.append(
+            {
+                "kind": "comment",
+                "score": score + _score_text_match(query, row.get("user")),
+                "id": row.get("id"),
+                "user": row.get("user"),
+                "preview": _truncate_preview(row.get("body") or ""),
+                "citation_url": row.get("citation_url"),
+            }
+        )
+    matches.sort(key=lambda row: (-row["score"], row.get("id") or 0))
+    return matches
 
-    gatherer_matches: list[dict[str, Any]] = []
-    if kind_enabled("gatherer_entities"):
-        for row in corpus["gatherer_entities"]:
-            if not isinstance(row, dict):
-                continue
-            score = _score_text_match(query, row.get("name"), row.get("entity_type"), row.get("url"))
-            if score <= 0:
-                continue
-            gatherer_matches.append(
-                {
-                    "kind": "gatherer_entity",
-                    "score": score + _score_text_match(query, row.get("name")),
-                    "entity_type": row.get("entity_type"),
-                    "id": row.get("id"),
-                    "name": row.get("name"),
-                    "url": row.get("url"),
-                    "citation_url": row.get("citation_url"),
-                }
-            )
-    gatherer_matches.sort(key=lambda row: (-row["score"], row.get("entity_type") or "", row.get("id") or 0))
 
-    comment_matches: list[dict[str, Any]] = []
-    if kind_enabled("comments"):
-        for row in corpus["comments"]:
-            if not isinstance(row, dict):
-                continue
-            score = _score_text_match(query, row.get("user"), row.get("body"))
-            if score <= 0:
-                continue
-            comment_matches.append(
-                {
-                    "kind": "comment",
-                    "score": score + _score_text_match(query, row.get("user")),
-                    "id": row.get("id"),
-                    "user": row.get("user"),
-                    "preview": _truncate_preview(row.get("body") or ""),
-                    "citation_url": row.get("citation_url"),
-                }
-            )
-    comment_matches.sort(key=lambda row: (-row["score"], row.get("id") or 0))
-
-    top_matches = (
-        section_matches[:limit]
-        + navigation_matches[:limit]
-        + linked_entity_matches[:limit]
-        + gatherer_matches[:limit]
-        + comment_matches[:limit]
-    )
+def _guide_query_top_matches(*, match_groups: list[list[dict[str, Any]]], limit: int) -> list[dict[str, Any]]:
+    top_matches: list[dict[str, Any]] = []
+    for group in match_groups:
+        top_matches.extend(group[:limit])
     top_matches.sort(key=_guide_query_match_sort_key)
     deduped_top_matches: list[dict[str, Any]] = []
     seen_top_keys: set[tuple[str, int]] = set()
@@ -1791,6 +1792,55 @@ def _guide_query_payload(
                 continue
             seen_top_keys.add(dedupe_key)
         deduped_top_matches.append(row)
+    return deduped_top_matches[:limit]
+
+
+def _guide_query_payload(
+    *,
+    export_dir: Path,
+    corpus: dict[str, Any],
+    query: str,
+    selected_kinds: tuple[str, ...],
+    section_title_filter: str | None,
+    selected_link_sources: tuple[str, ...],
+    limit: int,
+) -> dict[str, Any]:
+    manifest = corpus["manifest"]
+    page = manifest.get("page") if isinstance(manifest, dict) else {}
+    guide = manifest.get("guide") if isinstance(manifest, dict) else {}
+    page_url = page.get("canonical_url") if isinstance(page, dict) else None
+
+    section_matches = (
+        _guide_section_matches(sections=corpus["sections"], query=query, section_title_filter=section_title_filter)
+        if _guide_query_kind_enabled(selected_kinds, "sections")
+        else []
+    )
+    for row in section_matches:
+        row["citation_url"] = page_url
+    navigation_matches = (
+        _guide_navigation_matches(navigation_links=corpus["navigation_links"], query=query, page_url=page_url)
+        if _guide_query_kind_enabled(selected_kinds, "navigation")
+        else []
+    )
+    linked_entity_matches = (
+        _guide_linked_entity_matches(
+            linked_entities=corpus["linked_entities"],
+            query=query,
+            selected_link_sources=selected_link_sources,
+        )
+        if _guide_query_kind_enabled(selected_kinds, "linked_entities")
+        else []
+    )
+    gatherer_matches = (
+        _guide_gatherer_matches(gatherer_entities=corpus["gatherer_entities"], query=query)
+        if _guide_query_kind_enabled(selected_kinds, "gatherer_entities")
+        else []
+    )
+    comment_matches = (
+        _guide_comment_matches(comments=corpus["comments"], query=query)
+        if _guide_query_kind_enabled(selected_kinds, "comments")
+        else []
+    )
 
     return {
         "output_dir": str(export_dir),
@@ -1815,7 +1865,16 @@ def _guide_query_payload(
             "gatherer_entities": len(gatherer_matches),
             "comments": len(comment_matches),
         },
-        "top": deduped_top_matches[:limit],
+        "top": _guide_query_top_matches(
+            match_groups=[
+                section_matches,
+                navigation_matches,
+                linked_entity_matches,
+                gatherer_matches,
+                comment_matches,
+            ],
+            limit=limit,
+        ),
     }
 
 
