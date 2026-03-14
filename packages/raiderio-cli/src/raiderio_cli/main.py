@@ -9,6 +9,13 @@ import httpx
 import typer
 
 from raiderio_cli.client import RaiderIOClient, load_raiderio_cache_settings_from_env
+from warcraft_core.analytics import (
+    categorical_distribution as _categorical_distribution,
+    count_map as _count_map,
+    distribution_response as _distribution_response,
+    numeric_distribution as _numeric_distribution,
+    numeric_summary as _numeric_summary,
+)
 from warcraft_core.output import emit
 
 app = typer.Typer(add_completion=False, help="Raider.IO profile and leaderboard CLI.")
@@ -850,33 +857,6 @@ def _load_filtered_runs(
     return runs, meta, filtering
 
 
-def _count_map(values: list[str]) -> list[dict[str, Any]]:
-    counts: dict[str, int] = {}
-    for value in values:
-        counts[value] = counts.get(value, 0) + 1
-    total = sum(counts.values()) or 1
-    return [
-        {
-            "value": key,
-            "count": count,
-            "percent": round((count / total) * 100, 2),
-        }
-        for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-    ]
-
-
-def _numeric_summary(values: list[int | float]) -> dict[str, Any] | None:
-    if not values:
-        return None
-    sorted_values = sorted(values)
-    return {
-        "min": sorted_values[0],
-        "max": sorted_values[-1],
-        "average": round(sum(values) / len(values), 2),
-        "median": median(sorted_values),
-    }
-
-
 def _unique_player_keys(roster_entries: list[dict[str, Any]]) -> set[tuple[str, str, str]]:
     return {
         (
@@ -1083,46 +1063,6 @@ def _citations_payload(meta: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _numeric_distribution(values: list[int | float], *, unit: str) -> dict[str, Any]:
-    stats = None
-    if values:
-        stats = _numeric_summary(values)
-    return {
-        "unit": unit,
-        "rows": _count_map([str(value) for value in values]),
-        "statistics": stats,
-    }
-
-
-def _categorical_distribution(values: list[str], *, unit: str) -> dict[str, Any]:
-    return {
-        "unit": unit,
-        "rows": _count_map(values),
-        "statistics": None,
-    }
-
-
-def _distribution_response(
-    *,
-    kind: str,
-    metric: str,
-    query: dict[str, Any],
-    sample: dict[str, Any],
-    distribution: dict[str, Any],
-    meta: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "provider": "raiderio",
-        "kind": kind,
-        "metric": metric,
-        "query": query,
-        "sample": sample,
-        "distribution": distribution,
-        "freshness": _freshness_payload(meta),
-        "citations": _citations_payload(meta),
-    }
-
-
 def _run_distribution_values(metric: str, runs: list[dict[str, Any]]) -> tuple[list[int | float] | list[str], str, bool] | None:
     if metric == "mythic_level":
         return [int(run["mythic_level"]) for run in runs if isinstance(run.get("mythic_level"), int)], "runs", True
@@ -1203,6 +1143,7 @@ def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict
     sample = _sample_summary(runs, meta=meta)
     values, unit, numeric = _distribution_values(metric, runs)
     return _distribution_response(
+        provider="raiderio",
         kind="mythic_plus_runs_distribution",
         metric=metric,
         query=query,
@@ -1212,7 +1153,8 @@ def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict
             if numeric
             else _categorical_distribution(values, unit=unit)  # type: ignore[arg-type]
         ),
-        meta=meta,
+        freshness=_freshness_payload(meta),
+        citations=_citations_payload(meta),
     )
 
 
@@ -1234,12 +1176,14 @@ def _player_distribution_payload(
         else _categorical_distribution(values, unit=unit)  # type: ignore[arg-type]
     )
     return _distribution_response(
+        provider="raiderio",
         kind="mythic_plus_players_distribution",
         metric=metric,
         query=query,
         sample=sample,
         distribution=distribution,
-        meta=meta,
+        freshness=_freshness_payload(meta),
+        citations=_citations_payload(meta),
     )
 
 

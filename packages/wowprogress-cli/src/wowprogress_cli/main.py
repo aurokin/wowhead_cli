@@ -9,6 +9,13 @@ from typing import Any
 
 import typer
 
+from warcraft_core.analytics import (
+    categorical_distribution as _categorical_distribution,
+    count_map as _count_map,
+    distribution_response as _distribution_response,
+    numeric_distribution as _numeric_distribution,
+    numeric_summary as _numeric_summary,
+)
 from warcraft_core.output import emit
 from wowprogress_cli.client import DEFAULT_IMPERSONATE, WowProgressClient, WowProgressClientError, load_wowprogress_cache_settings_from_env
 
@@ -251,21 +258,6 @@ def _follow_up(kind: str, region: str, realm: str, name: str) -> dict[str, Any]:
     }
 
 
-def _count_map(values: list[str]) -> list[dict[str, Any]]:
-    counts: dict[str, int] = {}
-    for value in values:
-        counts[value] = counts.get(value, 0) + 1
-    total = sum(counts.values()) or 1
-    return [
-        {
-            "value": key,
-            "count": count,
-            "percent": round((count / total) * 100, 2),
-        }
-        for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-    ]
-
-
 def _progress_snapshot(value: str | None) -> dict[str, Any]:
     text = str(value or "").strip()
     match = re.match(r"(?P<killed>\d+)/(?P<total>\d+)(?:\s*\((?P<difficulty>[^)]+)\))?$", text)
@@ -466,35 +458,6 @@ def _normalized_encounter_values(entry: dict[str, Any]) -> set[str]:
     }
 
 
-def _categorical_distribution(values: list[str], *, unit: str) -> dict[str, Any]:
-    return {
-        "unit": unit,
-        "rows": _count_map(values),
-        "statistics": None,
-    }
-
-
-def _numeric_distribution(values: list[int | float], *, unit: str) -> dict[str, Any]:
-    rows = _count_map([str(value) for value in values])
-    return {
-        "unit": unit,
-        "rows": rows,
-        "statistics": _numeric_summary(values),
-    }
-
-
-def _numeric_summary(values: list[int | float]) -> dict[str, Any] | None:
-    if not values:
-        return None
-    sorted_values = sorted(values)
-    return {
-        "min": sorted_values[0],
-        "max": sorted_values[-1],
-        "average": round(sum(sorted_values) / len(sorted_values), 2),
-        "median": median(sorted_values),
-    }
-
-
 def _freshness_payload(meta: dict[str, Any]) -> dict[str, Any]:
     return {
         "sampled_at": meta["sampled_at"],
@@ -505,27 +468,6 @@ def _freshness_payload(meta: dict[str, Any]) -> dict[str, Any]:
 def _citations_payload(meta: dict[str, Any]) -> dict[str, Any]:
     return {
         "leaderboard_page": meta["page_url"],
-    }
-
-
-def _distribution_response(
-    *,
-    kind: str,
-    metric: str,
-    query: dict[str, Any],
-    sample: dict[str, Any],
-    distribution: dict[str, Any],
-    meta: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "provider": "wowprogress",
-        "kind": kind,
-        "metric": metric,
-        "query": query,
-        "sample": sample,
-        "distribution": distribution,
-        "freshness": _freshness_payload(meta),
-        "citations": _citations_payload(meta),
     }
 
 
@@ -628,12 +570,14 @@ def _distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: d
         values = [str(entry.get(field) or "unknown") for entry in entries]
         distribution = _categorical_distribution(values, unit="entries")
     return _distribution_response(
+        provider="wowprogress",
         kind="pve_leaderboard_distribution",
         metric=metric,
         query=query,
         sample=sample,
         distribution=distribution,
-        meta=meta,
+        freshness=_freshness_payload(meta),
+        citations=_citations_payload(meta),
     )
 
 
@@ -679,12 +623,14 @@ def _guild_profile_distribution_payload(metric: str, entries: list[dict[str, Any
         else _categorical_distribution(values, unit=unit)  # type: ignore[arg-type]
     )
     return _distribution_response(
+        provider="wowprogress",
         kind="pve_guild_profiles_distribution",
         metric=metric,
         query=query,
         sample=sample,
         distribution=distribution,
-        meta=meta,
+        freshness=_freshness_payload(meta),
+        citations=_citations_payload(meta),
     )
 
 
