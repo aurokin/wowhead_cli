@@ -548,9 +548,67 @@ def test_raiderio_sample_mythic_plus_players(monkeypatch) -> None:
     assert payload["kind"] == "mythic_plus_players_sample"
     assert payload["sample"]["player_count"] == 2
     assert payload["sample"]["appearance_count"]["max"] == 2
+    assert payload["sample"]["player_sampling"]["source_player_count"] == 2
+    assert payload["sample"]["player_sampling"]["truncated"] is False
     assert payload["players"][0]["name"] == "Cotti"
     assert payload["players"][0]["appearance_count"] == 2
     assert payload["players"][0]["top_mythic_level"] == 26
+
+
+def test_raiderio_sample_mythic_plus_players_reports_truncation(monkeypatch) -> None:
+    def fake_runs(self, *, season: str | None, region: str, dungeon: str, affixes: str | None, page: int):  # noqa: ANN001
+        return {
+            "season": "season-tww-3",
+            "leaderboard_url": "https://raider.io/mythic-plus-runs/season-tww-3/world/all/0",
+            "rankings": [
+                {
+                    "rank": 1,
+                    "score": 580.0,
+                    "run": {
+                        "keystone_run_id": 1001,
+                        "season": "season-tww-3",
+                        "mythic_level": 26,
+                        "completed_at": "2026-01-21T18:27:09.000Z",
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
+                        "roster": [
+                            {
+                                "character": {
+                                    "name": "Cotti",
+                                    "realm": {"slug": "tarren-mill"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Druid", "slug": "druid"},
+                                    "spec": {"name": "Balance", "slug": "balance"},
+                                    "path": "/characters/eu/tarren-mill/Cotti",
+                                },
+                                "role": "dps",
+                            },
+                            {
+                                "character": {
+                                    "name": "Meowtide",
+                                    "realm": {"slug": "sylvanas"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Shaman", "slug": "shaman"},
+                                    "spec": {"name": "Restoration", "slug": "restoration"},
+                                    "path": "/characters/eu/sylvanas/Meowtide",
+                                },
+                                "role": "healer",
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.mythic_plus_runs", fake_runs)
+    result = runner.invoke(raiderio_app, ["sample", "mythic-plus-players", "--player-limit", "1"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["sample"]["player_sampling"]["source_player_count"] == 2
+    assert payload["sample"]["player_sampling"]["returned_player_count"] == 1
+    assert payload["sample"]["player_sampling"]["truncated"] is True
+    assert payload["sample"]["player_sampling"]["excluded_player_count"] == 1
 
 
 def test_raiderio_distribution_mythic_plus_runs(monkeypatch) -> None:
@@ -745,6 +803,7 @@ def test_raiderio_distribution_mythic_plus_players(monkeypatch) -> None:
     assert payload["distribution"]["unit"] == "players"
     assert payload["distribution"]["statistics"]["max"] == 2
     assert payload["distribution"]["rows"][0]["value"] in {"1", "2"}
+    assert payload["sample"]["player_sampling"]["source_player_count"] == 2
 
     class_result = runner.invoke(raiderio_app, ["distribution", "mythic-plus-players", "--metric", "class"])
     assert class_result.exit_code == 0

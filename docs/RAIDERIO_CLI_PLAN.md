@@ -26,6 +26,7 @@ Current quality notes:
 - sampled run analytics now support explicit post-sample filters for level, score, roster role, class, spec, and player region
 - filtered outputs preserve source-run counts and excluded-run counts so narrower slices stay provenance-safe
 - deduped player snapshots now exist on top of sampled runs, so agents can work with participant-level appearance and class/spec slices instead of only raw run rows
+- player-snapshot analytics now report truncation explicitly when `--player-limit` cuts the deduped participant set
 - leaderboard, broader Mythic+ surfaces, and richer profile workflows are still later-phase work
 
 ## Next Quality Direction

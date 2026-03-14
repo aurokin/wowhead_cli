@@ -703,6 +703,49 @@ def _filtered_runs(
     }
 
 
+def _load_filtered_runs(
+    client: RaiderIOClient,
+    *,
+    season: str | None,
+    region: str,
+    dungeon: str,
+    affixes: str | None,
+    page: int,
+    pages: int,
+    limit: int,
+    level_min: int | None,
+    level_max: int | None,
+    score_min: float | None,
+    score_max: float | None,
+    contains_role: list[str] | None,
+    contains_class: list[str] | None,
+    contains_spec: list[str] | None,
+    player_region: list[str] | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    runs, meta = _sample_mythic_plus_runs(
+        client,
+        season=season,
+        region=region,
+        dungeon=dungeon,
+        affixes=affixes,
+        page=page,
+        pages=pages,
+        limit=limit,
+    )
+    runs, filtering = _filtered_runs(
+        runs,
+        level_min=level_min,
+        level_max=level_max,
+        score_min=score_min,
+        score_max=score_max,
+        contains_role=contains_role,
+        contains_class=contains_class,
+        contains_spec=contains_spec,
+        player_region=player_region,
+    )
+    return runs, meta, filtering
+
+
 def _count_map(values: list[str]) -> list[dict[str, Any]]:
     counts: dict[str, int] = {}
     for value in values:
@@ -850,7 +893,25 @@ def _player_snapshots(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return snapshots
 
 
-def _player_sample_summary(players: list[dict[str, Any]], *, runs: list[dict[str, Any]], meta: dict[str, Any], filtering: dict[str, Any]) -> dict[str, Any]:
+def _limit_player_snapshots(players: list[dict[str, Any]], *, player_limit: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    limited = players[:player_limit]
+    return limited, {
+        "source_player_count": len(players),
+        "returned_player_count": len(limited),
+        "truncated": len(players) > player_limit,
+        "excluded_player_count": max(0, len(players) - len(limited)),
+        "player_limit": player_limit,
+    }
+
+
+def _player_sample_summary(
+    players: list[dict[str, Any]],
+    *,
+    runs: list[dict[str, Any]],
+    meta: dict[str, Any],
+    filtering: dict[str, Any],
+    player_sampling: dict[str, Any],
+) -> dict[str, Any]:
     appearance_counts = [int(player["appearance_count"]) for player in players if isinstance(player.get("appearance_count"), int)]
     top_levels = [int(player["top_mythic_level"]) for player in players if isinstance(player.get("top_mythic_level"), int)]
     classes = sorted({value for player in players for value in (player.get("class_slugs") if isinstance(player.get("class_slugs"), list) else []) if value})
@@ -858,6 +919,7 @@ def _player_sample_summary(players: list[dict[str, Any]], *, runs: list[dict[str
     summary = {
         **_sample_summary(runs, meta=meta),
         "filtering": filtering,
+        "player_sampling": player_sampling,
         "player_count": len(players),
         "unique_class_count": len(classes),
         "unique_spec_count": len(specs),
@@ -987,6 +1049,7 @@ def _player_distribution_payload(
     meta: dict[str, Any],
     query: dict[str, Any],
     filtering: dict[str, Any],
+    player_sampling: dict[str, Any],
 ) -> dict[str, Any]:
     if metric == "appearance_count":
         values = [int(player["appearance_count"]) for player in players if isinstance(player.get("appearance_count"), int)]
@@ -1039,7 +1102,7 @@ def _player_distribution_payload(
         "kind": "mythic_plus_players_distribution",
         "metric": metric,
         "query": query,
-        "sample": _player_sample_summary(players, runs=runs, meta=meta, filtering=filtering),
+        "sample": _player_sample_summary(players, runs=runs, meta=meta, filtering=filtering, player_sampling=player_sampling),
         "distribution": {
             "unit": unit,
             "rows": rows,
@@ -1460,7 +1523,7 @@ def sample_mythic_plus_runs(
 ) -> None:
     try:
         with _client(ctx) as client:
-            runs, meta = _sample_mythic_plus_runs(
+            runs, meta, filtering = _load_filtered_runs(
                 client,
                 season=season or None,
                 region=region,
@@ -1469,21 +1532,18 @@ def sample_mythic_plus_runs(
                 page=page,
                 pages=pages,
                 limit=limit,
+                level_min=level_min,
+                level_max=level_max,
+                score_min=score_min,
+                score_max=score_max,
+                contains_role=contains_role,
+                contains_class=contains_class,
+                contains_spec=contains_spec,
+                player_region=player_region,
             )
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
         return
-    runs, filtering = _filtered_runs(
-        runs,
-        level_min=level_min,
-        level_max=level_max,
-        score_min=score_min,
-        score_max=score_max,
-        contains_role=contains_role,
-        contains_class=contains_class,
-        contains_spec=contains_spec,
-        player_region=player_region,
-    )
     query = {
         "season": meta.get("season") or season or None,
         "region": region,
@@ -1547,7 +1607,7 @@ def sample_mythic_plus_players(
 ) -> None:
     try:
         with _client(ctx) as client:
-            runs, meta = _sample_mythic_plus_runs(
+            runs, meta, filtering = _load_filtered_runs(
                 client,
                 season=season or None,
                 region=region,
@@ -1556,22 +1616,19 @@ def sample_mythic_plus_players(
                 page=page,
                 pages=pages,
                 limit=limit,
+                level_min=level_min,
+                level_max=level_max,
+                score_min=score_min,
+                score_max=score_max,
+                contains_role=contains_role,
+                contains_class=contains_class,
+                contains_spec=contains_spec,
+                player_region=player_region,
             )
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
         return
-    runs, filtering = _filtered_runs(
-        runs,
-        level_min=level_min,
-        level_max=level_max,
-        score_min=score_min,
-        score_max=score_max,
-        contains_role=contains_role,
-        contains_class=contains_class,
-        contains_spec=contains_spec,
-        player_region=player_region,
-    )
-    players = _player_snapshots(runs)[:player_limit]
+    players, player_sampling = _limit_player_snapshots(_player_snapshots(runs), player_limit=player_limit)
     query = {
         "season": meta.get("season") or season or None,
         "region": region,
@@ -1598,7 +1655,7 @@ def sample_mythic_plus_players(
             "provider": "raiderio",
             "kind": "mythic_plus_players_sample",
             "query": query,
-            "sample": _player_sample_summary(players, runs=runs, meta=meta, filtering=filtering),
+            "sample": _player_sample_summary(players, runs=runs, meta=meta, filtering=filtering, player_sampling=player_sampling),
             "players": players,
             "freshness": {
                 "sampled_at": meta["sampled_at"],
@@ -1636,7 +1693,7 @@ def distribution_mythic_plus_runs(
         return
     try:
         with _client(ctx) as client:
-            runs, meta = _sample_mythic_plus_runs(
+            runs, meta, filtering = _load_filtered_runs(
                 client,
                 season=season or None,
                 region=region,
@@ -1645,21 +1702,18 @@ def distribution_mythic_plus_runs(
                 page=page,
                 pages=pages,
                 limit=limit,
+                level_min=level_min,
+                level_max=level_max,
+                score_min=score_min,
+                score_max=score_max,
+                contains_role=contains_role,
+                contains_class=contains_class,
+                contains_spec=contains_spec,
+                player_region=player_region,
             )
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
         return
-    runs, filtering = _filtered_runs(
-        runs,
-        level_min=level_min,
-        level_max=level_max,
-        score_min=score_min,
-        score_max=score_max,
-        contains_role=contains_role,
-        contains_class=contains_class,
-        contains_spec=contains_spec,
-        player_region=player_region,
-    )
     query = {
         "season": meta.get("season") or season or None,
         "region": region,
@@ -1711,7 +1765,7 @@ def distribution_mythic_plus_players(
         return
     try:
         with _client(ctx) as client:
-            runs, meta = _sample_mythic_plus_runs(
+            runs, meta, filtering = _load_filtered_runs(
                 client,
                 season=season or None,
                 region=region,
@@ -1720,22 +1774,19 @@ def distribution_mythic_plus_players(
                 page=page,
                 pages=pages,
                 limit=limit,
+                level_min=level_min,
+                level_max=level_max,
+                score_min=score_min,
+                score_max=score_max,
+                contains_role=contains_role,
+                contains_class=contains_class,
+                contains_spec=contains_spec,
+                player_region=player_region,
             )
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
         return
-    runs, filtering = _filtered_runs(
-        runs,
-        level_min=level_min,
-        level_max=level_max,
-        score_min=score_min,
-        score_max=score_max,
-        contains_role=contains_role,
-        contains_class=contains_class,
-        contains_spec=contains_spec,
-        player_region=player_region,
-    )
-    players = _player_snapshots(runs)[:player_limit]
+    players, player_sampling = _limit_player_snapshots(_player_snapshots(runs), player_limit=player_limit)
     query = {
         "season": meta.get("season") or season or None,
         "region": region,
@@ -1756,7 +1807,18 @@ def distribution_mythic_plus_players(
             player_region=player_region,
         ),
     }
-    _emit(ctx, _player_distribution_payload(metric, players, runs=runs, meta=meta, query=query, filtering=filtering))
+    _emit(
+        ctx,
+        _player_distribution_payload(
+            metric,
+            players,
+            runs=runs,
+            meta=meta,
+            query=query,
+            filtering=filtering,
+            player_sampling=player_sampling,
+        ),
+    )
 
 
 @threshold_app.command("mythic-plus-runs")
@@ -1786,7 +1848,7 @@ def threshold_mythic_plus_runs(
         return
     try:
         with _client(ctx) as client:
-            runs, meta = _sample_mythic_plus_runs(
+            runs, meta, filtering = _load_filtered_runs(
                 client,
                 season=season or None,
                 region=region,
@@ -1795,21 +1857,18 @@ def threshold_mythic_plus_runs(
                 page=page,
                 pages=pages,
                 limit=limit,
+                level_min=level_min,
+                level_max=level_max,
+                score_min=score_min,
+                score_max=score_max,
+                contains_role=contains_role,
+                contains_class=contains_class,
+                contains_spec=contains_spec,
+                player_region=player_region,
             )
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
         return
-    runs, filtering = _filtered_runs(
-        runs,
-        level_min=level_min,
-        level_max=level_max,
-        score_min=score_min,
-        score_max=score_max,
-        contains_role=contains_role,
-        contains_class=contains_class,
-        contains_spec=contains_spec,
-        player_region=player_region,
-    )
     query = {
         "season": meta.get("season") or season or None,
         "region": region,

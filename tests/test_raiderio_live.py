@@ -87,6 +87,7 @@ def test_live_raiderio_sample_mythic_plus_players_contract() -> None:
     assert payload["kind"] == "mythic_plus_players_sample"
     assert payload["sample"]["run_count"] >= 1
     assert payload["sample"]["player_count"] >= 1
+    assert payload["sample"]["player_sampling"]["source_player_count"] >= payload["sample"]["player_sampling"]["returned_player_count"]
     assert len(payload["players"]) >= 1
 
 

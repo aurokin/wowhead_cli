@@ -303,6 +303,7 @@ Raider.IO phase-1 behavior:
   - top sampled run level
   - class/spec/role tags
   - dungeon coverage
+  - explicit player truncation metadata when `--player-limit` cuts the deduped participant set
 - `distribution mythic-plus-runs` derives distributions from the sampled run set and currently supports:
   - `mythic_level`
   - `dungeon`
@@ -323,6 +324,7 @@ Raider.IO phase-1 behavior:
   - sampled Mythic+ levels near a target run score
   - sampled run scores near a target Mythic+ level
 - filtered analytics preserve the original sampled run count and the excluded run count, so agents can see how thin a narrowed slice became
+- player-snapshot analytics also preserve source-player counts and truncation state, so partial participant views are explicit
 - threshold outputs are intentionally explicit that they are derived from sampled leaderboard runs, not direct player-rating guarantees
 - use the sample/distribution commands when agents need trustworthy building blocks for later reasoning, instead of treating Raider.IO as if it already answers higher-level analytics questions directly
 

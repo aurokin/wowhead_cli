@@ -22,6 +22,7 @@
 - use `threshold mythic-plus-runs` for sampled estimates around score or key level targets
 - treat the analytics outputs as sampled leaderboard-derived summaries, not authoritative universal truths
 - check the filtering counts when you narrow a slice so you do not over-trust a tiny sample
+- check player truncation metadata when you use `--player-limit`, so you know whether you are looking at the full deduped participant set
 
 ## Boundaries
 
