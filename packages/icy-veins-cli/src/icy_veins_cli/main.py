@@ -60,6 +60,118 @@ NEUTRAL_SLUG_TERMS = {
     "tank",
     "dps",
 }
+SPECIALIZED_QUERY_TERMS = {
+    "easy",
+    "mode",
+    "leveling",
+    "pvp",
+    "build",
+    "builds",
+    "talent",
+    "talents",
+    "rotation",
+    "cooldown",
+    "cooldowns",
+    "abilities",
+    "stats",
+    "gems",
+    "enchants",
+    "consumables",
+    "gear",
+    "bis",
+    "resources",
+    "mythic+",
+    "mythic",
+    "plus",
+    "macros",
+    "addons",
+    "ui",
+    "simulation",
+    "simulations",
+    "sim",
+    "raid",
+    "remix",
+    "torghast",
+    "expansion",
+    "midnight",
+}
+ROLE_QUERY_TERMS = {"healing", "tank", "dps"}
+SPECIALIZED_FAMILY_RULES: tuple[dict[str, Any], ...] = (
+    {"family": "easy_mode", "score": 28, "reason": "family_easy_mode", "all_terms": {"easy", "mode"}},
+    {"family": "leveling", "score": 24, "reason": "family_leveling", "all_terms": {"leveling"}},
+    {"family": "pvp", "score": 24, "reason": "family_pvp", "all_terms": {"pvp"}},
+    {
+        "family": "spec_builds_talents",
+        "score": 24,
+        "reason": "family_builds_talents",
+        "any_terms": {"build", "builds", "talent", "talents"},
+    },
+    {
+        "family": "rotation_guide",
+        "score": 24,
+        "reason": "family_rotation",
+        "any_terms": {"rotation", "cooldown", "cooldowns", "abilities"},
+    },
+    {
+        "family": "stat_priority",
+        "score": 24,
+        "reason": "family_stat_priority",
+        "phrases": (" stat priority ", " stats "),
+    },
+    {
+        "family": "gems_enchants_consumables",
+        "score": 24,
+        "reason": "family_gems_enchants",
+        "any_terms": {"gems", "enchants", "consumables"},
+    },
+    {
+        "family": "gear_best_in_slot",
+        "score": 24,
+        "reason": "family_gear",
+        "any_terms": {"gear", "bis"},
+        "phrases": (" best in slot ",),
+    },
+    {
+        "family": "spell_summary",
+        "score": 24,
+        "reason": "family_spell_summary",
+        "phrases": (" spell summary ", " spell list ", " glossary "),
+    },
+    {"family": "resources", "score": 18, "reason": "family_resources", "all_terms": {"resources"}},
+    {
+        "family": "mythic_plus_tips",
+        "score": 18,
+        "reason": "family_mythic_plus",
+        "phrases": ("mythic+", " mythic plus "),
+    },
+    {
+        "family": "macros_addons",
+        "score": 18,
+        "reason": "family_macros_addons",
+        "any_terms": {"macros", "addons", "ui"},
+        "phrases": ("add-ons",),
+    },
+    {
+        "family": "simulations",
+        "score": 18,
+        "reason": "family_simulations",
+        "any_terms": {"simulation", "simulations", "sim"},
+    },
+    {"family": "raid_guide", "score": 18, "reason": "family_raid_guide", "all_terms": {"raid"}},
+    {
+        "family": "expansion_guide",
+        "score": 18,
+        "reason": "family_expansion_guide",
+        "any_terms": {"expansion"},
+        "phrases": (" war within ", " midnight "),
+    },
+    {
+        "family": "special_event_guide",
+        "score": 18,
+        "reason": "family_special_event",
+        "any_terms": {"remix", "torghast"},
+    },
+)
 
 
 @dataclass(slots=True)
@@ -114,103 +226,55 @@ def _unsupported_scope_hint(query: str) -> dict[str, Any] | None:
     return None
 
 
-def _score_family_match(query: str, *, content_family: str | None) -> tuple[int, list[str]]:
-    if not query or not content_family:
-        return 0, []
+def _score_broad_family_match(content_family: str, *, terms: set[str]) -> tuple[int, list[str]]:
+    if content_family == "class_hub" and len(terms) == 1 and not (terms & SPECIALIZED_QUERY_TERMS):
+        return 18, ["family_class_hub"]
+    if content_family == "role_guide" and len(terms) == 1 and (ROLE_QUERY_TERMS & terms):
+        return 18, ["family_role_guide"]
+    return 0, []
+
+
+def _specialized_family_rule_matches(
+    rule: dict[str, Any],
+    *,
+    content_family: str,
+    terms: set[str],
+    joined: str,
+    lowered_query: str,
+) -> bool:
+    if content_family != rule["family"]:
+        return False
+    all_terms = rule.get("all_terms")
+    if all_terms and not set(all_terms) <= terms:
+        return False
+    any_terms = set(rule.get("any_terms") or ())
+    phrase_matches = any(phrase in joined or phrase in lowered_query for phrase in tuple(rule.get("phrases") or ()))
+    if any_terms or rule.get("phrases"):
+        return bool(any_terms & terms) or phrase_matches
+    return True
+
+
+def _score_specialized_family_match(query: str, content_family: str, *, terms: set[str], joined: str) -> tuple[int, list[str]]:
     score = 0
     reasons: list[str] = []
-    terms = _query_terms(query)
-    joined = f" {query.lower()} "
-    specialized_terms = {
-        "easy",
-        "mode",
-        "leveling",
-        "pvp",
-        "build",
-        "builds",
-        "talent",
-        "talents",
-        "rotation",
-        "cooldown",
-        "cooldowns",
-        "abilities",
-        "stats",
-        "gems",
-        "enchants",
-        "consumables",
-        "gear",
-        "bis",
-        "resources",
-        "mythic+",
-        "mythic",
-        "plus",
-        "macros",
-        "addons",
-        "ui",
-        "simulation",
-        "simulations",
-        "sim",
-        "raid",
-        "remix",
-        "torghast",
-        "expansion",
-        "midnight",
-    }
-    if content_family == "class_hub" and len(terms) == 1 and not (terms & specialized_terms):
-        score += 18
-        reasons.append("family_class_hub")
-    if content_family == "role_guide" and len(terms) == 1 and ({"healing", "tank", "dps"} & terms):
-        score += 18
-        reasons.append("family_role_guide")
-    if "easy" in terms and "mode" in terms and content_family == "easy_mode":
-        score += 28
-        reasons.append("family_easy_mode")
-    if "leveling" in terms and content_family == "leveling":
-        score += 24
-        reasons.append("family_leveling")
-    if "pvp" in terms and content_family == "pvp":
-        score += 24
-        reasons.append("family_pvp")
-    if content_family == "spec_builds_talents" and ({"build", "builds", "talent", "talents"} & terms):
-        score += 24
-        reasons.append("family_builds_talents")
-    if content_family == "rotation_guide" and ({"rotation", "cooldown", "cooldowns", "abilities"} & terms):
-        score += 24
-        reasons.append("family_rotation")
-    if content_family == "stat_priority" and (" stat priority " in joined or " stats " in joined):
-        score += 24
-        reasons.append("family_stat_priority")
-    if content_family == "gems_enchants_consumables" and ({"gems", "enchants", "consumables"} & terms):
-        score += 24
-        reasons.append("family_gems_enchants")
-    if content_family == "gear_best_in_slot" and ({"gear", "bis"} & terms or " best in slot " in joined):
-        score += 24
-        reasons.append("family_gear")
-    if content_family == "spell_summary" and (" spell summary " in joined or " spell list " in joined or " glossary " in joined):
-        score += 24
-        reasons.append("family_spell_summary")
-    if content_family == "resources" and "resources" in terms:
-        score += 18
-        reasons.append("family_resources")
-    if content_family == "mythic_plus_tips" and ("mythic+" in joined or " mythic plus " in joined):
-        score += 18
-        reasons.append("family_mythic_plus")
-    if content_family == "macros_addons" and ({"macros", "addons", "ui"} & terms or "add-ons" in query.lower()):
-        score += 18
-        reasons.append("family_macros_addons")
-    if content_family == "simulations" and ({"simulation", "simulations", "sim"} & terms):
-        score += 18
-        reasons.append("family_simulations")
-    if content_family == "raid_guide" and "raid" in terms:
-        score += 18
-        reasons.append("family_raid_guide")
-    if content_family == "expansion_guide" and (" war within " in joined or " midnight " in joined or " expansion " in terms):
-        score += 18
-        reasons.append("family_expansion_guide")
-    if content_family == "special_event_guide" and ({"remix", "torghast"} & terms):
-        score += 18
-        reasons.append("family_special_event")
-    if content_family in {"class_hub", "role_guide"} and (terms & specialized_terms):
+    lowered_query = query.lower()
+    for rule in SPECIALIZED_FAMILY_RULES:
+        if _specialized_family_rule_matches(
+            rule,
+            content_family=content_family,
+            terms=terms,
+            joined=joined,
+            lowered_query=lowered_query,
+        ):
+            score += int(rule["score"])
+            reasons.append(str(rule["reason"]))
+    return score, reasons
+
+
+def _score_family_penalties(content_family: str, *, terms: set[str], joined: str) -> tuple[int, list[str]]:
+    score = 0
+    reasons: list[str] = []
+    if content_family in {"class_hub", "role_guide"} and (terms & SPECIALIZED_QUERY_TERMS):
         score -= 14
         reasons.append("penalty_broad_hub")
     if content_family == "raid_guide" and "raid" not in terms:
@@ -221,6 +285,23 @@ def _score_family_match(query: str, *, content_family: str | None) -> tuple[int,
     ):
         score -= 10
         reasons.append("penalty_specialized_variant")
+    return score, reasons
+
+
+def _score_family_match(query: str, *, content_family: str | None) -> tuple[int, list[str]]:
+    if not query or not content_family:
+        return 0, []
+    terms = _query_terms(query)
+    joined = f" {query.lower()} "
+    score = 0
+    reasons: list[str] = []
+    for family_score, family_reasons in (
+        _score_broad_family_match(content_family, terms=terms),
+        _score_specialized_family_match(query, content_family, terms=terms, joined=joined),
+        _score_family_penalties(content_family, terms=terms, joined=joined),
+    ):
+        score += family_score
+        reasons.extend(family_reasons)
     return score, reasons
 
 

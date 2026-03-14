@@ -27,6 +27,15 @@ app = typer.Typer(add_completion=False, help="Warcraft Wiki reference CLI.")
 
 API_REFERENCE_FAMILIES = {"api_function", "framework_page", "xml_schema", "cvar", "api_changes"}
 EVENT_REFERENCE_FAMILIES = {"ui_handler", "framework_page"}
+PROGRAMMING_REFERENCE_FAMILIES = {"api_function", "ui_handler", "framework_page", "xml_schema", "cvar", "api_changes", "howto_programming"}
+SYSTEM_REFERENCE_FAMILIES = {
+    "system_reference",
+    "expansion_reference",
+    "profession_reference",
+    "class_reference",
+    "faction_reference",
+    "zone_reference",
+}
 
 QUERY_FAMILY_HINT_TERMS = {
     "article",
@@ -123,15 +132,35 @@ def _query_intents(query: str) -> set[str]:
     return intents
 
 
-def _score_text_match(original_query: str, query: str, title: str, snippet: str, *, ordinal: int) -> tuple[int, list[str], str]:
-    haystack = f"{title.lower()} {snippet.lower()}".strip()
-    family = classify_article_family(title)
-    score = max(0, 40 - ordinal * 2)
-    reasons: list[str] = []
-    intents = _query_intents(original_query)
+def _title_match_score(query: str, title: str, snippet: str, *, family: str) -> tuple[int, list[str]]:
     normalized_query = _collapsed_text(query)
     normalized_title = _collapsed_text(title)
-    if title.lower() == query:
+    lowered_title = title.lower()
+    lowered_snippet = snippet.lower()
+    score = 0
+    reasons: list[str] = []
+
+    for part_score, part_reasons in (
+        _exact_title_score(query, normalized_query, lowered_title, normalized_title, family=family),
+        _term_match_score(query, lowered_title, lowered_snippet, family=family),
+    ):
+        score += part_score
+        reasons.extend(part_reasons)
+    return score, reasons
+
+
+def _exact_title_score(
+    query: str,
+    normalized_query: str,
+    lowered_title: str,
+    normalized_title: str,
+    *,
+    family: str,
+) -> tuple[int, list[str]]:
+    score = 0
+    reasons: list[str] = []
+
+    if lowered_title == query:
         score += 50
         reasons.append("exact_title")
     if family == "api_function" and normalized_title == f"api{normalized_query}":
@@ -140,29 +169,43 @@ def _score_text_match(original_query: str, query: str, title: str, snippet: str,
     if family == "ui_handler" and normalized_title == f"uihandler{normalized_query}":
         score += 40
         reasons.append("exact_handler_title")
-    if title.lower().startswith(query):
+    if lowered_title.startswith(query):
         score += 20
         reasons.append("title_prefix")
-    if query in title.lower():
+    if query in lowered_title:
         score += 12
         reasons.append("title_contains_query")
     if normalized_query and normalized_query in normalized_title:
         score += 10
         reasons.append("normalized_title_match")
+    return score, reasons
+
+
+def _term_match_score(query: str, lowered_title: str, lowered_snippet: str, *, family: str) -> tuple[int, list[str]]:
+    score = 0
+    reasons: list[str] = []
     terms = [term for term in query.split() if term]
+    haystack = f"{lowered_title} {lowered_snippet}".strip()
     if terms and all(term in haystack for term in terms):
         score += 10
         reasons.append("all_terms_match")
-    if terms and all(term in title.lower() for term in terms) and family in {"howto_programming", "guide_reference"}:
+    if terms and all(term in lowered_title for term in terms) and family in {"howto_programming", "guide_reference"}:
         score += 36
         reasons.append("guide_title_terms")
-    if snippet and any(term in snippet.lower() for term in terms):
+    if lowered_snippet and any(term in lowered_snippet for term in terms):
         score += 4
         reasons.append("snippet_match")
-    if "programming" in intents and family in {"api_function", "ui_handler", "framework_page", "xml_schema", "cvar", "api_changes", "howto_programming"}:
+    return score, reasons
+
+
+def _intent_family_score(original_query: str, *, family: str) -> tuple[int, list[str]]:
+    intents = _query_intents(original_query)
+    score = 0
+    reasons: list[str] = []
+    if "programming" in intents and family in PROGRAMMING_REFERENCE_FAMILIES:
         score += 20
         reasons.append("intent_programming")
-    if "systems" in intents and family in {"system_reference", "expansion_reference", "profession_reference", "class_reference", "faction_reference", "zone_reference"}:
+    if "systems" in intents and family in SYSTEM_REFERENCE_FAMILIES:
         score += 18
         reasons.append("intent_systems")
     if "patch" in intents and family in {"patch_reference", "api_changes"}:
@@ -171,6 +214,13 @@ def _score_text_match(original_query: str, query: str, title: str, snippet: str,
     if "lore" in intents and family == "lore_reference":
         score += 16
         reasons.append("intent_lore")
+    return score, reasons
+
+
+def _family_baseline_score(query: str, title: str, *, family: str) -> tuple[int, list[str]]:
+    score = 0
+    reasons: list[str] = []
+    lowered_title = title.lower()
     if family == "api_function":
         score += 8
         reasons.append("family_api_function")
@@ -188,11 +238,26 @@ def _score_text_match(original_query: str, query: str, title: str, snippet: str,
     }:
         score += 4
         reasons.append(f"family_{family}")
-    if family == "expansion_reference" and title.lower().startswith("world of warcraft:"):
-        suffix = title.lower().split(":", 1)[1].strip()
+
+    if family == "expansion_reference" and lowered_title.startswith("world of warcraft:"):
+        suffix = lowered_title.split(":", 1)[1].strip()
         if query == suffix:
             score += 24
             reasons.append("expansion_alias_match")
+    return score, reasons
+
+
+def _score_text_match(original_query: str, query: str, title: str, snippet: str, *, ordinal: int) -> tuple[int, list[str], str]:
+    family = classify_article_family(title)
+    score = max(0, 40 - ordinal * 2)
+    reasons: list[str] = []
+    for part_score, part_reasons in (
+        _title_match_score(query, title, snippet, family=family),
+        _intent_family_score(original_query, family=family),
+        _family_baseline_score(query, title, family=family),
+    ):
+        score += part_score
+        reasons.extend(part_reasons)
     return score, reasons, family
 
 

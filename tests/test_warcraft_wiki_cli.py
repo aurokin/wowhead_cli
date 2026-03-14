@@ -4,7 +4,7 @@ import json
 
 from typer.testing import CliRunner
 
-from warcraft_wiki_cli.main import app as warcraft_wiki_app
+from warcraft_wiki_cli.main import _score_text_match, app as warcraft_wiki_app
 
 runner = CliRunner()
 
@@ -155,6 +155,35 @@ def test_warcraft_wiki_search_and_resolve(monkeypatch) -> None:
     resolve_payload = json.loads(resolve_result.stdout)
     assert resolve_payload["resolved"] is True
     assert resolve_payload["next_command"] == "warcraft-wiki article 'World of Warcraft API'"
+
+
+def test_warcraft_wiki_score_text_match_boosts_programming_pages() -> None:
+    score, reasons, family = _score_text_match(
+        "API CreateFrame",
+        "createframe",
+        "API CreateFrame",
+        "Creates a Frame object.",
+        ordinal=0,
+    )
+
+    assert family == "api_function"
+    assert "exact_api_title" in reasons
+    assert "intent_programming" in reasons
+    assert score >= 100
+
+
+def test_warcraft_wiki_score_text_match_handles_expansion_alias() -> None:
+    score, reasons, family = _score_text_match(
+        "expansion Legion",
+        "legion",
+        "World of Warcraft: Legion",
+        "Expansion overview.",
+        ordinal=0,
+    )
+
+    assert family == "expansion_reference"
+    assert "expansion_alias_match" in reasons
+    assert "intent_systems" in reasons
 
 
 def test_warcraft_wiki_article_and_export(monkeypatch, tmp_path) -> None:

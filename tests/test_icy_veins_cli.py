@@ -5,7 +5,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from icy_veins_cli.main import app
+from icy_veins_cli.main import _score_family_match, app
 from icy_veins_cli.page_parser import classify_guide_slug, parse_guide_page, parse_sitemap_guides
 
 runner = CliRunner()
@@ -364,6 +364,23 @@ def test_classify_guide_slug_distinguishes_supported_families() -> None:
     assert classify_guide_slug("mistweaver-monk-the-war-within-pve-guide") == "expansion_guide"
     assert classify_guide_slug("mistweaver-monk-mists-of-pandaria-remix-guide") == "special_event_guide"
     assert classify_guide_slug("news-roundup") is None
+
+
+def test_score_family_match_boosts_broad_and_specialized_families() -> None:
+    class_score, class_reasons = _score_family_match("monk", content_family="class_hub")
+    easy_score, easy_reasons = _score_family_match("fury warrior easy mode", content_family="easy_mode")
+
+    assert class_score == 18
+    assert class_reasons == ["family_class_hub"]
+    assert easy_score >= 28
+    assert "family_easy_mode" in easy_reasons
+
+
+def test_score_family_match_penalizes_broad_hubs_for_specialized_queries() -> None:
+    score, reasons = _score_family_match("monk leveling", content_family="class_hub")
+
+    assert score == -14
+    assert reasons == ["penalty_broad_hub"]
 
 
 def test_icy_veins_search_command_uses_sitemap_guides(monkeypatch) -> None:
