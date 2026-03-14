@@ -85,6 +85,7 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 34. `guides <category>` also supports stable guide-list metadata filters such as author, updated window, patch range, and explicit sort controls. Prefer those over manually scanning long guide lists.
 35. `talent-calc` and `profession-tree` are the first Wowhead tool decoders. They normalize the cited state URL and extract reliable route state like class/spec/build code or profession/loadout code.
 36. `dressing-room` and `profiler` are currently state inspectors, not full decoders. Use them for normalized share refs and citations, but do not claim they fully decode appearance payloads or profile contents yet.
+37. Treat deeper `dressing-room` / `profiler` decoding as a maintainability boundary. Do not drift into client-state reverse-engineering without an explicit product decision and a concrete workflow that justifies the complexity.
 
 ## Required Usage Rules
 

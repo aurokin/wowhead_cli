@@ -52,7 +52,7 @@ Active next step:
 - for `wowhead`, prioritize:
   - expand guide-category discovery beyond the first listing slice
   - deepen `news` and `blue-tracker` beyond the first timeline listing slice
-  - deepen tool decoding, especially for `dressing-room` and `profiler`
+  - stop tool work at stable `dressing-room` / `profiler` state inspection unless a later product decision justifies deeper reverse-engineering
   - revisit database-family browse/filter commands only if a concrete bulk browse/filter workflow needs them
 
 ## Planning Documents

@@ -220,10 +220,17 @@ Current tool state:
   - it normalizes `list=` refs and extracts obvious list/region/realm/name parts
   - it does not yet decode the underlying profile/list contents
 
+Maintainability boundary:
+- stop at stable route-state inspection for `dressing-room` and `profiler`
+- do not reverse-engineer opaque client-side state payloads just because the URLs exist
+- deeper decoding here is no longer straightforward HTML or embedded-JSON extraction; it is a separate reverse-engineering project
+- that work should only start with an explicit product decision and a concrete user workflow that justifies the complexity
+- until then, keep these commands as reliable citation/state inspectors rather than fragile pseudo-decoders
+
 The right implementation order is:
 1. expand guide-category discovery beyond the first listing slice
 2. add article/thread fetch for `news` and `blue-tracker`
-3. deepen tool decoding, especially for `dressing-room` and `profiler`
+3. stop tool work at the maintainability boundary for `dressing-room` and `profiler` unless a later product decision reopens it
 4. revisit database browse/filter commands only when a concrete browse/filter workflow justifies them
 
 ## Search And Resolve Boundary
