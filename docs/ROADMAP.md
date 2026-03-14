@@ -43,11 +43,17 @@ Validated shared so far:
 
 Active next step:
 - continue improving existing providers and wrapper discovery quality
+- do a deeper `wowhead` quality and feature pass so the most mature provider also becomes the most complete one
 - tighten `method` until its supported scope, reliability, and test coverage are strong enough to treat it as fully covered
 - tighten `icy-veins` until its supported families, traversal rules, reliability, and test coverage are strong enough to treat it as fully covered
 - add conservative wrapper-level expansion filtering so agents can trust version-scoped results
 - build reusable analytics systems for profile and leaderboard providers instead of one-off answer commands
 - focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
+- for `wowhead`, prioritize:
+  - database-family browse/filter commands
+  - expand guide-category discovery beyond the first listing slice
+  - deepen `news` and `blue-tracker` beyond the first timeline listing slice
+  - tool decoders for talent/profession/dressing-room/profiler surfaces
 
 ## Planning Documents
 

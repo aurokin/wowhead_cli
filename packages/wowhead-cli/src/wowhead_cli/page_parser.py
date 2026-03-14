@@ -7,25 +7,9 @@ from html import unescape
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
+from wowhead_cli.entity_types import PARSER_ENTITY_TYPES
 from wowhead_cli.expansion_profiles import list_profiles
 from wowhead_cli.wowhead_client import WOWHEAD_BASE_URL, entity_url
-
-ENTITY_TYPES = {
-    "achievement",
-    "battle-pet",
-    "currency",
-    "faction",
-    "item",
-    "mount",
-    "npc",
-    "object",
-    "pet",
-    "quest",
-    "recipe",
-    "spell",
-    "transmog-set",
-    "zone",
-}
 
 GATHERER_TYPE_TO_ENTITY: dict[int, str] = {
     1: "npc",
@@ -124,6 +108,33 @@ def extract_json_script(html_text: str, script_id: str) -> Any:
     if match is None:
         raise ValueError(f"Script for {script_id!r} not found.")
     return json.loads(match.group("body").strip())
+
+
+def extract_listview_data(html_text: str, listview_id: str) -> list[dict[str, Any]]:
+    marker = "new Listview("
+    id_marker = f'"id":"{listview_id}"'
+    start = 0
+    while True:
+        index = html_text.find(marker, start)
+        if index < 0:
+            raise ValueError(f"Listview for {listview_id!r} not found.")
+        object_start = html_text.find("{", index)
+        if object_start < 0:
+            raise ValueError(f"Listview object for {listview_id!r} not found.")
+        window = html_text[object_start : object_start + 4096]
+        if id_marker not in window:
+            start = index + len(marker)
+            continue
+        data_index = html_text.find('"data":', object_start)
+        if data_index < 0:
+            raise ValueError(f"Listview data array for {listview_id!r} not found.")
+        array_start = html_text.find("[", data_index)
+        if array_start < 0:
+            raise ValueError(f"Listview data array for {listview_id!r} not found.")
+        parsed, _offset = JSON_DECODER.raw_decode(html_text[array_start:])
+        if not isinstance(parsed, list):
+            raise ValueError(f"Listview data array for {listview_id!r} was not a JSON list.")
+        return [row for row in parsed if isinstance(row, dict)]
 
 
 def extract_json_ld(html_text: str) -> dict[str, Any] | list[Any] | None:
@@ -513,7 +524,7 @@ def _parse_entity_ref(href: str) -> tuple[str, int, str] | None:
     if match is None:
         return None
     entity_type = match.group("etype")
-    if entity_type not in ENTITY_TYPES:
+    if entity_type not in PARSER_ENTITY_TYPES:
         return None
     entity_id = int(match.group("eid"))
     path_parts = [part for part in parsed.path.split("/") if part]

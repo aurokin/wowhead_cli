@@ -14,6 +14,162 @@ It should keep its current command surface stable while shared infrastructure is
 - cache layers and cache inspection
 - search and resolve patterns
 
+## Current Surface
+
+Implemented now:
+- `search`
+- `resolve`
+- `news`
+- `blue-tracker`
+- `guides <category>`
+- `entity`
+- `entity-page`
+- `comments`
+- `compare`
+- `guide`
+- `guide-full`
+- `guide-export`
+- `guide-query`
+- `guide-bundle-*`
+- `cache-inspect`
+- `cache-clear`
+- `cache-repair`
+- `expansions`
+
+This is strong for:
+- direct entity lookup
+- direct guide lookup
+- comment extraction
+- linked-entity traversal
+- local guide bundle workflows
+
+It is still weak or missing for:
+- database-family browsing and filtering
+- Wowhead tool surfaces
+- deeper guide category coverage beyond the first listing surface
+- timeline article or thread fetch beyond listing/detail summaries
+
+## Quality Review Findings
+
+The current `wowhead` CLI is more mature than the other providers, but the review surfaced several meaningful gaps:
+
+- the CLI is still centered on direct entity pages and direct guide fetches, while live Wowhead also exposes first-class database browsing and filtering
+- tool surfaces like Talent Calculator, Profession Tree Calculator, Dressing Room, and Profiler are not represented in the CLI at all
+- guide support is strong for direct guide IDs and URLs, but category/index discovery like `guides/classes`, `guides/professions`, and `guides/raids` is not modeled
+- there is no dedicated support for Wowhead `news` or `blue-tracker`
+- Wowhead type support is spread across multiple registries, and they are already drifting
+
+The type-registry drift was the most important structural issue to fix before adding more Wowhead features:
+- search suggestions map type `112` to `companion`
+- but `companion` is not consistently supported across entity parsing, hydrate support, search hints, and resolve filters
+
+That is now refactored into one canonical internal type registry before adding more database families.
+
+## News And Blue Tracker
+
+Live Wowhead currently exposes:
+- `https://www.wowhead.com/news`
+- `https://www.wowhead.com/blue-tracker`
+
+Current CLI state:
+- there is now an explicit `news` command
+- there is now an explicit `blue-tracker` command
+- both commands support topic filtering plus bounded date-window scans
+- generic `search` / `resolve` are still not a reliable substitute for those surfaces
+
+That means the trustworthy contract now covers common requests like:
+- latest Wowhead news
+- recent class tuning posts
+- recent blue posts
+- finding a blue-tracker thread by topic
+
+Implemented direction:
+- `wowhead news`
+- `wowhead blue-tracker`
+- support for:
+  - latest listing
+  - topic search
+  - bounded time windows
+  - explicit date cutoffs
+  - pagination or capped historical slices
+  - listing query provenance
+
+Still to add:
+- category/filter narrowing when the live page model allows it
+- article/thread fetch with citations
+
+These should be treated as list/article surfaces, not forced through `guide` or `entity`.
+
+Important usage expectation:
+- agents and users will often want topic context over time, not just the newest post
+- that means `news` and `blue-tracker` should be able to answer questions like:
+  - posts about a topic across a long time window
+  - posts between two dates
+  - recent posts since a cutoff
+  - historical context before and after a known change
+
+So the design should include query fields like:
+- `query`
+- `date_from`
+- `date_to`
+- `limit`
+- `page` or equivalent bounded pagination
+
+And the response contract should expose:
+- publish timestamp
+- source URL
+- listing query provenance
+- truncation/pagination state
+- enough summary metadata to build timelines without fetching every article body first
+
+## Database And Tool Expansion
+
+Live Wowhead exposes several surfaces that should become first-class CLI capabilities because they are more useful to agents in structured form than in a browser:
+
+Database-family surfaces:
+- `/database`
+- `/items`
+- `/npcs`
+- `/quests`
+- `/spells`
+- `/achievements`
+- `/zones`
+- `/maps`
+- `/objects`
+- `/factions`
+- `/currencies`
+- `/skills`
+- `/item-sets`
+- `/followers`
+- `/titles`
+
+Tool surfaces:
+- `/talent-calc`
+- `/profession-tree-calc`
+- `/dressing-room`
+- `/list` (Profiler)
+
+Guide-category surfaces:
+- `/guides/classes`
+- `/guides/professions`
+- `/guides/raids`
+
+Recommended additions:
+- `wowhead db <family> ...`
+- `wowhead guides <category> ...`
+- `wowhead news ...`
+- `wowhead blue-tracker ...`
+- `wowhead talent-calc ...`
+- `wowhead profession-tree ...`
+- `wowhead dressing-room ...`
+- `wowhead profiler ...`
+
+The right implementation order is:
+1. add database browse/filter commands
+2. expand guide-category discovery beyond the first listing slice
+3. add article/thread fetch for `news` and `blue-tracker`
+4. add tool decoders
+
 ## Search And Resolve Boundary
 
 `wowhead` search and resolve should stay focused on discovery:

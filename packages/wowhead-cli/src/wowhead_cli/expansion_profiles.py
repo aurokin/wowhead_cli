@@ -153,3 +153,22 @@ def build_comment_replies_url(profile: ExpansionProfile) -> str:
 
 def build_tooltip_url(profile: ExpansionProfile, entity_type: str, entity_id: int) -> str:
     return f"{profile.nether_base}/tooltip/{entity_type}/{entity_id}"
+
+
+def build_news_url(profile: ExpansionProfile, *, page: int = 1) -> str:
+    url = f"{profile.wowhead_base}/news"
+    if page > 1:
+        return f"{url}?page={page}"
+    return url
+
+
+def build_blue_tracker_url(profile: ExpansionProfile, *, page: int = 1) -> str:
+    url = f"{profile.wowhead_base}/blue-tracker"
+    if page > 1:
+        return f"{url}?page={page}"
+    return url
+
+
+def build_guide_category_url(profile: ExpansionProfile, category: str) -> str:
+    slug = category.strip().strip("/")
+    return f"{profile.wowhead_base}/guides/{quote(slug)}"

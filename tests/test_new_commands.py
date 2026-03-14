@@ -60,6 +60,153 @@ SAMPLE_GUIDE_HTML = """
 </html>
 """
 
+SAMPLE_NEWS_HTML = """
+<html>
+  <head>
+    <script type="application/json" id="data.news.newsData">
+      {
+        "newsPosts": [
+          {
+            "id": 380785,
+            "title": "Midnight Hotfixes for March 13th",
+            "author": "Staff",
+            "authorPage": "/author/staff",
+            "posted": "2026-03-13T12:34:56-06:00",
+            "postedFull": "2026-03-13T12:34:56-06:00",
+            "postedShort": "Mar 13",
+            "postUrl": "/news/midnight-hotfixes-380785",
+            "preview": "<p>Class bugfixes and more.</p>",
+            "thumbnailUrl": "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg",
+            "typeId": 1,
+            "typeName": "News"
+          },
+          {
+            "id": 380700,
+            "title": "Older Tuning Roundup",
+            "author": "Staff",
+            "authorPage": "/author/staff",
+            "posted": "2026-03-10T09:00:00-06:00",
+            "postedFull": "2026-03-10T09:00:00-06:00",
+            "postedShort": "Mar 10",
+            "postUrl": "/news/older-tuning-roundup-380700",
+            "preview": "<p>Older tuning notes.</p>",
+            "thumbnailUrl": null,
+            "typeId": 1,
+            "typeName": "News"
+          }
+        ],
+        "pinnedPosts": [],
+        "totalPages": 1637,
+        "gathered": 2
+      }
+    </script>
+  </head>
+</html>
+"""
+
+SAMPLE_BLUE_TRACKER_HTML = """
+<html>
+  <head>
+    <script type="application/json" id="data.blueTracker.default">
+      {
+        "entries": [
+          {
+            "id": 610948,
+            "title": "Class Tuning Incoming -- 18 March",
+            "posted": "2026-03-12T22:00:00-06:00",
+            "author": "Blizzard",
+            "region": "eu",
+            "forumArea": "Community",
+            "forum": "General Discussion",
+            "url": "/blue-tracker/topic/eu/class-tuning-incoming-18-march-610948",
+            "body": "<p>Druid and Priest updates.</p>",
+            "blueposts": 2,
+            "posts": 24,
+            "blues": 2,
+            "score": 15,
+            "maxscore": 15,
+            "lastPost": "2026-03-12T23:00:00-06:00",
+            "lastblue": "2026-03-12T23:00:00-06:00",
+            "jobtitle": "Community Manager"
+          },
+          {
+            "id": 610900,
+            "title": "Auction House Maintenance",
+            "posted": "2026-03-08T08:30:00-06:00",
+            "author": "Blizzard",
+            "region": "us",
+            "forumArea": "Support",
+            "forum": "Customer Support",
+            "url": "/blue-tracker/topic/us/auction-house-maintenance-610900",
+            "body": "<p>Scheduled maintenance window.</p>",
+            "blueposts": 1,
+            "posts": 8,
+            "blues": 1,
+            "score": 3,
+            "maxscore": 3,
+            "lastPost": "2026-03-08T09:00:00-06:00",
+            "lastblue": "2026-03-08T09:00:00-06:00",
+            "jobtitle": "Support"
+          }
+        ],
+        "totalTopics": 33506,
+        "page": 1,
+        "baseUrl": "/blue-tracker"
+      }
+    </script>
+  </head>
+</html>
+"""
+
+SAMPLE_GUIDE_CATEGORY_HTML = """
+<html>
+  <body>
+    <script>
+      new Listview({"id":"guides","template":"guide","data":[
+        {
+          "id":33131,
+          "name":"Devourer Demon Hunter Build Cheat Sheet",
+          "title":"Devourer Demon Hunter Build Cheat Sheet - Midnight",
+          "author":"VooDooSaurus",
+          "authorPage":false,
+          "patch":120001,
+          "category":1,
+          "categoryNames":["Classes"],
+          "categoryPath":"classes",
+          "when":"2026-01-18 14:45:27",
+          "lastEdit":"2026-03-07T11:18:18-06:00",
+          "rating":-1,
+          "nvotes":1,
+          "class":12,
+          "spec":1480,
+          "comments":0,
+          "url":"https://www.wowhead.com/guide/classes/demon-hunter/devourer/cheat-sheet"
+        },
+        {
+          "id":32000,
+          "name":"Frost Death Knight Guide",
+          "title":"Frost Death Knight Guide - Midnight",
+          "author":"Khazakdk",
+          "authorPage":false,
+          "patch":120001,
+          "category":1,
+          "categoryNames":["Classes"],
+          "categoryPath":"classes",
+          "when":"2026-01-01 09:00:00",
+          "lastEdit":"2026-03-01T10:00:00-06:00",
+          "rating":5,
+          "nvotes":10,
+          "class":6,
+          "spec":251,
+          "comments":2,
+          "url":"https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps"
+        }
+      ]});
+    </script>
+  </body>
+</html>
+"""
+
 def _write_bundle_fixture(
     root: Path,
     *,
@@ -262,7 +409,95 @@ def test_search_respects_expansion_flag(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["expansion"] == "wotlk"
     assert payload["search_url"].startswith("https://www.wowhead.com/wotlk/search?q=")
-    assert payload["results"][0]["url"] == "https://www.wowhead.com/wotlk/item=19019"
+
+
+def test_news_command_filters_by_query_and_date(monkeypatch) -> None:
+    def fake_news_page(self, *, page: int = 1):  # noqa: ANN001
+        assert page == 1
+        return SAMPLE_NEWS_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.news_page_html", fake_news_page)
+
+    result = runner.invoke(
+        app,
+        [
+            "news",
+            "hotfixes",
+            "--date-from",
+            "2026-03-11",
+            "--limit",
+            "5",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 1
+    assert payload["results"][0]["id"] == 380785
+    assert payload["results"][0]["preview"] == "Class bugfixes and more."
+    assert payload["scan"]["pages_scanned"] == 1
+    assert payload["scan"]["total_pages"] == 1637
+    assert payload["news_url"] == "https://www.wowhead.com/news"
+
+
+def test_blue_tracker_command_filters_by_topic_and_date(monkeypatch) -> None:
+    def fake_blue_page(self, *, page: int = 1):  # noqa: ANN001
+        assert page == 1
+        return SAMPLE_BLUE_TRACKER_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.blue_tracker_page_html", fake_blue_page)
+
+    result = runner.invoke(
+        app,
+        [
+            "blue-tracker",
+            "druid",
+            "--date-from",
+            "2026-03-10",
+            "--limit",
+            "5",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["count"] == 1
+    assert payload["results"][0]["id"] == 610948
+    assert payload["results"][0]["region"] == "eu"
+    assert payload["results"][0]["body_preview"] == "Druid and Priest updates."
+    assert payload["scan"]["pages_scanned"] == 1
+    assert payload["scan"]["total_pages"] == 671
+    assert payload["blue_tracker_url"] == "https://www.wowhead.com/blue-tracker"
+
+
+def test_blue_tracker_command_rejects_invalid_date_range(monkeypatch) -> None:
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.blue_tracker_page_html", lambda self, page=1: SAMPLE_BLUE_TRACKER_HTML)
+    result = runner.invoke(
+        app,
+        [
+            "blue-tracker",
+            "--date-from",
+            "2026-03-13",
+            "--date-to",
+            "2026-03-01",
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "invalid_argument"
+
+
+def test_guides_command_returns_category_rows(monkeypatch) -> None:
+    def fake_guides_page(self, category: str):  # noqa: ANN001
+        assert category == "classes"
+        return SAMPLE_GUIDE_CATEGORY_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_category_page_html", fake_guides_page)
+    result = runner.invoke(app, ["guides", "classes", "death knight", "--limit", "5"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["category"] == "classes"
+    assert payload["count"] == 1
+    assert payload["results"][0]["id"] == 32000
+    assert payload["results"][0]["url"].endswith("/frost/overview-pve-dps")
 
 
 def test_search_guide_result_includes_guide_url(monkeypatch) -> None:

@@ -15,11 +15,15 @@ from wowhead_cli.cache import (
     build_cache_store,
     load_cache_settings_from_env,
 )
+from wowhead_cli.entity_types import suggestion_entity_type_from_type_id
 from wowhead_cli.expansion_profiles import (
     ExpansionProfile,
+    build_blue_tracker_url,
     build_comment_replies_url,
     build_entity_url,
+    build_guide_category_url,
     build_guide_lookup_url,
+    build_news_url,
     build_search_suggestions_url,
     build_search_url,
     build_tooltip_url,
@@ -31,22 +35,6 @@ NETHER_BASE_URL = "https://nether.wowhead.com"
 
 DEFAULT_CACHE_DIR = DEFAULT_HTTP_CACHE_DIR
 ENTITY_RESPONSE_CACHE_VERSION = 1
-
-SUGGESTION_TYPE_TO_ENTITY: dict[int, str] = {
-    1: "npc",
-    2: "object",
-    3: "item",
-    5: "quest",
-    6: "spell",
-    7: "achievement",
-    8: "faction",
-    9: "pet",
-    111: "currency",
-    112: "companion",
-    101: "transmog-set",
-    100: "guide",
-}
-
 
 class WowheadClient:
     def __init__(
@@ -361,12 +349,33 @@ class WowheadClient:
             return [row for row in payload if isinstance(row, dict)]
         return []
 
+    def news_page_html(self, *, page: int = 1) -> str:
+        return self._get_text(
+            build_news_url(self.expansion, page=page),
+            cache_ttl_seconds=self._cache_ttls.page_html,
+            cache_namespace="page_html",
+        )
+
+    def blue_tracker_page_html(self, *, page: int = 1) -> str:
+        return self._get_text(
+            build_blue_tracker_url(self.expansion, page=page),
+            cache_ttl_seconds=self._cache_ttls.page_html,
+            cache_namespace="page_html",
+        )
+
+    def guide_category_page_html(self, category: str) -> str:
+        return self._get_text(
+            build_guide_category_url(self.expansion, category),
+            cache_ttl_seconds=self._cache_ttls.page_html,
+            cache_namespace="page_html",
+        )
+
 
 def suggestion_entity_type(result: dict[str, Any]) -> str | None:
     type_id = result.get("type")
     if not isinstance(type_id, int):
         return None
-    return SUGGESTION_TYPE_TO_ENTITY.get(type_id)
+    return suggestion_entity_type_from_type_id(type_id)
 
 
 def entity_url(
@@ -386,3 +395,18 @@ def guide_url(guide_id: int, expansion: str | ExpansionProfile | None = None) ->
 def search_url(query: str, expansion: str | ExpansionProfile | None = None) -> str:
     profile = expansion if isinstance(expansion, ExpansionProfile) else resolve_expansion(expansion)
     return build_search_url(profile, query)
+
+
+def news_url(*, page: int = 1, expansion: str | ExpansionProfile | None = None) -> str:
+    profile = expansion if isinstance(expansion, ExpansionProfile) else resolve_expansion(expansion)
+    return build_news_url(profile, page=page)
+
+
+def blue_tracker_url(*, page: int = 1, expansion: str | ExpansionProfile | None = None) -> str:
+    profile = expansion if isinstance(expansion, ExpansionProfile) else resolve_expansion(expansion)
+    return build_blue_tracker_url(profile, page=page)
+
+
+def guide_category_url(category: str, expansion: str | ExpansionProfile | None = None) -> str:
+    profile = expansion if isinstance(expansion, ExpansionProfile) else resolve_expansion(expansion)
+    return build_guide_category_url(profile, category)

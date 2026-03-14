@@ -8,7 +8,7 @@ import shlex
 from pathlib import Path
 import re
 from typing import Any, Callable
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 import typer
@@ -20,6 +20,12 @@ from wowhead_cli.cache import (
     inspect_redis_cache,
     load_cache_settings_from_env,
     repair_file_cache,
+)
+from wowhead_cli.entity_types import (
+    DEFAULT_HYDRATE_ENTITY_TYPES,
+    HYDRATABLE_ENTITY_TYPES,
+    RESOLVE_ENTITY_TYPES,
+    SEARCH_TYPE_HINTS,
 )
 from wowhead_cli.expansion_profiles import ExpansionProfile, list_profiles, resolve_expansion
 from wowhead_cli.output import emit
@@ -33,6 +39,7 @@ from wowhead_cli.page_parser import (
     extract_linked_entities_from_href,
     extract_json_ld,
     extract_json_script,
+    extract_listview_data,
     extract_markup_by_target,
     extract_markup_urls,
     normalize_comments,
@@ -43,8 +50,11 @@ from wowhead_cli.page_parser import (
 from wowhead_cli.wowhead_client import (
     WOWHEAD_BASE_URL,
     WowheadClient,
+    blue_tracker_url,
     entity_url,
+    guide_category_url,
     guide_url,
+    news_url,
     search_url,
     suggestion_entity_type,
 )
@@ -117,26 +127,6 @@ PREVIEW_TYPE_PRIORITY: dict[str, int] = {
     "transmog-set": 13,
     "guide": 14,
 }
-
-DEFAULT_HYDRATE_ENTITY_TYPES = ("spell", "item", "npc")
-HYDRATABLE_ENTITY_TYPES = frozenset(
-    {
-        "achievement",
-        "battle-pet",
-        "currency",
-        "faction",
-        "item",
-        "mount",
-        "npc",
-        "object",
-        "pet",
-        "quest",
-        "recipe",
-        "spell",
-        "transmog-set",
-        "zone",
-    }
-)
 
 CONTEXTUAL_PREVIEW_TYPE_PRIORITY: dict[str, dict[str, int]] = {
     "currency": {
@@ -1184,23 +1174,6 @@ FOLLOW_UP_RELATION_TERMS = {
 }
 
 
-SEARCH_TYPE_HINTS = {
-    "achievement": {"achievement", "achievements"},
-    "currency": {"currency", "currencies", "token", "tokens"},
-    "faction": {"faction", "factions", "reputation", "rep"},
-    "guide": {"guide", "guides"},
-    "item": {"item", "items", "gear"},
-    "npc": {"npc", "npcs", "mob", "mobs"},
-    "object": {"object", "objects"},
-    "pet": {"pet", "pets", "hunter pet", "hunter pets"},
-    "quest": {"quest", "quests"},
-    "recipe": {"recipe", "recipes"},
-    "spell": {"spell", "spells", "ability", "abilities", "talent", "talents"},
-    "transmog-set": {"transmog", "transmog set", "transmog sets", "set", "sets"},
-    "zone": {"zone", "zones"},
-}
-
-
 def _search_type_hints(query: str) -> set[str]:
     normalized = " ".join(query.lower().split())
     if not normalized:
@@ -1356,25 +1329,6 @@ def _search_result_score_and_reasons(
         seen.add(reason)
         unique_reasons.append(reason)
     return score, unique_reasons
-
-
-RESOLVE_ENTITY_TYPES = frozenset({
-    "achievement",
-    "battle-pet",
-    "currency",
-    "faction",
-    "guide",
-    "item",
-    "mount",
-    "npc",
-    "object",
-    "pet",
-    "quest",
-    "recipe",
-    "spell",
-    "transmog-set",
-    "zone",
-})
 
 
 def _normalize_resolve_entity_types(values: list[str]) -> tuple[str, ...]:
@@ -2308,6 +2262,249 @@ def _parse_iso8601_utc(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _parse_date_bound(value: str | None, *, end_of_day: bool) -> datetime | None:
+    if value is None or not value.strip():
+        return None
+    raw = value.strip()
+    if "T" not in raw and " " not in raw:
+        try:
+            parsed_date = datetime.fromisoformat(raw).date()
+        except ValueError:
+            return None
+        if end_of_day:
+            return datetime.combine(parsed_date, datetime.max.time(), tzinfo=timezone.utc)
+        return datetime.combine(parsed_date, datetime.min.time(), tzinfo=timezone.utc)
+    parsed = _parse_iso8601_utc(raw)
+    if parsed is None:
+        return None
+    return parsed
+
+
+def _clean_htmlish_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = re.sub(r"<[^>]+>", " ", value)
+    text = clean_markup_text(text)
+    text = " ".join(text.split())
+    return text or None
+
+
+def _timeline_result_matches(
+    *,
+    query: str | None,
+    values: list[Any],
+    posted_at: datetime | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+) -> tuple[bool, int]:
+    if date_from is not None and (posted_at is None or posted_at < date_from):
+        return False, 0
+    if date_to is not None and (posted_at is None or posted_at > date_to):
+        return False, 0
+    normalized_query = query.strip() if isinstance(query, str) else ""
+    if not normalized_query:
+        return True, 0
+    score = _score_text_match(normalized_query, *values)
+    return score > 0, score
+
+
+def _collect_timeline_pages(
+    *,
+    ctx: typer.Context,
+    page: int,
+    pages: int,
+    fetch_page: Callable[[int], str],
+    extract_page: Callable[[str], tuple[list[dict[str, Any]], int | None]],
+    normalize_row: Callable[[dict[str, Any]], dict[str, Any] | None],
+    query: str | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+) -> dict[str, Any]:
+    if page <= 0:
+        _fail(ctx, "invalid_argument", "--page must be >= 1.")
+    if pages <= 0:
+        _fail(ctx, "invalid_argument", "--pages must be >= 1.")
+
+    results: list[dict[str, Any]] = []
+    total_pages: int | None = None
+    pages_scanned = 0
+    stop_reason: str | None = None
+
+    for current_page in range(page, page + pages):
+        try:
+            html = fetch_page(current_page)
+        except httpx.HTTPStatusError as exc:
+            _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+        except httpx.HTTPError as exc:
+            _fail(ctx, "network_error", str(exc))
+
+        try:
+            rows, extracted_total_pages = extract_page(html)
+        except (ValueError, json.JSONDecodeError) as exc:
+            _fail(ctx, "parse_error", str(exc))
+
+        if total_pages is None:
+            total_pages = extracted_total_pages
+        pages_scanned += 1
+        if not rows:
+            stop_reason = "empty_page"
+            break
+
+        reached_older_than_window = False
+        for raw_row in rows:
+            normalized_row = normalize_row(raw_row)
+            if normalized_row is None:
+                continue
+            posted_at = _parse_iso8601_utc(normalized_row.get("posted"))
+            if date_from is not None and posted_at is not None and posted_at < date_from:
+                reached_older_than_window = True
+                continue
+            matched, score = _timeline_result_matches(
+                query=query,
+                values=[
+                    normalized_row.get("title"),
+                    normalized_row.get("preview"),
+                    normalized_row.get("body_preview"),
+                    normalized_row.get("author"),
+                    normalized_row.get("topic"),
+                    normalized_row.get("type_name"),
+                    normalized_row.get("forum_area"),
+                    normalized_row.get("forum"),
+                ],
+                posted_at=posted_at,
+                date_from=date_from,
+                date_to=date_to,
+            )
+            if not matched:
+                continue
+            normalized_row["match_score"] = score
+            results.append(normalized_row)
+
+        if reached_older_than_window:
+            stop_reason = "date_from_reached"
+            break
+        if total_pages is not None and current_page >= total_pages:
+            stop_reason = "last_page_reached"
+            break
+
+    return {
+        "results": results,
+        "pages_scanned": pages_scanned,
+        "total_pages": total_pages,
+        "stop_reason": stop_reason,
+    }
+
+
+def _extract_news_page_data(html: str) -> tuple[list[dict[str, Any]], int | None]:
+    data = extract_json_script(html, "data.news.newsData")
+    if not isinstance(data, dict):
+        raise ValueError("Unexpected Wowhead news payload shape.")
+    rows = data.get("newsPosts")
+    total_pages = data.get("totalPages")
+    if not isinstance(rows, list):
+        raise ValueError("Missing or invalid Wowhead news posts payload.")
+    return [row for row in rows if isinstance(row, dict)], total_pages if isinstance(total_pages, int) else None
+
+
+def _extract_blue_tracker_page_data(html: str) -> tuple[list[dict[str, Any]], int | None]:
+    data = extract_json_script(html, "data.blueTracker.default")
+    if not isinstance(data, dict):
+        raise ValueError("Unexpected Wowhead blue tracker payload shape.")
+    rows = data.get("entries")
+    total_topics = data.get("totalTopics")
+    if not isinstance(rows, list):
+        raise ValueError("Missing or invalid Wowhead blue tracker entries payload.")
+    total_pages = None
+    if isinstance(total_topics, int) and total_topics >= 0:
+        total_pages = max(1, math.ceil(total_topics / 50))
+    return [row for row in rows if isinstance(row, dict)], total_pages
+
+
+def _normalize_news_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    post_id = row.get("id")
+    title = row.get("title")
+    post_url = row.get("postUrl")
+    if not isinstance(post_id, int) or not isinstance(title, str) or not isinstance(post_url, str):
+        return None
+    absolute_url = urljoin(WOWHEAD_BASE_URL, post_url)
+    preview = _clean_htmlish_text(row.get("preview"))
+    return {
+        "id": post_id,
+        "title": title,
+        "posted": row.get("postedFull") if isinstance(row.get("postedFull"), str) else row.get("posted"),
+        "posted_short": row.get("postedShort"),
+        "author": row.get("author"),
+        "author_page": urljoin(WOWHEAD_BASE_URL, row["authorPage"]) if isinstance(row.get("authorPage"), str) else None,
+        "type_id": row.get("typeId"),
+        "type_name": row.get("typeName"),
+        "url": absolute_url,
+        "citation_url": absolute_url,
+        "preview": preview,
+        "thumbnail_url": row.get("thumbnailUrl"),
+        "topic": title,
+    }
+
+
+def _normalize_blue_tracker_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    topic_id = row.get("id")
+    title = row.get("title")
+    topic_url = row.get("url")
+    if not isinstance(topic_id, int) or not isinstance(title, str) or not isinstance(topic_url, str):
+        return None
+    absolute_url = urljoin(WOWHEAD_BASE_URL, topic_url)
+    body_preview = _clean_htmlish_text(row.get("body"))
+    author = row.get("author") if isinstance(row.get("author"), str) and row.get("author") else row.get("name")
+    return {
+        "id": topic_id,
+        "title": title,
+        "topic": title,
+        "posted": row.get("posted") if isinstance(row.get("posted"), str) else None,
+        "author": author,
+        "region": row.get("region"),
+        "forum_area": row.get("forumArea"),
+        "forum": row.get("forum"),
+        "url": absolute_url,
+        "citation_url": absolute_url,
+        "body_preview": body_preview,
+        "blueposts": row.get("blueposts"),
+        "posts": row.get("posts"),
+        "blues": row.get("blues"),
+        "score": row.get("score"),
+        "maxscore": row.get("maxscore"),
+        "last_post": row.get("lastPost"),
+        "last_blue": row.get("lastblue"),
+        "job_title": row.get("jobtitle"),
+    }
+
+
+def _normalize_guide_category_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    guide_id = row.get("id")
+    title = row.get("title")
+    name = row.get("name")
+    url = row.get("url")
+    if not isinstance(guide_id, int) or not isinstance(title, str) or not isinstance(name, str) or not isinstance(url, str):
+        return None
+    return {
+        "id": guide_id,
+        "name": name,
+        "title": title,
+        "url": url,
+        "author": row.get("author"),
+        "author_page": row.get("authorPage"),
+        "patch": row.get("patch"),
+        "published_at": row.get("when"),
+        "last_updated": row.get("lastEdit"),
+        "category": row.get("category"),
+        "category_names": row.get("categoryNames"),
+        "category_path": row.get("categoryPath"),
+        "class_id": row.get("class"),
+        "spec_id": row.get("spec"),
+        "comments": row.get("comments"),
+        "rating": row.get("rating"),
+        "votes": row.get("nvotes"),
+    }
 
 
 def _guide_bundle_is_fresh(manifest: dict[str, Any], *, max_age_hours: int) -> bool:
@@ -3447,6 +3644,234 @@ def search(
         "search_url": search_url(search_query_text, expansion=cfg.expansion),
         "count": len(normalized),
         "results": normalized[:limit],
+    }
+    _emit(ctx, payload)
+
+
+@app.command("news")
+def news(
+    ctx: typer.Context,
+    query: str | None = typer.Argument(None, help="Optional topic text used to filter Wowhead news posts."),
+    page: int = typer.Option(
+        1,
+        "--page",
+        min=1,
+        help="First Wowhead news page to scan.",
+    ),
+    pages: int = typer.Option(
+        1,
+        "--pages",
+        min=1,
+        max=100,
+        help="Maximum number of pages to scan for matches.",
+    ),
+    limit: int = typer.Option(
+        20,
+        "--limit",
+        min=1,
+        max=200,
+        help="Maximum number of matching posts to return from the scanned page window.",
+    ),
+    date_from: str | None = typer.Option(
+        None,
+        "--date-from",
+        help="Inclusive UTC lower bound. Accepts YYYY-MM-DD or full ISO-8601 timestamps.",
+    ),
+    date_to: str | None = typer.Option(
+        None,
+        "--date-to",
+        help="Inclusive UTC upper bound. Accepts YYYY-MM-DD or full ISO-8601 timestamps.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    client = _client(ctx)
+    parsed_date_from = _parse_date_bound(date_from, end_of_day=False)
+    if date_from is not None and parsed_date_from is None:
+        _fail(ctx, "invalid_argument", f"Invalid --date-from value {date_from!r}.")
+    parsed_date_to = _parse_date_bound(date_to, end_of_day=True)
+    if date_to is not None and parsed_date_to is None:
+        _fail(ctx, "invalid_argument", f"Invalid --date-to value {date_to!r}.")
+    if (
+        parsed_date_from is not None
+        and parsed_date_to is not None
+        and parsed_date_from > parsed_date_to
+    ):
+        _fail(ctx, "invalid_argument", "--date-from must be <= --date-to.")
+
+    collected = _collect_timeline_pages(
+        ctx=ctx,
+        page=page,
+        pages=pages,
+        fetch_page=lambda current_page: client.news_page_html(page=current_page),
+        extract_page=_extract_news_page_data,
+        normalize_row=_normalize_news_row,
+        query=query,
+        date_from=parsed_date_from,
+        date_to=parsed_date_to,
+    )
+    payload = {
+        "query": query,
+        "expansion": cfg.expansion.key,
+        "news_url": news_url(page=page, expansion=cfg.expansion),
+        "filters": {
+            "date_from": parsed_date_from.isoformat() if parsed_date_from is not None else None,
+            "date_to": parsed_date_to.isoformat() if parsed_date_to is not None else None,
+        },
+        "scan": {
+            "page": page,
+            "pages_requested": pages,
+            "pages_scanned": collected["pages_scanned"],
+            "total_pages": collected["total_pages"],
+            "stop_reason": collected["stop_reason"],
+        },
+        "count": len(collected["results"]),
+        "results": collected["results"][:limit],
+    }
+    _emit(ctx, payload)
+
+
+@app.command("blue-tracker")
+def blue_tracker(
+    ctx: typer.Context,
+    query: str | None = typer.Argument(None, help="Optional topic text used to filter blue tracker topics."),
+    page: int = typer.Option(
+        1,
+        "--page",
+        min=1,
+        help="First Wowhead blue-tracker page to scan.",
+    ),
+    pages: int = typer.Option(
+        1,
+        "--pages",
+        min=1,
+        max=100,
+        help="Maximum number of pages to scan for matches.",
+    ),
+    limit: int = typer.Option(
+        20,
+        "--limit",
+        min=1,
+        max=200,
+        help="Maximum number of matching topics to return from the scanned page window.",
+    ),
+    date_from: str | None = typer.Option(
+        None,
+        "--date-from",
+        help="Inclusive UTC lower bound. Accepts YYYY-MM-DD or full ISO-8601 timestamps.",
+    ),
+    date_to: str | None = typer.Option(
+        None,
+        "--date-to",
+        help="Inclusive UTC upper bound. Accepts YYYY-MM-DD or full ISO-8601 timestamps.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    client = _client(ctx)
+    parsed_date_from = _parse_date_bound(date_from, end_of_day=False)
+    if date_from is not None and parsed_date_from is None:
+        _fail(ctx, "invalid_argument", f"Invalid --date-from value {date_from!r}.")
+    parsed_date_to = _parse_date_bound(date_to, end_of_day=True)
+    if date_to is not None and parsed_date_to is None:
+        _fail(ctx, "invalid_argument", f"Invalid --date-to value {date_to!r}.")
+    if (
+        parsed_date_from is not None
+        and parsed_date_to is not None
+        and parsed_date_from > parsed_date_to
+    ):
+        _fail(ctx, "invalid_argument", "--date-from must be <= --date-to.")
+
+    collected = _collect_timeline_pages(
+        ctx=ctx,
+        page=page,
+        pages=pages,
+        fetch_page=lambda current_page: client.blue_tracker_page_html(page=current_page),
+        extract_page=_extract_blue_tracker_page_data,
+        normalize_row=_normalize_blue_tracker_row,
+        query=query,
+        date_from=parsed_date_from,
+        date_to=parsed_date_to,
+    )
+    payload = {
+        "query": query,
+        "expansion": cfg.expansion.key,
+        "blue_tracker_url": blue_tracker_url(page=page, expansion=cfg.expansion),
+        "filters": {
+            "date_from": parsed_date_from.isoformat() if parsed_date_from is not None else None,
+            "date_to": parsed_date_to.isoformat() if parsed_date_to is not None else None,
+        },
+        "scan": {
+            "page": page,
+            "pages_requested": pages,
+            "pages_scanned": collected["pages_scanned"],
+            "total_pages": collected["total_pages"],
+            "stop_reason": collected["stop_reason"],
+        },
+        "count": len(collected["results"]),
+        "results": collected["results"][:limit],
+    }
+    _emit(ctx, payload)
+
+
+@app.command("guides")
+def guides(
+    ctx: typer.Context,
+    category: str = typer.Argument(..., help="Wowhead guide category slug such as classes, professions, or raids."),
+    query: str | None = typer.Argument(None, help="Optional text used to filter guide rows within the category."),
+    limit: int = typer.Option(
+        20,
+        "--limit",
+        min=1,
+        max=200,
+        help="Maximum matching guides to return.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    client = _client(ctx)
+    normalized_category = category.strip().strip("/")
+    if not normalized_category:
+        _fail(ctx, "invalid_argument", "Guide category cannot be empty.")
+    try:
+        html = client.guide_category_page_html(normalized_category)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+
+    try:
+        rows = extract_listview_data(html, "guides")
+    except (ValueError, json.JSONDecodeError) as exc:
+        _fail(ctx, "parse_error", str(exc))
+
+    normalized_rows: list[dict[str, Any]] = []
+    query_text = query.strip() if isinstance(query, str) and query.strip() else None
+    for index, row in enumerate(rows):
+        normalized_row = _normalize_guide_category_row(row)
+        if normalized_row is None:
+            continue
+        if query_text is not None:
+            score = _score_text_match(
+                query_text,
+                normalized_row.get("title"),
+                normalized_row.get("name"),
+                normalized_row.get("author"),
+                normalized_row.get("category_path"),
+            )
+            if score <= 0:
+                continue
+            normalized_row["match_score"] = score
+            normalized_row["_sort"] = (-score, index)
+        else:
+            normalized_row["_sort"] = (index,)
+        normalized_rows.append(normalized_row)
+    normalized_rows.sort(key=lambda row: row.pop("_sort"))
+
+    payload = {
+        "query": query,
+        "expansion": cfg.expansion.key,
+        "category": normalized_category,
+        "guides_url": guide_category_url(normalized_category, expansion=cfg.expansion),
+        "count": len(normalized_rows),
+        "results": normalized_rows[:limit],
     }
     _emit(ctx, payload)
 

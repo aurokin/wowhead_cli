@@ -16,6 +16,9 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 - Full page metadata + linked entities: `wowhead entity-page <type> <id>`
 - Comments only / larger comment pull: `wowhead comments <type> <id> --limit <n> --sort newest|rating`
 - Guide lookup: `wowhead guide <guide_id_or_url>`
+- Guide category listing: `wowhead guides <category> [query]`
+- News timeline search: `wowhead news [query] [--page <n>] [--pages <n>] [--date-from YYYY-MM-DD] [--date-to YYYY-MM-DD]`
+- Blue tracker timeline search: `wowhead blue-tracker [query] [--page <n>] [--pages <n>] [--date-from YYYY-MM-DD] [--date-to YYYY-MM-DD]`
 - Full guide payload: `wowhead guide-full <guide_id_or_url>`
 - Export local guide assets: `wowhead guide-export <guide_id_or_url> --out <dir>`
 - Export local guide assets plus bounded linked-entity hydration: `wowhead guide-export <guide_id_or_url> --out <dir> --hydrate-linked-entities [--hydrate-type spell,item,npc]`
@@ -69,6 +72,8 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 28. `resolve` is the conservative counterpart to `search`. It reuses the same reranked candidates and follow-up guidance, optionally narrows by `--entity-type`, and only emits a direct `next_command` when confidence is high. If confidence is not high, it keeps the best candidate plus fallbacks and tells the agent to use `search` instead of overcommitting.
 
 29. Bundle freshness summaries now include `bundle_reasons` and `hydration_reasons`, so agents can tell whether a bundle is stale because of age, missing timestamps, disabled hydration, or bundle-level staleness without opening manifest files. Root-level bundle discovery commands now also expose `stale_reason_counts`, and `guide-bundle-inspect --summary` provides a compact trust-check view when the full inspection payload is more detail than an agent needs.
+30. `news` and `blue-tracker` are timeline-native surfaces, not generic search aliases. Use them when the user needs topic history, bounded date windows, or page-window scans across posts instead of a single latest result.
+31. `guides <category>` is the right surface for browsable guide families like `classes`, `professions`, and `raids`; use it when the user knows the guide family but not the exact guide slug or ID.
 
 ## Required Usage Rules
 
@@ -85,6 +90,9 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 
 ```bash
 wowhead search "Watch the Den" --limit 5
+wowhead news "hotfixes" --pages 2 --date-from 2026-03-01
+wowhead blue-tracker "class tuning" --pages 2 --date-from 2026-03-01
+wowhead guides classes "death knight"
 wowhead entity quest 86864
 wowhead entity quest 86864 --no-include-comments
 wowhead entity quest 86864 --include-all-comments

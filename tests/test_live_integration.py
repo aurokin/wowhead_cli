@@ -328,3 +328,55 @@ def test_live_compare_contract_for_discovered_mixed_entity_types() -> None:
         assert "page" not in row["citations"]
     for link_row in links["shared_items"]:
         assert "citation_url" not in link_row
+
+
+def test_live_news_contract() -> None:
+    _require_live()
+    payload = _payload_for(["news", "hotfixes", "--pages", "2", "--limit", "5"])
+
+    assert payload["expansion"] == "retail"
+    assert payload["news_url"] == "https://www.wowhead.com/news"
+    assert payload["scan"]["pages_scanned"] >= 1
+    assert payload["scan"]["total_pages"] >= payload["scan"]["pages_scanned"]
+    assert payload["count"] >= len(payload["results"])
+    assert len(payload["results"]) > 0
+    first = payload["results"][0]
+    assert isinstance(first.get("id"), int)
+    assert isinstance(first.get("title"), str)
+    assert isinstance(first.get("posted"), str)
+    assert isinstance(first.get("url"), str)
+    assert first["url"].startswith("https://www.wowhead.com/news/")
+
+
+def test_live_blue_tracker_contract() -> None:
+    _require_live()
+    payload = _payload_for(["blue-tracker", "class tuning", "--pages", "2", "--limit", "5"])
+
+    assert payload["expansion"] == "retail"
+    assert payload["blue_tracker_url"] == "https://www.wowhead.com/blue-tracker"
+    assert payload["scan"]["pages_scanned"] >= 1
+    assert payload["scan"]["total_pages"] >= payload["scan"]["pages_scanned"]
+    assert payload["count"] >= len(payload["results"])
+    assert len(payload["results"]) > 0
+    first = payload["results"][0]
+    assert isinstance(first.get("id"), int)
+    assert isinstance(first.get("title"), str)
+    assert isinstance(first.get("posted"), str)
+    assert isinstance(first.get("url"), str)
+    assert first["url"].startswith("https://www.wowhead.com/blue-tracker/topic/")
+
+
+def test_live_guide_category_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guides", "classes", "death knight", "--limit", "5"])
+
+    assert payload["expansion"] == "retail"
+    assert payload["category"] == "classes"
+    assert payload["guides_url"] == "https://www.wowhead.com/guides/classes"
+    assert payload["count"] >= len(payload["results"])
+    assert len(payload["results"]) > 0
+    first = payload["results"][0]
+    assert isinstance(first.get("id"), int)
+    assert isinstance(first.get("title"), str)
+    assert isinstance(first.get("url"), str)
+    assert first["url"].startswith("https://www.wowhead.com/guide/")

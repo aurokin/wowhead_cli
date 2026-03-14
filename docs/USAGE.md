@@ -87,6 +87,12 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 wowhead search "defias"
 wowhead resolve "fairbreeze favors"
 wowhead --expansion wotlk search "thunderfury"
+wowhead news
+wowhead news "hotfixes" --pages 3 --date-from 2026-03-01
+wowhead blue-tracker
+wowhead blue-tracker "class tuning" --pages 2 --date-from 2026-03-01
+wowhead guides classes
+wowhead guides classes "death knight"
 wowhead guide 3143
 wowhead guide-full 3143
 wowhead guide-export 3143 --out ./tmp/frost-dk-guide
@@ -127,6 +133,19 @@ wowhead comments item 19019 --limit 30 --sort rating
 wowhead compare item:19019 item:19351 --comment-sample 2
 wowhead expansions
 ```
+
+Wowhead command behavior:
+- `search` and `resolve` are still the conservative discovery layer for entity and guide lookups
+- `news` scans the Wowhead news timeline and supports:
+  - optional topic filtering
+  - `--date-from`
+  - `--date-to`
+  - bounded pagination with `--page` and `--pages`
+  - explicit scan metadata so agents can see how much timeline history was searched
+- `blue-tracker` does the same for the Wowhead blue tracker and is the right surface for topic-over-time blue post research
+- `guides <category>` uses the live guide-category listing surface for categories such as `classes`, `professions`, and `raids`
+- `guides <category> <query>` filters within the category listing instead of forcing discovery through generic `search`
+- Wowhead entity-type handling is now driven by a shared internal registry, so search suggestion types, parser support, resolve filters, and hydrate support stop drifting independently
 
 ## Method Commands
 
