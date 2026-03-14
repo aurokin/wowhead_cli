@@ -31,7 +31,7 @@
 - if the user wants to compare guide-derived or custom APLs, build a harness and use `compare-apls`; do not edit upstream SimC files
 - use `verify-clean` before and after local comparison work when upstream cleanliness matters
 - use `1000` iterations for most work
-- use `5000` iterations only when the user explicitly wants higher accuracy
+- use `5000+` iterations only when the user explicitly wants higher accuracy
 - do not recommend a fixed thread count blindly; either omit `threads` or inspect the current machine first
 
 ## Comparison Workflow

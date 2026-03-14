@@ -151,7 +151,7 @@ This is the correct answer to conversations where the user wants to draft guide-
 
 Consumer guidance boundary:
 - default to `1000` iterations for most consumer-facing work
-- only suggest `5000` when the user explicitly wants higher accuracy
+- only suggest `5000+` when the user explicitly wants higher accuracy
 - thread recommendations should not be hard-coded in consumer guidance
 - if thread tuning matters, the CLI or agent should inspect the current machine before recommending a value
 

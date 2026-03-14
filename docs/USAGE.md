@@ -517,7 +517,7 @@ SimulationCraft behavior:
 - `compare-apls` compares one base APL plus labeled variants on the same harness and returns DPS plus action-throughput deltas from SimC JSON output
 - `variant-report` summarizes a saved `compare-apls` report into ranking and delta rows
 - use `1000` iterations for most work
-- use `5000` iterations only when the user explicitly wants higher accuracy
+- use `5000+` iterations only when the user explicitly wants higher accuracy
 - do not recommend a fixed thread count without checking the current machine; omit `threads` or inspect the environment first
 - `apl-lists` returns parsed action lists and their entries from a local `.simc` file
 - `apl-graph` emits a Mermaid action-list call graph from a local `.simc` file
