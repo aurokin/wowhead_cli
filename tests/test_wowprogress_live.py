@@ -90,6 +90,7 @@ def test_live_wowprogress_sample_pve_leaderboard_contract() -> None:
 
     assert payload["kind"] == "pve_leaderboard_sample"
     assert payload["sample"]["entry_count"] == len(payload["entries"])
+    assert payload["sample"]["sampling"]["requested_limit"] == 10
     assert payload["sample"]["active_raid"]
     assert payload["freshness"]["cache_ttl_seconds"] is not None
 
@@ -135,6 +136,7 @@ def test_live_wowprogress_sample_pve_guild_profiles_contract() -> None:
 
     assert payload["kind"] == "pve_guild_profiles_sample"
     assert payload["sample"]["guild_profile_count"] == len(payload["guild_profiles"])
+    assert payload["sample"]["sampling"]["source_leaderboard_entry_count"] >= payload["sample"]["sampling"]["returned_guild_profile_count"]
     assert payload["guild_profiles"]
     assert payload["guild_profiles"][0]["item_level_average"] is not None
 

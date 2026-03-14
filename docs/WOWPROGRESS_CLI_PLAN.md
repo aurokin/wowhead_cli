@@ -25,6 +25,7 @@ Current quality notes:
 - provider-local live coverage now exists for structured search, resolve, and leaderboard contracts
 - PvE leaderboard sampling, distributions, and threshold estimates now expose freshness, provenance, and explicit caveats instead of pretending to be direct smart-answer surfaces
 - top-leaderboard guild-profile sampling now combines leaderboard context with direct guild-page data so agents can inspect progression, item level, and encounter detail without manually opening multiple browser pages
+- leaderboard and guild-profile samples now report sampling boundaries explicitly instead of implying complete visibility beyond the requested top slice
 
 ## Why Add It
 

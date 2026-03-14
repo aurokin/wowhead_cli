@@ -386,6 +386,12 @@ WowProgress phase-1 behavior:
 - `guild` returns a compact guild profile with progression, item-level rank context, and encounter history
 - `character` returns a compact character profile with item-level, SimDPS, and PvE raid-history context
 - `leaderboard pve` returns the current PvE progression leaderboard for a region, optionally narrowed to a realm
+- `sample pve-leaderboard` returns a top-slice leaderboard sample with explicit sampling metadata for the requested row cap and returned entry count
+- `sample pve-guild-profiles` enriches the sampled leaderboard slice with direct guild-page data and now reports:
+  - source leaderboard entry count
+  - returned guild profile count
+  - skipped rows without profile URLs
+- `distribution` and `threshold` stay sample-backed and caveated rather than pretending to answer higher-level questions directly
 - WowProgress search is intentionally structured instead of broad free text because the site-native search surface is heavily constrained and less reliable than direct route resolution
 
 ## SimulationCraft Commands

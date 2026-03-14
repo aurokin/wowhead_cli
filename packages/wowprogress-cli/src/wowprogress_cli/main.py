@@ -287,6 +287,8 @@ def _sample_pve_leaderboard(
         "region": leaderboard.get("region") or region.lower(),
         "realm": leaderboard.get("realm"),
         "title": leaderboard.get("title"),
+        "requested_limit": limit,
+        "leaderboard_entry_count": len(snapshots),
     }
     return snapshots, meta, leaderboard
 
@@ -338,15 +340,18 @@ def _sampled_pve_guild_profiles(
 ) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     entries, meta, leaderboard = _sample_pve_leaderboard(client, region=region, realm=realm, limit=limit)
     guild_profiles: list[dict[str, Any]] = []
+    skipped_missing_profile_url = 0
     for entry in entries:
         guild_url = str(entry.get("guild_url") or "").strip()
         if not guild_url:
+            skipped_missing_profile_url += 1
             continue
         payload = client.fetch_guild_page_url(guild_url)
         guild_profiles.append(_guild_profile_snapshot(leaderboard_entry=entry, guild_payload=payload))
     meta = {
         **meta,
         "guild_profile_count": len(guild_profiles),
+        "skipped_missing_profile_url": skipped_missing_profile_url,
     }
     return guild_profiles, meta, leaderboard
 
@@ -375,6 +380,11 @@ def _sample_summary(entries: list[dict[str, Any]], *, meta: dict[str, Any]) -> d
     return {
         "sampled_at": meta["sampled_at"],
         "entry_count": len(entries),
+        "sampling": {
+            "requested_limit": meta.get("requested_limit"),
+            "returned_entry_count": len(entries),
+            "source_scope": "top leaderboard rows fetched from the requested WowProgress leaderboard page",
+        },
         "active_raid": meta.get("active_raid"),
         "unique_realms": sorted({str(entry.get("realm") or "") for entry in entries if str(entry.get("realm") or "").strip()}),
         "difficulty_counts": _count_map([str(entry.get("difficulty") or "unknown") for entry in entries]),
@@ -412,6 +422,13 @@ def _guild_profile_sample_summary(entries: list[dict[str, Any]], *, meta: dict[s
     return {
         "sampled_at": meta["sampled_at"],
         "guild_profile_count": len(entries),
+        "sampling": {
+            "requested_limit": meta.get("requested_limit"),
+            "source_leaderboard_entry_count": meta.get("leaderboard_entry_count"),
+            "returned_guild_profile_count": len(entries),
+            "skipped_missing_profile_url": meta.get("skipped_missing_profile_url", 0),
+            "source_scope": "top leaderboard rows enriched with direct WowProgress guild pages when a profile URL is present",
+        },
         "active_raid": meta.get("active_raid"),
         "faction_counts": _count_map([str(entry.get("faction") or "unknown") for entry in entries]),
         "progress_counts": _count_map([str(entry.get("progress") or "unknown") for entry in entries]),
@@ -675,6 +692,38 @@ def _threshold_payload(metric: str, target: float, entries: list[dict[str, Any]]
             "leaderboard_page": meta["page_url"],
         },
     }
+
+
+def _load_pve_leaderboard_sample(
+    client: WowProgressClient,
+    *,
+    region: str,
+    realm: str | None,
+    limit: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    entries, meta, leaderboard = _sample_pve_leaderboard(client, region=region, realm=realm, limit=limit)
+    query = {
+        "region": region.lower(),
+        "realm": realm.lower() if realm else None,
+        "limit": limit,
+    }
+    return entries, meta, leaderboard, query
+
+
+def _load_pve_guild_profile_sample(
+    client: WowProgressClient,
+    *,
+    region: str,
+    realm: str | None,
+    limit: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    entries, meta, leaderboard = _sampled_pve_guild_profiles(client, region=region, realm=realm, limit=limit)
+    query = {
+        "region": region.lower(),
+        "realm": realm.lower() if realm else None,
+        "limit": limit,
+    }
+    return entries, meta, leaderboard, query
 
 
 def _candidate_from_probe(
@@ -1014,7 +1063,7 @@ def sample_pve_leaderboard(
 ) -> None:
     try:
         with _client(ctx) as client:
-            entries, meta, leaderboard = _sample_pve_leaderboard(client, region=region, realm=realm, limit=limit)
+            entries, meta, leaderboard, query = _load_pve_leaderboard_sample(client, region=region, realm=realm, limit=limit)
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return
@@ -1023,11 +1072,7 @@ def sample_pve_leaderboard(
         {
             "provider": "wowprogress",
             "kind": "pve_leaderboard_sample",
-            "query": {
-                "region": region.lower(),
-                "realm": realm.lower() if realm else None,
-                "limit": limit,
-            },
+            "query": query,
             "leaderboard": leaderboard,
             "sample": _sample_summary(entries, meta=meta),
             "entries": entries,
@@ -1055,7 +1100,7 @@ def distribution_pve_leaderboard(
         return
     try:
         with _client(ctx) as client:
-            entries, meta, _leaderboard = _sample_pve_leaderboard(client, region=region, realm=realm, limit=limit)
+            entries, meta, _leaderboard, query = _load_pve_leaderboard_sample(client, region=region, realm=realm, limit=limit)
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return
@@ -1065,11 +1110,7 @@ def distribution_pve_leaderboard(
             metric,
             entries,
             meta=meta,
-            query={
-                "region": region.lower(),
-                "realm": realm.lower() if realm else None,
-                "limit": limit,
-            },
+            query=query,
         ),
     )
 
@@ -1089,7 +1130,7 @@ def threshold_pve_leaderboard(
         return
     try:
         with _client(ctx) as client:
-            entries, meta, _leaderboard = _sample_pve_leaderboard(client, region=region, realm=realm, limit=limit)
+            entries, meta, _leaderboard, query = _load_pve_leaderboard_sample(client, region=region, realm=realm, limit=limit)
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return
@@ -1100,11 +1141,7 @@ def threshold_pve_leaderboard(
             value,
             entries,
             meta=meta,
-            query={
-                "region": region.lower(),
-                "realm": realm.lower() if realm else None,
-                "limit": limit,
-            },
+            query=query,
             nearest_limit=nearest,
         ),
     )
@@ -1119,7 +1156,7 @@ def sample_pve_guild_profiles(
 ) -> None:
     try:
         with _client(ctx) as client:
-            entries, meta, leaderboard = _sampled_pve_guild_profiles(client, region=region, realm=realm, limit=limit)
+            entries, meta, leaderboard, query = _load_pve_guild_profile_sample(client, region=region, realm=realm, limit=limit)
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return
@@ -1128,11 +1165,7 @@ def sample_pve_guild_profiles(
         {
             "provider": "wowprogress",
             "kind": "pve_guild_profiles_sample",
-            "query": {
-                "region": region.lower(),
-                "realm": realm.lower() if realm else None,
-                "limit": limit,
-            },
+            "query": query,
             "leaderboard": leaderboard,
             "sample": _guild_profile_sample_summary(entries, meta=meta),
             "guild_profiles": entries,
@@ -1160,7 +1193,7 @@ def distribution_pve_guild_profiles(
         return
     try:
         with _client(ctx) as client:
-            entries, meta, _leaderboard = _sampled_pve_guild_profiles(client, region=region, realm=realm, limit=limit)
+            entries, meta, _leaderboard, query = _load_pve_guild_profile_sample(client, region=region, realm=realm, limit=limit)
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return
@@ -1170,7 +1203,7 @@ def distribution_pve_guild_profiles(
             metric,
             entries,
             meta=meta,
-            query={"region": region.lower(), "realm": realm.lower() if realm else None, "limit": limit},
+            query=query,
         ),
     )
 
@@ -1190,7 +1223,7 @@ def threshold_pve_guild_profiles(
         return
     try:
         with _client(ctx) as client:
-            entries, meta, _leaderboard = _sampled_pve_guild_profiles(client, region=region, realm=realm, limit=limit)
+            entries, meta, _leaderboard, query = _load_pve_guild_profile_sample(client, region=region, realm=realm, limit=limit)
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return
@@ -1201,7 +1234,7 @@ def threshold_pve_guild_profiles(
             value,
             entries,
             meta=meta,
-            query={"region": region.lower(), "realm": realm.lower() if realm else None, "limit": limit},
+            query=query,
             nearest_limit=nearest,
         ),
     )

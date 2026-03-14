@@ -393,6 +393,8 @@ def test_wowprogress_sample_pve_leaderboard(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["kind"] == "pve_leaderboard_sample"
     assert payload["sample"]["entry_count"] == 2
+    assert payload["sample"]["sampling"]["requested_limit"] == 10
+    assert payload["sample"]["sampling"]["returned_entry_count"] == 2
     assert payload["sample"]["active_raid"] == "Manaforge Omega"
     assert payload["entries"][0]["bosses_killed"] == 8
     assert payload["entries"][0]["difficulty"] == "M"
@@ -428,6 +430,7 @@ def test_wowprogress_distribution_pve_leaderboard(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["kind"] == "pve_leaderboard_distribution"
     assert payload["metric"] == "progress"
+    assert payload["sample"]["sampling"]["requested_limit"] == 10
     assert payload["distribution"]["rows"][0]["value"] == "8/8 (M)"
     assert payload["distribution"]["rows"][0]["count"] == 2
 
@@ -535,6 +538,9 @@ def test_wowprogress_sample_pve_guild_profiles(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["kind"] == "pve_guild_profiles_sample"
     assert payload["sample"]["guild_profile_count"] == 2
+    assert payload["sample"]["sampling"]["source_leaderboard_entry_count"] == 2
+    assert payload["sample"]["sampling"]["returned_guild_profile_count"] == 2
+    assert payload["sample"]["sampling"]["skipped_missing_profile_url"] == 0
     assert payload["guild_profiles"][0]["item_level_average"] is not None
     assert payload["guild_profiles"][0]["progress_ranks"]["world"] is not None
 
@@ -572,6 +578,7 @@ def test_wowprogress_distribution_pve_guild_profiles(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["kind"] == "pve_guild_profiles_distribution"
     assert payload["metric"] == "faction"
+    assert payload["sample"]["sampling"]["source_leaderboard_entry_count"] == 2
     assert payload["distribution"]["rows"][0]["count"] == 1
 
 
@@ -615,8 +622,41 @@ def test_wowprogress_threshold_pve_guild_profiles(monkeypatch) -> None:
     payload = json.loads(result.stdout)
     assert payload["kind"] == "pve_guild_profiles_threshold"
     assert payload["metric"] == "world_rank"
+    assert payload["sample"]["sampling"]["source_leaderboard_entry_count"] == 3
     assert payload["threshold"]["nearest_match_count"] == 2
     assert payload["threshold"]["estimate"]["metric"] == "item_level_average"
+
+
+def test_wowprogress_sample_pve_guild_profiles_reports_missing_urls(monkeypatch) -> None:
+    def fake_leaderboard(self, *, region: str, realm: str | None = None, limit: int = 25):  # noqa: ANN001
+        return {
+            "leaderboard": {"kind": "pve", "title": "US Mythic Progress", "region": "us", "realm": None, "active_raid": "Manaforge Omega", "page_url": "https://www.wowprogress.com/pve/us"},
+            "count": 2,
+            "entries": [
+                {"rank": 1, "guild_name": "Liquid", "guild_url": "https://www.wowprogress.com/guild/us/illidan/Liquid", "realm": "US-Illidan", "progress": "8/8 (M)"},
+                {"rank": 2, "guild_name": "Unknown", "guild_url": None, "realm": "US-Illidan", "progress": "7/8 (M)"},
+            ],
+            "citations": {"page": "https://www.wowprogress.com/pve/us"},
+        }
+
+    def fake_guild_url(self, url: str):  # noqa: ANN001
+        return {
+            "guild": {"name": "Liquid", "region": "us", "realm": "US-Illidan", "faction": "Horde", "page_url": url},
+            "progress": {"summary": "8/8 (M)", "ranks": {"world": "1"}},
+            "item_level": {"average": 724.5},
+            "encounters": {"count": 0, "items": []},
+            "citations": {"page": url},
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_pve_leaderboard", fake_leaderboard)
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_guild_page_url", fake_guild_url)
+    result = runner.invoke(wowprogress_app, ["sample", "pve-guild-profiles", "--region", "us", "--limit", "10"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["sample"]["sampling"]["source_leaderboard_entry_count"] == 2
+    assert payload["sample"]["sampling"]["returned_guild_profile_count"] == 1
+    assert payload["sample"]["sampling"]["skipped_missing_profile_url"] == 1
 
 
 def test_wowprogress_sample_pve_guild_profiles_decodes_plus_names(monkeypatch) -> None:
