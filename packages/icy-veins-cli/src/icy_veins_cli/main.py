@@ -566,6 +566,40 @@ def search(
     _emit(ctx, payload)
 
 
+def _resolve_is_confident(top: dict[str, Any] | None, second: dict[str, Any] | None) -> bool:
+    if top is None:
+        return False
+    top_score = top["ranking"]["score"]
+    second_score = second["ranking"]["score"] if second else 0
+    top_reasons = set(top["ranking"]["match_reasons"])
+    return (
+        top_score >= 50
+        or top_score >= second_score + 15
+        or ("family_easy_mode" in top_reasons and top_score >= second_score + 10 and top_score >= 35)
+        or ("intro_guide" in top_reasons and top_score >= second_score + 6 and top_score >= 30)
+    )
+
+
+def _resolve_search_payload(
+    *,
+    provider_command: str,
+    query: str,
+    search_query: str,
+    results: list[dict[str, Any]],
+    total_count: int,
+    scope_hint: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return build_article_resolve_response(
+        provider_command=provider_command,
+        query=query,
+        search_query=search_query,
+        results=results,
+        total_count=total_count,
+        resolved=_resolve_is_confident(results[0] if results else None, results[1] if len(results) > 1 else None),
+        scope_hint=scope_hint,
+    )
+
+
 @app.command("resolve")
 def resolve(
     ctx: typer.Context,
@@ -574,26 +608,14 @@ def resolve(
 ) -> None:
     with _client(ctx) as client:
         normalized_query, results, total_count, scope_hint = _search_results(client, query, limit=limit)
-    top = results[0] if results else None
-    second = results[1] if len(results) > 1 else None
-    top_score = top["ranking"]["score"] if top else 0
-    second_score = second["ranking"]["score"] if second else 0
-    top_reasons = set(top["ranking"]["match_reasons"]) if top else set()
-    resolved = top is not None and (
-        top_score >= 50
-        or top_score >= second_score + 15
-        or ("family_easy_mode" in top_reasons and top_score >= second_score + 10 and top_score >= 35)
-        or ("intro_guide" in top_reasons and top_score >= second_score + 6 and top_score >= 30)
-    )
     _emit(
         ctx,
-        build_article_resolve_response(
+        _resolve_search_payload(
             provider_command="icy-veins",
             query=query,
             search_query=normalized_query,
             results=results,
             total_count=total_count,
-            resolved=resolved,
             scope_hint=scope_hint,
         ),
     )

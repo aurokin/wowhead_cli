@@ -5,7 +5,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from icy_veins_cli.main import _score_family_match, app
+from icy_veins_cli.main import _resolve_is_confident, _resolve_search_payload, _score_family_match, app
 from icy_veins_cli.page_parser import classify_guide_slug, parse_guide_page, parse_sitemap_guides
 
 runner = CliRunner()
@@ -463,6 +463,47 @@ def test_icy_veins_resolve_command_prefers_easy_mode_when_query_matches(monkeypa
 
     payload = json.loads(result.stdout)
     assert payload["match"]["id"] == "fury-warrior-pve-dps-easy-mode"
+    assert payload["resolved"] is True
+    assert payload["next_command"] == "icy-veins guide fury-warrior-pve-dps-easy-mode"
+
+
+def test_icy_veins_resolve_confidence_helper_covers_easy_mode_and_intro_paths() -> None:
+    easy_mode_top = {"ranking": {"score": 35, "match_reasons": ["family_easy_mode"]}}
+    easy_mode_second = {"ranking": {"score": 24, "match_reasons": []}}
+    assert _resolve_is_confident(easy_mode_top, easy_mode_second) is True
+
+    intro_top = {"ranking": {"score": 30, "match_reasons": ["intro_guide"]}}
+    intro_second = {"ranking": {"score": 23, "match_reasons": []}}
+    assert _resolve_is_confident(intro_top, intro_second) is True
+
+    weak_top = {"ranking": {"score": 29, "match_reasons": []}}
+    weak_second = {"ranking": {"score": 25, "match_reasons": []}}
+    assert _resolve_is_confident(weak_top, weak_second) is False
+
+
+def test_icy_veins_resolve_search_payload_uses_confidence_helper() -> None:
+    payload = _resolve_search_payload(
+        provider_command="icy-veins",
+        query="fury warrior easy mode",
+        search_query="fury warrior easy mode",
+        results=[
+            {
+                "id": "fury-warrior-pve-dps-easy-mode",
+                "name": "Fury Warrior PvE DPS Easy Mode",
+                "ranking": {"score": 35, "match_reasons": ["family_easy_mode"]},
+                "follow_up": {"recommended_command": "icy-veins guide fury-warrior-pve-dps-easy-mode"},
+            },
+            {
+                "id": "warrior-guide",
+                "name": "Warrior Guide",
+                "ranking": {"score": 24, "match_reasons": []},
+                "follow_up": {"recommended_command": "icy-veins guide warrior-guide"},
+            },
+        ],
+        total_count=2,
+        scope_hint=None,
+    )
+
     assert payload["resolved"] is True
     assert payload["next_command"] == "icy-veins guide fury-warrior-pve-dps-easy-mode"
 
