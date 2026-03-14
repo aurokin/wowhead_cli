@@ -623,18 +623,22 @@ def _distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: d
     )
 
 
-def _guild_profile_distribution_values(metric: str, entries: list[dict[str, Any]]) -> tuple[list[str] | list[int] | list[float], str, bool]:
+def _guild_profile_categorical_distribution_values(metric: str, entries: list[dict[str, Any]]) -> tuple[list[str], str] | None:
     if metric == "faction":
-        return [str(entry.get("faction") or "unknown") for entry in entries], "guild_profiles", False
+        return [str(entry.get("faction") or "unknown") for entry in entries], "guild_profiles"
     if metric == "progress":
-        return [str(entry.get("progress") or "unknown") for entry in entries], "guild_profiles", False
+        return [str(entry.get("progress") or "unknown") for entry in entries], "guild_profiles"
     if metric == "encounter":
         return [
             str(encounter.get("encounter") or "unknown")
             for entry in entries
             for encounter in (entry.get("encounters") if isinstance(entry.get("encounters"), list) else [])
             if isinstance(encounter, dict)
-        ], "encounters", False
+        ], "encounters"
+    return None
+
+
+def _guild_profile_numeric_distribution_values(metric: str, entries: list[dict[str, Any]]) -> tuple[list[int] | list[float], str] | None:
     if metric == "world_rank":
         return [
             int(str((entry.get("progress_ranks") or {}).get("world")).replace(",", ""))
@@ -642,12 +646,22 @@ def _guild_profile_distribution_values(metric: str, entries: list[dict[str, Any]
             if isinstance(entry.get("progress_ranks"), dict)
             and (entry.get("progress_ranks") or {}).get("world") is not None
             and str((entry.get("progress_ranks") or {}).get("world")).replace(",", "").isdigit()
-        ], "guild_profiles", True
+        ], "guild_profiles"
     return [
         float(entry["item_level_average"])
         for entry in entries
         if isinstance(entry.get("item_level_average"), (int, float))
-    ], "guild_profiles", True
+    ], "guild_profiles"
+
+
+def _guild_profile_distribution_values(metric: str, entries: list[dict[str, Any]]) -> tuple[list[str] | list[int] | list[float], str, bool]:
+    categorical = _guild_profile_categorical_distribution_values(metric, entries)
+    if categorical is not None:
+        values, unit = categorical
+        return values, unit, False
+    numeric = _guild_profile_numeric_distribution_values(metric, entries)
+    values, unit = numeric if numeric is not None else ([], "guild_profiles")
+    return values, unit, True
 
 
 def _guild_profile_distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any], filtering: dict[str, Any] | None = None) -> dict[str, Any]:
