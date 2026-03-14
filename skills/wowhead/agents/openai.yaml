@@ -1,4 +1,4 @@
 interface:
   display_name: "Wowhead"
-  short_description: "Use the local wowhead command for structured WoW lookups."
-  default_prompt: "Use wowhead to search, resolve entities/guides, and decide comment completeness via comments.needs_raw_fetch."
+  short_description: "Use the local wowhead command for structured WoW lookups and timelines."
+  default_prompt: "Use wowhead for entity, guide, comments, news, blue-tracker, or tool-state lookups when the caller already wants the Wowhead source."
