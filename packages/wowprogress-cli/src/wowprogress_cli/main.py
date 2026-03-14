@@ -401,24 +401,6 @@ def _guild_profile_sample_summary(entries: list[dict[str, Any]], *, meta: dict[s
         if isinstance(entry.get("progress_ranks"), dict)
         and str((entry.get("progress_ranks") or {}).get("world") or "").replace(",", "").isdigit()
     ]
-    item_level_stats: dict[str, Any] | None = None
-    if item_levels:
-        sorted_values = sorted(item_levels)
-        item_level_stats = {
-            "min": sorted_values[0],
-            "max": sorted_values[-1],
-            "average": round(sum(sorted_values) / len(sorted_values), 2),
-            "median": median(sorted_values),
-        }
-    world_rank_stats: dict[str, Any] | None = None
-    if world_ranks:
-        sorted_ranks = sorted(world_ranks)
-        world_rank_stats = {
-            "min": sorted_ranks[0],
-            "max": sorted_ranks[-1],
-            "average": round(sum(sorted_ranks) / len(sorted_ranks), 2),
-            "median": median(sorted_ranks),
-        }
     return {
         "sampled_at": meta["sampled_at"],
         "guild_profile_count": len(entries),
@@ -434,8 +416,8 @@ def _guild_profile_sample_summary(entries: list[dict[str, Any]], *, meta: dict[s
         "faction_counts": _count_map([str(entry.get("faction") or "unknown") for entry in entries]),
         "progress_counts": _count_map([str(entry.get("progress") or "unknown") for entry in entries]),
         "difficulty_counts": _count_map([str(entry.get("difficulty") or "unknown") for entry in entries]),
-        "item_level_average": item_level_stats,
-        "world_progress_rank": world_rank_stats,
+        "item_level_average": _numeric_summary(item_levels),
+        "world_progress_rank": _numeric_summary(world_ranks),
     }
 
 
@@ -478,19 +460,22 @@ def _categorical_distribution(values: list[str], *, unit: str) -> dict[str, Any]
 
 def _numeric_distribution(values: list[int | float], *, unit: str) -> dict[str, Any]:
     rows = _count_map([str(value) for value in values])
-    stats = None
-    if values:
-        sorted_values = sorted(values)
-        stats = {
-            "min": sorted_values[0],
-            "max": sorted_values[-1],
-            "average": round(sum(sorted_values) / len(sorted_values), 2),
-            "median": median(sorted_values),
-        }
     return {
         "unit": unit,
         "rows": rows,
-        "statistics": stats,
+        "statistics": _numeric_summary(values),
+    }
+
+
+def _numeric_summary(values: list[int | float]) -> dict[str, Any] | None:
+    if not values:
+        return None
+    sorted_values = sorted(values)
+    return {
+        "min": sorted_values[0],
+        "max": sorted_values[-1],
+        "average": round(sum(sorted_values) / len(sorted_values), 2),
+        "median": median(sorted_values),
     }
 
 
@@ -1036,15 +1021,13 @@ def _resolve_is_confident(
 ) -> bool:
     if best is None:
         return False
-    follow_up = best.get("follow_up") if isinstance(best.get("follow_up"), dict) else {}
-    if not follow_up.get("command"):
+    if not _has_follow_up_command(best):
         return False
     best_score = _candidate_score(best)
     second_score = _candidate_score(second) if second is not None else 0
-    resolved = best_score >= 55 and (second is None or best_score - second_score >= 15)
-    if resolved and not query_kind and len(distinct_kinds) > 1:
+    if not _meets_score_confidence(best_score, second_score=second_score, has_second=second is not None):
         return False
-    return resolved
+    return not _is_ambiguous_untyped_result(query_kind, distinct_kinds)
 
 
 def _resolve_confidence_label(best: dict[str, Any] | None, *, resolved: bool) -> str:
@@ -1055,6 +1038,19 @@ def _resolve_confidence_label(best: dict[str, Any] | None, *, resolved: bool) ->
     if _candidate_score(best) >= 40:
         return "medium"
     return "low"
+
+
+def _has_follow_up_command(candidate: dict[str, Any]) -> bool:
+    follow_up = candidate.get("follow_up") if isinstance(candidate.get("follow_up"), dict) else {}
+    return bool(follow_up.get("command"))
+
+
+def _meets_score_confidence(best_score: int, *, second_score: int, has_second: bool) -> bool:
+    return best_score >= 55 and (not has_second or best_score - second_score >= 15)
+
+
+def _is_ambiguous_untyped_result(query_kind: str | None, distinct_kinds: list[str]) -> bool:
+    return query_kind is None and len(distinct_kinds) > 1
 
 
 def _resolve_payload(search_payload: dict[str, Any]) -> dict[str, Any]:

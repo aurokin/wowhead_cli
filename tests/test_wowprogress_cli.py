@@ -11,6 +11,10 @@ from wowprogress_cli.main import (
     _distinct_result_kinds,
     _guild_profile_matches_filters,
     _guild_profile_threshold_estimate,
+    _has_follow_up_command,
+    _is_ambiguous_untyped_result,
+    _meets_score_confidence,
+    _numeric_summary,
     _normalized_encounter_values,
     _resolve_confidence_label,
     _resolve_is_confident,
@@ -116,6 +120,10 @@ def test_wowprogress_search_and_resolve_helpers_cover_ambiguity() -> None:
     assert _resolve_confidence_label(best, resolved=True) == "high"
     assert _resolve_confidence_label({"ranking": {"score": 40}}, resolved=False) == "medium"
     assert _resolve_confidence_label({"ranking": {"score": 20}}, resolved=False) == "low"
+    assert _has_follow_up_command(best) is True
+    assert _meets_score_confidence(60, second_score=30, has_second=True) is True
+    assert _meets_score_confidence(60, second_score=50, has_second=True) is False
+    assert _is_ambiguous_untyped_result(None, ["character", "guild"]) is True
 
 
 def test_wowprogress_resolve_stays_conservative_when_multiple_results(monkeypatch) -> None:
@@ -690,6 +698,14 @@ def test_wowprogress_guild_profile_threshold_estimate_switches_metric() -> None:
     assert metric == "item_level_average"
     assert values == [724.5]
     assert "item-level averages" in caveat
+
+
+def test_wowprogress_numeric_summary_handles_empty_and_populated_values() -> None:
+    assert _numeric_summary([]) is None
+    summary = _numeric_summary([724.5, 721.0, 724.0])
+    assert summary is not None
+    assert summary["min"] == 721.0
+    assert summary["max"] == 724.5
 
 
 def test_wowprogress_distribution_pve_guild_profiles(monkeypatch) -> None:
