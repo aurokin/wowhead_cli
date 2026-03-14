@@ -150,11 +150,8 @@ The next important `simc` layer is now implemented as a local comparison workflo
 This is the correct answer to conversations where the user wants to draft guide-shaped APL variants, compare them objectively, and keep the upstream SimulationCraft repo untouched.
 
 Consumer guidance boundary:
-- iteration recommendations should be purpose-based, not one-size-fits-all
-- a good default ladder is:
-  - `1000` for quick sanity checks
-  - `5000-10000` for variant comparisons
-  - `20000-30000` for higher-confidence final runs
+- default to `1000` iterations for most consumer-facing work
+- only suggest `5000` when the user explicitly wants higher accuracy
 - thread recommendations should not be hard-coded in consumer guidance
 - if thread tuning matters, the CLI or agent should inspect the current machine before recommending a value
 
