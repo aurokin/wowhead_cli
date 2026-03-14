@@ -5,7 +5,16 @@ import json
 import httpx
 from typer.testing import CliRunner
 
-from raiderio_cli.main import _player_snapshots, _run_matches_filters, app as raiderio_app
+from raiderio_cli.main import (
+    _candidate_dedupe_key,
+    _dedupe_search_candidates,
+    _player_snapshots,
+    _resolve_candidate_is_confident,
+    _resolve_confidence_label,
+    _run_matches_filters,
+    _search_result_candidate,
+    app as raiderio_app,
+)
 
 runner = CliRunner()
 
@@ -71,6 +80,60 @@ def test_raiderio_search_returns_ranked_matches(monkeypatch) -> None:
     assert payload["results"][0]["realm"] == "illidan"
     assert "type_hint" in payload["results"][0]["ranking"]["match_reasons"]
     assert payload["results"][0]["follow_up"]["command"] == "raiderio guild us illidan Liquid"
+
+
+def test_raiderio_search_result_candidate_builds_profile_shape() -> None:
+    candidate = _search_result_candidate(
+        {
+            "type": "guild",
+            "name": "Liquid",
+            "data": {
+                "id": 1,
+                "name": "Liquid",
+                "displayName": "Liquid",
+                "faction": "horde",
+                "region": {"slug": "us", "name": "United States & Oceania"},
+                "realm": {"slug": "illidan", "name": "Illidan"},
+                "path": "/guilds/us/illidan/Liquid",
+            },
+        },
+        query="Liquid guild",
+        type_hint="guild",
+    )
+    assert candidate is not None
+    assert candidate["kind"] == "guild"
+    assert candidate["profile_url"] == "https://raider.io/guilds/us/illidan/Liquid"
+    assert "type_hint" in candidate["ranking"]["match_reasons"]
+
+
+def test_raiderio_candidate_dedupe_prefers_higher_score() -> None:
+    first = {
+        "kind": "guild",
+        "region": "us",
+        "realm": "illidan",
+        "name": "Liquid",
+        "ranking": {"score": 10},
+    }
+    second = {
+        "kind": "guild",
+        "region": "us",
+        "realm": "illidan",
+        "name": "Liquid",
+        "ranking": {"score": 20},
+    }
+    assert _candidate_dedupe_key(first) == ("guild", "us", "illidan", "Liquid")
+    deduped = _dedupe_search_candidates([first, second])
+    assert len(deduped) == 1
+    assert deduped[0]["ranking"]["score"] == 20
+
+
+def test_raiderio_resolve_confidence_helpers() -> None:
+    assert _resolve_candidate_is_confident([{"ranking": {"score": 45}}]) is True
+    assert _resolve_candidate_is_confident([{"ranking": {"score": 44}}, {"ranking": {"score": 10}}]) is False
+    assert _resolve_candidate_is_confident([{"ranking": {"score": 50}}, {"ranking": {"score": 40}}]) is False
+    assert _resolve_confidence_label(45, resolved=True) == "high"
+    assert _resolve_confidence_label(30, resolved=False) == "medium"
+    assert _resolve_confidence_label(20, resolved=False) == "low"
 
 
 def test_raiderio_search_uses_structured_direct_guild_probe_when_search_is_empty(monkeypatch) -> None:

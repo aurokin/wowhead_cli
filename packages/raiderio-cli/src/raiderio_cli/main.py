@@ -332,71 +332,11 @@ def _search_results_payload(
     limit: int,
     extra_candidates: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    results: list[dict[str, Any]] = []
-    for row in raw_matches:
-        kind = str(row.get("type") or "").strip().lower()
-        if kind not in {"character", "guild"}:
-            continue
-        data = row.get("data") if isinstance(row.get("data"), dict) else {}
-        region_row = data.get("region") if isinstance(data.get("region"), dict) else {}
-        realm_row = data.get("realm") if isinstance(data.get("realm"), dict) else {}
-        class_row = data.get("class") if isinstance(data.get("class"), dict) else {}
-        name = str(data.get("displayName") or data.get("name") or row.get("name") or "").strip()
-        region = str(region_row.get("slug") or "").strip() or None
-        realm = str(realm_row.get("slug") or "").strip() or None
-        score, reasons = _match_reasons(
-            query=query,
-            type_hint=type_hint,
-            kind=kind,
-            name=name,
-            region=region,
-            realm=realm,
-        )
-        path = data.get("path")
-        profile_url = f"https://raider.io{path}" if isinstance(path, str) and path.startswith("/") else None
-        results.append(
-            {
-                "provider": "raiderio",
-                "kind": kind,
-                "id": data.get("id"),
-                "name": name,
-                "region": region,
-                "region_name": region_row.get("name"),
-                "realm": realm,
-                "realm_name": realm_row.get("name"),
-                "faction": data.get("faction"),
-                "class_name": class_row.get("name"),
-                "class_slug": class_row.get("slug"),
-                "profile_url": profile_url,
-                "path": path,
-                "ranking": {
-                    "score": score,
-                    "match_reasons": reasons,
-                },
-                "follow_up": _follow_up_for_match(kind, region, realm, name),
-            }
-        )
+    results = _search_result_candidates(raw_matches, query=query, type_hint=type_hint)
     if extra_candidates:
         results.extend(extra_candidates)
-    deduped: dict[tuple[str, str | None, str | None, str], dict[str, Any]] = {}
-    for row in results:
-        key = (
-            str(row.get("kind") or ""),
-            (str(row.get("region") or "").lower() or None),
-            (str(row.get("realm") or "").lower() or None),
-            str(row.get("name") or ""),
-        )
-        existing = deduped.get(key)
-        if existing is None:
-            deduped[key] = row
-            continue
-        current_score = int((((row.get("ranking") or {}).get("score")) or 0))
-        existing_score = int((((existing.get("ranking") or {}).get("score")) or 0))
-        if current_score > existing_score:
-            deduped[key] = row
-    results = list(deduped.values())
-    results.sort(key=lambda item: (-int(((item.get("ranking") or {}).get("score")) or 0), str(item.get("kind") or ""), str(item.get("name") or "")))
-    top = results[:limit]
+    results = _dedupe_search_candidates(results)
+    top = _sorted_search_candidates(results)[:limit]
     return {
         "provider": "raiderio",
         "query": query,
@@ -425,11 +365,10 @@ def _resolve_payload(search_payload: dict[str, Any], *, limit: int) -> dict[str,
             "candidates": [],
         }
     best = top[0]
-    best_score = int((((best.get("ranking") or {}).get("score")) or 0))
-    second_score = int(((((top[1].get("ranking") or {}).get("score")) if len(top) > 1 else 0) or 0))
     follow_up = best.get("follow_up") if isinstance(best.get("follow_up"), dict) else {}
-    resolved = bool(follow_up.get("command")) and (best_score >= 45 and (len(top) == 1 or best_score - second_score >= 15))
-    confidence = "high" if resolved else ("medium" if best_score >= 30 else "low")
+    best_score = _candidate_ranking_score(best)
+    resolved = bool(follow_up.get("command")) and _resolve_candidate_is_confident(top)
+    confidence = _resolve_confidence_label(best_score, resolved=resolved)
     return {
         "provider": "raiderio",
         "query": search_payload.get("query"),
@@ -441,6 +380,107 @@ def _resolve_payload(search_payload: dict[str, Any], *, limit: int) -> dict[str,
         "fallback_search_command": None if resolved else f'raiderio search "{search_payload.get("search_query")}"',
         "candidates": top,
     }
+
+
+def _search_result_candidate(row: dict[str, Any], *, query: str, type_hint: str | None) -> dict[str, Any] | None:
+    kind = str(row.get("type") or "").strip().lower()
+    if kind not in {"character", "guild"}:
+        return None
+    data = row.get("data") if isinstance(row.get("data"), dict) else {}
+    region_row = data.get("region") if isinstance(data.get("region"), dict) else {}
+    realm_row = data.get("realm") if isinstance(data.get("realm"), dict) else {}
+    class_row = data.get("class") if isinstance(data.get("class"), dict) else {}
+    name = str(data.get("displayName") or data.get("name") or row.get("name") or "").strip()
+    region = str(region_row.get("slug") or "").strip() or None
+    realm = str(realm_row.get("slug") or "").strip() or None
+    score, reasons = _match_reasons(
+        query=query,
+        type_hint=type_hint,
+        kind=kind,
+        name=name,
+        region=region,
+        realm=realm,
+    )
+    path = data.get("path")
+    profile_url = f"https://raider.io{path}" if isinstance(path, str) and path.startswith("/") else None
+    return {
+        "provider": "raiderio",
+        "kind": kind,
+        "id": data.get("id"),
+        "name": name,
+        "region": region,
+        "region_name": region_row.get("name"),
+        "realm": realm,
+        "realm_name": realm_row.get("name"),
+        "faction": data.get("faction"),
+        "class_name": class_row.get("name"),
+        "class_slug": class_row.get("slug"),
+        "profile_url": profile_url,
+        "path": path,
+        "ranking": {
+            "score": score,
+            "match_reasons": reasons,
+        },
+        "follow_up": _follow_up_for_match(kind, region, realm, name),
+    }
+
+
+def _search_result_candidates(
+    raw_matches: list[dict[str, Any]],
+    *,
+    query: str,
+    type_hint: str | None,
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for row in raw_matches:
+        candidate = _search_result_candidate(row, query=query, type_hint=type_hint)
+        if candidate is not None:
+            results.append(candidate)
+    return results
+
+
+def _candidate_dedupe_key(row: dict[str, Any]) -> tuple[str, str | None, str | None, str]:
+    return (
+        str(row.get("kind") or ""),
+        (str(row.get("region") or "").lower() or None),
+        (str(row.get("realm") or "").lower() or None),
+        str(row.get("name") or ""),
+    )
+
+
+def _candidate_ranking_score(row: dict[str, Any]) -> int:
+    return int((((row.get("ranking") or {}).get("score")) or 0))
+
+
+def _dedupe_search_candidates(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[tuple[str, str | None, str | None, str], dict[str, Any]] = {}
+    for row in results:
+        key = _candidate_dedupe_key(row)
+        existing = deduped.get(key)
+        if existing is None or _candidate_ranking_score(row) > _candidate_ranking_score(existing):
+            deduped[key] = row
+    return list(deduped.values())
+
+
+def _sorted_search_candidates(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        results,
+        key=lambda item: (-_candidate_ranking_score(item), str(item.get("kind") or ""), str(item.get("name") or "")),
+    )
+
+
+def _resolve_candidate_is_confident(top: list[dict[str, Any]]) -> bool:
+    best_score = _candidate_ranking_score(top[0])
+    second_score = _candidate_ranking_score(top[1]) if len(top) > 1 else 0
+    return best_score >= 45 and (len(top) == 1 or best_score - second_score >= 15)
+
+
+def _resolve_confidence_label(best_score: int, *, resolved: bool) -> str:
+    if resolved:
+        return "high"
+    if best_score >= 30:
+        return "medium"
+    return "low"
 
 
 def _raid_progression_summary(progress: dict[str, Any]) -> list[dict[str, Any]]:
