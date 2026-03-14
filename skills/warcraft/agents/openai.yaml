@@ -1,0 +1,4 @@
+interface:
+  display_name: "Warcraft"
+  short_description: "Use the local warcraft wrapper when the right provider is unclear."
+  default_prompt: "Use warcraft to resolve or search across providers first, then hand off to the best provider CLI once the source is known."
