@@ -680,6 +680,211 @@ def test_raiderio_threshold_rejects_unknown_metric() -> None:
     assert payload["error"]["code"] == "invalid_query"
 
 
+def test_raiderio_sample_mythic_plus_runs_filters(monkeypatch) -> None:
+    def fake_runs(self, *, season: str | None, region: str, dungeon: str, affixes: str | None, page: int):  # noqa: ANN001
+        return {
+            "season": "season-tww-3",
+            "leaderboard_url": "https://raider.io/mythic-plus-runs/season-tww-3/world/all/0",
+            "rankings": [
+                {
+                    "rank": 1,
+                    "score": 581.5,
+                    "run": {
+                        "keystone_run_id": 1001,
+                        "season": "season-tww-3",
+                        "mythic_level": 26,
+                        "completed_at": "2026-01-21T18:27:09.000Z",
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
+                        "roster": [
+                            {
+                                "character": {
+                                    "name": "Cotti",
+                                    "realm": {"slug": "tarren-mill"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Druid", "slug": "druid"},
+                                    "spec": {"name": "Balance", "slug": "balance"},
+                                    "path": "/characters/eu/tarren-mill/Cotti",
+                                },
+                                "role": "dps",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "rank": 2,
+                    "score": 560.0,
+                    "run": {
+                        "keystone_run_id": 1002,
+                        "season": "season-tww-3",
+                        "mythic_level": 24,
+                        "completed_at": "2026-01-21T18:30:09.000Z",
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "Operation: Floodgate", "slug": "operation-floodgate"},
+                        "roster": [
+                            {
+                                "character": {
+                                    "name": "Meowtide",
+                                    "realm": {"slug": "sylvanas"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Shaman", "slug": "shaman"},
+                                    "spec": {"name": "Restoration", "slug": "restoration"},
+                                    "path": "/characters/eu/sylvanas/Meowtide",
+                                },
+                                "role": "healer",
+                            }
+                        ],
+                    },
+                },
+            ],
+        }
+
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.mythic_plus_runs", fake_runs)
+    result = runner.invoke(
+        raiderio_app,
+        [
+            "sample",
+            "mythic-plus-runs",
+            "--limit",
+            "10",
+            "--level-min",
+            "25",
+            "--contains-spec",
+            "balance",
+            "--contains-role",
+            "dps",
+            "--player-region",
+            "eu",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["query"]["filters"]["level_min"] == 25
+    assert payload["query"]["filters"]["contains_spec"] == ["balance"]
+    assert payload["sample"]["filtering"]["source_run_count"] == 2
+    assert payload["sample"]["filtering"]["returned_run_count"] == 1
+    assert payload["sample"]["filtering"]["excluded_run_count"] == 1
+    assert payload["runs"][0]["mythic_level"] == 26
+
+
+def test_raiderio_distribution_mythic_plus_runs_filters(monkeypatch) -> None:
+    def fake_runs(self, *, season: str | None, region: str, dungeon: str, affixes: str | None, page: int):  # noqa: ANN001
+        return {
+            "season": "season-tww-3",
+            "leaderboard_url": "https://raider.io/mythic-plus-runs/season-tww-3/world/all/0",
+            "rankings": [
+                {
+                    "rank": 1,
+                    "score": 581.5,
+                    "run": {
+                        "keystone_run_id": 1001,
+                        "season": "season-tww-3",
+                        "mythic_level": 26,
+                        "completed_at": "2026-01-21T18:27:09.000Z",
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
+                        "roster": [
+                            {
+                                "character": {
+                                    "name": "Cotti",
+                                    "realm": {"slug": "tarren-mill"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Druid", "slug": "druid"},
+                                    "spec": {"name": "Balance", "slug": "balance"},
+                                    "path": "/characters/eu/tarren-mill/Cotti",
+                                },
+                                "role": "dps",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "rank": 2,
+                    "score": 560.0,
+                    "run": {
+                        "keystone_run_id": 1002,
+                        "season": "season-tww-3",
+                        "mythic_level": 25,
+                        "completed_at": "2026-01-21T18:30:09.000Z",
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "Operation: Floodgate", "slug": "operation-floodgate"},
+                        "roster": [
+                            {
+                                "character": {
+                                    "name": "Meowtide",
+                                    "realm": {"slug": "sylvanas"},
+                                    "region": {"slug": "us"},
+                                    "class": {"name": "Shaman", "slug": "shaman"},
+                                    "spec": {"name": "Restoration", "slug": "restoration"},
+                                    "path": "/characters/us/sylvanas/Meowtide",
+                                },
+                                "role": "healer",
+                            }
+                        ],
+                    },
+                },
+            ],
+        }
+
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.mythic_plus_runs", fake_runs)
+    result = runner.invoke(
+        raiderio_app,
+        ["distribution", "mythic-plus-runs", "--metric", "class", "--player-region", "eu", "--contains-class", "druid"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["query"]["filters"]["player_region"] == ["eu"]
+    assert payload["query"]["filters"]["contains_class"] == ["druid"]
+    assert payload["sample"]["filtering"]["returned_run_count"] == 1
+    assert payload["distribution"]["rows"][0]["value"] == "druid"
+
+
+def test_raiderio_threshold_mythic_plus_runs_filters_to_empty_sample(monkeypatch) -> None:
+    def fake_runs(self, *, season: str | None, region: str, dungeon: str, affixes: str | None, page: int):  # noqa: ANN001
+        return {
+            "season": "season-tww-3",
+            "leaderboard_url": "https://raider.io/mythic-plus-runs/season-tww-3/world/all/0",
+            "rankings": [
+                {
+                    "rank": 1,
+                    "score": 581.5,
+                    "run": {
+                        "keystone_run_id": 1001,
+                        "season": "season-tww-3",
+                        "mythic_level": 26,
+                        "completed_at": "2026-01-21T18:27:09.000Z",
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
+                        "roster": [
+                            {
+                                "character": {
+                                    "name": "Cotti",
+                                    "realm": {"slug": "tarren-mill"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Druid", "slug": "druid"},
+                                    "spec": {"name": "Balance", "slug": "balance"},
+                                    "path": "/characters/eu/tarren-mill/Cotti",
+                                },
+                                "role": "dps",
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.mythic_plus_runs", fake_runs)
+    result = runner.invoke(
+        raiderio_app,
+        ["threshold", "mythic-plus-runs", "--metric", "score", "--value", "560", "--contains-spec", "restoration"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["sample"]["filtering"]["returned_run_count"] == 0
+    assert payload["threshold"]["nearest_match_count"] == 0
+    assert payload["threshold"]["estimate"] is None
+
+
 def test_raiderio_http_error_maps_to_structured_error(monkeypatch) -> None:
     request = httpx.Request("GET", "https://raider.io/api/v1/characters/profile")
     response = httpx.Response(404, request=request, json={"message": "Character not found"})

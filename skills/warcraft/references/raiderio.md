@@ -17,8 +17,10 @@
 
 - prefer structured queries like `character us illidan Roguecane`
 - use `sample mythic-plus-runs` and `distribution mythic-plus-runs` for analytics questions
+- narrow sampled analytics with filters like `--level-min`, `--contains-spec`, and `--player-region` when you need a tighter slice
 - use `threshold mythic-plus-runs` for sampled estimates around score or key level targets
 - treat the analytics outputs as sampled leaderboard-derived summaries, not authoritative universal truths
+- check the filtering counts when you narrow a slice so you do not over-trust a tiny sample
 
 ## Boundaries
 

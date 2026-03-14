@@ -594,6 +594,115 @@ def _sample_mythic_plus_runs(
     }
 
 
+def _normalize_filter_values(values: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    for value in values or []:
+        cleaned = value.strip().lower().replace("_", "-").replace(" ", "-")
+        if cleaned and cleaned not in normalized:
+            normalized.append(cleaned)
+    return normalized
+
+
+def _run_matches_filters(
+    run: dict[str, Any],
+    *,
+    level_min: int | None,
+    level_max: int | None,
+    score_min: float | None,
+    score_max: float | None,
+    contains_role: list[str],
+    contains_class: list[str],
+    contains_spec: list[str],
+    player_region: list[str],
+) -> bool:
+    mythic_level = run.get("mythic_level")
+    if level_min is not None and isinstance(mythic_level, int) and mythic_level < level_min:
+        return False
+    if level_max is not None and isinstance(mythic_level, int) and mythic_level > level_max:
+        return False
+    score = run.get("score")
+    if score_min is not None and isinstance(score, (int, float)) and float(score) < score_min:
+        return False
+    if score_max is not None and isinstance(score, (int, float)) and float(score) > score_max:
+        return False
+    roster = run.get("roster") if isinstance(run.get("roster"), list) else []
+    if contains_role:
+        role_values = {str(entry.get("role") or "").strip().lower() for entry in roster if isinstance(entry, dict)}
+        if not any(value in role_values for value in contains_role):
+            return False
+    if contains_class:
+        class_values = {
+            str(entry.get("class_slug") or entry.get("class_name") or "").strip().lower().replace(" ", "-")
+            for entry in roster
+            if isinstance(entry, dict)
+        }
+        if not any(value in class_values for value in contains_class):
+            return False
+    if contains_spec:
+        spec_values = {
+            str(entry.get("spec_slug") or entry.get("spec_name") or "").strip().lower().replace(" ", "-")
+            for entry in roster
+            if isinstance(entry, dict)
+        }
+        if not any(value in spec_values for value in contains_spec):
+            return False
+    if player_region:
+        region_values = {
+            str(entry.get("region") or "").strip().lower()
+            for entry in roster
+            if isinstance(entry, dict)
+        }
+        if not any(value in region_values for value in player_region):
+            return False
+    return True
+
+
+def _filtered_runs(
+    runs: list[dict[str, Any]],
+    *,
+    level_min: int | None,
+    level_max: int | None,
+    score_min: float | None,
+    score_max: float | None,
+    contains_role: list[str] | None,
+    contains_class: list[str] | None,
+    contains_spec: list[str] | None,
+    player_region: list[str] | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    normalized_role = _normalize_filter_values(contains_role)
+    normalized_class = _normalize_filter_values(contains_class)
+    normalized_spec = _normalize_filter_values(contains_spec)
+    normalized_region = _normalize_filter_values(player_region)
+    filtered = [
+        run
+        for run in runs
+        if _run_matches_filters(
+            run,
+            level_min=level_min,
+            level_max=level_max,
+            score_min=score_min,
+            score_max=score_max,
+            contains_role=normalized_role,
+            contains_class=normalized_class,
+            contains_spec=normalized_spec,
+            player_region=normalized_region,
+        )
+    ]
+    return filtered, {
+        "level_min": level_min,
+        "level_max": level_max,
+        "score_min": score_min,
+        "score_max": score_max,
+        "contains_role": normalized_role,
+        "contains_class": normalized_class,
+        "contains_spec": normalized_spec,
+        "player_region": normalized_region,
+        "source_run_count": len(runs),
+        "returned_run_count": len(filtered),
+        "excluded_run_count": len(runs) - len(filtered),
+    }
+
+
 def _count_map(values: list[str]) -> list[dict[str, Any]]:
     counts: dict[str, int] = {}
     for value in values:
@@ -836,6 +945,29 @@ def _threshold_payload(metric: str, target: float, runs: list[dict[str, Any]], *
         "citations": {
             "leaderboard_urls": meta["leaderboard_urls"],
         },
+    }
+
+
+def _analytics_filter_query(
+    *,
+    level_min: int | None,
+    level_max: int | None,
+    score_min: float | None,
+    score_max: float | None,
+    contains_role: list[str] | None,
+    contains_class: list[str] | None,
+    contains_spec: list[str] | None,
+    player_region: list[str] | None,
+) -> dict[str, Any]:
+    return {
+        "level_min": level_min,
+        "level_max": level_max,
+        "score_min": score_min,
+        "score_max": score_max,
+        "contains_role": _normalize_filter_values(contains_role),
+        "contains_class": _normalize_filter_values(contains_class),
+        "contains_spec": _normalize_filter_values(contains_spec),
+        "player_region": _normalize_filter_values(player_region),
     }
 
 
@@ -1131,6 +1263,14 @@ def sample_mythic_plus_runs(
     page: int = typer.Option(0, "--page", min=0, help="Starting page of rankings to request."),
     pages: int = typer.Option(1, "--pages", min=1, max=10, help="Number of pages to sample."),
     limit: int = typer.Option(100, "--limit", min=1, max=200, help="Maximum runs to retain in the sample."),
+    level_min: int | None = typer.Option(None, "--level-min", min=0, help="Retain only runs at or above this Mythic+ level."),
+    level_max: int | None = typer.Option(None, "--level-max", min=0, help="Retain only runs at or below this Mythic+ level."),
+    score_min: float | None = typer.Option(None, "--score-min", help="Retain only runs at or above this sampled run score."),
+    score_max: float | None = typer.Option(None, "--score-max", help="Retain only runs at or below this sampled run score."),
+    contains_role: list[str] | None = typer.Option(None, "--contains-role", help="Retain only runs containing at least one roster role. Repeatable."),
+    contains_class: list[str] | None = typer.Option(None, "--contains-class", help="Retain only runs containing at least one class slug or name. Repeatable."),
+    contains_spec: list[str] | None = typer.Option(None, "--contains-spec", help="Retain only runs containing at least one spec slug or name. Repeatable."),
+    player_region: list[str] | None = typer.Option(None, "--player-region", help="Retain only runs containing at least one player from the given region. Repeatable."),
 ) -> None:
     try:
         with _client(ctx) as client:
@@ -1147,6 +1287,17 @@ def sample_mythic_plus_runs(
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
         return
+    runs, filtering = _filtered_runs(
+        runs,
+        level_min=level_min,
+        level_max=level_max,
+        score_min=score_min,
+        score_max=score_max,
+        contains_role=contains_role,
+        contains_class=contains_class,
+        contains_spec=contains_spec,
+        player_region=player_region,
+    )
     query = {
         "season": meta.get("season") or season or None,
         "region": region,
@@ -1155,6 +1306,16 @@ def sample_mythic_plus_runs(
         "page": page,
         "pages": pages,
         "limit": limit,
+        "filters": _analytics_filter_query(
+            level_min=level_min,
+            level_max=level_max,
+            score_min=score_min,
+            score_max=score_max,
+            contains_role=contains_role,
+            contains_class=contains_class,
+            contains_spec=contains_spec,
+            player_region=player_region,
+        ),
     }
     _emit(
         ctx,
@@ -1162,7 +1323,10 @@ def sample_mythic_plus_runs(
             "provider": "raiderio",
             "kind": "mythic_plus_runs_sample",
             "query": query,
-            "sample": _sample_summary(runs, meta=meta),
+            "sample": {
+                **_sample_summary(runs, meta=meta),
+                "filtering": filtering,
+            },
             "runs": runs,
             "freshness": {
                 "sampled_at": meta["sampled_at"],
@@ -1186,6 +1350,14 @@ def distribution_mythic_plus_runs(
     page: int = typer.Option(0, "--page", min=0, help="Starting page of rankings to request."),
     pages: int = typer.Option(1, "--pages", min=1, max=10, help="Number of pages to sample."),
     limit: int = typer.Option(100, "--limit", min=1, max=200, help="Maximum runs to retain in the sample."),
+    level_min: int | None = typer.Option(None, "--level-min", min=0, help="Retain only runs at or above this Mythic+ level."),
+    level_max: int | None = typer.Option(None, "--level-max", min=0, help="Retain only runs at or below this Mythic+ level."),
+    score_min: float | None = typer.Option(None, "--score-min", help="Retain only runs at or above this sampled run score."),
+    score_max: float | None = typer.Option(None, "--score-max", help="Retain only runs at or below this sampled run score."),
+    contains_role: list[str] | None = typer.Option(None, "--contains-role", help="Retain only runs containing at least one roster role. Repeatable."),
+    contains_class: list[str] | None = typer.Option(None, "--contains-class", help="Retain only runs containing at least one class slug or name. Repeatable."),
+    contains_spec: list[str] | None = typer.Option(None, "--contains-spec", help="Retain only runs containing at least one spec slug or name. Repeatable."),
+    player_region: list[str] | None = typer.Option(None, "--player-region", help="Retain only runs containing at least one player from the given region. Repeatable."),
 ) -> None:
     if metric not in {"mythic_level", "dungeon", "role", "player_region", "class", "spec", "composition", "class_composition"}:
         _fail(ctx, "invalid_query", "--metric must be one of: mythic_level, dungeon, role, player_region, class, spec, composition, class_composition")
@@ -1205,6 +1377,17 @@ def distribution_mythic_plus_runs(
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
         return
+    runs, filtering = _filtered_runs(
+        runs,
+        level_min=level_min,
+        level_max=level_max,
+        score_min=score_min,
+        score_max=score_max,
+        contains_role=contains_role,
+        contains_class=contains_class,
+        contains_spec=contains_spec,
+        player_region=player_region,
+    )
     query = {
         "season": meta.get("season") or season or None,
         "region": region,
@@ -1213,8 +1396,21 @@ def distribution_mythic_plus_runs(
         "page": page,
         "pages": pages,
         "limit": limit,
+        "filters": _analytics_filter_query(
+            level_min=level_min,
+            level_max=level_max,
+            score_min=score_min,
+            score_max=score_max,
+            contains_role=contains_role,
+            contains_class=contains_class,
+            contains_spec=contains_spec,
+            player_region=player_region,
+        ),
     }
-    _emit(ctx, _distribution_payload(metric, runs, meta=meta, query=query))
+    payload = _distribution_payload(metric, runs, meta=meta, query=query)
+    if isinstance(payload.get("sample"), dict):
+        payload["sample"]["filtering"] = filtering
+    _emit(ctx, payload)
 
 
 @threshold_app.command("mythic-plus-runs")
@@ -1230,6 +1426,14 @@ def threshold_mythic_plus_runs(
     pages: int = typer.Option(1, "--pages", min=1, max=10, help="Number of pages to sample."),
     limit: int = typer.Option(100, "--limit", min=1, max=200, help="Maximum runs to retain in the sample."),
     nearest: int = typer.Option(10, "--nearest", min=1, max=50, help="Number of nearest sampled runs to retain."),
+    level_min: int | None = typer.Option(None, "--level-min", min=0, help="Retain only runs at or above this Mythic+ level."),
+    level_max: int | None = typer.Option(None, "--level-max", min=0, help="Retain only runs at or below this Mythic+ level."),
+    score_min: float | None = typer.Option(None, "--score-min", help="Retain only runs at or above this sampled run score."),
+    score_max: float | None = typer.Option(None, "--score-max", help="Retain only runs at or below this sampled run score."),
+    contains_role: list[str] | None = typer.Option(None, "--contains-role", help="Retain only runs containing at least one roster role. Repeatable."),
+    contains_class: list[str] | None = typer.Option(None, "--contains-class", help="Retain only runs containing at least one class slug or name. Repeatable."),
+    contains_spec: list[str] | None = typer.Option(None, "--contains-spec", help="Retain only runs containing at least one spec slug or name. Repeatable."),
+    player_region: list[str] | None = typer.Option(None, "--player-region", help="Retain only runs containing at least one player from the given region. Repeatable."),
 ) -> None:
     if metric not in {"score", "mythic_level"}:
         _fail(ctx, "invalid_query", "--metric must be one of: score, mythic_level")
@@ -1249,6 +1453,17 @@ def threshold_mythic_plus_runs(
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
         return
+    runs, filtering = _filtered_runs(
+        runs,
+        level_min=level_min,
+        level_max=level_max,
+        score_min=score_min,
+        score_max=score_max,
+        contains_role=contains_role,
+        contains_class=contains_class,
+        contains_spec=contains_spec,
+        player_region=player_region,
+    )
     query = {
         "season": meta.get("season") or season or None,
         "region": region,
@@ -1258,8 +1473,21 @@ def threshold_mythic_plus_runs(
         "pages": pages,
         "limit": limit,
         "nearest": nearest,
+        "filters": _analytics_filter_query(
+            level_min=level_min,
+            level_max=level_max,
+            score_min=score_min,
+            score_max=score_max,
+            contains_role=contains_role,
+            contains_class=contains_class,
+            contains_spec=contains_spec,
+            player_region=player_region,
+        ),
     }
-    _emit(ctx, _threshold_payload(metric, value, runs, meta=meta, query=query, nearest_limit=nearest))
+    payload = _threshold_payload(metric, value, runs, meta=meta, query=query, nearest_limit=nearest)
+    if isinstance(payload.get("sample"), dict):
+        payload["sample"]["filtering"] = filtering
+    _emit(ctx, payload)
 
 
 def run() -> None:

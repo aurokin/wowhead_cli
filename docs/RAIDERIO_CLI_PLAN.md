@@ -21,6 +21,8 @@ Current quality notes:
 - the first sample-backed analytics primitives now exist for Mythic+ run sampling and run-derived distributions
 - sampled run snapshots now preserve roster class/spec data so composition analysis does not need to rediscover it later
 - the first threshold-style primitive now exists for sampled Mythic+ run score and level estimation
+- sampled run analytics now support explicit post-sample filters for level, score, roster role, class, spec, and player region
+- filtered outputs preserve source-run counts and excluded-run counts so narrower slices stay provenance-safe
 - leaderboard, broader Mythic+ surfaces, and richer profile workflows are still later-phase work
 
 ## Next Quality Direction

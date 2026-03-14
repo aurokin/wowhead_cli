@@ -274,8 +274,10 @@ raiderio character us illidan Roguecane
 raiderio guild us illidan Liquid
 raiderio mythic-plus-runs --region world --dungeon all --page 0
 raiderio sample mythic-plus-runs --pages 2 --limit 40
+raiderio sample mythic-plus-runs --pages 2 --limit 40 --level-min 25 --contains-spec balance
 raiderio distribution mythic-plus-runs --metric dungeon --pages 2 --limit 40
 raiderio distribution mythic-plus-runs --metric spec --pages 2 --limit 40
+raiderio distribution mythic-plus-runs --metric class --pages 2 --limit 40 --player-region eu
 raiderio threshold mythic-plus-runs --metric score --value 560 --pages 2 --limit 40
 ```
 
@@ -292,6 +294,7 @@ Raider.IO phase-1 behavior:
   - sample summary
   - freshness
   - leaderboard provenance
+  - optional post-sample filtering for level, score, roster role, class, spec, and player region
 - `distribution mythic-plus-runs` derives distributions from the sampled run set and currently supports:
   - `mythic_level`
   - `dungeon`
@@ -304,6 +307,7 @@ Raider.IO phase-1 behavior:
 - `threshold mythic-plus-runs` is the first threshold-style primitive and estimates:
   - sampled Mythic+ levels near a target run score
   - sampled run scores near a target Mythic+ level
+- filtered analytics preserve the original sampled run count and the excluded run count, so agents can see how thin a narrowed slice became
 - threshold outputs are intentionally explicit that they are derived from sampled leaderboard runs, not direct player-rating guarantees
 - use the sample/distribution commands when agents need trustworthy building blocks for later reasoning, instead of treating Raider.IO as if it already answers higher-level analytics questions directly
 

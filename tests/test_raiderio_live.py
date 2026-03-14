@@ -68,3 +68,13 @@ def test_live_raiderio_threshold_mythic_plus_runs_contract() -> None:
     assert payload["metric"] == "score"
     assert payload["threshold"]["nearest_match_count"] >= 1
     assert payload["threshold"]["estimate"]["metric"] == "mythic_level"
+
+
+@pytest.mark.live
+def test_live_raiderio_filtered_sample_contract() -> None:
+    payload = _payload_for(["sample", "mythic-plus-runs", "--pages", "1", "--limit", "20", "--level-min", "20", "--contains-role", "healer"])
+
+    assert payload["kind"] == "mythic_plus_runs_sample"
+    assert payload["query"]["filters"]["level_min"] == 20
+    assert payload["query"]["filters"]["contains_role"] == ["healer"]
+    assert payload["sample"]["filtering"]["source_run_count"] >= payload["sample"]["filtering"]["returned_run_count"]
