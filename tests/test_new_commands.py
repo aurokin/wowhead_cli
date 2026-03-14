@@ -8,12 +8,15 @@ from typer.testing import CliRunner
 
 from wowhead_cli.main import (
     _exact_match_score,
+    _filtered_guide_category_rows,
     _guide_comment_matches,
     _guide_gatherer_matches,
     _guide_linked_entity_matches,
     _guide_navigation_matches,
     _guide_query_top_matches,
     _guide_section_matches,
+    _guide_row_matches_filters,
+    _guides_payload,
     _is_filtered_high_confidence,
     _is_high_confidence_exact_match,
     _is_high_confidence_score,
@@ -23,8 +26,10 @@ from wowhead_cli.main import (
     _search_result_score_and_reasons,
     _term_match_score,
     _type_hint_score,
+    _validated_guides_filters,
     app,
 )
+from wowhead_cli.expansion_profiles import resolve_expansion
 from wowhead_cli.wowhead_client import WowheadClient
 
 runner = CliRunner()
@@ -1239,6 +1244,114 @@ def test_guide_query_top_matches_dedupes_entity_results_across_groups() -> None:
 
     assert len(top) == 1
     assert top[0]["kind"] == "linked_entity"
+
+
+def test_validated_guides_filters_normalizes_and_rejects_invalid_ranges() -> None:
+    category, authors, updated_after, updated_before = _validated_guides_filters(
+        category=" classes/ ",
+        author=["Khazakdk,Another"],
+        updated_after="2026-02-01",
+        updated_before="2026-03-01",
+        patch_min=1,
+        patch_max=2,
+        sort_by="updated",
+    )
+
+    assert category == "classes"
+    assert authors == ("khazakdk", "another")
+    assert updated_after is not None
+    assert updated_before is not None
+
+    try:
+        _validated_guides_filters(
+            category="classes",
+            author=[],
+            updated_after="2026-03-01",
+            updated_before="2026-02-01",
+            patch_min=1,
+            patch_max=2,
+            sort_by="updated",
+        )
+    except ValueError as exc:
+        assert "--updated-after must be <= --updated-before." in str(exc)
+    else:
+        raise AssertionError("expected invalid date range")
+
+
+def test_guide_row_matches_filters_and_filtered_rows() -> None:
+    normalized_row = {
+        "id": 32000,
+        "title": "Frost Death Knight DPS Guide",
+        "name": "Frost Death Knight DPS Guide - Midnight",
+        "author": "Khazakdk",
+        "last_updated": "2026-02-25T17:32:29+00:00",
+        "patch": 120001,
+        "category_path": "classes/death-knight/frost",
+    }
+
+    assert _guide_row_matches_filters(
+        normalized_row,
+        selected_authors=("khazakdk",),
+        parsed_updated_after=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        parsed_updated_before=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        patch_min=120000,
+        patch_max=120001,
+    ) is True
+
+    filtered = _filtered_guide_category_rows(
+        [
+            {
+                "id": 32000,
+                "title": "Frost Death Knight DPS Guide",
+                "name": "Frost Death Knight DPS Guide - Midnight",
+                "url": "/guide/classes/death-knight/frost/overview-pve-dps",
+                "categoryPath": "classes/death-knight/frost",
+                "author": "Khazakdk",
+                "lastEdit": "2026-02-25T17:32:29+00:00",
+                "patch": 120001,
+                "rating": 4.6,
+            }
+        ],
+        query_text="death knight",
+        selected_authors=("khazakdk",),
+        parsed_updated_after=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        parsed_updated_before=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        patch_min=120000,
+        patch_max=120001,
+        sort_by="relevance",
+    )
+    assert len(filtered) == 1
+    assert filtered[0]["match_score"] > 0
+
+
+def test_guides_payload_builds_expected_filters_and_facets() -> None:
+    class DummyConfig:
+        expansion = resolve_expansion(None)
+
+    payload = _guides_payload(
+        cfg=DummyConfig(),
+        category="classes",
+        query="death knight",
+        sort_by="relevance",
+        selected_authors=("khazakdk",),
+        parsed_updated_after=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        parsed_updated_before=None,
+        patch_min=120001,
+        patch_max=None,
+        normalized_rows=[
+            {
+                "id": 32000,
+                "author": "Khazakdk",
+                "category_path": "classes/death-knight/frost",
+                "title": "Frost Death Knight DPS Guide",
+            }
+        ],
+        limit=5,
+    )
+
+    assert payload["guides_url"].endswith("/guides/classes")
+    assert payload["filters"]["authors"] == ["khazakdk"]
+    assert payload["facets"]["authors"] == ["Khazakdk"]
 
 
 

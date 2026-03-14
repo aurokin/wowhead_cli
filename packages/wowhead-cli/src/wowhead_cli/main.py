@@ -4414,6 +4414,137 @@ def blue_topic(
     _emit(ctx, payload)
 
 
+def _validated_guides_filters(
+    *,
+    category: str,
+    author: list[str],
+    updated_after: str | None,
+    updated_before: str | None,
+    patch_min: int | None,
+    patch_max: int | None,
+    sort_by: str,
+) -> tuple[str, tuple[str, ...], datetime | None, datetime | None]:
+    if sort_by not in {"relevance", "updated", "published", "rating"}:
+        raise ValueError("--sort must be one of: relevance, updated, published, rating.")
+    selected_authors = _normalize_text_filters(author)
+    parsed_updated_after = _parse_date_bound(updated_after, end_of_day=False)
+    if updated_after is not None and parsed_updated_after is None:
+        raise ValueError(f"Invalid --updated-after value {updated_after!r}.")
+    parsed_updated_before = _parse_date_bound(updated_before, end_of_day=True)
+    if updated_before is not None and parsed_updated_before is None:
+        raise ValueError(f"Invalid --updated-before value {updated_before!r}.")
+    if parsed_updated_after is not None and parsed_updated_before is not None and parsed_updated_after > parsed_updated_before:
+        raise ValueError("--updated-after must be <= --updated-before.")
+    if patch_min is not None and patch_max is not None and patch_min > patch_max:
+        raise ValueError("--patch-min must be <= --patch-max.")
+    normalized_category = category.strip().strip("/")
+    if not normalized_category:
+        raise ValueError("Guide category cannot be empty.")
+    return normalized_category, selected_authors, parsed_updated_after, parsed_updated_before
+
+
+def _guide_row_matches_filters(
+    row: dict[str, Any],
+    *,
+    selected_authors: tuple[str, ...],
+    parsed_updated_after: datetime | None,
+    parsed_updated_before: datetime | None,
+    patch_min: int | None,
+    patch_max: int | None,
+) -> bool:
+    if not _text_filter_match(row.get("author"), selected_authors):
+        return False
+    updated_at = _parse_iso8601_utc(row.get("last_updated"))
+    if parsed_updated_after is not None and (updated_at is None or updated_at < parsed_updated_after):
+        return False
+    if parsed_updated_before is not None and (updated_at is None or updated_at > parsed_updated_before):
+        return False
+    patch_value = row.get("patch")
+    if patch_min is not None and (not isinstance(patch_value, int) or patch_value < patch_min):
+        return False
+    if patch_max is not None and (not isinstance(patch_value, int) or patch_value > patch_max):
+        return False
+    return True
+
+
+def _filtered_guide_category_rows(
+    rows: list[Any],
+    *,
+    query_text: str | None,
+    selected_authors: tuple[str, ...],
+    parsed_updated_after: datetime | None,
+    parsed_updated_before: datetime | None,
+    patch_min: int | None,
+    patch_max: int | None,
+    sort_by: str,
+) -> list[dict[str, Any]]:
+    normalized_rows: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        normalized_row = _normalize_guide_category_row(row)
+        if normalized_row is None:
+            continue
+        if not _guide_row_matches_filters(
+            normalized_row,
+            selected_authors=selected_authors,
+            parsed_updated_after=parsed_updated_after,
+            parsed_updated_before=parsed_updated_before,
+            patch_min=patch_min,
+            patch_max=patch_max,
+        ):
+            continue
+        if query_text is not None:
+            score = _score_text_match(
+                query_text,
+                normalized_row.get("title"),
+                normalized_row.get("name"),
+                normalized_row.get("author"),
+                normalized_row.get("category_path"),
+            )
+            if score <= 0:
+                continue
+            normalized_row["match_score"] = score
+        normalized_row["_sort"] = _guide_sort_key(normalized_row, sort_by=sort_by, fallback_index=index)
+        normalized_rows.append(normalized_row)
+    normalized_rows.sort(key=lambda row: row.pop("_sort"))
+    return normalized_rows
+
+
+def _guides_payload(
+    *,
+    cfg: RuntimeConfig,
+    category: str,
+    query: str | None,
+    sort_by: str,
+    selected_authors: tuple[str, ...],
+    parsed_updated_after: datetime | None,
+    parsed_updated_before: datetime | None,
+    patch_min: int | None,
+    patch_max: int | None,
+    normalized_rows: list[dict[str, Any]],
+    limit: int,
+) -> dict[str, Any]:
+    return {
+        "query": query,
+        "expansion": cfg.expansion.key,
+        "category": category,
+        "guides_url": guide_category_url(category, expansion=cfg.expansion),
+        "filters": {
+            "authors": list(selected_authors),
+            "updated_after": parsed_updated_after.isoformat() if parsed_updated_after is not None else None,
+            "updated_before": parsed_updated_before.isoformat() if parsed_updated_before is not None else None,
+            "patch_min": patch_min,
+            "patch_max": patch_max,
+            "sort": sort_by,
+        },
+        "count": len(normalized_rows),
+        "results": normalized_rows[:limit],
+        "facets": _collect_timeline_facets(
+            normalized_rows,
+            fields={"authors": "author", "category_paths": "category_path"},
+        ),
+    }
+
+
 @app.command("guides")
 def guides(
     ctx: typer.Context,
@@ -4462,26 +4593,18 @@ def guides(
 ) -> None:
     cfg = _cfg(ctx)
     client = _client(ctx)
-    if sort_by not in {"relevance", "updated", "published", "rating"}:
-        _fail(ctx, "invalid_argument", "--sort must be one of: relevance, updated, published, rating.")
-    selected_authors = _normalize_text_filters(author)
-    parsed_updated_after = _parse_date_bound(updated_after, end_of_day=False)
-    if updated_after is not None and parsed_updated_after is None:
-        _fail(ctx, "invalid_argument", f"Invalid --updated-after value {updated_after!r}.")
-    parsed_updated_before = _parse_date_bound(updated_before, end_of_day=True)
-    if updated_before is not None and parsed_updated_before is None:
-        _fail(ctx, "invalid_argument", f"Invalid --updated-before value {updated_before!r}.")
-    if (
-        parsed_updated_after is not None
-        and parsed_updated_before is not None
-        and parsed_updated_after > parsed_updated_before
-    ):
-        _fail(ctx, "invalid_argument", "--updated-after must be <= --updated-before.")
-    if patch_min is not None and patch_max is not None and patch_min > patch_max:
-        _fail(ctx, "invalid_argument", "--patch-min must be <= --patch-max.")
-    normalized_category = category.strip().strip("/")
-    if not normalized_category:
-        _fail(ctx, "invalid_argument", "Guide category cannot be empty.")
+    try:
+        normalized_category, selected_authors, parsed_updated_after, parsed_updated_before = _validated_guides_filters(
+            category=category,
+            author=author,
+            updated_after=updated_after,
+            updated_before=updated_before,
+            patch_min=patch_min,
+            patch_max=patch_max,
+            sort_by=sort_by,
+        )
+    except ValueError as exc:
+        _fail(ctx, "invalid_argument", str(exc))
     try:
         html = client.guide_category_page_html(normalized_category)
     except httpx.HTTPStatusError as exc:
@@ -4494,60 +4617,34 @@ def guides(
     except (ValueError, json.JSONDecodeError) as exc:
         _fail(ctx, "parse_error", str(exc))
 
-    normalized_rows: list[dict[str, Any]] = []
     query_text = query.strip() if isinstance(query, str) and query.strip() else None
-    for index, row in enumerate(rows):
-        normalized_row = _normalize_guide_category_row(row)
-        if normalized_row is None:
-            continue
-        if not _text_filter_match(normalized_row.get("author"), selected_authors):
-            continue
-        updated_at = _parse_iso8601_utc(normalized_row.get("last_updated"))
-        if parsed_updated_after is not None and (updated_at is None or updated_at < parsed_updated_after):
-            continue
-        if parsed_updated_before is not None and (updated_at is None or updated_at > parsed_updated_before):
-            continue
-        patch_value = normalized_row.get("patch")
-        if patch_min is not None and (not isinstance(patch_value, int) or patch_value < patch_min):
-            continue
-        if patch_max is not None and (not isinstance(patch_value, int) or patch_value > patch_max):
-            continue
-        if query_text is not None:
-            score = _score_text_match(
-                query_text,
-                normalized_row.get("title"),
-                normalized_row.get("name"),
-                normalized_row.get("author"),
-                normalized_row.get("category_path"),
-            )
-            if score <= 0:
-                continue
-            normalized_row["match_score"] = score
-        normalized_row["_sort"] = _guide_sort_key(normalized_row, sort_by=sort_by, fallback_index=index)
-        normalized_rows.append(normalized_row)
-    normalized_rows.sort(key=lambda row: row.pop("_sort"))
+    normalized_rows = _filtered_guide_category_rows(
+        rows,
+        query_text=query_text,
+        selected_authors=selected_authors,
+        parsed_updated_after=parsed_updated_after,
+        parsed_updated_before=parsed_updated_before,
+        patch_min=patch_min,
+        patch_max=patch_max,
+        sort_by=sort_by,
+    )
 
-    payload = {
-        "query": query,
-        "expansion": cfg.expansion.key,
-        "category": normalized_category,
-        "guides_url": guide_category_url(normalized_category, expansion=cfg.expansion),
-        "filters": {
-            "authors": list(selected_authors),
-            "updated_after": parsed_updated_after.isoformat() if parsed_updated_after is not None else None,
-            "updated_before": parsed_updated_before.isoformat() if parsed_updated_before is not None else None,
-            "patch_min": patch_min,
-            "patch_max": patch_max,
-            "sort": sort_by,
-        },
-        "count": len(normalized_rows),
-        "results": normalized_rows[:limit],
-        "facets": _collect_timeline_facets(
-            normalized_rows,
-            fields={"authors": "author", "category_paths": "category_path"},
+    _emit(
+        ctx,
+        _guides_payload(
+            cfg=cfg,
+            category=normalized_category,
+            query=query,
+            sort_by=sort_by,
+            selected_authors=selected_authors,
+            parsed_updated_after=parsed_updated_after,
+            parsed_updated_before=parsed_updated_before,
+            patch_min=patch_min,
+            patch_max=patch_max,
+            normalized_rows=normalized_rows,
+            limit=limit,
         ),
-    }
-    _emit(ctx, payload)
+    )
 
 
 @app.command("talent-calc")
