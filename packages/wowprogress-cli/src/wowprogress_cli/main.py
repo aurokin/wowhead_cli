@@ -449,6 +449,85 @@ def _normalize_slug_filters(values: list[str] | None) -> list[str]:
     return normalized
 
 
+def _metric_within_bounds(value: Any, *, minimum: float | None, maximum: float | None) -> bool:
+    if not isinstance(value, (int, float)):
+        return True
+    numeric_value = float(value)
+    if minimum is not None and numeric_value < minimum:
+        return False
+    if maximum is not None and numeric_value > maximum:
+        return False
+    return True
+
+
+def _normalized_encounter_values(entry: dict[str, Any]) -> set[str]:
+    return {
+        "-".join(part for part in re.split(r"[^a-z0-9]+", str(row.get("encounter") or "").strip().lower()) if part)
+        for row in (entry.get("encounters") if isinstance(entry.get("encounters"), list) else [])
+        if isinstance(row, dict)
+    }
+
+
+def _categorical_distribution(values: list[str], *, unit: str) -> dict[str, Any]:
+    return {
+        "unit": unit,
+        "rows": _count_map(values),
+        "statistics": None,
+    }
+
+
+def _numeric_distribution(values: list[int | float], *, unit: str) -> dict[str, Any]:
+    rows = _count_map([str(value) for value in values])
+    stats = None
+    if values:
+        sorted_values = sorted(values)
+        stats = {
+            "min": sorted_values[0],
+            "max": sorted_values[-1],
+            "average": round(sum(sorted_values) / len(sorted_values), 2),
+            "median": median(sorted_values),
+        }
+    return {
+        "unit": unit,
+        "rows": rows,
+        "statistics": stats,
+    }
+
+
+def _freshness_payload(meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sampled_at": meta["sampled_at"],
+        "cache_ttl_seconds": meta["cache_ttl_seconds"],
+    }
+
+
+def _citations_payload(meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "leaderboard_page": meta["page_url"],
+    }
+
+
+def _distribution_response(
+    *,
+    kind: str,
+    metric: str,
+    query: dict[str, Any],
+    sample: dict[str, Any],
+    distribution: dict[str, Any],
+    meta: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "provider": "wowprogress",
+        "kind": kind,
+        "metric": metric,
+        "query": query,
+        "sample": sample,
+        "distribution": distribution,
+        "freshness": _freshness_payload(meta),
+        "citations": _citations_payload(meta),
+    }
+
+
 def _world_rank_value(entry: dict[str, Any]) -> int | None:
     progress_ranks = entry.get("progress_ranks") if isinstance(entry.get("progress_ranks"), dict) else {}
     raw = progress_ranks.get("world")
@@ -472,32 +551,23 @@ def _guild_profile_matches_filters(
     item_level_max: float | None,
     encounter: list[str],
 ) -> bool:
-    if faction:
-        faction_value = str(entry.get("faction") or "").strip().lower().replace(" ", "-")
-        if faction_value not in faction:
-            return False
-    if difficulty:
-        difficulty_value = str(entry.get("difficulty") or "").strip().lower().replace(" ", "-")
-        if difficulty_value not in difficulty:
-            return False
+    faction_value = str(entry.get("faction") or "").strip().lower().replace(" ", "-")
+    if faction and faction_value not in faction:
+        return False
+
+    difficulty_value = str(entry.get("difficulty") or "").strip().lower().replace(" ", "-")
+    if difficulty and difficulty_value not in difficulty:
+        return False
+
     world_rank = _world_rank_value(entry)
-    if world_rank_min is not None and isinstance(world_rank, int) and world_rank < world_rank_min:
+    if not _metric_within_bounds(world_rank, minimum=world_rank_min, maximum=world_rank_max):
         return False
-    if world_rank_max is not None and isinstance(world_rank, int) and world_rank > world_rank_max:
+
+    if not _metric_within_bounds(entry.get("item_level_average"), minimum=item_level_min, maximum=item_level_max):
         return False
-    item_level = entry.get("item_level_average")
-    if item_level_min is not None and isinstance(item_level, (int, float)) and float(item_level) < item_level_min:
+
+    if encounter and not any(value in _normalized_encounter_values(entry) for value in encounter):
         return False
-    if item_level_max is not None and isinstance(item_level, (int, float)) and float(item_level) > item_level_max:
-        return False
-    if encounter:
-        encounter_values = {
-            "-".join(part for part in re.split(r"[^a-z0-9]+", str(row.get("encounter") or "").strip().lower()) if part)
-            for row in (entry.get("encounters") if isinstance(entry.get("encounters"), list) else [])
-            if isinstance(row, dict)
-        }
-        if not any(value in encounter_values for value in encounter):
-            return False
     return True
 
 
@@ -544,19 +614,10 @@ def _filter_guild_profiles(
 
 
 def _distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
+    sample = _sample_summary(entries, meta=meta)
     if metric == "rank":
         values = [int(entry["rank"]) for entry in entries if isinstance(entry.get("rank"), int)]
-        rows = _count_map([str(value) for value in values])
-        stats = None
-        if values:
-            sorted_values = sorted(values)
-            stats = {
-                "min": sorted_values[0],
-                "max": sorted_values[-1],
-                "average": round(sum(sorted_values) / len(sorted_values), 2),
-                "median": median(sorted_values),
-            }
-        distribution = {"unit": "entries", "rows": rows, "statistics": stats}
+        distribution = _numeric_distribution(values, unit="entries")
     else:
         if metric == "realm":
             values = [str(entry.get("realm") or "unknown") for entry in entries]
@@ -566,30 +627,25 @@ def _distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: d
             values = [str(entry.get("bosses_killed")) for entry in entries if isinstance(entry.get("bosses_killed"), int)]
         else:
             values = [str(entry.get("progress") or "unknown") for entry in entries]
-        distribution = {"unit": "entries", "rows": _count_map(values), "statistics": None}
-    return {
-        "provider": "wowprogress",
-        "kind": "pve_leaderboard_distribution",
-        "metric": metric,
-        "query": query,
-        "sample": _sample_summary(entries, meta=meta),
-        "distribution": distribution,
-        "freshness": {
-            "sampled_at": meta["sampled_at"],
-            "cache_ttl_seconds": meta["cache_ttl_seconds"],
-        },
-        "citations": {
-            "leaderboard_page": meta["page_url"],
-        },
-    }
+        distribution = _categorical_distribution(values, unit="entries")
+    return _distribution_response(
+        kind="pve_leaderboard_distribution",
+        metric=metric,
+        query=query,
+        sample=sample,
+        distribution=distribution,
+        meta=meta,
+    )
 
 
 def _guild_profile_distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any], filtering: dict[str, Any] | None = None) -> dict[str, Any]:
-    stats = None
+    sample = _guild_profile_sample_summary(entries, meta=meta, filtering=filtering)
     if metric == "faction":
         values = [str(entry.get("faction") or "unknown") for entry in entries]
+        distribution = _categorical_distribution(values, unit="guild_profiles")
     elif metric == "progress":
         values = [str(entry.get("progress") or "unknown") for entry in entries]
+        distribution = _categorical_distribution(values, unit="guild_profiles")
     elif metric == "encounter":
         values = [
             str(encounter.get("encounter") or "unknown")
@@ -597,51 +653,26 @@ def _guild_profile_distribution_payload(metric: str, entries: list[dict[str, Any
             for encounter in (entry.get("encounters") if isinstance(entry.get("encounters"), list) else [])
             if isinstance(encounter, dict)
         ]
+        distribution = _categorical_distribution(values, unit="encounters")
     elif metric == "world_rank":
-        values = [
-            str((entry.get("progress_ranks") or {}).get("world"))
+        numeric_values = [
+            int(str((entry.get("progress_ranks") or {}).get("world")).replace(",", ""))
             for entry in entries
             if isinstance(entry.get("progress_ranks"), dict) and (entry.get("progress_ranks") or {}).get("world") is not None
+            and str((entry.get("progress_ranks") or {}).get("world")).replace(",", "").isdigit()
         ]
-        numeric = [int(value.replace(",", "")) for value in values if value.replace(",", "").isdigit()]
-        if numeric:
-            sorted_values = sorted(numeric)
-            stats = {
-                "min": sorted_values[0],
-                "max": sorted_values[-1],
-                "average": round(sum(sorted_values) / len(sorted_values), 2),
-                "median": median(sorted_values),
-            }
+        distribution = _numeric_distribution(numeric_values, unit="guild_profiles")
     else:
-        values = [str(entry.get("item_level_average")) for entry in entries if isinstance(entry.get("item_level_average"), (int, float))]
-        numeric = [float(value) for value in values]
-        if numeric:
-            sorted_values = sorted(numeric)
-            stats = {
-                "min": sorted_values[0],
-                "max": sorted_values[-1],
-                "average": round(sum(sorted_values) / len(sorted_values), 2),
-                "median": median(sorted_values),
-            }
-    return {
-        "provider": "wowprogress",
-        "kind": "pve_guild_profiles_distribution",
-        "metric": metric,
-        "query": query,
-        "sample": _guild_profile_sample_summary(entries, meta=meta, filtering=filtering),
-        "distribution": {
-            "unit": "guild_profiles" if metric != "encounter" else "encounters",
-            "rows": _count_map(values),
-            "statistics": stats,
-        },
-        "freshness": {
-            "sampled_at": meta["sampled_at"],
-            "cache_ttl_seconds": meta["cache_ttl_seconds"],
-        },
-        "citations": {
-            "leaderboard_page": meta["page_url"],
-        },
-    }
+        numeric_values = [float(entry["item_level_average"]) for entry in entries if isinstance(entry.get("item_level_average"), (int, float))]
+        distribution = _numeric_distribution(numeric_values, unit="guild_profiles")
+    return _distribution_response(
+        kind="pve_guild_profiles_distribution",
+        metric=metric,
+        query=query,
+        sample=sample,
+        distribution=distribution,
+        meta=meta,
+    )
 
 
 def _nearest_guild_profile_rows(metric: str, target: float, entries: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
@@ -721,13 +752,8 @@ def _guild_profile_threshold_payload(
             "estimate": estimate,
             "caveat": caveat,
         },
-        "freshness": {
-            "sampled_at": meta["sampled_at"],
-            "cache_ttl_seconds": meta["cache_ttl_seconds"],
-        },
-        "citations": {
-            "leaderboard_page": meta["page_url"],
-        },
+        "freshness": _freshness_payload(meta),
+        "citations": _citations_payload(meta),
     }
 
 
@@ -798,13 +824,8 @@ def _threshold_payload(metric: str, target: float, entries: list[dict[str, Any]]
             "estimate": estimate,
             "caveat": caveat,
         },
-        "freshness": {
-            "sampled_at": meta["sampled_at"],
-            "cache_ttl_seconds": meta["cache_ttl_seconds"],
-        },
-        "citations": {
-            "leaderboard_page": meta["page_url"],
-        },
+        "freshness": _freshness_payload(meta),
+        "citations": _citations_payload(meta),
     }
 
 

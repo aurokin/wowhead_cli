@@ -5,7 +5,7 @@ import json
 from typer.testing import CliRunner
 
 from wowprogress_cli.client import WowProgressClient
-from wowprogress_cli.main import app as wowprogress_app
+from wowprogress_cli.main import _guild_profile_matches_filters, _normalized_encounter_values, app as wowprogress_app
 
 runner = CliRunner()
 
@@ -543,6 +543,56 @@ def test_wowprogress_sample_pve_guild_profiles(monkeypatch) -> None:
     assert payload["sample"]["sampling"]["skipped_missing_profile_url"] == 0
     assert payload["guild_profiles"][0]["item_level_average"] is not None
     assert payload["guild_profiles"][0]["progress_ranks"]["world"] is not None
+
+
+def test_wowprogress_normalized_encounter_values() -> None:
+    entry = {
+        "encounters": [
+            {"encounter": "Dimensius, the All-Devouring"},
+            {"encounter": "Nexus-King Salhadaar"},
+        ]
+    }
+
+    values = _normalized_encounter_values(entry)
+
+    assert values == {"dimensius-the-all-devouring", "nexus-king-salhadaar"}
+
+
+def test_wowprogress_guild_profile_matches_filters_uses_normalized_fields() -> None:
+    entry = {
+        "faction": "Horde",
+        "difficulty": "M",
+        "progress_ranks": {"world": "12"},
+        "item_level_average": 724.5,
+        "encounters": [{"encounter": "Dimensius, the All-Devouring"}],
+    }
+
+    assert (
+        _guild_profile_matches_filters(
+            entry,
+            faction=["horde"],
+            difficulty=["m"],
+            world_rank_min=10,
+            world_rank_max=20,
+            item_level_min=720.0,
+            item_level_max=730.0,
+            encounter=["dimensius-the-all-devouring"],
+        )
+        is True
+    )
+    assert (
+        _guild_profile_matches_filters(
+            entry,
+            faction=["alliance"],
+            difficulty=[],
+            world_rank_min=None,
+            world_rank_max=None,
+            item_level_min=None,
+            item_level_max=None,
+            encounter=[],
+        )
+        is False
+    )
 
 
 def test_wowprogress_distribution_pve_guild_profiles(monkeypatch) -> None:
