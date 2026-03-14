@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 import typer
 from icy_veins_cli.main import app as icy_veins_app
+from raiderio_cli.client import RaiderIOClient
 from raiderio_cli.main import app as raiderio_app
 from simc_cli.main import app as simc_app
 from typer.main import get_command
+from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug
 from warcraft_wiki_cli.main import app as warcraft_wiki_app
+from wowprogress_cli.client import WowProgressClient, WowProgressClientError
 from wowprogress_cli.main import app as wowprogress_app
 
 from method_cli.main import app as method_app
@@ -134,6 +138,162 @@ def _passthrough_args(ctx: typer.Context, *, provider_name: str) -> list[str]:
             raise typer.Exit(1)
         return ["--expansion", requested_expansion, *args]
     return args
+
+
+def _normalized_identity(region: str, realm: str, name: str) -> dict[str, str]:
+    return {
+        "region": normalize_region(region),
+        "realm": primary_realm_slug(realm),
+        "name": normalize_name(name),
+    }
+
+
+def _raiderio_source(identity: dict[str, str]) -> dict[str, Any]:
+    try:
+        with RaiderIOClient() as client:
+            payload = client.guild_profile_variants(**identity)
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code
+        return {
+            "provider": "raiderio",
+            "status": "error",
+            "error": {
+                "code": "not_found" if status_code == 404 else "upstream_error",
+                "message": f"Raider.IO request failed with HTTP {status_code}.",
+            },
+        }
+    progression = payload.get("raid_progression") if isinstance(payload.get("raid_progression"), dict) else {}
+    rankings = payload.get("raid_rankings") if isinstance(payload.get("raid_rankings"), dict) else {}
+    active_key = next(iter(progression), None)
+    active_progress = progression.get(active_key) if isinstance(active_key, str) else None
+    active_rankings = rankings.get(active_key) if isinstance(active_key, str) else None
+    members = payload.get("members") if isinstance(payload.get("members"), list) else []
+    roster_preview = [
+        {
+            "name": ((row.get("character") or {}).get("name") if isinstance(row, dict) else None),
+            "class_name": ((row.get("character") or {}).get("class") if isinstance(row, dict) else None),
+            "spec_name": ((row.get("character") or {}).get("active_spec_name") if isinstance(row, dict) else None),
+            "role": ((row.get("character") or {}).get("active_spec_role") if isinstance(row, dict) else None),
+            "profile_url": ((row.get("character") or {}).get("profile_url") if isinstance(row, dict) else None),
+        }
+        for row in members[:10]
+        if isinstance(row, dict) and isinstance(row.get("character"), dict)
+    ]
+    return {
+        "provider": "raiderio",
+        "status": "ok",
+        "guild": {
+            "name": payload.get("name"),
+            "region": payload.get("region"),
+            "realm": payload.get("realm"),
+            "faction": payload.get("faction"),
+            "profile_url": payload.get("profile_url"),
+        },
+        "active_raid": {
+            "key": active_key,
+            "summary": active_progress.get("summary") if isinstance(active_progress, dict) else None,
+            "boss_count": active_progress.get("total_bosses") if isinstance(active_progress, dict) else None,
+            "rankings": active_rankings,
+        },
+        "roster": {
+            "member_count": len(members),
+            "preview": roster_preview,
+        },
+        "citations": {
+            "profile_url": payload.get("profile_url"),
+        },
+    }
+
+
+def _wowprogress_source(identity: dict[str, str]) -> dict[str, Any]:
+    try:
+        with WowProgressClient() as client:
+            payload = client.fetch_guild_page_variants(**identity)
+    except WowProgressClientError as exc:
+        return {
+            "provider": "wowprogress",
+            "status": "error",
+            "error": {"code": exc.code, "message": exc.message},
+        }
+    progress = payload.get("progress") if isinstance(payload.get("progress"), dict) else {}
+    item_level = payload.get("item_level") if isinstance(payload.get("item_level"), dict) else {}
+    encounters = payload.get("encounters") if isinstance(payload.get("encounters"), dict) else {}
+    items = encounters.get("items") if isinstance(encounters.get("items"), list) else []
+    guild = payload.get("guild") if isinstance(payload.get("guild"), dict) else {}
+    return {
+        "provider": "wowprogress",
+        "status": "ok",
+        "guild": guild,
+        "active_raid": {
+            "name": progress.get("raid"),
+            "tier_key": progress.get("tier_key"),
+            "summary": progress.get("summary"),
+            "boss_count": len(items),
+            "rankings": progress.get("ranks"),
+        },
+        "item_level": item_level,
+        "encounters": {
+            "count": encounters.get("count"),
+            "preview": items[:10],
+        },
+        "citations": payload.get("citations"),
+    }
+
+
+def _guild_conflicts(raiderio: dict[str, Any] | None, wowprogress: dict[str, Any] | None) -> dict[str, Any]:
+    reasons: list[str] = []
+    different_window = False
+    if raiderio and wowprogress:
+        ri_bosses = ((raiderio.get("active_raid") or {}).get("boss_count") if isinstance(raiderio.get("active_raid"), dict) else None)
+        wp_bosses = ((wowprogress.get("active_raid") or {}).get("boss_count") if isinstance(wowprogress.get("active_raid"), dict) else None)
+        ri_summary = str(((raiderio.get("active_raid") or {}).get("summary")) or "")
+        wp_summary = str(((wowprogress.get("active_raid") or {}).get("summary")) or "")
+        if ri_bosses != wp_bosses or (ri_summary and wp_summary and ri_summary != wp_summary):
+            different_window = True
+            reasons.append("providers_report_different_active_raid_windows")
+    return {
+        "different_tier_window_detected": different_window,
+        "reasons": reasons,
+    }
+
+
+def _guild_merge_payload(identity: dict[str, str], *, raiderio: dict[str, Any], wowprogress: dict[str, Any]) -> dict[str, Any]:
+    ri_ok = raiderio.get("status") == "ok"
+    wp_ok = wowprogress.get("status") == "ok"
+    if not ri_ok and not wp_ok:
+        return {
+            "ok": False,
+            "error": {
+                "code": "guild_not_found",
+                "message": "No guild provider returned a guild snapshot for that query.",
+            },
+            "query": identity,
+            "sources": {
+                "raiderio": raiderio,
+                "wowprogress": wowprogress,
+            },
+        }
+    preferred_guild = (wowprogress.get("guild") if wp_ok else None) or (raiderio.get("guild") if ri_ok else None) or {}
+    return {
+        "ok": True,
+        "provider": "warcraft",
+        "kind": "guild_snapshot",
+        "query": identity,
+        "guild": {
+            "name": preferred_guild.get("name"),
+            "region": preferred_guild.get("region") or identity["region"],
+            "realm": preferred_guild.get("realm") or identity["realm"],
+            "faction": preferred_guild.get("faction"),
+        },
+        "sources": {
+            "raiderio": raiderio,
+            "wowprogress": wowprogress,
+        },
+        "conflicts": _guild_conflicts(
+            raiderio if ri_ok else None,
+            wowprogress if wp_ok else None,
+        ),
+    }
 
 
 @app.command("doctor")
@@ -294,6 +454,118 @@ def resolve(
         payload["expansion_debug"] = expansion_support_snapshot(requested_expansion=requested_expansion)
     _emit(
         payload,
+        pretty=_pretty(ctx),
+    )
+
+
+@app.command("guild")
+def guild(
+    ctx: typer.Context,
+    region: str = typer.Argument(..., help="Region slug such as us or eu."),
+    realm: str = typer.Argument(..., help="Realm title or slug."),
+    name: str = typer.Argument(..., help="Guild name."),
+) -> None:
+    identity = _normalized_identity(region, realm, name)
+    payload = _guild_merge_payload(
+        identity,
+        raiderio=_raiderio_source(identity),
+        wowprogress=_wowprogress_source(identity),
+    )
+    _emit(payload, pretty=_pretty(ctx), err=not payload.get("ok"))
+    if not payload.get("ok"):
+        raise typer.Exit(1)
+
+
+@app.command("guild-history")
+def guild_history(
+    ctx: typer.Context,
+    region: str = typer.Argument(..., help="Region slug such as us or eu."),
+    realm: str = typer.Argument(..., help="Realm title or slug."),
+    name: str = typer.Argument(..., help="Guild name."),
+) -> None:
+    identity = _normalized_identity(region, realm, name)
+    try:
+        with WowProgressClient() as client:
+            payload = client.fetch_guild_history(**identity)
+    except WowProgressClientError as exc:
+        _emit(
+            {
+                "ok": False,
+                "error": {"code": exc.code, "message": exc.message},
+                "query": identity,
+                "source": "wowprogress",
+            },
+            pretty=_pretty(ctx),
+            err=True,
+        )
+        raise typer.Exit(1)
+    history = payload.get("history") if isinstance(payload.get("history"), list) else []
+    _emit(
+        {
+            "ok": True,
+            "provider": "warcraft",
+            "kind": "guild_history",
+            "query": identity,
+            "source": "wowprogress",
+            "guild": payload.get("guild"),
+            "count": len(history),
+            "tiers": history,
+            "citations": payload.get("citations"),
+        },
+        pretty=_pretty(ctx),
+    )
+
+
+@app.command("guild-ranks")
+def guild_ranks(
+    ctx: typer.Context,
+    region: str = typer.Argument(..., help="Region slug such as us or eu."),
+    realm: str = typer.Argument(..., help="Realm title or slug."),
+    name: str = typer.Argument(..., help="Guild name."),
+) -> None:
+    identity = _normalized_identity(region, realm, name)
+    try:
+        with WowProgressClient() as client:
+            payload = client.fetch_guild_history(**identity)
+    except WowProgressClientError as exc:
+        _emit(
+            {
+                "ok": False,
+                "error": {"code": exc.code, "message": exc.message},
+                "query": identity,
+                "source": "wowprogress",
+            },
+            pretty=_pretty(ctx),
+            err=True,
+        )
+        raise typer.Exit(1)
+    history = payload.get("history") if isinstance(payload.get("history"), list) else []
+    _emit(
+        {
+            "ok": True,
+            "provider": "warcraft",
+            "kind": "guild_ranks",
+            "query": identity,
+            "source": "wowprogress",
+            "guild": payload.get("guild"),
+            "count": len(history),
+            "tiers": [
+                {
+                    "tier_key": row.get("tier_key"),
+                    "raid": row.get("raid"),
+                    "current": row.get("current"),
+                    "progress": row.get("progress"),
+                    "progress_ranks": row.get("progress_ranks"),
+                    "item_level_average": row.get("item_level_average"),
+                    "item_level_ranks": row.get("item_level_ranks"),
+                    "last_kill_at": row.get("last_kill_at"),
+                    "page_url": row.get("page_url"),
+                }
+                for row in history
+                if isinstance(row, dict)
+            ],
+            "citations": payload.get("citations"),
+        },
         pretty=_pretty(ctx),
     )
 

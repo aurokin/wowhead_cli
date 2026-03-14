@@ -61,6 +61,7 @@ Active next step:
   - richer normalized run/profile snapshots where the source supports them
 - for `wowprogress`, prioritize:
   - deeper sample-backed analytics
+  - guild snapshot, history, and rank workflows that are easier than manual site navigation
   - guild/profile aggregation that is faster and clearer than browser workflows
   - reliability and normalization improvements around rankings/profile slices
 - keep `wowhead` at the maintainability boundary now documented in [WOWHEAD_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WOWHEAD_CLI_PLAN.md):

@@ -140,6 +140,38 @@ def _parse_progress_table(table: Tag) -> tuple[dict[str, Any], dict[str, Any]]:
     return progress, item_level
 
 
+def _tier_key_from_url(url: str) -> str | None:
+    match = re.search(r"/rating\.(tier[0-9]+)", url)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def _guild_history_links(soup: BeautifulSoup, *, current_url: str) -> list[dict[str, Any]]:
+    links: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for tag in soup.find_all("a", href=re.compile(r"/guild/.+/rating\.tier[0-9]+")):
+        href = str(tag.get("href") or "").strip()
+        page_url = _absolute_url(href)
+        if page_url in seen:
+            continue
+        seen.add(page_url)
+        tier_key = _tier_key_from_url(page_url)
+        if tier_key is None:
+            continue
+        links.append(
+            {
+                "tier_key": tier_key,
+                "raid": _clean_text(tag.get_text(" ", strip=True)) or tier_key,
+                "page_url": page_url,
+                "current": page_url.rstrip("/") == current_url.rstrip("/"),
+            }
+        )
+    if links and not any(link.get("current") for link in links):
+        links[0]["current"] = True
+    return links
+
+
 def _parse_guild_encounters(table: Tag) -> list[dict[str, Any]]:
     rows = _table_rows(table)
     data_rows = [cells for cells in rows[1:] if len(cells) >= 7]
@@ -188,8 +220,13 @@ def parse_guild_page(html: str, *, url: str, region: str, realm: str, name: str)
         faction = _clean_text(faction_tag.get_text(" ", strip=True)) or None
     realm_link = _find_link_after(heading, r"^/pve/")
     armory_link = _find_link_after(heading, r"(battle\.net|worldofwarcraft\.com)")
+    history_links = _guild_history_links(soup, current_url=url)
     progress_table = next((table for table in soup.find_all("table") if "Progress:" in table.get_text(" ", strip=True) and "Item Level:" in table.get_text(" ", strip=True)), None)
     progress, item_level = _parse_progress_table(progress_table) if progress_table is not None else ({}, {})
+    current_history = next((link for link in history_links if link.get("current")), None)
+    if current_history is not None:
+        progress["raid"] = current_history.get("raid")
+        progress["tier_key"] = current_history.get("tier_key")
     encounters_table = _find_table_by_header(soup, ("Encounter", "First Kill", "World", "Realm"))
     encounters = _parse_guild_encounters(encounters_table) if encounters_table is not None else []
     return {
@@ -207,6 +244,7 @@ def parse_guild_page(html: str, *, url: str, region: str, realm: str, name: str)
             "count": len(encounters),
             "items": encounters,
         },
+        "history_links": history_links,
         "citations": {
             "page": url,
         },

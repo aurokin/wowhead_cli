@@ -37,6 +37,7 @@ def test_wowprogress_doctor_reports_phase_one_capabilities() -> None:
     assert payload["status"] == "ready"
     assert payload["transport"]["mode"] == "browser_fingerprint_http"
     assert payload["capabilities"]["guild"] == "ready"
+    assert payload["capabilities"]["guild_history"] == "ready"
     assert payload["capabilities"]["search"] == "ready"
     assert payload["capabilities"]["sample_pve_leaderboard"] == "ready"
 
@@ -80,6 +81,33 @@ def test_wowprogress_search_returns_ranked_structured_results(monkeypatch) -> No
     assert payload["results"][0]["follow_up"]["command"] == "wowprogress guild us illidan Liquid"
     assert "type_hint" in payload["results"][0]["ranking"]["match_reasons"]
     assert payload["normalized_candidates"][0] == {"region": "us", "realm": "illidan", "name": "Liquid"}
+
+
+def test_wowprogress_search_normalizes_multiword_realms_and_excluded_terms(monkeypatch) -> None:
+    def fake_probe(self, *, region: str, realm: str, name: str, obj_type: str):  # noqa: ANN001
+        assert region == "us"
+        assert realm == "area-52"
+        assert name == "xD"
+        if obj_type == "guild":
+            return {
+                "_search_kind": "guild",
+                "guild": {
+                    "name": "xD",
+                    "region": "us",
+                    "realm": "US-Area 52",
+                    "page_url": "https://www.wowprogress.com/guild/us/area-52/xD",
+                },
+            }
+        return None
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.probe_search_route", fake_probe)
+    result = runner.invoke(wowprogress_app, ["search", "guild na area 52 xD recruit"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["search_query"] == "guild us area-52 xD"
+    assert payload["excluded_terms"] == ["recruit"]
+    assert payload["normalized_candidates"][0] == {"region": "us", "realm": "area-52", "name": "xD"}
 
 
 def test_wowprogress_candidate_from_probe_builds_character_shape() -> None:
@@ -270,6 +298,60 @@ def test_wowprogress_resolve_returns_command_for_short_exact_guild_query(monkeyp
     assert "exact_target_realm" in payload["match"]["ranking"]["match_reasons"]
 
 
+def test_wowprogress_guild_uses_variant_fetch_and_normalized_identity(monkeypatch) -> None:
+    def fake_fetch(self, *, region: str, realm: str, name: str):  # noqa: ANN001
+        assert region == "us"
+        assert realm == "mal-ganis"
+        assert name == "gn"
+        return {"guild": {"name": "gn"}, "progress": {}, "item_level": {}, "encounters": {"count": 0, "items": []}}
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_guild_page_variants", fake_fetch)
+    result = runner.invoke(wowprogress_app, ["guild", "na", "Mal'Ganis", "gn"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["guild"]["name"] == "gn"
+
+
+def test_wowprogress_guild_history_and_ranks_commands(monkeypatch) -> None:
+    history_payload = {
+        "provider": "wowprogress",
+        "kind": "guild_history",
+        "guild": {"name": "gn", "region": "us", "realm": "Mal'Ganis"},
+        "history": [
+            {
+                "tier_key": "tier34",
+                "raid": "Liberation of Undermine",
+                "current": True,
+                "progress": "8/8 (M)",
+                "progress_ranks": {"world": "19", "region": "6", "realm": "2"},
+                "item_level_average": 732.1,
+                "item_level_ranks": {"world": "1", "region": "1", "realm": "1"},
+                "first_kill_at": "Mar 10, 2025 03:35",
+                "last_kill_at": "Apr 4, 2025 02:03",
+                "encounter_count": 8,
+                "page_url": "https://www.wowprogress.com/guild/us/mal-ganis/gn/rating.tier34",
+            }
+        ],
+        "citations": {"page": "https://www.wowprogress.com/guild/us/mal-ganis/gn"},
+    }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_guild_history", lambda self, **kwargs: history_payload)
+
+    history_result = runner.invoke(wowprogress_app, ["guild-history", "us", "Mal'Ganis", "gn"])
+    assert history_result.exit_code == 0
+    history = json.loads(history_result.stdout)
+    assert history["count"] == 1
+    assert history["query"] == {"region": "us", "realm": "mal-ganis", "name": "gn"}
+    assert history["tiers"][0]["raid"] == "Liberation of Undermine"
+    assert history["tiers"][0]["final_ranks"]["world"] == "19"
+
+    ranks_result = runner.invoke(wowprogress_app, ["guild-ranks", "us", "Mal'Ganis", "gn"])
+    assert ranks_result.exit_code == 0
+    ranks = json.loads(ranks_result.stdout)
+    assert ranks["kind"] == "guild_ranks"
+    assert ranks["tiers"][0]["final_ranks"]["realm"] == "2"
+
+
 def test_wowprogress_search_normalizes_multi_word_realm(monkeypatch) -> None:
     calls: list[tuple[str, str, str, str]] = []
 
@@ -382,7 +464,7 @@ def test_wowprogress_guild_summary(monkeypatch) -> None:
             "citations": {"page": "https://www.wowprogress.com/guild/us/illidan/Liquid"},
         }
 
-    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_guild_page", fake_fetch)
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_guild_page_variants", fake_fetch)
     result = runner.invoke(wowprogress_app, ["guild", "us", "illidan", "Liquid"])
     assert result.exit_code == 0
 
@@ -417,7 +499,7 @@ def test_wowprogress_character_summary(monkeypatch) -> None:
             "citations": {"page": "https://www.wowprogress.com/character/us/illidan/Imonthegcd"},
         }
 
-    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_character_page", fake_fetch)
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_character_page_variants", fake_fetch)
     result = runner.invoke(wowprogress_app, ["character", "us", "illidan", "Imonthegcd"])
     assert result.exit_code == 0
 
@@ -461,7 +543,7 @@ def test_wowprogress_error_maps_to_structured_error(monkeypatch) -> None:
 
         raise WowProgressClientError("not_found", "WowProgress could not resolve that guild or character.")
 
-    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_guild_page", fake_fetch)
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_guild_page_variants", fake_fetch)
     result = runner.invoke(wowprogress_app, ["guild", "us", "illidan", "Missing"])
     assert result.exit_code == 1
 

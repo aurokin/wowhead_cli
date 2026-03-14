@@ -17,6 +17,7 @@ from warcraft_core.analytics import (
     numeric_summary as _numeric_summary,
 )
 from warcraft_core.output import emit
+from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug
 
 app = typer.Typer(add_completion=False, help="Raider.IO profile and leaderboard CLI.")
 sample_app = typer.Typer(add_completion=False, help="Sample-backed Raider.IO analytics primitives.")
@@ -99,11 +100,11 @@ def _normalize_structured_query(query: str) -> tuple[str, str | None, str | None
     tokens = [token for token in normalized_query.strip().split() if token]
     if len(tokens) < 3:
         return normalized_query, type_hint, None, None, None
-    region = tokens[0].lower()
+    region = normalize_region(tokens[0])
     if region not in {"us", "eu", "kr", "tw", "cn"}:
         return normalized_query, type_hint, None, None, None
-    realm = tokens[1]
-    name = " ".join(tokens[2:]).strip()
+    realm = primary_realm_slug(tokens[1])
+    name = normalize_name(" ".join(tokens[2:]).strip())
     if not name:
         return normalized_query, type_hint, None, None, None
     return normalized_query, type_hint, region, realm, name
@@ -335,7 +336,7 @@ def _probe_structured_candidates(
     for probe_kind in probe_kinds:
         try:
             if probe_kind == "character":
-                payload = client.character_profile(region=region, realm=realm, name=name)
+                payload = client.character_profile_variants(region=region, realm=realm, name=name)
                 candidates.append(
                     _candidate_from_character_profile(
                         query=query,
@@ -347,7 +348,7 @@ def _probe_structured_candidates(
                     )
                 )
             else:
-                payload = client.guild_profile(region=region, realm=realm, name=name)
+                payload = client.guild_profile_variants(region=region, realm=realm, name=name)
                 candidates.append(
                     _candidate_from_guild_profile(
                         query=query,
@@ -1430,7 +1431,7 @@ def character(
 ) -> None:
     try:
         with _client(ctx) as client:
-            payload = client.character_profile(region=region, realm=realm, name=name)
+            payload = client.character_profile_variants(region=region, realm=realm, name=name)
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
         return
@@ -1488,7 +1489,7 @@ def guild(
 ) -> None:
     try:
         with _client(ctx) as client:
-            payload = client.guild_profile(region=region, realm=realm, name=name)
+            payload = client.guild_profile_variants(region=region, realm=realm, name=name)
     except httpx.HTTPStatusError as exc:
         _handle_http_error(ctx, exc)
         return

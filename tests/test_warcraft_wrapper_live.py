@@ -79,3 +79,23 @@ def test_live_warcraft_resolve_retail_filter_can_use_fixed_retail_provider() -> 
     assert {row["provider"] for row in payload["excluded_providers"]} == {"warcraft-wiki", "simc"}
     assert payload["provider"] in {"wowprogress", "raiderio", "wowhead", None}
     assert payload["provider"] != "warcraft-wiki"
+
+
+@pytest.mark.live
+def test_live_warcraft_guild_contract() -> None:
+    payload = _payload_for(["guild", "us", "Mal'Ganis", "gn"])
+
+    assert payload["ok"] is True
+    assert payload["query"] == {"region": "us", "realm": "mal-ganis", "name": "gn"}
+    assert payload["sources"]["wowprogress"]["status"] == "ok"
+    assert payload["sources"]["raiderio"]["status"] == "ok"
+
+
+@pytest.mark.live
+def test_live_warcraft_guild_ranks_contract() -> None:
+    payload = _payload_for(["guild-ranks", "us", "Mal'Ganis", "gn"])
+
+    assert payload["ok"] is True
+    assert payload["source"] == "wowprogress"
+    assert payload["count"] >= 1
+    assert payload["tiers"][0]["raid"]

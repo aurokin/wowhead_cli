@@ -17,6 +17,7 @@ from warcraft_core.analytics import (
     numeric_summary as _numeric_summary,
 )
 from warcraft_core.output import emit
+from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug, realm_matches, realm_slug_variants
 from wowprogress_cli.client import DEFAULT_IMPERSONATE, WowProgressClient, WowProgressClientError, load_wowprogress_cache_settings_from_env
 
 app = typer.Typer(add_completion=False, help="WowProgress rankings and profile CLI.")
@@ -107,10 +108,6 @@ def _strip_excluded_terms(tokens: list[str]) -> tuple[list[str], list[str]]:
     return kept, excluded
 
 
-def _normalize_realm_candidate(value: str) -> str:
-    return value.strip().replace(" ", "-")
-
-
 def _structured_candidates(tokens: list[str]) -> list[tuple[str, str]]:
     if len(tokens) < 3:
         return []
@@ -118,12 +115,12 @@ def _structured_candidates(tokens: list[str]) -> list[tuple[str, str]]:
     candidates: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for split_index in range(len(trailing) - 1, 0, -1):
-        realm = _normalize_realm_candidate(" ".join(trailing[:split_index]))
-        name = " ".join(trailing[split_index:]).strip()
-        candidate = (realm, name)
-        if realm and name and candidate not in seen:
-            candidates.append(candidate)
-            seen.add(candidate)
+        name = normalize_name(" ".join(trailing[split_index:]).strip())
+        for realm in realm_slug_variants(" ".join(trailing[:split_index])):
+            candidate = (realm, name)
+            if realm and name and candidate not in seen:
+                candidates.append(candidate)
+                seen.add(candidate)
     return candidates
 
 
@@ -144,7 +141,7 @@ def _normalize_structured_query(query: str) -> tuple[str, str | None, str | None
     if len(kept) < 3:
         normalized = " ".join(kept).strip() or query.strip()
         return normalized, kind, None, [], excluded_terms
-    region = kept[0].lower()
+    region = normalize_region(kept[0])
     candidates = _structured_candidates(kept)
     if not candidates:
         normalized = " ".join(kept).strip()
@@ -161,11 +158,7 @@ def _normalized_token_text(value: str) -> str:
 
 
 def _normalized_realm_matches(query_realm: str, resolved_realm: str) -> bool:
-    if not query_realm or not resolved_realm:
-        return False
-    if query_realm == resolved_realm:
-        return True
-    return resolved_realm.endswith(f" {query_realm}") or query_realm.endswith(f" {resolved_realm}")
+    return realm_matches(query_realm, resolved_realm)
 
 
 def _query_terms(query: str) -> list[str]:
@@ -255,6 +248,50 @@ def _follow_up(kind: str, region: str, realm: str, name: str) -> dict[str, Any]:
         "kind": kind,
         "surface": kind,
         "command": command,
+    }
+
+
+def _normalized_identity(region: str, realm: str, name: str) -> dict[str, str]:
+    return {
+        "region": normalize_region(region),
+        "realm": primary_realm_slug(realm),
+        "name": normalize_name(name),
+    }
+
+
+def _guild_history_tier_row(row: dict[str, Any]) -> dict[str, Any]:
+    progress = _progress_snapshot(str(row.get("progress") or ""))
+    return {
+        "tier_key": row.get("tier_key"),
+        "raid": row.get("raid"),
+        "current": row.get("current"),
+        "progress": progress["summary"],
+        "bosses_killed": progress["bosses_killed"],
+        "boss_count": progress["boss_count"],
+        "difficulty": progress["difficulty"],
+        "final_ranks": row.get("progress_ranks"),
+        "item_level_average": row.get("item_level_average"),
+        "item_level_ranks": row.get("item_level_ranks"),
+        "first_kill_at": row.get("first_kill_at"),
+        "last_kill_at": row.get("last_kill_at"),
+        "encounter_count": row.get("encounter_count"),
+        "page_url": row.get("page_url"),
+    }
+
+
+def _guild_ranks_row(row: dict[str, Any]) -> dict[str, Any]:
+    history = _guild_history_tier_row(row)
+    return {
+        "tier_key": history["tier_key"],
+        "raid": history["raid"],
+        "current": history["current"],
+        "progress": history["progress"],
+        "difficulty": history["difficulty"],
+        "final_ranks": history["final_ranks"],
+        "item_level_average": history["item_level_average"],
+        "item_level_ranks": history["item_level_ranks"],
+        "last_kill_at": history["last_kill_at"],
+        "page_url": history["page_url"],
     }
 
 
@@ -1164,6 +1201,8 @@ def doctor(ctx: typer.Context) -> None:
                 "search": "ready",
                 "resolve": "ready",
                 "guild": "ready",
+                "guild_history": "ready",
+                "guild_ranks": "ready",
                 "character": "ready",
                 "leaderboard": "ready",
                 "sample_pve_leaderboard": "ready",
@@ -1214,13 +1253,69 @@ def guild(
     realm: str = typer.Argument(..., help="Realm slug or title."),
     name: str = typer.Argument(..., help="Guild name."),
 ) -> None:
+    normalized = _normalized_identity(region, realm, name)
     try:
         with _client(ctx) as client:
-            payload = client.fetch_guild_page(region=region, realm=realm, name=name)
+            payload = client.fetch_guild_page_variants(**normalized)
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return
     _emit(ctx, payload)
+
+
+@app.command("guild-history")
+def guild_history(
+    ctx: typer.Context,
+    region: str = typer.Argument(..., help="Region slug such as us or eu."),
+    realm: str = typer.Argument(..., help="Realm slug or title."),
+    name: str = typer.Argument(..., help="Guild name."),
+) -> None:
+    normalized = _normalized_identity(region, realm, name)
+    try:
+        with _client(ctx) as client:
+            payload = client.fetch_guild_history(**normalized)
+    except WowProgressClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    history = payload.get("history") if isinstance(payload.get("history"), list) else []
+    _emit(
+        ctx,
+        {
+            **payload,
+            "query": normalized,
+            "count": len(history),
+            "tiers": [_guild_history_tier_row(row) for row in history if isinstance(row, dict)],
+        },
+    )
+
+
+@app.command("guild-ranks")
+def guild_ranks(
+    ctx: typer.Context,
+    region: str = typer.Argument(..., help="Region slug such as us or eu."),
+    realm: str = typer.Argument(..., help="Realm slug or title."),
+    name: str = typer.Argument(..., help="Guild name."),
+) -> None:
+    normalized = _normalized_identity(region, realm, name)
+    try:
+        with _client(ctx) as client:
+            payload = client.fetch_guild_history(**normalized)
+    except WowProgressClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    history = payload.get("history") if isinstance(payload.get("history"), list) else []
+    _emit(
+        ctx,
+        {
+            "provider": "wowprogress",
+            "kind": "guild_ranks",
+            "query": normalized,
+            "guild": payload.get("guild"),
+            "count": len(history),
+            "tiers": [_guild_ranks_row(row) for row in history if isinstance(row, dict)],
+            "citations": payload.get("citations"),
+        },
+    )
 
 
 @app.command("character")
@@ -1230,9 +1325,10 @@ def character(
     realm: str = typer.Argument(..., help="Realm slug or title."),
     name: str = typer.Argument(..., help="Character name."),
 ) -> None:
+    normalized = _normalized_identity(region, realm, name)
     try:
         with _client(ctx) as client:
-            payload = client.fetch_character_page(region=region, realm=realm, name=name)
+            payload = client.fetch_character_page_variants(**normalized)
     except WowProgressClientError as exc:
         _handle_client_error(ctx, exc)
         return

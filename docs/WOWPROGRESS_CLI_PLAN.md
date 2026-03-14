@@ -9,6 +9,8 @@ Current command surface:
 - `wowprogress search`
 - `wowprogress resolve`
 - `wowprogress guild`
+- `wowprogress guild-history`
+- `wowprogress guild-ranks`
 - `wowprogress character`
 - `wowprogress leaderboard`
 - `wowprogress sample`
@@ -27,6 +29,8 @@ Current quality notes:
 - top-leaderboard guild-profile sampling now combines leaderboard context with direct guild-page data so agents can inspect progression, item level, and encounter detail without manually opening multiple browser pages
 - leaderboard and guild-profile samples now report sampling boundaries explicitly instead of implying complete visibility beyond the requested top slice
 - guild-profile analytics now support explicit post-sample filtering for faction, difficulty, world rank, item level, and encounter slices
+- guild history across tiers is now a first-class surface, built from the public `rating.tierNN` guild pages instead of forcing agents to scrape raw HTML manually
+- direct guild and character lookups now use shared normalization for region, realm, and name input, including common realm variants like `Mal'Ganis` and `area 52`
 
 ## Why Add It
 
@@ -62,6 +66,8 @@ This is now treated as a rankings/profile service using browser-fingerprint HTTP
 - `wowprogress search "<query>"`
 - `wowprogress resolve "<query>"`
 - `wowprogress guild <region> <realm> <name>`
+- `wowprogress guild-history <region> <realm> <name>`
+- `wowprogress guild-ranks <region> <realm> <name>`
 - `wowprogress character <region> <realm> <name>`
 - `wowprogress leaderboard pve <region> [--realm <realm>]`
 - `wowprogress sample pve-leaderboard --region <region> [--realm <realm>]`

@@ -271,7 +271,7 @@ def test_raiderio_numeric_and_player_sample_helpers() -> None:
 def test_raiderio_search_uses_structured_direct_guild_probe_when_search_is_empty(monkeypatch) -> None:
     monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.search", lambda self, *, term, kind=None: {"matches": []})
     monkeypatch.setattr(
-        "raiderio_cli.main.RaiderIOClient.guild_profile",
+        "raiderio_cli.main.RaiderIOClient.guild_profile_variants",
         lambda self, *, region, realm, name, fields="": {
             "id": 1,
             "name": "Liquid",
@@ -282,7 +282,7 @@ def test_raiderio_search_uses_structured_direct_guild_probe_when_search_is_empty
         },
     )
     monkeypatch.setattr(
-        "raiderio_cli.main.RaiderIOClient.character_profile",
+        "raiderio_cli.main.RaiderIOClient.character_profile_variants",
         lambda self, *, region, realm, name, fields="": (_ for _ in ()).throw(
             httpx.HTTPStatusError(
                 "not found",
@@ -334,7 +334,7 @@ def test_raiderio_resolve_returns_conservative_next_command(monkeypatch) -> None
 def test_raiderio_resolve_uses_structured_direct_character_probe(monkeypatch) -> None:
     monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.search", lambda self, *, term, kind=None: {"matches": []})
     monkeypatch.setattr(
-        "raiderio_cli.main.RaiderIOClient.character_profile",
+        "raiderio_cli.main.RaiderIOClient.character_profile_variants",
         lambda self, *, region, realm, name, fields="": {
             "id": 39943,
             "name": "Roguecane",
@@ -347,7 +347,7 @@ def test_raiderio_resolve_uses_structured_direct_character_probe(monkeypatch) ->
         },
     )
     monkeypatch.setattr(
-        "raiderio_cli.main.RaiderIOClient.guild_profile",
+        "raiderio_cli.main.RaiderIOClient.guild_profile_variants",
         lambda self, *, region, realm, name, fields="": (_ for _ in ()).throw(
             httpx.HTTPStatusError(
                 "not found",
@@ -454,7 +454,7 @@ def test_raiderio_character_summary(monkeypatch) -> None:
             ],
         }
 
-    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.character_profile", fake_profile)
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.character_profile_variants", fake_profile)
     result = runner.invoke(raiderio_app, ["character", "us", "illidan", "Roguecane"])
     assert result.exit_code == 0
 
@@ -495,7 +495,7 @@ def test_raiderio_guild_summary(monkeypatch) -> None:
             ],
         }
 
-    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.guild_profile", fake_profile)
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.guild_profile_variants", fake_profile)
     result = runner.invoke(raiderio_app, ["guild", "us", "illidan", "Liquid"])
     assert result.exit_code == 0
 
@@ -1419,7 +1419,7 @@ def test_raiderio_http_error_maps_to_structured_error(monkeypatch) -> None:
     def fake_profile(self, *, region: str, realm: str, name: str, fields: str = ""):  # noqa: ANN001
         raise httpx.HTTPStatusError("not found", request=request, response=response)
 
-    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.character_profile", fake_profile)
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.character_profile_variants", fake_profile)
     result = runner.invoke(raiderio_app, ["character", "us", "illidan", "Missing"])
     assert result.exit_code == 1
 

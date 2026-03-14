@@ -877,7 +877,7 @@ def test_warcraft_passthrough_to_raiderio(monkeypatch) -> None:
             "mythic_plus_recent_runs": [],
         }
 
-    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.character_profile", fake_profile)
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.character_profile_variants", fake_profile)
     result = runner.invoke(warcraft_app, ["raiderio", "character", "us", "illidan", "Roguecane"])
     assert result.exit_code == 0
 
@@ -918,7 +918,7 @@ def test_warcraft_passthrough_to_warcraft_wiki(monkeypatch) -> None:
 
 def test_warcraft_passthrough_to_wowprogress(monkeypatch) -> None:
     monkeypatch.setattr(
-        "wowprogress_cli.main.WowProgressClient.fetch_guild_page",
+        "wowprogress_cli.main.WowProgressClient.fetch_guild_page_variants",
         lambda self, *, region, realm, name: {
             "guild": {
                 "name": "Liquid",
@@ -939,3 +939,83 @@ def test_warcraft_passthrough_to_wowprogress(monkeypatch) -> None:
 
     payload = json.loads(result.stdout)
     assert payload["guild"]["name"] == "Liquid"
+
+
+def test_warcraft_guild_merges_sources_and_normalizes_query(monkeypatch) -> None:
+    def fake_ri(self, *, region: str, realm: str, name: str):  # noqa: ANN001
+        assert region == "us"
+        assert realm == "mal-ganis"
+        assert name == "gn"
+        return {
+            "name": "gn",
+            "region": "us",
+            "realm": "Mal'Ganis",
+            "faction": "horde",
+            "profile_url": "https://raider.io/guilds/us/malganis/gn",
+            "raid_progression": {"tier-mn-1": {"summary": "0/9 N", "total_bosses": 9}},
+            "raid_rankings": {"tier-mn-1": {"normal": {"world": 0, "region": 0, "realm": 0}}},
+            "members": [{"rank": 1, "character": {"name": "Fharg", "class": "Shaman", "active_spec_name": "Enhancement", "active_spec_role": "DPS", "profile_url": "https://raider.io/characters/us/malganis/Fharg"}}],
+        }
+
+    def fake_wp(self, *, region: str, realm: str, name: str):  # noqa: ANN001
+        assert region == "us"
+        assert realm == "mal-ganis"
+        assert name == "gn"
+        return {
+            "guild": {"name": "gn", "region": "us", "realm": "Mal'Ganis", "faction": "Horde", "page_url": "https://www.wowprogress.com/guild/us/mal-ganis/gn"},
+            "progress": {"raid": "Liberation of Undermine", "tier_key": "tier34", "summary": "8/8 (M)", "ranks": {"world": "19", "region": "6", "realm": "2"}},
+            "item_level": {"average": 732.1, "ranks": {"world": "1", "region": "1", "realm": "1"}},
+            "encounters": {"count": 8, "items": [{"encounter": "Chrome King Gallywix"}]},
+            "citations": {"page": "https://www.wowprogress.com/guild/us/mal-ganis/gn"},
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.RaiderIOClient.guild_profile_variants", fake_ri)
+    monkeypatch.setattr("warcraft_cli.main.WowProgressClient.fetch_guild_page_variants", fake_wp)
+
+    result = runner.invoke(warcraft_app, ["guild", "na", "Mal'Ganis", "gn"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["query"] == {"region": "us", "realm": "mal-ganis", "name": "gn"}
+    assert payload["guild"]["name"] == "gn"
+    assert payload["sources"]["raiderio"]["status"] == "ok"
+    assert payload["sources"]["wowprogress"]["status"] == "ok"
+    assert payload["conflicts"]["different_tier_window_detected"] is True
+
+
+def test_warcraft_guild_history_and_ranks_use_wowprogress(monkeypatch) -> None:
+    history_payload = {
+        "provider": "wowprogress",
+        "kind": "guild_history",
+        "guild": {"name": "gn", "region": "us", "realm": "Mal'Ganis"},
+        "history": [
+            {
+                "tier_key": "tier34",
+                "raid": "Liberation of Undermine",
+                "current": True,
+                "progress": "8/8 (M)",
+                "progress_ranks": {"world": "19", "region": "6", "realm": "2"},
+                "item_level_average": 732.1,
+                "item_level_ranks": {"world": "1", "region": "1", "realm": "1"},
+                "last_kill_at": "Apr 4, 2025 02:03",
+                "page_url": "https://www.wowprogress.com/guild/us/mal-ganis/gn/rating.tier34",
+            }
+        ],
+        "citations": {"page": "https://www.wowprogress.com/guild/us/mal-ganis/gn"},
+    }
+
+    monkeypatch.setattr("warcraft_cli.main.WowProgressClient.fetch_guild_history", lambda self, **kwargs: history_payload)
+
+    history_result = runner.invoke(warcraft_app, ["guild-history", "us", "Mal'Ganis", "gn"])
+    assert history_result.exit_code == 0
+    history = json.loads(history_result.stdout)
+    assert history["ok"] is True
+    assert history["source"] == "wowprogress"
+    assert history["tiers"][0]["raid"] == "Liberation of Undermine"
+
+    ranks_result = runner.invoke(warcraft_app, ["guild-ranks", "us", "Mal'Ganis", "gn"])
+    assert ranks_result.exit_code == 0
+    ranks = json.loads(ranks_result.stdout)
+    assert ranks["ok"] is True
+    assert ranks["tiers"][0]["progress_ranks"]["world"] == "19"

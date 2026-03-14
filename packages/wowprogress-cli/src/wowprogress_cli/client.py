@@ -10,6 +10,7 @@ from curl_cffi import requests
 
 from warcraft_api.cache import CacheSettings, CacheTTLConfig, build_cache_store, load_prefixed_cache_settings_from_env
 from warcraft_api.http import DEFAULT_RETRY_ATTEMPTS, RETRYABLE_STATUS_CODES, backoff_seconds
+from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug, realm_slug_variants
 from warcraft_content.paths import provider_cache_root
 from wowprogress_cli.page_parser import (
     WOWPROGRESS_BASE_URL,
@@ -123,6 +124,8 @@ class WowProgressClient:
                 continue
             if status_code == 403 and "/search?" in final_url:
                 raise WowProgressClientError("not_found", "WowProgress could not resolve that guild or character.")
+            if status_code == 404:
+                raise WowProgressClientError("not_found", "WowProgress could not find that page.")
             if status_code >= 400:
                 raise WowProgressClientError("upstream_error", f"WowProgress request failed with HTTP {status_code}.")
             html = str(response.text)
@@ -184,9 +187,28 @@ class WowProgressClient:
         raise AssertionError("Unreachable retry loop exit.")
 
     def fetch_guild_page(self, *, region: str, realm: str, name: str) -> dict[str, Any]:
+        region = normalize_region(region)
+        realm = primary_realm_slug(realm)
+        name = normalize_name(name)
         url = guild_url(region, realm, name)
         html = self._fetch_html(url, namespace="guild_page", ttl_seconds=self._guild_ttl)
         return parse_guild_page(html, url=url, region=region, realm=realm, name=name)
+
+    def fetch_guild_page_variants(self, *, region: str, realm: str, name: str) -> dict[str, Any]:
+        normalized_region = normalize_region(region)
+        normalized_name = normalize_name(name)
+        variants = realm_slug_variants(realm) or [primary_realm_slug(realm)]
+        last_error: WowProgressClientError | None = None
+        for candidate in variants:
+            try:
+                return self.fetch_guild_page(region=normalized_region, realm=candidate, name=normalized_name)
+            except WowProgressClientError as exc:
+                if exc.code != "not_found":
+                    raise
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        return self.fetch_guild_page(region=normalized_region, realm=realm, name=normalized_name)
 
     def fetch_guild_page_url(self, url: str) -> dict[str, Any]:
         parsed = urlparse(url)
@@ -198,14 +220,34 @@ class WowProgressClient:
         return parse_guild_page(html, url=url, region=region, realm=realm, name=name)
 
     def fetch_character_page(self, *, region: str, realm: str, name: str) -> dict[str, Any]:
+        region = normalize_region(region)
+        realm = primary_realm_slug(realm)
+        name = normalize_name(name)
         url = character_url(region, realm, name)
         html = self._fetch_html(url, namespace="character_page", ttl_seconds=self._character_ttl)
         return parse_character_page(html, url=url, region=region, realm=realm, name=name)
 
+    def fetch_character_page_variants(self, *, region: str, realm: str, name: str) -> dict[str, Any]:
+        normalized_region = normalize_region(region)
+        normalized_name = normalize_name(name)
+        variants = realm_slug_variants(realm) or [primary_realm_slug(realm)]
+        last_error: WowProgressClientError | None = None
+        for candidate in variants:
+            try:
+                return self.fetch_character_page(region=normalized_region, realm=candidate, name=normalized_name)
+            except WowProgressClientError as exc:
+                if exc.code != "not_found":
+                    raise
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        return self.fetch_character_page(region=normalized_region, realm=realm, name=normalized_name)
+
     def fetch_pve_leaderboard(self, *, region: str, realm: str | None = None, limit: int = 25) -> dict[str, Any]:
-        url = leaderboard_url(region, realm)
+        region = normalize_region(region)
+        url = leaderboard_url(region, primary_realm_slug(realm) if realm else None)
         html = self._fetch_html(url, namespace="pve_leaderboard", ttl_seconds=self._leaderboard_ttl)
-        return parse_pve_leaderboard_page(html, url=url, region=region, realm=realm, limit=limit)
+        return parse_pve_leaderboard_page(html, url=url, region=region, realm=primary_realm_slug(realm) if realm else None, limit=limit)
 
     @property
     def pve_leaderboard_ttl_seconds(self) -> int:
@@ -214,6 +256,9 @@ class WowProgressClient:
     def probe_search_route(self, *, region: str, realm: str, name: str, obj_type: str) -> dict[str, Any] | None:
         if obj_type not in {"char", "guild"}:
             raise WowProgressClientError("invalid_query", "WowProgress search probe supports only char or guild.")
+        region = normalize_region(region)
+        realm = primary_realm_slug(realm)
+        name = normalize_name(name)
         query = urlencode({"name": name, "realm": realm, "area": region, "obj_type": obj_type})
         url = f"{WOWPROGRESS_BASE_URL}/u_search?{query}"
         html, final_url = self._fetch_response(url, namespace=f"search_probe_{obj_type}", ttl_seconds=self._character_ttl)
@@ -234,3 +279,57 @@ class WowProgressClient:
             payload["_search_kind"] = "guild"
             return payload
         return None
+
+    def fetch_guild_history(self, *, region: str, realm: str, name: str) -> dict[str, Any]:
+        payload = self.fetch_guild_page_variants(region=region, realm=realm, name=name)
+        history_links = payload.get("history_links") if isinstance(payload.get("history_links"), list) else []
+        tiers: list[dict[str, Any]] = []
+        for link in history_links:
+            if not isinstance(link, dict):
+                continue
+            page_url = str(link.get("page_url") or "").strip()
+            if not page_url:
+                continue
+            tier_payload = self.fetch_guild_page_url(page_url)
+            progress = tier_payload.get("progress") if isinstance(tier_payload.get("progress"), dict) else {}
+            item_level = tier_payload.get("item_level") if isinstance(tier_payload.get("item_level"), dict) else {}
+            encounters = tier_payload.get("encounters") if isinstance(tier_payload.get("encounters"), dict) else {}
+            items = encounters.get("items") if isinstance(encounters.get("items"), list) else []
+            progress_summary = str(progress.get("summary") or "")
+            progress_match = progress_summary.split(" ", 1)[0] if progress_summary else ""
+            bosses_killed = None
+            boss_count = None
+            if "/" in progress_match:
+                killed, total = progress_match.split("/", 1)
+                if killed.isdigit() and total.isdigit():
+                    bosses_killed = int(killed)
+                    boss_count = int(total)
+            tiers.append(
+                {
+                    "tier_key": link.get("tier_key"),
+                    "raid": link.get("raid"),
+                    "page_url": page_url,
+                    "current": bool(link.get("current")),
+                    "progress": progress_summary or None,
+                    "progress_ranks": progress.get("ranks"),
+                    "bosses_killed": bosses_killed,
+                    "boss_count": boss_count,
+                    "difficulty": progress_summary,
+                    "item_level_average": item_level.get("average"),
+                    "item_level_ranks": item_level.get("ranks"),
+                    "first_kill_at": items[-1].get("first_kill_at") if items else None,
+                    "last_kill_at": items[0].get("first_kill_at") if items else None,
+                    "encounter_count": encounters.get("count"),
+                    "encounters": items,
+                }
+            )
+        return {
+            "provider": "wowprogress",
+            "kind": "guild_history",
+            "guild": payload.get("guild"),
+            "current_progress": payload.get("progress"),
+            "history": tiers,
+            "citations": {
+                "page": ((payload.get("citations") or {}).get("page") if isinstance(payload.get("citations"), dict) else None),
+            },
+        }

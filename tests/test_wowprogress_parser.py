@@ -8,6 +8,7 @@ GUILD_HTML = """
   <body>
     <h1>“Liquid” Guild</h1>
     <strong>Horde</strong>
+    <a href="/guild/us/illidan/Liquid/rating.tier34">Liberation of Undermine</a>
     <a href="/pve/us/illidan">US-Illidan</a>
     <a href="https://worldofwarcraft.com/en-us/guild/illidan/liquid">(armory)</a>
     <table>
@@ -154,11 +155,16 @@ def test_parse_guild_page() -> None:
     )
     assert payload["guild"]["name"] == "Liquid"
     assert payload["progress"]["summary"] == "8/8 (M)"
+    assert payload["progress"]["raid"] == "Liberation of Undermine"
+    assert payload["progress"]["tier_key"] == "tier34"
     assert payload["progress"]["ranks"] == {"world": "1", "region": "1", "realm": "1"}
     assert payload["item_level"]["average"] == 724.51
     assert payload["item_level"]["ranks"] == {"world": "9026", "region": "4149", "realm": "238"}
     assert payload["encounters"]["items"][0]["encounter"] == "Dimensius, the All-Devouring"
     assert payload["encounters"]["items"][0]["video_count"] == 2
+    assert payload["history_links"][0]["tier_key"] == "tier34"
+    assert payload["history_links"][0]["raid"] == "Liberation of Undermine"
+    assert payload["history_links"][0]["current"] is True
 
 
 def test_parse_character_page() -> None:

@@ -9,6 +9,7 @@ import httpx
 from warcraft_api.cache import CacheSettings, CacheTTLConfig, build_cache_store, load_prefixed_cache_settings_from_env
 from warcraft_api.http import DEFAULT_RETRY_ATTEMPTS, request_with_retries
 from warcraft_content.paths import provider_cache_root
+from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug, realm_slug_variants
 
 RAIDERIO_BASE_URL = "https://raider.io/api/v1"
 RAIDERIO_SITE_BASE_URL = "https://raider.io"
@@ -142,6 +143,22 @@ class RaiderIOClient:
             ttl_seconds=self._character_ttl,
         )
 
+    def character_profile_variants(self, *, region: str, realm: str, name: str, fields: str = DEFAULT_CHARACTER_FIELDS) -> dict[str, Any]:
+        normalized_region = normalize_region(region)
+        normalized_name = normalize_name(name)
+        variants = realm_slug_variants(realm) or [primary_realm_slug(realm)]
+        last_error: httpx.HTTPStatusError | None = None
+        for candidate in variants:
+            try:
+                return self.character_profile(region=normalized_region, realm=candidate, name=normalized_name, fields=fields)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 404:
+                    raise
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        return self.character_profile(region=normalized_region, realm=primary_realm_slug(realm), name=normalized_name, fields=fields)
+
     def guild_profile(self, *, region: str, realm: str, name: str, fields: str = DEFAULT_GUILD_FIELDS) -> dict[str, Any]:
         return self._get_json(
             "/guilds/profile",
@@ -149,6 +166,22 @@ class RaiderIOClient:
             namespace="guild_profile",
             ttl_seconds=self._guild_ttl,
         )
+
+    def guild_profile_variants(self, *, region: str, realm: str, name: str, fields: str = DEFAULT_GUILD_FIELDS) -> dict[str, Any]:
+        normalized_region = normalize_region(region)
+        normalized_name = normalize_name(name)
+        variants = realm_slug_variants(realm) or [primary_realm_slug(realm)]
+        last_error: httpx.HTTPStatusError | None = None
+        for candidate in variants:
+            try:
+                return self.guild_profile(region=normalized_region, realm=candidate, name=normalized_name, fields=fields)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 404:
+                    raise
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        return self.guild_profile(region=normalized_region, realm=primary_realm_slug(realm), name=normalized_name, fields=fields)
 
     def mythic_plus_runs(
         self,

@@ -61,12 +61,22 @@ def test_live_wowprogress_leaderboard_contract() -> None:
 
 def test_live_wowprogress_guild_contract() -> None:
     require_live("WowProgress")
-    payload = payload_for_live(runner, app, ["guild", "us", "illidan", "Liquid"], provider_name="WowProgress")
+    payload = payload_for_live(runner, app, ["guild", "na", "Illidan", "Liquid"], provider_name="WowProgress")
 
     assert payload["guild"]["name"] == "Liquid"
     assert payload["progress"]["summary"] == "8/8 (M)"
     assert payload["progress"]["ranks"]["world"] is not None
     assert payload["item_level"]["ranks"]["region"] is not None
+
+
+def test_live_wowprogress_guild_history_contract() -> None:
+    require_live("WowProgress")
+    payload = payload_for_live(runner, app, ["guild-history", "us", "Mal'Ganis", "gn"], provider_name="WowProgress")
+
+    assert payload["kind"] == "guild_history"
+    assert payload["count"] >= 1
+    assert payload["tiers"][0]["raid"]
+    assert payload["tiers"][0]["final_ranks"] is not None
 
 
 def test_live_wowprogress_character_contract() -> None:

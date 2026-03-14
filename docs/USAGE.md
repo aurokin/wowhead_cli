@@ -17,6 +17,9 @@ warcraft resolve "fairbreeze favors"
 warcraft --expansion wotlk resolve "thunderfury"
 warcraft --expansion wotlk resolve "guild us illidan Liquid" --compact --expansion-debug
 warcraft resolve "character us illidan Roguecane" --compact --ranking-debug
+warcraft guild us "Mal'Ganis" gn
+warcraft guild-history us "Mal'Ganis" gn
+warcraft guild-ranks us "Mal'Ganis" gn
 warcraft --expansion wotlk wowhead search "thunderfury"
 warcraft wowhead search "defias"
 warcraft wowhead guide 3143
@@ -54,6 +57,8 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `raiderio` now includes real search and conservative resolve on top of the live site search surface.
 - `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, typed `api` / `event` lookups, article export, and local query.
 - `wowprogress` is now a real rankings provider with structured search, conservative resolve, direct guild/character/PvE leaderboard lookups, and its first sample-backed leaderboard analytics primitives.
+- `warcraft guild` is now a first-class merged guild workflow that normalizes region/realm/name input and reports Raider.IO and WowProgress source disagreements explicitly.
+- `warcraft guild-history` and `warcraft guild-ranks` currently use WowProgress as the historical raid source and preserve that provenance in the payload.
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
@@ -364,6 +369,8 @@ Warcraft Wiki behavior:
 wowprogress doctor
 wowprogress search "guild us illidan Liquid"
 wowprogress resolve "character us illidan Imonthegcd"
+wowprogress guild-history us "Mal'Ganis" gn
+wowprogress guild-ranks us "Mal'Ganis" gn
 wowprogress guild us illidan Liquid
 wowprogress character us illidan Imonthegcd
 wowprogress leaderboard pve us --limit 10
@@ -381,11 +388,14 @@ wowprogress threshold pve-guild-profiles --region us --metric world_rank --value
 WowProgress phase-1 behavior:
 - `doctor` reports cache config and the browser-fingerprint HTTP transport used for live fetches
 - `search` expects structured queries like `us illidan Liquid`, `guild us illidan Liquid`, or `character us illidan Imonthegcd`
+- direct guild and character commands normalize common region and realm variants like `na` and `Mal'Ganis`
 - `search` normalizes some realm forms like `area 52` -> `area-52` and returns `normalized_candidates` so the cleaned structured targets stay visible
 - `search` can exclude unsupported trailing terms like `recruit` and reports them in `excluded_terms` with a `normalization_hint`
 - `resolve` uses the same structured query shape and only returns a next command when the route probe is unambiguous
 - direct route resolution handles canonical WowProgress realm formatting, so queries like `guild us area-52 xD` still resolve correctly even when the site returns `US-Area 52`
 - `guild` returns a compact guild profile with progression, item-level rank context, and encounter history
+- `guild-history` walks the guild's historical tier pages and returns a per-tier progression timeline with final rank snapshots
+- `guild-ranks` returns the condensed per-tier final-rank view for questions like "final ranks across tiers"
 - `character` returns a compact character profile with item-level, SimDPS, and PvE raid-history context
 - `leaderboard pve` returns the current PvE progression leaderboard for a region, optionally narrowed to a realm
 - `sample pve-leaderboard` returns a top-slice leaderboard sample with explicit sampling metadata for the requested row cap and returned entry count
