@@ -1,4 +1,6 @@
 research/wowhead-clis/
+research/warcraftlogs-docs/
+.playwright-cli/
 .generated-skills/
 .venv/
 __pycache__/
