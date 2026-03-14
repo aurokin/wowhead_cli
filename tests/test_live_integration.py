@@ -366,6 +366,40 @@ def test_live_blue_tracker_contract() -> None:
     assert first["url"].startswith("https://www.wowhead.com/blue-tracker/topic/")
 
 
+def test_live_news_post_contract() -> None:
+    _require_live()
+    payload = _payload_for(
+        [
+            "news-post",
+            "/news/midnight-hotfixes-for-march-13th-marl-decor-cost-reduction-class-bugfixes-and-380785",
+        ]
+    )
+
+    assert payload["expansion"] == "retail"
+    assert payload["post"]["page_url"].startswith("https://www.wowhead.com/news/")
+    assert isinstance(payload["content"]["text"], str)
+    assert payload["content"]["text"]
+    assert payload["citations"]["page"] == payload["post"]["page_url"]
+
+
+def test_live_blue_topic_contract() -> None:
+    _require_live()
+    payload = _payload_for(
+        [
+            "blue-topic",
+            "/blue-tracker/topic/eu/class-tuning-incoming-18-march-610948",
+        ]
+    )
+
+    assert payload["expansion"] == "retail"
+    assert payload["topic"]["page_url"].startswith("https://www.wowhead.com/blue-tracker/topic/")
+    assert payload["posts"]["count"] >= 1
+    first = payload["posts"]["items"][0]
+    assert isinstance(first.get("author"), str)
+    assert isinstance(first.get("body_text"), str)
+    assert payload["citations"]["page"] == payload["topic"]["page_url"]
+
+
 def test_live_guide_category_contract() -> None:
     _require_live()
     payload = _payload_for(["guides", "classes", "death knight", "--limit", "5"])
@@ -380,3 +414,64 @@ def test_live_guide_category_contract() -> None:
     assert isinstance(first.get("title"), str)
     assert isinstance(first.get("url"), str)
     assert first["url"].startswith("https://www.wowhead.com/guide/")
+
+
+def test_live_talent_calc_contract() -> None:
+    _require_live()
+    payload = _payload_for(
+        [
+            "talent-calc",
+            "druid/balance/DAQBBBBQQRUFURYVBEANVVRUVFVVVQCVQhEUEBUEBhVQ",
+            "--listed-build-limit",
+            "5",
+        ]
+    )
+
+    assert payload["expansion"] == "retail"
+    assert payload["tool"]["kind"] == "talent-calc"
+    assert payload["tool"]["class_slug"] == "druid"
+    assert payload["tool"]["spec_slug"] == "balance"
+    assert payload["tool"]["build_code"] == "DAQBBBBQQRUFURYVBEANVVRUVFVVVQCVQhEUEBUEBhVQ"
+    assert payload["tool"]["state_url"].startswith("https://www.wowhead.com/talent-calc/druid/balance/")
+    assert payload["citations"]["page"] == payload["tool"]["state_url"]
+    assert payload["page"]["title"].startswith("Balance Druid")
+    assert payload["listed_builds"]["count"] >= len(payload["listed_builds"]["items"])
+
+
+def test_live_profession_tree_contract() -> None:
+    _require_live()
+    payload = _payload_for(["profession-tree", "alchemy/BCuA"])
+
+    assert payload["expansion"] == "retail"
+    assert payload["tool"]["kind"] == "profession-tree"
+    assert payload["tool"]["profession_slug"] == "alchemy"
+    assert payload["tool"]["loadout_code"] == "BCuA"
+    assert payload["tool"]["state_url"].startswith("https://www.wowhead.com/profession-tree-calc/alchemy/")
+    assert payload["citations"]["page"] == payload["tool"]["state_url"]
+    assert payload["page"]["title"].startswith("Alchemy")
+
+
+def test_live_dressing_room_contract() -> None:
+    _require_live()
+    payload = _payload_for(["dressing-room", "#fz8zz0zb89c8mM8YB8mN8X18mO8ub8mP8uD"])
+
+    assert payload["expansion"] == "retail"
+    assert payload["tool"]["kind"] == "dressing-room"
+    assert payload["tool"]["has_share_hash"] is True
+    assert payload["tool"]["share_hash"].startswith("fz8")
+    assert payload["tool"]["state_url"].startswith("https://www.wowhead.com/dressing-room#")
+    assert payload["page"]["title"].startswith("Dressing Room")
+
+
+def test_live_profiler_contract() -> None:
+    _require_live()
+    payload = _payload_for(["profiler", "97060220/us/illidan/Roguecane"])
+
+    assert payload["expansion"] == "retail"
+    assert payload["tool"]["kind"] == "profiler"
+    assert payload["tool"]["list_id"] == "97060220"
+    assert payload["tool"]["region_slug"] == "us"
+    assert payload["tool"]["realm_slug"] == "illidan"
+    assert payload["tool"]["character_name"] == "Roguecane"
+    assert payload["tool"]["state_url"].startswith("https://www.wowhead.com/list?list=")
+    assert payload["page"]["title"].startswith("Profiler")

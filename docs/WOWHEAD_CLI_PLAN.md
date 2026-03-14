@@ -20,8 +20,14 @@ Implemented now:
 - `search`
 - `resolve`
 - `news`
+- `news-post`
 - `blue-tracker`
+- `blue-topic`
 - `guides <category>`
+- `talent-calc`
+- `profession-tree`
+- `dressing-room`
+- `profiler`
 - `entity`
 - `entity-page`
 - `comments`
@@ -45,9 +51,9 @@ This is strong for:
 
 It is still weak or missing for:
 - database-family browsing and filtering
-- Wowhead tool surfaces
+- deeper tool decoding beyond the first tool-state slice
 - deeper guide category coverage beyond the first listing surface
-- timeline article or thread fetch beyond listing/detail summaries
+- deeper timeline filtering and enrichment beyond the first listing/detail summaries
 
 Current decision:
 - generic Wowhead database pages are intentionally deferred for now
@@ -80,6 +86,9 @@ Current CLI state:
 - there is now an explicit `news` command
 - there is now an explicit `blue-tracker` command
 - both commands support topic filtering plus bounded date-window scans
+- both surfaces now also have detail-fetch companions:
+  - `news-post`
+  - `blue-topic`
 - generic `search` / `resolve` are still not a reliable substitute for those surfaces
 
 That means the trustworthy contract now covers common requests like:
@@ -90,7 +99,9 @@ That means the trustworthy contract now covers common requests like:
 
 Implemented direction:
 - `wowhead news`
+- `wowhead news-post`
 - `wowhead blue-tracker`
+- `wowhead blue-topic`
 - support for:
   - latest listing
   - topic search
@@ -98,10 +109,11 @@ Implemented direction:
   - explicit date cutoffs
   - pagination or capped historical slices
   - listing query provenance
+  - single post/topic fetch with citations
 
 Still to add:
 - category/filter narrowing when the live page model allows it
-- article/thread fetch with citations
+- deeper post/topic filtering and enrichment beyond the first detail-fetch slice
 
 These should be treated as list/article surfaces, not forced through `guide` or `entity`.
 
@@ -175,10 +187,26 @@ Current decision on database pages:
 - database pages become worth the parser complexity only for concrete bulk browsing/filtering use cases that the current commands do not cover well
 - this keeps the Wowhead CLI biased toward reliable structured retrieval instead of broad but fragile page-surface coverage
 
+Current tool state:
+- `talent-calc` is now a real route-state decoder and extracts:
+  - class slug
+  - spec slug
+  - build code
+  - embedded listed builds when the page exposes them
+- `profession-tree` is now a real route-state decoder and extracts:
+  - profession slug
+  - loadout code
+- `dressing-room` is currently a stable state inspector:
+  - it normalizes share hashes and cited state URLs
+  - it does not yet decode the appearance payload itself
+- `profiler` is currently a stable state inspector:
+  - it normalizes `list=` refs and extracts obvious list/region/realm/name parts
+  - it does not yet decode the underlying profile/list contents
+
 The right implementation order is:
 1. expand guide-category discovery beyond the first listing slice
 2. add article/thread fetch for `news` and `blue-tracker`
-3. add tool decoders
+3. deepen tool decoding, especially for `dressing-room` and `profiler`
 4. revisit database browse/filter commands only when a concrete browse/filter workflow justifies them
 
 ## Search And Resolve Boundary

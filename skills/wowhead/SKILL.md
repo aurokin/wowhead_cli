@@ -18,7 +18,13 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 - Guide lookup: `wowhead guide <guide_id_or_url>`
 - Guide category listing: `wowhead guides <category> [query]`
 - News timeline search: `wowhead news [query] [--page <n>] [--pages <n>] [--date-from YYYY-MM-DD] [--date-to YYYY-MM-DD]`
+- News article fetch: `wowhead news-post <url-or-path>`
 - Blue tracker timeline search: `wowhead blue-tracker [query] [--page <n>] [--pages <n>] [--date-from YYYY-MM-DD] [--date-to YYYY-MM-DD]`
+- Blue tracker topic fetch: `wowhead blue-topic <url-or-path>`
+- Talent calculator state decode: `wowhead talent-calc <url-or-ref>`
+- Profession tree state decode: `wowhead profession-tree <url-or-ref>`
+- Dressing room state inspect: `wowhead dressing-room <url-or-hash>`
+- Profiler state inspect: `wowhead profiler <url-or-list-ref>`
 - Full guide payload: `wowhead guide-full <guide_id_or_url>`
 - Export local guide assets: `wowhead guide-export <guide_id_or_url> --out <dir>`
 - Export local guide assets plus bounded linked-entity hydration: `wowhead guide-export <guide_id_or_url> --out <dir> --hydrate-linked-entities [--hydrate-type spell,item,npc]`
@@ -73,7 +79,10 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 
 29. Bundle freshness summaries now include `bundle_reasons` and `hydration_reasons`, so agents can tell whether a bundle is stale because of age, missing timestamps, disabled hydration, or bundle-level staleness without opening manifest files. Root-level bundle discovery commands now also expose `stale_reason_counts`, and `guide-bundle-inspect --summary` provides a compact trust-check view when the full inspection payload is more detail than an agent needs.
 30. `news` and `blue-tracker` are timeline-native surfaces, not generic search aliases. Use them when the user needs topic history, bounded date windows, or page-window scans across posts instead of a single latest result.
-31. `guides <category>` is the right surface for browsable guide families like `classes`, `professions`, and `raids`; use it when the user knows the guide family but not the exact guide slug or ID.
+31. `news-post` and `blue-topic` are the detail-fetch companions for those timeline commands. Prefer those over generic page scraping when you already have a specific news or blue-tracker URL.
+32. `guides <category>` is the right surface for browsable guide families like `classes`, `professions`, and `raids`; use it when the user knows the guide family but not the exact guide slug or ID.
+33. `talent-calc` and `profession-tree` are the first Wowhead tool decoders. They normalize the cited state URL and extract reliable route state like class/spec/build code or profession/loadout code.
+34. `dressing-room` and `profiler` are currently state inspectors, not full decoders. Use them for normalized share refs and citations, but do not claim they fully decode appearance payloads or profile contents yet.
 
 ## Required Usage Rules
 
@@ -91,8 +100,14 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 ```bash
 wowhead search "Watch the Den" --limit 5
 wowhead news "hotfixes" --pages 2 --date-from 2026-03-01
+wowhead news-post /news/midnight-hotfixes-for-march-13th-marl-decor-cost-reduction-class-bugfixes-and-380785
 wowhead blue-tracker "class tuning" --pages 2 --date-from 2026-03-01
+wowhead blue-topic /blue-tracker/topic/eu/class-tuning-incoming-18-march-610948
 wowhead guides classes "death knight"
+wowhead talent-calc druid/balance/DAQBBBBQQRUFURYVBEANVVRUVFVVVQCVQhEUEBUEBhVQ
+wowhead profession-tree alchemy/BCuA
+wowhead dressing-room "#fz8zz0zb89c8mM8YB8mN8X18mO8ub8mP8uD"
+wowhead profiler 97060220/us/illidan/Roguecane
 wowhead entity quest 86864
 wowhead entity quest 86864 --no-include-comments
 wowhead entity quest 86864 --include-all-comments

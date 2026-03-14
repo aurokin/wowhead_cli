@@ -410,3 +410,9 @@ def blue_tracker_url(*, page: int = 1, expansion: str | ExpansionProfile | None 
 def guide_category_url(category: str, expansion: str | ExpansionProfile | None = None) -> str:
     profile = expansion if isinstance(expansion, ExpansionProfile) else resolve_expansion(expansion)
     return build_guide_category_url(profile, category)
+
+
+def tool_url(path: str, expansion: str | ExpansionProfile | None = None) -> str:
+    profile = expansion if isinstance(expansion, ExpansionProfile) else resolve_expansion(expansion)
+    normalized = path.strip().lstrip("/")
+    return f"{profile.wowhead_base}/{normalized}"

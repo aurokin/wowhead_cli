@@ -57,6 +57,7 @@ from wowhead_cli.wowhead_client import (
     news_url,
     search_url,
     suggestion_entity_type,
+    tool_url,
 )
 
 app = typer.Typer(
@@ -2291,6 +2292,12 @@ def _clean_htmlish_text(value: Any) -> str | None:
     return text or None
 
 
+def _absolute_wowhead_url(value: Any, *, fallback: str | None = None) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return urljoin(WOWHEAD_BASE_URL, value.strip())
+    return fallback
+
+
 def _timeline_result_matches(
     *,
     query: str | None,
@@ -2505,6 +2512,205 @@ def _normalize_guide_category_row(row: dict[str, Any]) -> dict[str, Any] | None:
         "rating": row.get("rating"),
         "votes": row.get("nvotes"),
     }
+
+
+def _normalize_tool_ref(ref: str, *, tool_slug: str, expansion: ExpansionProfile) -> str:
+    raw = ref.strip()
+    if not raw:
+        raise ValueError(f"{tool_slug} reference cannot be empty.")
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc:
+        if not parsed.netloc.endswith("wowhead.com"):
+            raise ValueError(f"{tool_slug} URL must point to wowhead.com.")
+        return raw
+    normalized = raw.lstrip("/")
+    if not normalized.startswith(f"{tool_slug}/") and normalized != tool_slug:
+        normalized = f"{tool_slug}/{normalized}"
+    return tool_url(normalized, expansion=expansion)
+
+
+def _parse_talent_calc_state(state_url: str) -> dict[str, Any]:
+    parsed = urlparse(state_url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if parts and parts[0] in EXPANSION_PREFIXES:
+        parts = parts[1:]
+    if not parts or parts[0] != "talent-calc":
+        raise ValueError("Talent calculator URL must point to /talent-calc.")
+    class_slug = parts[1] if len(parts) > 1 else None
+    spec_slug = parts[2] if len(parts) > 2 else None
+    build_code = parts[3] if len(parts) > 3 else None
+    return {
+        "class_slug": class_slug,
+        "spec_slug": spec_slug,
+        "build_code": build_code,
+        "path_segments": parts[1:],
+        "has_build_code": build_code is not None,
+    }
+
+
+def _extract_talent_calc_listed_builds(html: str, *, limit: int) -> dict[str, Any] | None:
+    try:
+        payload = extract_json_script(html, "data.wow.talentCalcDragonflight.live.talentBuilds")
+    except (ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    rows: list[dict[str, Any]] = []
+    for raw_id, raw_row in payload.items():
+        if not isinstance(raw_row, dict):
+            continue
+        row_id = raw_row.get("id")
+        if not isinstance(row_id, int):
+            try:
+                row_id = int(raw_id)
+            except ValueError:
+                row_id = None
+        row = {
+            "id": row_id,
+            "name": raw_row.get("name"),
+            "hash": raw_row.get("hash"),
+            "spec_id": raw_row.get("spec"),
+            "listed": raw_row.get("isListed"),
+        }
+        rows.append(row)
+    rows.sort(key=lambda row: (row.get("name") or "", row.get("id") or 0))
+    return {
+        "count": len(rows),
+        "items": rows[:limit],
+    }
+
+
+def _parse_profession_tree_state(state_url: str) -> dict[str, Any]:
+    parsed = urlparse(state_url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if parts and parts[0] in EXPANSION_PREFIXES:
+        parts = parts[1:]
+    if not parts or parts[0] != "profession-tree-calc":
+        raise ValueError("Profession tree URL must point to /profession-tree-calc.")
+    profession_slug = parts[1] if len(parts) > 1 else None
+    loadout_code = parts[2] if len(parts) > 2 else None
+    return {
+        "profession_slug": profession_slug,
+        "loadout_code": loadout_code,
+        "path_segments": parts[1:],
+        "has_loadout_code": loadout_code is not None,
+    }
+
+
+def _normalize_dressing_room_ref(ref: str, *, expansion: ExpansionProfile) -> str:
+    raw = ref.strip()
+    if not raw:
+        raise ValueError("dressing-room reference cannot be empty.")
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc:
+        if not parsed.netloc.endswith("wowhead.com"):
+            raise ValueError("dressing-room URL must point to wowhead.com.")
+        return raw
+    if raw.startswith("#"):
+        return f"{tool_url('dressing-room', expansion=expansion)}{raw}"
+    normalized = raw.lstrip("/")
+    if normalized.startswith("dressing-room"):
+        return tool_url(normalized, expansion=expansion)
+    return f"{tool_url('dressing-room', expansion=expansion)}#{normalized}"
+
+
+def _parse_dressing_room_state(state_url: str) -> dict[str, Any]:
+    parsed = urlparse(state_url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if parts and parts[0] in EXPANSION_PREFIXES:
+        parts = parts[1:]
+    if not parts or parts[0] != "dressing-room":
+        raise ValueError("Dressing room URL must point to /dressing-room.")
+    state_hash = parsed.fragment or None
+    return {
+        "share_hash": state_hash,
+        "has_share_hash": state_hash is not None,
+        "hash_length": len(state_hash) if isinstance(state_hash, str) else 0,
+    }
+
+
+def _normalize_profiler_ref(ref: str, *, expansion: ExpansionProfile) -> str:
+    raw = ref.strip()
+    if not raw:
+        raise ValueError("profiler reference cannot be empty.")
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc:
+        if not parsed.netloc.endswith("wowhead.com"):
+            raise ValueError("profiler URL must point to wowhead.com.")
+        return raw
+    normalized = raw.lstrip("/")
+    if normalized.startswith("list?") or normalized.startswith("list/") or normalized == "list":
+        return tool_url(normalized, expansion=expansion)
+    return f"{tool_url('list', expansion=expansion)}?list={normalized}"
+
+
+def _parse_profiler_state(state_url: str) -> dict[str, Any]:
+    parsed = urlparse(state_url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if parts and parts[0] in EXPANSION_PREFIXES:
+        parts = parts[1:]
+    if not parts or parts[0] != "list":
+        raise ValueError("Profiler URL must point to /list.")
+    list_param = None
+    for candidate in (parsed.query or "").split("&"):
+        if candidate.startswith("list="):
+            list_param = candidate.split("=", 1)[1]
+            break
+    list_parts = [part for part in list_param.split("/") if part] if isinstance(list_param, str) else []
+    return {
+        "list_ref": list_param,
+        "list_parts": list_parts,
+        "list_id": list_parts[0] if len(list_parts) > 0 else None,
+        "region_slug": list_parts[1] if len(list_parts) > 1 else None,
+        "realm_slug": list_parts[2] if len(list_parts) > 2 else None,
+        "character_name": list_parts[3] if len(list_parts) > 3 else None,
+        "has_list_ref": list_param is not None,
+    }
+
+
+def _normalize_news_post_ref(ref: str, *, expansion: ExpansionProfile) -> str:
+    raw = ref.strip()
+    if not raw:
+        raise ValueError("news post reference cannot be empty.")
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc:
+        if not parsed.netloc.endswith("wowhead.com"):
+            raise ValueError("news post URL must point to wowhead.com.")
+        return raw
+    normalized = raw.lstrip("/")
+    if normalized.startswith("news/"):
+        return tool_url(normalized, expansion=expansion)
+    raise ValueError("news post ref must be a full Wowhead news URL or /news/... path.")
+
+
+def _extract_news_post_markup(html: str) -> str | None:
+    marker = "WH.markup.printHtml("
+    index = html.find(marker)
+    if index < 0:
+        return None
+    cursor = index + len(marker)
+    while cursor < len(html) and html[cursor].isspace():
+        cursor += 1
+    try:
+        parsed, _offset = json.JSONDecoder().raw_decode(html[cursor:])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, str) else None
+
+
+def _normalize_blue_topic_ref(ref: str, *, expansion: ExpansionProfile) -> str:
+    raw = ref.strip()
+    if not raw:
+        raise ValueError("blue topic reference cannot be empty.")
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc:
+        if not parsed.netloc.endswith("wowhead.com"):
+            raise ValueError("blue topic URL must point to wowhead.com.")
+        return raw
+    normalized = raw.lstrip("/")
+    if normalized.startswith("blue-tracker/topic/"):
+        return tool_url(normalized, expansion=expansion)
+    raise ValueError("blue topic ref must be a full Wowhead blue-tracker URL or /blue-tracker/topic/... path.")
 
 
 def _guide_bundle_is_fresh(manifest: dict[str, Any], *, max_age_hours: int) -> bool:
@@ -3812,6 +4018,139 @@ def blue_tracker(
     _emit(ctx, payload)
 
 
+@app.command("news-post")
+def news_post(
+    ctx: typer.Context,
+    ref: str = typer.Argument(
+        ...,
+        help="Full Wowhead news URL or /news/... path returned by `wowhead news`.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    try:
+        page_url = _normalize_news_post_ref(ref, expansion=cfg.expansion)
+    except ValueError as exc:
+        _fail(ctx, "invalid_ref", str(exc))
+    client = _client(ctx)
+    try:
+        html = client.page_html(page_url)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+    metadata = parse_page_metadata(html, fallback_url=page_url)
+    canonical_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=page_url)
+    markup = _extract_news_post_markup(html) or ""
+    sections = extract_guide_sections(markup) if markup else []
+    section_chunks = extract_guide_section_chunks(markup) if markup else []
+    author_embed = None
+    try:
+        raw_author = extract_json_script(html, "data.newsPost.aboutTheAuthor.embedData")
+        if isinstance(raw_author, dict):
+            author_embed = raw_author
+    except (ValueError, json.JSONDecodeError):
+        author_embed = None
+
+    payload = {
+        "expansion": cfg.expansion.key,
+        "post": {
+            "input": ref,
+            "page_url": page_url,
+            "title": metadata.get("title"),
+        },
+        "page": {
+            "title": metadata.get("title"),
+            "description": metadata.get("description"),
+            "canonical_url": canonical_url,
+        },
+        "content": {
+            "text": clean_markup_text(markup),
+            "section_count": len(sections),
+            "sections": sections,
+            "section_chunks": section_chunks,
+        },
+        "citations": {
+            "page": page_url,
+        },
+    }
+    if author_embed is not None:
+        payload["author"] = author_embed
+    _emit(ctx, payload)
+
+
+@app.command("blue-topic")
+def blue_topic(
+    ctx: typer.Context,
+    ref: str = typer.Argument(
+        ...,
+        help="Full Wowhead blue-tracker topic URL or /blue-tracker/topic/... path returned by `wowhead blue-tracker`.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    try:
+        page_url = _normalize_blue_topic_ref(ref, expansion=cfg.expansion)
+    except ValueError as exc:
+        _fail(ctx, "invalid_ref", str(exc))
+    client = _client(ctx)
+    try:
+        html = client.page_html(page_url)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+    metadata = parse_page_metadata(html, fallback_url=page_url)
+    canonical_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=page_url)
+    try:
+        topic_payload = extract_json_script(html, "data.blueTracker.topic")
+    except (ValueError, json.JSONDecodeError) as exc:
+        _fail(ctx, "parse_error", str(exc))
+    entries = topic_payload.get("entries") if isinstance(topic_payload, dict) else None
+    if not isinstance(entries, list):
+        _fail(ctx, "unexpected_response", "Missing or invalid blue topic entries payload.")
+    posts: list[dict[str, Any]] = []
+    for row in entries:
+        if not isinstance(row, dict):
+            continue
+        posts.append(
+            {
+                "post_id": row.get("post"),
+                "topic_id": row.get("topic"),
+                "author": row.get("author"),
+                "avatar": row.get("avatar"),
+                "posted": row.get("posted"),
+                "updated": row.get("updated"),
+                "body_html": row.get("body"),
+                "body_text": _clean_htmlish_text(row.get("body")),
+                "region": row.get("region"),
+                "forum_area": row.get("forumArea"),
+                "forum": row.get("forum"),
+                "job_title": row.get("jobtitle"),
+            }
+        )
+
+    payload = {
+        "expansion": cfg.expansion.key,
+        "topic": {
+            "input": ref,
+            "page_url": page_url,
+            "title": metadata.get("title"),
+        },
+        "page": {
+            "title": metadata.get("title"),
+            "description": metadata.get("description"),
+            "canonical_url": canonical_url,
+        },
+        "posts": {
+            "count": len(posts),
+            "items": posts,
+        },
+        "citations": {
+            "page": page_url,
+        },
+    }
+    _emit(ctx, payload)
+
+
 @app.command("guides")
 def guides(
     ctx: typer.Context,
@@ -3872,6 +4211,198 @@ def guides(
         "guides_url": guide_category_url(normalized_category, expansion=cfg.expansion),
         "count": len(normalized_rows),
         "results": normalized_rows[:limit],
+    }
+    _emit(ctx, payload)
+
+
+@app.command("talent-calc")
+def talent_calc(
+    ctx: typer.Context,
+    ref: str = typer.Argument(
+        ...,
+        help="Wowhead talent calculator URL, path, or class/spec/build ref such as druid/balance/<code>.",
+    ),
+    listed_build_limit: int = typer.Option(
+        10,
+        "--listed-build-limit",
+        min=1,
+        max=100,
+        help="Maximum embedded listed builds to return when the page exposes them.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    try:
+        state_url = _normalize_tool_ref(ref, tool_slug="talent-calc", expansion=cfg.expansion)
+        state = _parse_talent_calc_state(state_url)
+    except ValueError as exc:
+        _fail(ctx, "invalid_tool_ref", str(exc))
+    client = _client(ctx)
+    try:
+        html = client.page_html(state_url)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+    metadata = parse_page_metadata(html, fallback_url=state_url)
+    canonical_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=state_url)
+    listed_builds = _extract_talent_calc_listed_builds(html, limit=listed_build_limit)
+
+    payload = {
+        "expansion": cfg.expansion.key,
+        "tool": {
+            "kind": "talent-calc",
+            "input": ref,
+            "state_url": state_url,
+            "page_url": canonical_url or state_url,
+            **state,
+        },
+        "page": {
+            "title": metadata.get("title"),
+            "description": metadata.get("description"),
+            "canonical_url": canonical_url,
+        },
+        "citations": {
+            "page": state_url,
+        },
+    }
+    if listed_builds is not None:
+        payload["listed_builds"] = listed_builds
+    _emit(ctx, payload)
+
+
+@app.command("profession-tree")
+def profession_tree(
+    ctx: typer.Context,
+    ref: str = typer.Argument(
+        ...,
+        help="Wowhead profession tree URL, path, or profession/loadout ref such as alchemy/BCuA.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    try:
+        state_url = _normalize_tool_ref(ref, tool_slug="profession-tree-calc", expansion=cfg.expansion)
+        state = _parse_profession_tree_state(state_url)
+    except ValueError as exc:
+        _fail(ctx, "invalid_tool_ref", str(exc))
+    client = _client(ctx)
+    try:
+        html = client.page_html(state_url)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+    metadata = parse_page_metadata(html, fallback_url=state_url)
+    canonical_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=state_url)
+
+    payload = {
+        "expansion": cfg.expansion.key,
+        "tool": {
+            "kind": "profession-tree",
+            "input": ref,
+            "state_url": state_url,
+            "page_url": canonical_url or state_url,
+            **state,
+        },
+        "page": {
+            "title": metadata.get("title"),
+            "description": metadata.get("description"),
+            "canonical_url": canonical_url,
+        },
+        "citations": {
+            "page": state_url,
+        },
+    }
+    _emit(ctx, payload)
+
+
+@app.command("dressing-room")
+def dressing_room(
+    ctx: typer.Context,
+    ref: str = typer.Argument(
+        ...,
+        help="Wowhead dressing room URL, path, or raw share hash.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    try:
+        state_url = _normalize_dressing_room_ref(ref, expansion=cfg.expansion)
+        state = _parse_dressing_room_state(state_url)
+    except ValueError as exc:
+        _fail(ctx, "invalid_tool_ref", str(exc))
+    client = _client(ctx)
+    fetch_url = tool_url("dressing-room", expansion=cfg.expansion)
+    try:
+        html = client.page_html(fetch_url)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+    metadata = parse_page_metadata(html, fallback_url=state_url)
+    canonical_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=fetch_url)
+
+    payload = {
+        "expansion": cfg.expansion.key,
+        "tool": {
+            "kind": "dressing-room",
+            "input": ref,
+            "state_url": state_url,
+            "page_url": canonical_url or fetch_url,
+            **state,
+        },
+        "page": {
+            "title": metadata.get("title"),
+            "description": metadata.get("description"),
+            "canonical_url": canonical_url,
+        },
+        "citations": {
+            "page": state_url,
+        },
+    }
+    _emit(ctx, payload)
+
+
+@app.command("profiler")
+def profiler(
+    ctx: typer.Context,
+    ref: str = typer.Argument(
+        ...,
+        help="Wowhead profiler URL, path, or raw list ref such as 97060220/us/illidan/Roguecane.",
+    ),
+) -> None:
+    cfg = _cfg(ctx)
+    try:
+        state_url = _normalize_profiler_ref(ref, expansion=cfg.expansion)
+        state = _parse_profiler_state(state_url)
+    except ValueError as exc:
+        _fail(ctx, "invalid_tool_ref", str(exc))
+    client = _client(ctx)
+    fetch_url = tool_url("list", expansion=cfg.expansion)
+    try:
+        html = client.page_html(fetch_url)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+    metadata = parse_page_metadata(html, fallback_url=state_url)
+    canonical_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=fetch_url)
+
+    payload = {
+        "expansion": cfg.expansion.key,
+        "tool": {
+            "kind": "profiler",
+            "input": ref,
+            "state_url": state_url,
+            "page_url": canonical_url or fetch_url,
+            **state,
+        },
+        "page": {
+            "title": metadata.get("title"),
+            "description": metadata.get("description"),
+            "canonical_url": canonical_url,
+        },
+        "citations": {
+            "page": state_url,
+        },
     }
     _emit(ctx, payload)
 

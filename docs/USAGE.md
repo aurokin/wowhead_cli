@@ -89,10 +89,16 @@ wowhead resolve "fairbreeze favors"
 wowhead --expansion wotlk search "thunderfury"
 wowhead news
 wowhead news "hotfixes" --pages 3 --date-from 2026-03-01
+wowhead news-post /news/midnight-hotfixes-for-march-13th-marl-decor-cost-reduction-class-bugfixes-and-380785
 wowhead blue-tracker
 wowhead blue-tracker "class tuning" --pages 2 --date-from 2026-03-01
+wowhead blue-topic /blue-tracker/topic/eu/class-tuning-incoming-18-march-610948
 wowhead guides classes
 wowhead guides classes "death knight"
+wowhead talent-calc druid/balance/DAQBBBBQQRUFURYVBEANVVRUVFVVVQCVQhEUEBUEBhVQ
+wowhead profession-tree alchemy/BCuA
+wowhead dressing-room "#fz8zz0zb89c8mM8YB8mN8X18mO8ub8mP8uD"
+wowhead profiler 97060220/us/illidan/Roguecane
 wowhead guide 3143
 wowhead guide-full 3143
 wowhead guide-export 3143 --out ./tmp/frost-dk-guide
@@ -142,10 +148,32 @@ Wowhead command behavior:
   - `--date-to`
   - bounded pagination with `--page` and `--pages`
   - explicit scan metadata so agents can see how much timeline history was searched
+- `news-post` fetches one specific Wowhead news article page and returns:
+  - normalized page metadata
+  - extracted text
+  - section chunks when the post body contains markup headings
+  - author metadata when Wowhead exposes it
 - `blue-tracker` does the same for the Wowhead blue tracker and is the right surface for topic-over-time blue post research
+- `blue-topic` fetches one specific blue-tracker topic page and returns the normalized topic posts with extracted body text
 - `guides <category>` uses the live guide-category listing surface for categories such as `classes`, `professions`, and `raids`
 - `guides <category> <query>` filters within the category listing instead of forcing discovery through generic `search`
 - Wowhead entity-type handling is now driven by a shared internal registry, so search suggestion types, parser support, resolve filters, and hydrate support stop drifting independently
+- `talent-calc` decodes calculator state URLs into:
+  - class slug
+  - spec slug
+  - current build code
+  - listed embedded builds when the page exposes them
+- `profession-tree` decodes profession tree state URLs into:
+  - profession slug
+  - current loadout code
+- `dressing-room` currently acts as a stable state inspector:
+  - it normalizes the share hash
+  - it returns page metadata plus the exact cited state URL
+  - it does not yet decode the appearance payload itself
+- `profiler` currently acts as a stable state inspector:
+  - it normalizes the raw `list=` reference
+  - it extracts list id, region, realm, and character name when present
+  - it does not yet decode the underlying profile/list contents
 
 ## Method Commands
 

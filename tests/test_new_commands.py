@@ -207,6 +207,105 @@ SAMPLE_GUIDE_CATEGORY_HTML = """
 </html>
 """
 
+SAMPLE_TALENT_CALC_HTML = """
+<html>
+  <head>
+    <title>Balance Druid Midnight Talent Calculator - World of Warcraft</title>
+    <meta property="og:title" content="Balance Druid Midnight Talent Calculator - World of Warcraft">
+    <meta name="description" content="Balance talent build planning.">
+    <link rel="canonical" href="https://www.wowhead.com/talent-calc/druid/balance">
+    <script type="application/json" id="data.wow.talentCalcDragonflight.live.talentBuilds">
+      {
+        "117": {"id": 117, "isListed": true, "name": "Leveling", "spec": 102, "hash": "AAA111"},
+        "118": {"id": 118, "isListed": true, "name": "Mythic+", "spec": 102, "hash": "BBB222"}
+      }
+    </script>
+  </head>
+</html>
+"""
+
+SAMPLE_PROFESSION_TREE_HTML = """
+<html>
+  <head>
+    <title>Alchemy Midnight Profession Tree Calculator - World of Warcraft</title>
+    <meta property="og:title" content="Alchemy Midnight Profession Tree Calculator - World of Warcraft">
+    <meta name="description" content="Alchemy profession planning.">
+    <link rel="canonical" href="https://www.wowhead.com/profession-tree-calc/alchemy">
+  </head>
+</html>
+"""
+
+SAMPLE_DRESSING_ROOM_HTML = """
+<html>
+  <head>
+    <title>Dressing Room - World of Warcraft</title>
+    <meta property="og:title" content="Dressing Room - World of Warcraft">
+    <meta name="description" content="Try out armor sets on any World of Warcraft character.">
+    <link rel="canonical" href="https://www.wowhead.com/dressing-room">
+  </head>
+</html>
+"""
+
+SAMPLE_PROFILER_HTML = """
+<html>
+  <head>
+    <title>Profiler - Wowhead</title>
+    <meta property="og:title" content="Profiler - Wowhead">
+    <meta name="description" content="Load your character's Blizzard Battle.net profile or create a custom list.">
+    <link rel="canonical" href="https://www.wowhead.com/list">
+  </head>
+</html>
+"""
+
+SAMPLE_NEWS_POST_HTML = """
+<html>
+  <head>
+    <title>Midnight Hotfixes for March 13th</title>
+    <meta property="og:title" content="Midnight Hotfixes for March 13th">
+    <meta name="description" content="Class bugfixes and more.">
+    <link rel="canonical" href="https://www.wowhead.com/news/midnight-hotfixes-380785">
+    <script type="application/json" id="data.newsPost.aboutTheAuthor.embedData">
+      {"username":"staff","fullName":"Staff","title":"Author","bio":"Writes news."}
+    </script>
+  </head>
+  <body>
+    <script>
+      WH.markup.printHtml("[b]March 13, 2026[/b]\\r\\n[h2]Classes[/h2]\\r\\nDeath Knight fixes.");
+    </script>
+  </body>
+</html>
+"""
+
+SAMPLE_BLUE_TOPIC_HTML = """
+<html>
+  <head>
+    <title>Class Tuning Incoming -- 18 March - General Discussion - EU - Blue Tracker - World of Warcraft</title>
+    <meta property="og:title" content="Class Tuning Incoming -- 18 March - General Discussion - EU - Blue Tracker - World of Warcraft">
+    <meta name="description" content="The first few days of Midnight max-level play have given us data.">
+    <link rel="canonical" href="https://www.wowhead.com/blue-tracker/topic/eu/class-tuning-incoming-18-march-610948">
+    <script type="application/json" id="data.blueTracker.topic">
+      {
+        "entries": [
+          {
+            "post": 6200022,
+            "topic": 610948,
+            "author": "Kaivax",
+            "avatar": "/avatar.png",
+            "body": "<p>The first few days of Midnight max-level play have given us data.</p>",
+            "posted": "2026-03-12T22:00:00-06:00",
+            "updated": "2026-03-12T23:00:00-06:00",
+            "region": "eu",
+            "forumArea": "General Discussion",
+            "forum": "General Discussion",
+            "jobtitle": "Community Manager"
+          }
+        ]
+      }
+    </script>
+  </head>
+</html>
+"""
+
 def _write_bundle_fixture(
     root: Path,
     *,
@@ -498,6 +597,96 @@ def test_guides_command_returns_category_rows(monkeypatch) -> None:
     assert payload["count"] == 1
     assert payload["results"][0]["id"] == 32000
     assert payload["results"][0]["url"].endswith("/frost/overview-pve-dps")
+
+
+def test_talent_calc_command_decodes_url_and_embedded_builds(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc", "druid/balance/ABC123", "--listed-build-limit", "5"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool"]["class_slug"] == "druid"
+    assert payload["tool"]["spec_slug"] == "balance"
+    assert payload["tool"]["build_code"] == "ABC123"
+    assert payload["tool"]["state_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert payload["listed_builds"]["count"] == 2
+    assert payload["listed_builds"]["items"][0]["name"] == "Leveling"
+
+
+def test_profession_tree_command_decodes_url(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/profession-tree-calc/alchemy/BCuA")
+        return SAMPLE_PROFESSION_TREE_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["profession-tree", "alchemy/BCuA"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool"]["profession_slug"] == "alchemy"
+    assert payload["tool"]["loadout_code"] == "BCuA"
+    assert payload["tool"]["state_url"].endswith("/profession-tree-calc/alchemy/BCuA")
+
+
+def test_dressing_room_command_normalizes_hash_ref(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url == "https://www.wowhead.com/dressing-room"
+        return SAMPLE_DRESSING_ROOM_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["dressing-room", "#fz8zz0zb89c8mM8YB"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool"]["share_hash"] == "fz8zz0zb89c8mM8YB"
+    assert payload["tool"]["has_share_hash"] is True
+    assert payload["tool"]["state_url"].startswith("https://www.wowhead.com/dressing-room#")
+
+
+def test_profiler_command_normalizes_list_ref(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url == "https://www.wowhead.com/list"
+        return SAMPLE_PROFILER_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["profiler", "97060220/us/illidan/Roguecane"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool"]["list_id"] == "97060220"
+    assert payload["tool"]["region_slug"] == "us"
+    assert payload["tool"]["realm_slug"] == "illidan"
+    assert payload["tool"]["character_name"] == "Roguecane"
+
+
+def test_news_post_command_extracts_markup_and_author(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url == "https://www.wowhead.com/news/midnight-hotfixes-380785"
+        return SAMPLE_NEWS_POST_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["news-post", "/news/midnight-hotfixes-380785"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["post"]["page_url"] == "https://www.wowhead.com/news/midnight-hotfixes-380785"
+    assert payload["content"]["section_count"] == 1
+    assert payload["author"]["username"] == "staff"
+    assert "Death Knight fixes" in payload["content"]["text"]
+
+
+def test_blue_topic_command_extracts_posts(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url == "https://www.wowhead.com/blue-tracker/topic/eu/class-tuning-incoming-18-march-610948"
+        return SAMPLE_BLUE_TOPIC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["blue-topic", "/blue-tracker/topic/eu/class-tuning-incoming-18-march-610948"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["posts"]["count"] == 1
+    first = payload["posts"]["items"][0]
+    assert first["author"] == "Kaivax"
+    assert first["body_text"].startswith("The first few days of Midnight")
 
 
 def test_search_guide_result_includes_guide_url(monkeypatch) -> None:
