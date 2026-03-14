@@ -50,10 +50,10 @@ Active next step:
 - build reusable analytics systems for profile and leaderboard providers instead of one-off answer commands
 - focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
 - for `wowhead`, prioritize:
-  - database-family browse/filter commands
   - expand guide-category discovery beyond the first listing slice
   - deepen `news` and `blue-tracker` beyond the first timeline listing slice
   - tool decoders for talent/profession/dressing-room/profiler surfaces
+  - revisit database-family browse/filter commands only if a concrete bulk browse/filter workflow needs them
 
 ## Planning Documents
 

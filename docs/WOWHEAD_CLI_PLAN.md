@@ -49,6 +49,11 @@ It is still weak or missing for:
 - deeper guide category coverage beyond the first listing surface
 - timeline article or thread fetch beyond listing/detail summaries
 
+Current decision:
+- generic Wowhead database pages are intentionally deferred for now
+- direct `entity`, `entity-page`, `comments`, `search`, `resolve`, `guide`, `news`, `blue-tracker`, and `guides <category>` are the preferred surfaces until a concrete browse/filter workflow requires more
+- database-page support should only move forward when the current direct commands cannot answer a real user or agent workflow cleanly
+
 ## Quality Review Findings
 
 The current `wowhead` CLI is more mature than the other providers, but the review surfaced several meaningful gaps:
@@ -164,11 +169,17 @@ Recommended additions:
 - `wowhead dressing-room ...`
 - `wowhead profiler ...`
 
+Current decision on database pages:
+- do not implement generic `wowhead db <family>` yet just because the pages exist
+- the current direct Wowhead commands are more reliable for most entity and guide workflows
+- database pages become worth the parser complexity only for concrete bulk browsing/filtering use cases that the current commands do not cover well
+- this keeps the Wowhead CLI biased toward reliable structured retrieval instead of broad but fragile page-surface coverage
+
 The right implementation order is:
-1. add database browse/filter commands
-2. expand guide-category discovery beyond the first listing slice
-3. add article/thread fetch for `news` and `blue-tracker`
-4. add tool decoders
+1. expand guide-category discovery beyond the first listing slice
+2. add article/thread fetch for `news` and `blue-tracker`
+3. add tool decoders
+4. revisit database browse/filter commands only when a concrete browse/filter workflow justifies them
 
 ## Search And Resolve Boundary
 
