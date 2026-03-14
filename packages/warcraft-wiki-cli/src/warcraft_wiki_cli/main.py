@@ -381,30 +381,34 @@ def _typed_search_queries(query: str, *, surface: str) -> list[str]:
     return ordered
 
 
-def _typed_article_payload(
+def _typed_allowed_families(surface: str) -> frozenset[str]:
+    return API_REFERENCE_FAMILIES if surface == "api" else EVENT_REFERENCE_FAMILIES
+
+
+def _typed_direct_article_result(
     client: WarcraftWikiClient,
-    query: str,
     *,
-    surface: str,
-    full: bool,
-    limit: int = 10,
-) -> dict[str, Any]:
-    allowed_families = API_REFERENCE_FAMILIES if surface == "api" else EVENT_REFERENCE_FAMILIES
-    direct_refs = _typed_search_queries(query, surface=surface)
+    direct_refs: list[str],
+    allowed_families: frozenset[str],
+) -> dict[str, Any] | None:
     for candidate_ref in direct_refs:
         try:
             initial = client.fetch_article_page(candidate_ref)
         except WarcraftWikiAPIError:
             continue
         if initial["article"]["content_family"] in allowed_families:
-            payload = _article_payload_from_initial(initial)
-            result = payload if full else _build_article_summary(initial)
-            result["query"] = query
-            result["search_queries"] = direct_refs
-            result["resolved_from"] = "direct_fetch"
-            result["resolved_surface"] = surface
-            return result
+            return initial
+    return None
 
+
+def _typed_ranked_results(
+    client: WarcraftWikiClient,
+    *,
+    query: str,
+    surface: str,
+    allowed_families: frozenset[str],
+    limit: int,
+) -> tuple[list[dict[str, Any]], list[str], int]:
     ranked: dict[str, dict[str, Any]] = {}
     query_trace: list[str] = []
     total_count = 0
@@ -419,8 +423,16 @@ def _typed_article_payload(
             existing = ranked.get(row["id"])
             if existing is None or int(row["ranking"]["score"]) > int(existing["ranking"]["score"]):
                 ranked[row["id"]] = row
+    results = sorted(ranked.values(), key=lambda row: (-int(row["ranking"]["score"]), row["name"], row["id"]))
+    return results[:limit], query_trace, total_count
 
-    results = sorted(ranked.values(), key=lambda row: (-int(row["ranking"]["score"]), row["name"], row["id"]))[:limit]
+
+def _typed_search_match(
+    results: list[dict[str, Any]],
+    *,
+    query: str,
+    surface: str,
+) -> dict[str, Any]:
     top = results[0] if results else None
     second = results[1] if len(results) > 1 else None
     top_score = int((top or {}).get("ranking", {}).get("score") or 0)
@@ -431,26 +443,79 @@ def _typed_article_payload(
             f"invalid_{surface}_ref",
             f"Unable to resolve {surface} reference from query: {query}",
         )
+    return top
 
+
+def _typed_result_payload(
+    initial: dict[str, Any],
+    *,
+    query: str,
+    search_queries: list[str],
+    surface: str,
+    full: bool,
+    resolved_from: str,
+    resolution: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = _article_payload_from_initial(initial)
+    result = payload if full else _build_article_summary(initial)
+    result["query"] = query
+    result["search_queries"] = search_queries
+    result["resolved_from"] = resolved_from
+    result["resolved_surface"] = surface
+    if resolution is not None:
+        result["resolution"] = resolution
+    return result
+
+
+def _typed_article_payload(
+    client: WarcraftWikiClient,
+    query: str,
+    *,
+    surface: str,
+    full: bool,
+    limit: int = 10,
+) -> dict[str, Any]:
+    allowed_families = _typed_allowed_families(surface)
+    direct_refs = _typed_search_queries(query, surface=surface)
+    initial = _typed_direct_article_result(client, direct_refs=direct_refs, allowed_families=allowed_families)
+    if initial is not None:
+        return _typed_result_payload(
+            initial,
+            query=query,
+            search_queries=direct_refs,
+            surface=surface,
+            full=full,
+            resolved_from="direct_fetch",
+        )
+
+    results, query_trace, total_count = _typed_ranked_results(
+        client,
+        query=query,
+        surface=surface,
+        allowed_families=allowed_families,
+        limit=limit,
+    )
+    top = _typed_search_match(results, query=query, surface=surface)
     initial = client.fetch_article_page(str(top["id"]))
     if initial["article"]["content_family"] not in allowed_families:
         raise WarcraftWikiAPIError(
             f"invalid_{surface}_ref",
             f"Resolved article is not a supported {surface} reference: {initial['article']['title']}",
         )
-    payload = _article_payload_from_initial(initial)
-    result = payload if full else _build_article_summary(initial)
-    result["query"] = query
-    result["search_queries"] = query_trace
-    result["resolved_from"] = "search"
-    result["resolved_surface"] = surface
-    result["resolution"] = {
-        "resolved": True,
-        "match": top,
-        "candidates": results,
-        "count": total_count,
-    }
-    return result
+    return _typed_result_payload(
+        initial,
+        query=query,
+        search_queries=query_trace,
+        surface=surface,
+        full=full,
+        resolved_from="search",
+        resolution={
+            "resolved": True,
+            "match": top,
+            "candidates": results,
+            "count": total_count,
+        },
+    )
 
 
 def _default_export_dir(article_title: str) -> Path:

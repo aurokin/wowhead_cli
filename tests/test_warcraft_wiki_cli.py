@@ -4,7 +4,16 @@ import json
 
 from typer.testing import CliRunner
 
-from warcraft_wiki_cli.main import _score_text_match, app as warcraft_wiki_app
+from warcraft_wiki_cli.client import WarcraftWikiAPIError
+from warcraft_wiki_cli.main import (
+    _score_text_match,
+    _typed_allowed_families,
+    _typed_article_payload,
+    _typed_direct_article_result,
+    _typed_search_match,
+    _typed_search_queries,
+    app as warcraft_wiki_app,
+)
 
 runner = CliRunner()
 
@@ -184,6 +193,67 @@ def test_warcraft_wiki_score_text_match_handles_expansion_alias() -> None:
     assert family == "expansion_reference"
     assert "expansion_alias_match" in reasons
     assert "intent_systems" in reasons
+
+
+def test_typed_search_queries_add_surface_prefixes() -> None:
+    assert _typed_search_queries("CreateFrame", surface="api") == ["CreateFrame", "API CreateFrame"]
+    assert _typed_search_queries("OnKeyDown", surface="event") == [
+        "OnKeyDown",
+        "UIHANDLER OnKeyDown",
+        "event OnKeyDown",
+    ]
+
+
+def test_typed_direct_article_result_returns_supported_family() -> None:
+    class FakeClient:
+        def fetch_article_page(self, ref: str) -> dict[str, object]:
+            if ref == "API CreateFrame":
+                return _api_payload()
+            return _page_payload()
+
+    result = _typed_direct_article_result(
+        FakeClient(),
+        direct_refs=["World of Warcraft API", "API CreateFrame"],
+        allowed_families=_typed_allowed_families("api"),
+    )
+
+    assert result is not None
+    assert result["article"]["content_family"] == "framework_page"
+
+
+def test_typed_search_match_requires_clear_winner() -> None:
+    match = _typed_search_match(
+        [
+            {"id": "API_CreateFrame", "name": "API CreateFrame", "ranking": {"score": 70}},
+            {"id": "API_CreateTexture", "name": "API CreateTexture", "ranking": {"score": 40}},
+        ],
+        query="CreateFrame",
+        surface="api",
+    )
+    assert match["id"] == "API_CreateFrame"
+
+
+def test_api_payload_prefers_direct_fetch_before_search() -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.search_calls: list[str] = []
+
+        def fetch_article_page(self, ref: str) -> dict[str, object]:
+            if ref != "API CreateFrame":
+                raise WarcraftWikiAPIError("invalid_article_ref", "not found")
+            return _api_payload()
+
+        def search_articles(self, query: str, limit: int):  # noqa: ANN001
+            self.search_calls.append(query)
+            return 0, []
+
+    client = FakeClient()
+    result = _typed_article_payload(client, "CreateFrame", surface="api", full=False)
+
+    assert result["resolved_from"] == "direct_fetch"
+    assert result["resolved_surface"] == "api"
+    assert result["search_queries"] == ["CreateFrame", "API CreateFrame"]
+    assert client.search_calls == []
 
 
 def test_warcraft_wiki_article_and_export(monkeypatch, tmp_path) -> None:
