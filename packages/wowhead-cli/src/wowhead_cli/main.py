@@ -2008,6 +2008,119 @@ def _entity_linked_entities_payload(
     )
 
 
+def _comparison_entity_record(
+    *,
+    ref: str,
+    entity_type: str,
+    entity_id: int,
+    canonical_url: str,
+    tooltip: dict[str, Any],
+    metadata: dict[str, str | None],
+    deduped_links: list[dict[str, Any]],
+    raw_comments: list[dict[str, Any]],
+    sampled_comments: list[dict[str, Any]],
+) -> tuple[dict[str, Any], set[tuple[str, int]]]:
+    link_set: set[tuple[str, int]] = set()
+    for row in deduped_links:
+        link_type = row.get("entity_type")
+        link_id = row.get("id")
+        if isinstance(link_type, str) and isinstance(link_id, int):
+            link_set.add((link_type, link_id))
+    return (
+        {
+            "ref": ref,
+            "entity": {
+                "type": entity_type,
+                "id": entity_id,
+                "page_url": canonical_url,
+            },
+            "summary": {
+                "name": tooltip.get("name"),
+                "quality": tooltip.get("quality"),
+                "icon": tooltip.get("icon"),
+                "title": metadata.get("title"),
+                "description": metadata.get("description"),
+            },
+            "linked_entities": {
+                "count": len(deduped_links),
+                "items": deduped_links,
+            },
+            "comments": {
+                "count": len(raw_comments),
+                "top": sampled_comments,
+            },
+            "citations": {
+                "comments": f"{canonical_url}#comments",
+            },
+        },
+        link_set,
+    )
+
+
+def _comparison_field_diffs(entity_records: list[dict[str, Any]], *, comparable_fields: list[str]) -> dict[str, Any]:
+    field_diffs: dict[str, Any] = {}
+    for field in comparable_fields:
+        values: dict[str, Any] = {}
+        for row in entity_records:
+            ref = row.get("ref")
+            if not isinstance(ref, str):
+                continue
+            summary = row.get("summary")
+            value = summary.get(field) if isinstance(summary, dict) else None
+            values[ref] = value
+        unique_values = {repr(v) for v in values.values()}
+        field_diffs[field] = {
+            "all_equal": len(unique_values) <= 1,
+            "values": values,
+        }
+    return field_diffs
+
+
+def _comparison_linked_entities_summary(
+    *,
+    refs_in_order: list[str],
+    entity_link_sets: dict[str, set[tuple[str, int]]],
+    expansion: ExpansionProfile,
+    max_shared_links: int,
+    max_unique_links: int,
+) -> dict[str, Any]:
+    all_sets = [entity_link_sets[ref] for ref in refs_in_order]
+    shared = set.intersection(*all_sets) if all_sets else set()
+    shared_links_all = [
+        {
+            "entity_type": link_type,
+            "id": link_id,
+            "url": entity_url(link_type, link_id, expansion=expansion),
+        }
+        for link_type, link_id in sorted(shared)
+    ]
+    unique_by_ref: dict[str, list[dict[str, Any]]] = {}
+    unique_counts: dict[str, int] = {}
+    for ref in refs_in_order:
+        mine = entity_link_sets[ref]
+        others_union: set[tuple[str, int]] = set()
+        for other_ref, other_links in entity_link_sets.items():
+            if other_ref != ref:
+                others_union |= other_links
+        unique_pairs = sorted(mine - others_union)
+        unique_counts[ref] = len(unique_pairs)
+        unique_by_ref[ref] = [
+            {
+                "entity_type": link_type,
+                "id": link_id,
+                "url": entity_url(link_type, link_id, expansion=expansion),
+            }
+            for link_type, link_id in unique_pairs[:max_unique_links]
+        ]
+    return {
+        "shared_count_total": len(shared_links_all),
+        "shared_count_returned": min(len(shared_links_all), max_shared_links),
+        "shared_items": shared_links_all[:max_shared_links],
+        "unique_count_total_by_entity": unique_counts,
+        "unique_by_entity": unique_by_ref,
+    }
+
+
 def _build_entity_payload(
     ctx: typer.Context,
     client: WowheadClient,
@@ -3209,6 +3322,48 @@ def _guide_bundle_query_command(row: dict[str, Any], *, query: str, root: Path) 
     return f"wowhead guide-query {selector} {quoted_query} --root {quoted_root}"
 
 
+def _guide_bundle_match_total(match_counts: dict[str, Any]) -> int:
+    return sum(value for value in match_counts.values() if isinstance(value, int))
+
+
+def _guide_bundle_meta(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "path": row.get("path"),
+        "dir_name": row.get("dir_name"),
+        "guide_id": row.get("guide_id"),
+        "title": row.get("title"),
+        "canonical_url": row.get("canonical_url"),
+        "expansion": row.get("expansion"),
+        "freshness": row.get("freshness"),
+    }
+
+
+def _bundle_query_result(
+    row: dict[str, Any],
+    *,
+    query: str,
+    result: dict[str, Any],
+    root: Path,
+) -> dict[str, Any] | None:
+    match_counts = result["counts"]
+    match_count = _guide_bundle_match_total(match_counts)
+    if match_count <= 0:
+        return None
+    return {
+        **dict(row),
+        "match_count": match_count,
+        "match_counts": match_counts,
+        "best_score": max((int(item.get("score") or 0) for item in result["top"]), default=0),
+        "top": result["top"],
+        "suggested_query_command": _guide_bundle_query_command(row, query=query, root=root),
+    }
+
+
+def _bundle_query_top_matches(row: dict[str, Any], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    bundle_meta = _guide_bundle_meta(row)
+    return [{**dict(item), "bundle": bundle_meta} for item in rows]
+
+
 def _scan_guide_bundle_rows(root: Path) -> list[dict[str, Any]]:
     if not root.exists() or not root.is_dir():
         return []
@@ -3518,33 +3673,37 @@ def _write_guide_export_assets(
     ):
         files_written["navigation_markup"] = "navigation.markup.txt"
 
-    sections = body.get("section_chunks") if isinstance(body, dict) else []
-    if isinstance(sections, list):
-        _write_jsonl_file(export_dir / "sections.jsonl", sections)
-        files_written["sections_jsonl"] = "sections.jsonl"
+    def write_jsonl_asset(asset_key: str, file_name: str, items: Any) -> list[Any]:
+        rows = items if isinstance(items, list) else []
+        _write_jsonl_file(export_dir / file_name, rows)
+        files_written[asset_key] = file_name
+        return rows
 
-    nav_links = navigation.get("links") if isinstance(navigation, dict) else []
-    if isinstance(nav_links, list):
-        _write_jsonl_file(export_dir / "navigation-links.jsonl", nav_links)
-        files_written["navigation_links_jsonl"] = "navigation-links.jsonl"
-
-    linked_entities = payload.get("linked_entities")
-    linked_items = linked_entities.get("items") if isinstance(linked_entities, dict) else []
-    if isinstance(linked_items, list):
-        _write_jsonl_file(export_dir / "linked-entities.jsonl", linked_items)
-        files_written["linked_entities_jsonl"] = "linked-entities.jsonl"
-
-    gatherer_entities = payload.get("gatherer_entities")
-    gatherer_items = gatherer_entities.get("items") if isinstance(gatherer_entities, dict) else []
-    if isinstance(gatherer_items, list):
-        _write_jsonl_file(export_dir / "gatherer-entities.jsonl", gatherer_items)
-        files_written["gatherer_entities_jsonl"] = "gatherer-entities.jsonl"
-
-    comments = payload.get("comments")
-    comment_items = comments.get("items") if isinstance(comments, dict) else []
-    if isinstance(comment_items, list):
-        _write_jsonl_file(export_dir / "comments.jsonl", comment_items)
-        files_written["comments_jsonl"] = "comments.jsonl"
+    sections = write_jsonl_asset(
+        "sections_jsonl",
+        "sections.jsonl",
+        body.get("section_chunks") if isinstance(body, dict) else [],
+    )
+    nav_links = write_jsonl_asset(
+        "navigation_links_jsonl",
+        "navigation-links.jsonl",
+        navigation.get("links") if isinstance(navigation, dict) else [],
+    )
+    linked_items = write_jsonl_asset(
+        "linked_entities_jsonl",
+        "linked-entities.jsonl",
+        (payload.get("linked_entities") or {}).get("items") if isinstance(payload.get("linked_entities"), dict) else [],
+    )
+    gatherer_items = write_jsonl_asset(
+        "gatherer_entities_jsonl",
+        "gatherer-entities.jsonl",
+        (payload.get("gatherer_entities") or {}).get("items") if isinstance(payload.get("gatherer_entities"), dict) else [],
+    )
+    comment_items = write_jsonl_asset(
+        "comments_jsonl",
+        "comments.jsonl",
+        (payload.get("comments") or {}).get("items") if isinstance(payload.get("comments"), dict) else [],
+    )
 
     structured_data = payload.get("structured_data")
     if structured_data is not None:
@@ -3555,11 +3714,11 @@ def _write_guide_export_assets(
     return files_written, {
         "body": body if isinstance(body, dict) else None,
         "navigation": navigation if isinstance(navigation, dict) else None,
-        "sections": sections if isinstance(sections, list) else [],
-        "navigation_links": nav_links if isinstance(nav_links, list) else [],
-        "linked_items": linked_items if isinstance(linked_items, list) else [],
-        "gatherer_items": gatherer_items if isinstance(gatherer_items, list) else [],
-        "comment_items": comment_items if isinstance(comment_items, list) else [],
+        "sections": sections,
+        "navigation_links": nav_links,
+        "linked_items": linked_items,
+        "gatherer_items": gatherer_items,
+        "comment_items": comment_items,
     }
 
 
@@ -5358,34 +5517,13 @@ def guide_bundle_query(
             selected_link_sources=selected_link_sources,
             limit=limit,
         )
-        match_counts = result["counts"]
-        match_count = sum(value for value in match_counts.values() if isinstance(value, int))
-        if match_count <= 0:
+        bundle_result = _bundle_query_result(bundle, query=query, result=result, root=resolved_root)
+        if bundle_result is None:
             continue
         for key in aggregate_counts:
-            aggregate_counts[key] += int(match_counts.get(key) or 0)
-        best_score = max((int(row.get("score") or 0) for row in result["top"]), default=0)
-        bundle_result = dict(bundle)
-        bundle_result["match_count"] = match_count
-        bundle_result["match_counts"] = match_counts
-        bundle_result["best_score"] = best_score
-        bundle_result["top"] = result["top"]
-        bundle_result["suggested_query_command"] = _guide_bundle_query_command(bundle, query=query, root=resolved_root)
+            aggregate_counts[key] += int(bundle_result["match_counts"].get(key) or 0)
         matched_bundles.append(bundle_result)
-
-        bundle_meta = {
-            "path": bundle.get("path"),
-            "dir_name": bundle.get("dir_name"),
-            "guide_id": bundle.get("guide_id"),
-            "title": bundle.get("title"),
-            "canonical_url": bundle.get("canonical_url"),
-            "expansion": bundle.get("expansion"),
-            "freshness": bundle.get("freshness"),
-        }
-        for row in result["top"]:
-            top_row = dict(row)
-            top_row["bundle"] = bundle_meta
-            top_matches.append(top_row)
+        top_matches.extend(_bundle_query_top_matches(bundle, result["top"]))
 
     matched_bundles.sort(
         key=lambda row: (
@@ -6058,110 +6196,35 @@ def compare(
                 )
 
         ref = f"{entity_type}:{entity_id}"
-        link_set: set[tuple[str, int]] = set()
-        for row in deduped_links:
-            link_type = row.get("entity_type")
-            link_id = row.get("id")
-            if isinstance(link_type, str) and isinstance(link_id, int):
-                link_set.add((link_type, link_id))
-        entity_link_sets[ref] = link_set
-
-        entity_records.append(
-            {
-                "ref": ref,
-                "entity": {
-                    "type": entity_type,
-                    "id": entity_id,
-                    "page_url": canonical_url,
-                },
-                "summary": {
-                    "name": tooltip.get("name"),
-                    "quality": tooltip.get("quality"),
-                    "icon": tooltip.get("icon"),
-                    "title": metadata.get("title"),
-                    "description": metadata.get("description"),
-                },
-                "linked_entities": {
-                    "count": len(deduped_links),
-                    "items": deduped_links,
-                },
-                "comments": {
-                    "count": len(raw_comments),
-                    "top": sampled_comments,
-                },
-                "citations": {
-                    "comments": f"{canonical_url}#comments",
-                },
-            }
+        record, link_set = _comparison_entity_record(
+            ref=ref,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            canonical_url=canonical_url,
+            tooltip=tooltip,
+            metadata=metadata,
+            deduped_links=deduped_links,
+            raw_comments=raw_comments,
+            sampled_comments=sampled_comments,
         )
+        entity_link_sets[ref] = link_set
+        entity_records.append(record)
 
     refs_in_order = [row["ref"] for row in entity_records]
-    comparable_fields = ["name", "quality", "icon", "title"]
-    field_diffs: dict[str, Any] = {}
-    for field in comparable_fields:
-        values: dict[str, Any] = {}
-        for row in entity_records:
-            ref = row.get("ref")
-            if not isinstance(ref, str):
-                continue
-            summary = row.get("summary")
-            value = summary.get(field) if isinstance(summary, dict) else None
-            values[ref] = value
-        unique_values = {repr(v) for v in values.values()}
-        field_diffs[field] = {
-            "all_equal": len(unique_values) <= 1,
-            "values": values,
-        }
-
-    all_sets = [entity_link_sets[ref] for ref in refs_in_order]
-    if all_sets:
-        shared = set.intersection(*all_sets)
-    else:
-        shared = set()
-
-    shared_links_all = [
-        {
-            "entity_type": link_type,
-            "id": link_id,
-            "url": entity_url(link_type, link_id, expansion=cfg.expansion),
-        }
-        for link_type, link_id in sorted(shared)
-    ]
-    shared_links = shared_links_all[:max_shared_links]
-
-    unique_by_ref: dict[str, list[dict[str, Any]]] = {}
-    unique_counts: dict[str, int] = {}
-    for ref in refs_in_order:
-        mine = entity_link_sets[ref]
-        others_union: set[tuple[str, int]] = set()
-        for other_ref, other_links in entity_link_sets.items():
-            if other_ref == ref:
-                continue
-            others_union |= other_links
-        unique_pairs = sorted(mine - others_union)
-        unique_counts[ref] = len(unique_pairs)
-        unique_by_ref[ref] = [
-            {
-                "entity_type": link_type,
-                "id": link_id,
-                "url": entity_url(link_type, link_id, expansion=cfg.expansion),
-            }
-            for link_type, link_id in unique_pairs[:max_unique_links]
-        ]
 
     payload = {
         "expansion": cfg.expansion.key,
         "normalize_canonical_to_expansion": cfg.normalize_canonical_to_expansion,
         "inputs": refs_in_order,
         "comparison": {
-            "fields": field_diffs,
-            "linked_entities": {
-                "shared_count_total": len(shared_links_all),
-                "shared_count_returned": len(shared_links),
-                "shared_items": shared_links,
-                "unique_count_total_by_entity": unique_counts,
-                "unique_by_entity": unique_by_ref,
-            },
+            "fields": _comparison_field_diffs(entity_records, comparable_fields=["name", "quality", "icon", "title"]),
+            "linked_entities": _comparison_linked_entities_summary(
+                refs_in_order=refs_in_order,
+                entity_link_sets=entity_link_sets,
+                expansion=cfg.expansion,
+                max_shared_links=max_shared_links,
+                max_unique_links=max_unique_links,
+            ),
         },
         "entities": entity_records,
     }

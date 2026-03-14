@@ -10,6 +10,7 @@ from wowprogress_cli.main import (
     _guild_profile_distribution_values,
     _distinct_result_kinds,
     _guild_profile_matches_filters,
+    _guild_profile_sample_summary,
     _guild_profile_threshold_estimate,
     _has_follow_up_command,
     _is_ambiguous_untyped_result,
@@ -18,6 +19,8 @@ from wowprogress_cli.main import (
     _normalized_encounter_values,
     _resolve_confidence_label,
     _resolve_is_confident,
+    _sample_summary,
+    _score_match,
     _sorted_search_candidates,
     app as wowprogress_app,
 )
@@ -124,6 +127,61 @@ def test_wowprogress_search_and_resolve_helpers_cover_ambiguity() -> None:
     assert _meets_score_confidence(60, second_score=30, has_second=True) is True
     assert _meets_score_confidence(60, second_score=50, has_second=True) is False
     assert _is_ambiguous_untyped_result(None, ["character", "guild"]) is True
+
+
+def test_wowprogress_score_and_summary_helpers() -> None:
+    score, reasons = _score_match(
+        query="guild us illidan Liquid recruit",
+        kind_hint="guild",
+        kind="guild",
+        name="Liquid",
+        region="us",
+        realm="US-Illidan",
+        query_name="Liquid",
+        query_realm="illidan",
+    )
+    assert score > 0
+    assert "exact_target_name" in reasons
+    assert "type_hint" in reasons
+
+    leaderboard_summary = _sample_summary(
+        [
+            {"rank": 1, "bosses_killed": 8, "realm": "Illidan", "difficulty": "M"},
+            {"rank": 3, "bosses_killed": 7, "realm": "Tichondrius", "difficulty": "M"},
+        ],
+        meta={"sampled_at": "2026-03-12T00:00:00+00:00", "requested_limit": 5, "active_raid": "Manaforge Omega"},
+    )
+    assert leaderboard_summary["rank"]["min"] == 1
+    assert leaderboard_summary["bosses_killed"]["max"] == 8
+
+    guild_summary = _guild_profile_sample_summary(
+        [
+            {
+                "faction": "Horde",
+                "progress": "8/8 (M)",
+                "difficulty": "M",
+                "item_level_average": 685.2,
+                "progress_ranks": {"world": "12"},
+            },
+            {
+                "faction": "Alliance",
+                "progress": "7/8 (M)",
+                "difficulty": "M",
+                "item_level_average": 681.0,
+                "progress_ranks": {"world": "20"},
+            },
+        ],
+        meta={
+            "sampled_at": "2026-03-12T00:00:00+00:00",
+            "requested_limit": 5,
+            "leaderboard_entry_count": 2,
+            "skipped_missing_profile_url": 0,
+            "active_raid": "Manaforge Omega",
+        },
+        filtering={"faction": ["horde"]},
+    )
+    assert guild_summary["item_level_average"]["max"] == 685.2
+    assert guild_summary["world_progress_rank"]["min"] == 12
 
 
 def test_wowprogress_resolve_stays_conservative_when_multiple_results(monkeypatch) -> None:

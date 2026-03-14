@@ -9,6 +9,9 @@ from raiderio_cli.main import (
     _candidate_dedupe_key,
     _dedupe_search_candidates,
     _distribution_values,
+    _match_reasons,
+    _numeric_summary,
+    _player_sample_summary,
     _player_snapshots,
     _player_distribution_values,
     _ranking_roster_entry,
@@ -130,6 +133,20 @@ def test_raiderio_candidate_dedupe_prefers_higher_score() -> None:
     assert deduped[0]["ranking"]["score"] == 20
 
 
+def test_raiderio_match_reasons_helper_tracks_exact_and_hints() -> None:
+    score, reasons = _match_reasons(
+        query="us illidan Liquid",
+        type_hint="guild",
+        kind="guild",
+        name="Liquid",
+        region="us",
+        realm="illidan",
+    )
+    assert score > 0
+    assert "all_terms_match" in reasons
+    assert "type_hint" in reasons
+
+
 def test_raiderio_resolve_confidence_helpers() -> None:
     assert _resolve_candidate_is_confident([{"ranking": {"score": 45}}]) is True
     assert _resolve_candidate_is_confident([{"ranking": {"score": 44}}, {"ranking": {"score": 10}}]) is False
@@ -212,6 +229,43 @@ def test_raiderio_player_distribution_values_cover_numeric_and_tag_metrics() -> 
     assert values == ["eu"]
     assert unit == "players"
     assert numeric is False
+
+
+def test_raiderio_numeric_and_player_sample_helpers() -> None:
+    runs = [
+        {
+            "dungeon": "Cinderbrew Meadery",
+            "mythic_level": 17,
+            "score": 321.4,
+            "completed_at": "2026-03-10T00:00:00+00:00",
+            "roster": [
+                {"name": "Alpha", "realm": "illidan", "region": "us", "role": "tank", "class_slug": "warrior", "spec_slug": "protection-warrior"},
+                {"name": "Bravo", "realm": "illidan", "region": "us", "role": "healer", "class_slug": "priest", "spec_slug": "holy-priest"},
+            ],
+        },
+        {
+            "dungeon": "Priory of the Sacred Flame",
+            "mythic_level": 18,
+            "score": 333.0,
+            "completed_at": "2026-03-11T00:00:00+00:00",
+            "roster": [
+                {"name": "Alpha", "realm": "illidan", "region": "us", "role": "tank", "class_slug": "warrior", "spec_slug": "protection-warrior"},
+                {"name": "Charlie", "realm": "tichondrius", "region": "us", "role": "dps", "class_slug": "mage", "spec_slug": "arcane-mage"},
+            ],
+        },
+    ]
+    players = _player_snapshots(runs)
+    summary = _player_sample_summary(
+        players,
+        runs=runs,
+        meta={"sampled_at": "2026-03-12T00:00:00+00:00", "season": "season-tww-2", "pages_requested": 1, "pages_fetched": 1},
+        filtering={"contains_class": ["warrior"]},
+        player_sampling={"player_limit": 10, "source_player_count": 3, "returned_player_count": 3, "excluded_player_count": 0, "truncated": False},
+    )
+    assert _numeric_summary([17, 18]) == {"min": 17, "max": 18, "average": 17.5, "median": 17.5}
+    assert summary["unique_class_count"] == 3
+    assert summary["appearance_count"]["max"] == 2
+    assert summary["top_mythic_level"]["max"] == 18
 
 
 def test_raiderio_search_uses_structured_direct_guild_probe_when_search_is_empty(monkeypatch) -> None:

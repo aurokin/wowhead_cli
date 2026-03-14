@@ -161,6 +161,21 @@ def _normalized_realm_matches(query_realm: str, resolved_realm: str) -> bool:
     return resolved_realm.endswith(f" {query_realm}") or query_realm.endswith(f" {resolved_realm}")
 
 
+def _query_terms(query: str) -> list[str]:
+    return [part for part in query.lower().split() if part]
+
+
+def _combined_match_text(*parts: str) -> str:
+    return " ".join(parts).lower()
+
+
+def _score_reason_bonus(*, reasons: list[str], condition: bool, amount: int, reason: str) -> int:
+    if condition:
+        reasons.append(reason)
+        return amount
+    return 0
+
+
 def _score_match(
     *,
     query: str,
@@ -174,38 +189,54 @@ def _score_match(
 ) -> tuple[int, list[str]]:
     lowered_query = query.lower()
     name_lower = name.lower()
-    combined = " ".join((name, realm, region)).lower()
+    combined = _combined_match_text(name, realm, region)
     normalized_name = _normalized_token_text(name)
     normalized_query_name = _normalized_token_text(query_name)
     normalized_realm = _normalized_token_text(realm)
     normalized_query_realm = _normalized_token_text(query_realm)
     score = 0
     reasons: list[str] = ["route_resolved"]
-    if normalized_query_name and normalized_query_name == normalized_name:
-        score += 35
-        reasons.append("exact_target_name")
+    score += _score_reason_bonus(
+        reasons=reasons,
+        condition=bool(normalized_query_name and normalized_query_name == normalized_name),
+        amount=35,
+        reason="exact_target_name",
+    )
     if lowered_query == name_lower:
-        score += 50
-        reasons.append("exact_name")
+        score += _score_reason_bonus(reasons=reasons, condition=True, amount=50, reason="exact_name")
     elif lowered_query in name_lower:
-        score += 20
-        reasons.append("name_contains_query")
-    if _normalized_realm_matches(normalized_query_realm, normalized_realm):
-        score += 15
-        reasons.append("exact_target_realm")
-    terms = [part for part in lowered_query.split() if part]
-    if terms and all(term in combined for term in terms):
-        score += 20
-        reasons.append("all_terms_match")
-    if any(term == region.lower() for term in terms):
-        score += 10
-        reasons.append("region_match")
-    if any(term == realm.lower() for term in terms):
-        score += 10
-        reasons.append("realm_match")
-    if kind_hint and kind_hint == kind:
-        score += 15
-        reasons.append("type_hint")
+        score += _score_reason_bonus(reasons=reasons, condition=True, amount=20, reason="name_contains_query")
+    score += _score_reason_bonus(
+        reasons=reasons,
+        condition=_normalized_realm_matches(normalized_query_realm, normalized_realm),
+        amount=15,
+        reason="exact_target_realm",
+    )
+    terms = _query_terms(query)
+    score += _score_reason_bonus(
+        reasons=reasons,
+        condition=bool(terms) and all(term in combined for term in terms),
+        amount=20,
+        reason="all_terms_match",
+    )
+    score += _score_reason_bonus(
+        reasons=reasons,
+        condition=any(term == region.lower() for term in terms),
+        amount=10,
+        reason="region_match",
+    )
+    score += _score_reason_bonus(
+        reasons=reasons,
+        condition=any(term == realm.lower() for term in terms),
+        amount=10,
+        reason="realm_match",
+    )
+    score += _score_reason_bonus(
+        reasons=reasons,
+        condition=bool(kind_hint and kind_hint == kind),
+        amount=15,
+        reason="type_hint",
+    )
     score += 10
     return score, reasons
 
@@ -359,24 +390,6 @@ def _sampled_pve_guild_profiles(
 def _sample_summary(entries: list[dict[str, Any]], *, meta: dict[str, Any]) -> dict[str, Any]:
     rank_values = [int(entry["rank"]) for entry in entries if isinstance(entry.get("rank"), int)]
     killed_values = [int(entry["bosses_killed"]) for entry in entries if isinstance(entry.get("bosses_killed"), int)]
-    rank_stats: dict[str, Any] | None = None
-    if rank_values:
-        sorted_ranks = sorted(rank_values)
-        rank_stats = {
-            "min": sorted_ranks[0],
-            "max": sorted_ranks[-1],
-            "average": round(sum(sorted_ranks) / len(sorted_ranks), 2),
-            "median": median(sorted_ranks),
-        }
-    progress_stats: dict[str, Any] | None = None
-    if killed_values:
-        sorted_kills = sorted(killed_values)
-        progress_stats = {
-            "min": sorted_kills[0],
-            "max": sorted_kills[-1],
-            "average": round(sum(sorted_kills) / len(sorted_kills), 2),
-            "median": median(sorted_kills),
-        }
     return {
         "sampled_at": meta["sampled_at"],
         "entry_count": len(entries),
@@ -388,19 +401,22 @@ def _sample_summary(entries: list[dict[str, Any]], *, meta: dict[str, Any]) -> d
         "active_raid": meta.get("active_raid"),
         "unique_realms": sorted({str(entry.get("realm") or "") for entry in entries if str(entry.get("realm") or "").strip()}),
         "difficulty_counts": _count_map([str(entry.get("difficulty") or "unknown") for entry in entries]),
-        "rank": rank_stats,
-        "bosses_killed": progress_stats,
+        "rank": _numeric_summary(rank_values),
+        "bosses_killed": _numeric_summary(killed_values),
     }
 
 
-def _guild_profile_sample_summary(entries: list[dict[str, Any]], *, meta: dict[str, Any], filtering: dict[str, Any] | None = None) -> dict[str, Any]:
-    item_levels = [float(entry["item_level_average"]) for entry in entries if isinstance(entry.get("item_level_average"), (int, float))]
-    world_ranks = [
+def _guild_profile_world_ranks(entries: list[dict[str, Any]]) -> list[int]:
+    return [
         int(str((entry.get("progress_ranks") or {}).get("world")).replace(",", ""))
         for entry in entries
         if isinstance(entry.get("progress_ranks"), dict)
         and str((entry.get("progress_ranks") or {}).get("world") or "").replace(",", "").isdigit()
     ]
+
+
+def _guild_profile_sample_summary(entries: list[dict[str, Any]], *, meta: dict[str, Any], filtering: dict[str, Any] | None = None) -> dict[str, Any]:
+    item_levels = [float(entry["item_level_average"]) for entry in entries if isinstance(entry.get("item_level_average"), (int, float))]
     return {
         "sampled_at": meta["sampled_at"],
         "guild_profile_count": len(entries),
@@ -417,7 +433,7 @@ def _guild_profile_sample_summary(entries: list[dict[str, Any]], *, meta: dict[s
         "progress_counts": _count_map([str(entry.get("progress") or "unknown") for entry in entries]),
         "difficulty_counts": _count_map([str(entry.get("difficulty") or "unknown") for entry in entries]),
         "item_level_average": _numeric_summary(item_levels),
-        "world_progress_rank": _numeric_summary(world_ranks),
+        "world_progress_rank": _numeric_summary(_guild_profile_world_ranks(entries)),
     }
 
 
@@ -536,21 +552,19 @@ def _guild_profile_matches_filters(
     item_level_max: float | None,
     encounter: list[str],
 ) -> bool:
-    faction_value = str(entry.get("faction") or "").strip().lower().replace(" ", "-")
-    if faction and faction_value not in faction:
-        return False
+    slug_filters = (
+        ("faction", faction),
+        ("difficulty", difficulty),
+    )
+    for field, expected in slug_filters:
+        value = str(entry.get(field) or "").strip().lower().replace(" ", "-")
+        if expected and value not in expected:
+            return False
 
-    difficulty_value = str(entry.get("difficulty") or "").strip().lower().replace(" ", "-")
-    if difficulty and difficulty_value not in difficulty:
+    if not _metric_within_bounds(_world_rank_value(entry), minimum=world_rank_min, maximum=world_rank_max):
         return False
-
-    world_rank = _world_rank_value(entry)
-    if not _metric_within_bounds(world_rank, minimum=world_rank_min, maximum=world_rank_max):
-        return False
-
     if not _metric_within_bounds(entry.get("item_level_average"), minimum=item_level_min, maximum=item_level_max):
         return False
-
     if encounter and not any(value in _normalized_encounter_values(entry) for value in encounter):
         return False
     return True
@@ -601,17 +615,17 @@ def _filter_guild_profiles(
 def _distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
     sample = _sample_summary(entries, meta=meta)
     if metric == "rank":
-        values = [int(entry["rank"]) for entry in entries if isinstance(entry.get("rank"), int)]
-        distribution = _numeric_distribution(values, unit="entries")
+        distribution = _numeric_distribution(
+            [int(entry["rank"]) for entry in entries if isinstance(entry.get("rank"), int)],
+            unit="entries",
+        )
     else:
-        if metric == "realm":
-            values = [str(entry.get("realm") or "unknown") for entry in entries]
-        elif metric == "difficulty":
-            values = [str(entry.get("difficulty") or "unknown") for entry in entries]
-        elif metric == "bosses_killed":
-            values = [str(entry.get("bosses_killed")) for entry in entries if isinstance(entry.get("bosses_killed"), int)]
-        else:
-            values = [str(entry.get("progress") or "unknown") for entry in entries]
+        field = {
+            "realm": "realm",
+            "difficulty": "difficulty",
+            "bosses_killed": "bosses_killed",
+        }.get(metric, "progress")
+        values = [str(entry.get(field) or "unknown") for entry in entries]
         distribution = _categorical_distribution(values, unit="entries")
     return _distribution_response(
         kind="pve_leaderboard_distribution",
@@ -624,10 +638,8 @@ def _distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: d
 
 
 def _guild_profile_categorical_distribution_values(metric: str, entries: list[dict[str, Any]]) -> tuple[list[str], str] | None:
-    if metric == "faction":
-        return [str(entry.get("faction") or "unknown") for entry in entries], "guild_profiles"
-    if metric == "progress":
-        return [str(entry.get("progress") or "unknown") for entry in entries], "guild_profiles"
+    if metric in {"faction", "progress"}:
+        return [str(entry.get(metric) or "unknown") for entry in entries], "guild_profiles"
     if metric == "encounter":
         return [
             str(encounter.get("encounter") or "unknown")
@@ -640,13 +652,7 @@ def _guild_profile_categorical_distribution_values(metric: str, entries: list[di
 
 def _guild_profile_numeric_distribution_values(metric: str, entries: list[dict[str, Any]]) -> tuple[list[int] | list[float], str] | None:
     if metric == "world_rank":
-        return [
-            int(str((entry.get("progress_ranks") or {}).get("world")).replace(",", ""))
-            for entry in entries
-            if isinstance(entry.get("progress_ranks"), dict)
-            and (entry.get("progress_ranks") or {}).get("world") is not None
-            and str((entry.get("progress_ranks") or {}).get("world")).replace(",", "").isdigit()
-        ], "guild_profiles"
+        return _guild_profile_world_ranks(entries), "guild_profiles"
     return [
         float(entry["item_level_average"])
         for entry in entries

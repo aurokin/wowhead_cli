@@ -7,6 +7,9 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from wowhead_cli.main import (
+    _comparison_entity_record,
+    _comparison_field_diffs,
+    _comparison_linked_entities_summary,
     _entity_comments_payload,
     _entity_linked_entities_payload,
     _entity_page_needs_fetch,
@@ -538,6 +541,51 @@ def test_compare_command_returns_overlap_and_unique_links(monkeypatch) -> None:
     assert "citation_url" not in payload["comparison"]["linked_entities"]["shared_items"][0]
     assert "citation_url" not in payload["comparison"]["linked_entities"]["unique_by_entity"]["item:19019"][0]
     assert "citations" not in payload
+
+
+def test_comparison_helper_payloads_are_stable() -> None:
+    record, link_set = _comparison_entity_record(
+        ref="item:19019",
+        entity_type="item",
+        entity_id=19019,
+        canonical_url="https://www.wowhead.com/item=19019/thunderfury",
+        tooltip={"name": "Thunderfury", "quality": 5, "icon": "inv_sword_39"},
+        metadata={"title": "Thunderfury", "description": "Legendary sword"},
+        deduped_links=[
+            {"entity_type": "npc", "id": 12056, "url": "https://www.wowhead.com/npc=12056"},
+            {"entity_type": "quest", "id": 7786, "url": "https://www.wowhead.com/quest=7786"},
+        ],
+        raw_comments=[{"id": 1}, {"id": 2}],
+        sampled_comments=[{"id": 1, "citation_url": "https://www.wowhead.com/item=19019#comments:id=1"}],
+    )
+    assert record["entity"]["page_url"] == "https://www.wowhead.com/item=19019/thunderfury"
+    assert record["comments"]["count"] == 2
+    assert record["linked_entities"]["count"] == 2
+    assert link_set == {("npc", 12056), ("quest", 7786)}
+
+    fields = _comparison_field_diffs(
+        [
+            {"ref": "item:19019", "summary": {"name": "Thunderfury", "quality": 5}},
+            {"ref": "item:19351", "summary": {"name": "Maladath", "quality": 5}},
+        ],
+        comparable_fields=["name", "quality"],
+    )
+    assert fields["name"]["all_equal"] is False
+    assert fields["quality"]["all_equal"] is True
+
+    linked = _comparison_linked_entities_summary(
+        refs_in_order=["item:19019", "item:19351"],
+        entity_link_sets={
+            "item:19019": {("npc", 12056), ("quest", 7786)},
+            "item:19351": {("npc", 12056), ("quest", 7787)},
+        },
+        expansion=resolve_expansion("retail"),
+        max_shared_links=10,
+        max_unique_links=10,
+    )
+    assert linked["shared_count_total"] == 1
+    assert linked["unique_count_total_by_entity"] == {"item:19019": 1, "item:19351": 1}
+    assert linked["shared_items"][0]["url"] == "https://www.wowhead.com/npc=12056"
 
 
 def test_expansions_command_exposes_profiles() -> None:

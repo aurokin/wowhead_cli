@@ -102,6 +102,62 @@ def _normalize_structured_query(query: str) -> tuple[str, str | None, str | None
     return normalized_query, type_hint, region, realm, name
 
 
+def _query_terms(value: str) -> list[str]:
+    return [part for part in value.lower().split() if part]
+
+
+def _combined_match_text(*parts: str | None) -> str:
+    return " ".join(part for part in parts if part).lower()
+
+
+def _all_terms_match(query_terms: list[str], combined: str) -> bool:
+    return bool(query_terms) and all(term in combined for term in query_terms)
+
+
+def _entity_match_score(
+    *,
+    query: str,
+    type_hint: str | None,
+    kind: str,
+    name: str,
+    region: str | None,
+    realm: str | None,
+    exact_name_bonus: int,
+    contains_bonus: int,
+    all_terms_bonus: int,
+    region_bonus: int,
+    realm_bonus: int,
+    type_hint_bonus: int,
+    base_reasons: list[str] | None = None,
+    base_score: int = 0,
+) -> tuple[int, list[str]]:
+    lowered_query = query.lower()
+    name_lower = name.lower()
+    combined = _combined_match_text(name, realm, region)
+    query_terms = _query_terms(query)
+    score = base_score
+    reasons = list(base_reasons or [])
+    if lowered_query == name_lower:
+        score += exact_name_bonus
+        reasons.append("exact_name")
+    elif lowered_query in name_lower:
+        score += contains_bonus
+        reasons.append("name_contains_query")
+    if _all_terms_match(query_terms, combined):
+        score += all_terms_bonus
+        reasons.append("all_terms_match")
+    if region and any(term == region.lower() for term in query_terms):
+        score += region_bonus
+        reasons.append("region_match")
+    if realm and any(term == realm.lower() for term in query_terms):
+        score += realm_bonus
+        reasons.append("realm_match")
+    if type_hint and type_hint == kind:
+        score += type_hint_bonus
+        reasons.append("type_hint")
+    return score, reasons
+
+
 def _match_reasons(
     *,
     query: str,
@@ -111,31 +167,20 @@ def _match_reasons(
     region: str | None,
     realm: str | None,
 ) -> tuple[int, list[str]]:
-    lowered_query = query.lower()
-    name_lower = name.lower()
-    combined = " ".join(part for part in (name, realm or "", region or "") if part).lower()
-    score = 0
-    reasons: list[str] = []
-    if lowered_query == name_lower:
-        score += 50
-        reasons.append("exact_name")
-    elif lowered_query in name_lower:
-        score += 25
-        reasons.append("name_contains_query")
-    query_terms = [part for part in lowered_query.split() if part]
-    if query_terms and all(term in combined for term in query_terms):
-        score += 20
-        reasons.append("all_terms_match")
-    if realm and any(term == realm.lower() for term in query_terms):
-        score += 10
-        reasons.append("realm_match")
-    if region and any(term == region.lower() for term in query_terms):
-        score += 8
-        reasons.append("region_match")
-    if type_hint and type_hint == kind:
-        score += 15
-        reasons.append("type_hint")
-    return score, reasons
+    return _entity_match_score(
+        query=query,
+        type_hint=type_hint,
+        kind=kind,
+        name=name,
+        region=region,
+        realm=realm,
+        exact_name_bonus=50,
+        contains_bonus=25,
+        all_terms_bonus=20,
+        region_bonus=8,
+        realm_bonus=10,
+        type_hint_bonus=15,
+    )
 
 
 def _follow_up_for_match(kind: str, region: str | None, realm: str | None, name: str) -> dict[str, Any]:
@@ -171,32 +216,22 @@ def _structured_match_reasons(
     region: str,
     realm: str,
 ) -> tuple[int, list[str]]:
-    lowered_query = query.lower()
-    name_lower = name.lower()
-    combined = " ".join((name, realm, region)).lower()
-    score = 0
-    reasons: list[str] = ["structured_probe"]
-    if lowered_query == name_lower:
-        score += 45
-        reasons.append("exact_name")
-    elif lowered_query in name_lower:
-        score += 20
-        reasons.append("name_contains_query")
-    query_terms = [part for part in lowered_query.split() if part]
-    if query_terms and all(term in combined for term in query_terms):
-        score += 25
-        reasons.append("all_terms_match")
-    if any(term == region.lower() for term in query_terms):
-        score += 12
-        reasons.append("region_match")
-    if any(term == realm.lower() for term in query_terms):
-        score += 12
-        reasons.append("realm_match")
-    if type_hint and type_hint == kind:
-        score += 20
-        reasons.append("type_hint")
-    score += 12
-    return score, reasons
+    return _entity_match_score(
+        query=query,
+        type_hint=type_hint,
+        kind=kind,
+        name=name,
+        region=region,
+        realm=realm,
+        exact_name_bonus=45,
+        contains_bonus=20,
+        all_terms_bonus=25,
+        region_bonus=12,
+        realm_bonus=12,
+        type_hint_bonus=20,
+        base_reasons=["structured_probe"],
+        base_score=12,
+    )
 
 
 def _candidate_from_character_profile(
@@ -830,6 +865,40 @@ def _count_map(values: list[str]) -> list[dict[str, Any]]:
     ]
 
 
+def _numeric_summary(values: list[int | float]) -> dict[str, Any] | None:
+    if not values:
+        return None
+    sorted_values = sorted(values)
+    return {
+        "min": sorted_values[0],
+        "max": sorted_values[-1],
+        "average": round(sum(values) / len(values), 2),
+        "median": median(sorted_values),
+    }
+
+
+def _unique_player_keys(roster_entries: list[dict[str, Any]]) -> set[tuple[str, str, str]]:
+    return {
+        (
+            str(entry.get("region") or ""),
+            str(entry.get("realm") or ""),
+            str(entry.get("name") or ""),
+        )
+        for entry in roster_entries
+    }
+
+
+def _sample_tag_values(rows: list[dict[str, Any]], field: str) -> list[str]:
+    return sorted(
+        {
+            value
+            for row in rows
+            for value in (row.get(field) if isinstance(row.get(field), list) else [])
+            if value
+        }
+    )
+
+
 def _composition_key(run: dict[str, Any], *, mode: str) -> str:
     roster = run.get("roster") if isinstance(run.get("roster"), list) else []
     parts: list[str] = []
@@ -847,32 +916,12 @@ def _composition_key(run: dict[str, Any], *, mode: str) -> str:
 
 
 def _sample_summary(runs: list[dict[str, Any]], *, meta: dict[str, Any]) -> dict[str, Any]:
-    roster_entries = [
-        entry
-        for run in runs
-        for entry in _run_roster(run)
-    ]
+    roster_entries = [entry for run in runs for entry in _run_roster(run)]
     role_values = [str(entry.get("role") or "unknown") for entry in roster_entries]
     region_values = [str(entry.get("region") or "unknown") for entry in roster_entries]
     dungeon_values = [str(run.get("dungeon") or "unknown") for run in runs]
     level_values = [int(run["mythic_level"]) for run in runs if isinstance(run.get("mythic_level"), int)]
-    unique_players = {
-        (
-            str(entry.get("region") or ""),
-            str(entry.get("realm") or ""),
-            str(entry.get("name") or ""),
-        )
-        for entry in roster_entries
-    }
-    level_stats: dict[str, Any] | None = None
-    if level_values:
-        sorted_levels = sorted(level_values)
-        level_stats = {
-            "min": sorted_levels[0],
-            "max": sorted_levels[-1],
-            "average": round(sum(sorted_levels) / len(sorted_levels), 2),
-            "median": median(sorted_levels),
-        }
+    unique_players = _unique_player_keys(roster_entries)
     return {
         "sampled_at": meta["sampled_at"],
         "season": meta.get("season"),
@@ -884,7 +933,7 @@ def _sample_summary(runs: list[dict[str, Any]], *, meta: dict[str, Any]) -> dict
         "unique_dungeons": sorted({value for value in dungeon_values if value and value != "unknown"}),
         "role_counts": _count_map(role_values),
         "player_region_counts": _count_map(region_values),
-        "mythic_level": level_stats,
+        "mythic_level": _numeric_summary(level_values),
     }
 
 
@@ -1004,8 +1053,8 @@ def _player_sample_summary(
 ) -> dict[str, Any]:
     appearance_counts = [int(player["appearance_count"]) for player in players if isinstance(player.get("appearance_count"), int)]
     top_levels = [int(player["top_mythic_level"]) for player in players if isinstance(player.get("top_mythic_level"), int)]
-    classes = sorted({value for player in players for value in (player.get("class_slugs") if isinstance(player.get("class_slugs"), list) else []) if value})
-    specs = sorted({value for player in players for value in (player.get("spec_slugs") if isinstance(player.get("spec_slugs"), list) else []) if value})
+    classes = _sample_tag_values(players, "class_slugs")
+    specs = _sample_tag_values(players, "spec_slugs")
     summary = {
         **_sample_summary(runs, meta=meta),
         "filtering": filtering,
@@ -1015,25 +1064,9 @@ def _player_sample_summary(
         "unique_spec_count": len(specs),
         "classes": classes,
         "specs": specs,
-        "appearance_count": None,
-        "top_mythic_level": None,
+        "appearance_count": _numeric_summary(appearance_counts),
+        "top_mythic_level": _numeric_summary(top_levels),
     }
-    if appearance_counts:
-        sorted_counts = sorted(appearance_counts)
-        summary["appearance_count"] = {
-            "min": sorted_counts[0],
-            "max": sorted_counts[-1],
-            "average": round(sum(sorted_counts) / len(sorted_counts), 2),
-            "median": median(sorted_counts),
-        }
-    if top_levels:
-        sorted_levels = sorted(top_levels)
-        summary["top_mythic_level"] = {
-            "min": sorted_levels[0],
-            "max": sorted_levels[-1],
-            "average": round(sum(sorted_levels) / len(sorted_levels), 2),
-            "median": median(sorted_levels),
-        }
     return summary
 
 
@@ -1051,19 +1084,12 @@ def _citations_payload(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def _numeric_distribution(values: list[int | float], *, unit: str) -> dict[str, Any]:
-    rows = _count_map([str(value) for value in values])
     stats = None
     if values:
-        sorted_values = sorted(values)
-        stats = {
-            "min": sorted_values[0],
-            "max": sorted_values[-1],
-            "average": round(sum(sorted_values) / len(sorted_values), 2),
-            "median": median(sorted_values),
-        }
+        stats = _numeric_summary(values)
     return {
         "unit": unit,
-        "rows": rows,
+        "rows": _count_map([str(value) for value in values]),
         "statistics": stats,
     }
 
@@ -1109,30 +1135,19 @@ def _run_distribution_values(metric: str, runs: list[dict[str, Any]]) -> tuple[l
     return None
 
 
-def _roster_distribution_values(metric: str, runs: list[dict[str, Any]]) -> tuple[list[str], str]:
+def _roster_metric_value(entry: dict[str, Any], metric: str) -> str:
     if metric == "role":
-        return [
-            str(entry.get("role") or "unknown")
-            for run in runs
-            for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
-            if isinstance(entry, dict)
-        ], "roster_entries"
+        return str(entry.get("role") or "unknown")
     if metric == "class":
-        return [
-            str(entry.get("class_slug") or entry.get("class_name") or "unknown")
-            for run in runs
-            for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
-            if isinstance(entry, dict)
-        ], "roster_entries"
+        return str(entry.get("class_slug") or entry.get("class_name") or "unknown")
     if metric == "spec":
-        return [
-            str(entry.get("spec_slug") or entry.get("spec_name") or "unknown")
-            for run in runs
-            for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
-            if isinstance(entry, dict)
-        ], "roster_entries"
+        return str(entry.get("spec_slug") or entry.get("spec_name") or "unknown")
+    return str(entry.get("region") or "unknown")
+
+
+def _roster_distribution_values(metric: str, runs: list[dict[str, Any]]) -> tuple[list[str], str]:
     return [
-        str(entry.get("region") or "unknown")
+        _roster_metric_value(entry, metric)
         for run in runs
         for entry in _run_roster(run)
     ], "roster_entries"
@@ -1155,28 +1170,21 @@ def _player_numeric_distribution_values(metric: str, players: list[dict[str, Any
 
 
 def _player_tag_distribution_values(metric: str, players: list[dict[str, Any]]) -> tuple[list[str], str] | None:
-    if metric == "class":
-        return [
-            str(value)
-            for player in players
-            for value in (player.get("class_slugs") if isinstance(player.get("class_slugs"), list) else [])
-            if value
-        ], "player_class_tags"
-    if metric == "spec":
-        return [
-            str(value)
-            for player in players
-            for value in (player.get("spec_slugs") if isinstance(player.get("spec_slugs"), list) else [])
-            if value
-        ], "player_spec_tags"
-    if metric == "role":
-        return [
-            str(value)
-            for player in players
-            for value in (player.get("roles") if isinstance(player.get("roles"), list) else [])
-            if value
-        ], "player_role_tags"
-    return None
+    field_map = {
+        "class": ("class_slugs", "player_class_tags"),
+        "spec": ("spec_slugs", "player_spec_tags"),
+        "role": ("roles", "player_role_tags"),
+    }
+    field_info = field_map.get(metric)
+    if field_info is None:
+        return None
+    field, unit = field_info
+    return [
+        str(value)
+        for player in players
+        for value in (player.get(field) if isinstance(player.get(field), list) else [])
+        if value
+    ], unit
 
 
 def _player_distribution_values(metric: str, players: list[dict[str, Any]]) -> tuple[list[int] | list[str], str, bool]:
