@@ -28,6 +28,9 @@ Co-Authored-By: OpenAI Codex <noreply@openai.com>
 - Prefer systems like sampling, normalization, aggregation, provenance, and freshness over one-off answer commands.
 - Skills are for CLI consumers and workflow usage.
 - Keep repo maintenance, roadmap, packaging, and internal architecture rules out of skill docs.
+- `skills/warcraft/SKILL.md` and `skills/warcraft/references/*.md` are the source of truth for consumer skill content.
+- Generated provider subskills belong under `.generated-skills/` and must not be edited manually.
+- Do not mention generation or internal maintenance workflow inside consumer skill files.
 
 ## Local Skills
 - Use the `warcraft` skill for root wrapper and provider-routing work. See `skills/warcraft/SKILL.md`.

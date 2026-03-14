@@ -1,4 +1,5 @@
 research/wowhead-clis/
+.generated-skills/
 .venv/
 __pycache__/
 .pytest_cache/
