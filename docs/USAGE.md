@@ -53,7 +53,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `raiderio` is now a real phase-1 API provider for direct character, guild, and Mythic+ runs lookups.
 - `raiderio` now includes real search and conservative resolve on top of the live site search surface.
 - `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, typed `api` / `event` lookups, article export, and local query.
-- `wowprogress` is now a real phase-1 rankings provider with structured search, conservative resolve, and direct guild, character, and PvE leaderboard lookups.
+- `wowprogress` is now a real rankings provider with structured search, conservative resolve, direct guild/character/PvE leaderboard lookups, and its first sample-backed leaderboard analytics primitives.
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
@@ -274,6 +274,9 @@ wowprogress guild us illidan Liquid
 wowprogress character us illidan Imonthegcd
 wowprogress leaderboard pve us --limit 10
 wowprogress leaderboard pve us --realm illidan --limit 10
+wowprogress sample pve-leaderboard --region us --limit 25
+wowprogress distribution pve-leaderboard --region us --metric progress --limit 25
+wowprogress threshold pve-leaderboard --region us --metric rank --value 25 --limit 50
 ```
 
 WowProgress phase-1 behavior:

@@ -20,6 +20,7 @@ def test_wowprogress_doctor_reports_phase_one_capabilities() -> None:
     assert payload["transport"]["mode"] == "browser_fingerprint_http"
     assert payload["capabilities"]["guild"] == "ready"
     assert payload["capabilities"]["search"] == "ready"
+    assert payload["capabilities"]["sample_pve_leaderboard"] == "ready"
 
 
 def test_wowprogress_search_returns_structured_hint_for_unparseable_query() -> None:
@@ -347,3 +348,130 @@ def test_wowprogress_error_maps_to_structured_error(monkeypatch) -> None:
     payload = json.loads(result.stderr)
     assert payload["ok"] is False
     assert payload["error"]["code"] == "not_found"
+
+
+def test_wowprogress_sample_pve_leaderboard(monkeypatch) -> None:
+    def fake_fetch(self, *, region: str, realm: str | None = None, limit: int = 25):  # noqa: ANN001
+        assert region == "us"
+        assert realm is None
+        assert limit == 10
+        return {
+            "leaderboard": {
+                "kind": "pve",
+                "title": "US Mythic Progress",
+                "region": "us",
+                "realm": None,
+                "active_raid": "Manaforge Omega",
+                "page_url": "https://www.wowprogress.com/pve/us",
+            },
+            "count": 2,
+            "entries": [
+                {
+                    "rank": 1,
+                    "guild_name": "Liquid",
+                    "guild_url": "https://www.wowprogress.com/guild/us/illidan/Liquid",
+                    "realm": "US-Illidan",
+                    "realm_url": "https://www.wowprogress.com/pve/us/illidan",
+                    "progress": "8/8 (M)",
+                },
+                {
+                    "rank": 2,
+                    "guild_name": "Echo",
+                    "guild_url": "https://www.wowprogress.com/guild/eu/tarren-mill/Echo",
+                    "realm": "EU-Tarren Mill",
+                    "realm_url": "https://www.wowprogress.com/pve/eu/tarren-mill",
+                    "progress": "8/8 (M)",
+                },
+            ],
+            "citations": {"page": "https://www.wowprogress.com/pve/us"},
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_pve_leaderboard", fake_fetch)
+    result = runner.invoke(wowprogress_app, ["sample", "pve-leaderboard", "--region", "us", "--limit", "10"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "pve_leaderboard_sample"
+    assert payload["sample"]["entry_count"] == 2
+    assert payload["sample"]["active_raid"] == "Manaforge Omega"
+    assert payload["entries"][0]["bosses_killed"] == 8
+    assert payload["entries"][0]["difficulty"] == "M"
+
+
+def test_wowprogress_distribution_pve_leaderboard(monkeypatch) -> None:
+    def fake_fetch(self, *, region: str, realm: str | None = None, limit: int = 25):  # noqa: ANN001
+        return {
+            "leaderboard": {
+                "kind": "pve",
+                "title": "US Mythic Progress",
+                "region": "us",
+                "realm": None,
+                "active_raid": "Manaforge Omega",
+                "page_url": "https://www.wowprogress.com/pve/us",
+            },
+            "count": 3,
+            "entries": [
+                {"rank": 1, "guild_name": "Liquid", "realm": "US-Illidan", "progress": "8/8 (M)"},
+                {"rank": 2, "guild_name": "Echo", "realm": "EU-Tarren Mill", "progress": "8/8 (M)"},
+                {"rank": 3, "guild_name": "Method", "realm": "EU-Twisting Nether", "progress": "7/8 (M)"},
+            ],
+            "citations": {"page": "https://www.wowprogress.com/pve/us"},
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_pve_leaderboard", fake_fetch)
+    result = runner.invoke(
+        wowprogress_app,
+        ["distribution", "pve-leaderboard", "--region", "us", "--metric", "progress", "--limit", "10"],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "pve_leaderboard_distribution"
+    assert payload["metric"] == "progress"
+    assert payload["distribution"]["rows"][0]["value"] == "8/8 (M)"
+    assert payload["distribution"]["rows"][0]["count"] == 2
+
+
+def test_wowprogress_threshold_pve_leaderboard(monkeypatch) -> None:
+    def fake_fetch(self, *, region: str, realm: str | None = None, limit: int = 25):  # noqa: ANN001
+        return {
+            "leaderboard": {
+                "kind": "pve",
+                "title": "US Mythic Progress",
+                "region": "us",
+                "realm": None,
+                "active_raid": "Manaforge Omega",
+                "page_url": "https://www.wowprogress.com/pve/us",
+            },
+            "count": 4,
+            "entries": [
+                {"rank": 1, "guild_name": "Liquid", "realm": "US-Illidan", "progress": "8/8 (M)"},
+                {"rank": 2, "guild_name": "Echo", "realm": "EU-Tarren Mill", "progress": "8/8 (M)"},
+                {"rank": 40, "guild_name": "Method", "realm": "EU-Twisting Nether", "progress": "7/8 (M)"},
+                {"rank": 85, "guild_name": "Random", "realm": "US-Area 52", "progress": "6/8 (M)"},
+            ],
+            "citations": {"page": "https://www.wowprogress.com/pve/us"},
+        }
+
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.fetch_pve_leaderboard", fake_fetch)
+    result = runner.invoke(
+        wowprogress_app,
+        ["threshold", "pve-leaderboard", "--region", "us", "--metric", "rank", "--value", "50", "--nearest", "2", "--limit", "10"],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "pve_leaderboard_threshold"
+    assert payload["metric"] == "rank"
+    assert payload["threshold"]["nearest_match_count"] == 2
+    assert payload["threshold"]["estimate"]["metric"] == "bosses_killed"
+
+
+def test_wowprogress_distribution_rejects_invalid_metric() -> None:
+    result = runner.invoke(
+        wowprogress_app,
+        ["distribution", "pve-leaderboard", "--region", "us", "--metric", "invalid"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"

@@ -198,6 +198,10 @@ class WowProgressClient:
         html = self._fetch_html(url, namespace="pve_leaderboard", ttl_seconds=self._leaderboard_ttl)
         return parse_pve_leaderboard_page(html, url=url, region=region, realm=realm, limit=limit)
 
+    @property
+    def pve_leaderboard_ttl_seconds(self) -> int:
+        return self._leaderboard_ttl
+
     def probe_search_route(self, *, region: str, realm: str, name: str, obj_type: str) -> dict[str, Any] | None:
         if obj_type not in {"char", "guild"}:
             raise WowProgressClientError("invalid_query", "WowProgress search probe supports only char or guild.")

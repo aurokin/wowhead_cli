@@ -2,7 +2,7 @@
 
 ## Status
 
-`wowprogress` is now implemented as a working phase-1 provider.
+`wowprogress` is now implemented as a working rankings/profile provider with its first sample-backed analytics primitives.
 
 Current command surface:
 - `wowprogress doctor`
@@ -11,6 +11,9 @@ Current command surface:
 - `wowprogress guild`
 - `wowprogress character`
 - `wowprogress leaderboard`
+- `wowprogress sample`
+- `wowprogress distribution`
+- `wowprogress threshold`
 
 Current quality notes:
 - structured guild and character lookups are the primary search and resolve path
@@ -20,6 +23,7 @@ Current quality notes:
 - trailing unsupported qualifier terms are excluded explicitly and surfaced back as query-normalization metadata
 - live guild and character retrieval coverage now validates rank extraction as well as basic profile parsing
 - provider-local live coverage now exists for structured search, resolve, and leaderboard contracts
+- PvE leaderboard sampling, distributions, and threshold estimates now expose freshness, provenance, and explicit caveats instead of pretending to be direct smart-answer surfaces
 
 ## Why Add It
 
@@ -57,6 +61,9 @@ This is now treated as a rankings/profile service using browser-fingerprint HTTP
 - `wowprogress guild <region> <realm> <name>`
 - `wowprogress character <region> <realm> <name>`
 - `wowprogress leaderboard pve <region> [--realm <realm>]`
+- `wowprogress sample pve-leaderboard --region <region> [--realm <realm>]`
+- `wowprogress distribution pve-leaderboard --region <region> --metric <metric> [--realm <realm>]`
+- `wowprogress threshold pve-leaderboard --region <region> --metric <metric> --value <value> [--realm <realm>]`
 
 ## What Can Reuse Shared Code
 
@@ -71,12 +78,14 @@ This is now treated as a rankings/profile service using browser-fingerprint HTTP
 - filter and ranking semantics
 - guild/character identifier resolution
 - site-specific leaderboard normalization
+- leaderboard analytics semantics
 
 ## What This Service Has Validated
 
 - whether profile and leaderboard payloads can share any contract with `raiderio`
 - whether cross-source guild/character resolution belongs in shared code or only in the wrapper
 - that a browser-fingerprint HTTP transport is enough for a real no-auth WowProgress provider without adding a browser-runtime dependency
+- that leaderboard analytics can stay useful and trustworthy when they are framed as sampled primitives instead of fake direct answers
 
 ## Risks
 

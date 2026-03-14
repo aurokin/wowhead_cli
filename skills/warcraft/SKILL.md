@@ -26,7 +26,7 @@ Current provider state:
 - `icy-veins`: ready for guide search, resolve, fetch, export, and local query
 - `raiderio`: ready for search, resolve, direct character, guild, and Mythic+ runs lookups
 - `warcraft-wiki`: ready for article search, resolve, typed `api` / `event` lookups, article fetch, export, and local query
-- `wowprogress`: ready for structured search, conservative resolve, direct guild, character, and PvE leaderboard lookups
+- `wowprogress`: ready for structured search, conservative resolve, direct guild, character, and PvE leaderboard lookups, plus sample-backed leaderboard analytics
 - `simc`: ready for local repo inspection, repo resolution/config, managed checkout, version, spec-files, decode-build, APL list/graph/talent inspection, action tracing, prune/branch/intent analysis, branch comparison, analysis packets, first-cast timing, log inspection, and sync/build/run, with `search` and `resolve` structured `coming_soon`
 
 ## Standard Workflow
@@ -71,6 +71,7 @@ Current provider state:
 - `warcraft-wiki article` and `article-full` now expose `reference` metadata, which is especially useful for programming pages because it can include a signature, summary, arguments, returns, examples, and patch-change sections when the page provides them.
 - that `reference` metadata is also now useful on validated non-programming pages like `Renown`, `Expansion`, `Druid`, `Alchemy`, `Elwynn Forest`, and `Adventure Guide`, where it can expose family-aware summaries and patch/reference sections without making the agent parse the whole page first.
 - Use `wowprogress` when you have or can supply structured `region realm name` inputs and need progression, roster, or leaderboard context rather than guide content.
+- Use `wowprogress sample pve-leaderboard`, `distribution pve-leaderboard`, and `threshold pve-leaderboard` when you need sample-backed raid-leaderboard analytics with freshness, provenance, and caveats instead of treating one leaderboard page as a direct answer engine.
 - Use `simc` when you need local SimulationCraft repo inspection, build decoding, or direct binary execution against a local profile.
 - Use `simc repo` when you need to understand or change which local SimulationCraft checkout is active.
 - Use `simc checkout` when you want the CLI to manage a local SimulationCraft checkout under the XDG data root.

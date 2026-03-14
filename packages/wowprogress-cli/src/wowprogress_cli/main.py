@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import shlex
 import re
+from statistics import median
 from typing import Any
 
 import typer
@@ -11,6 +13,12 @@ from warcraft_core.output import emit
 from wowprogress_cli.client import DEFAULT_IMPERSONATE, WowProgressClient, WowProgressClientError, load_wowprogress_cache_settings_from_env
 
 app = typer.Typer(add_completion=False, help="WowProgress rankings and profile CLI.")
+sample_app = typer.Typer(add_completion=False, help="Sample-backed WowProgress analytics primitives.")
+distribution_app = typer.Typer(add_completion=False, help="Derived distributions built from WowProgress samples.")
+threshold_app = typer.Typer(add_completion=False, help="Threshold-style estimates derived from sampled WowProgress leaderboard rows.")
+app.add_typer(sample_app, name="sample")
+app.add_typer(distribution_app, name="distribution")
+app.add_typer(threshold_app, name="threshold")
 
 EXCLUDED_QUERY_TERMS = frozenset(
     {
@@ -209,6 +217,227 @@ def _follow_up(kind: str, region: str, realm: str, name: str) -> dict[str, Any]:
         "kind": kind,
         "surface": kind,
         "command": command,
+    }
+
+
+def _count_map(values: list[str]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    total = sum(counts.values()) or 1
+    return [
+        {
+            "value": key,
+            "count": count,
+            "percent": round((count / total) * 100, 2),
+        }
+        for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+
+def _progress_snapshot(value: str | None) -> dict[str, Any]:
+    text = str(value or "").strip()
+    match = re.match(r"(?P<killed>\d+)/(?P<total>\d+)(?:\s*\((?P<difficulty>[^)]+)\))?$", text)
+    if match is None:
+        return {
+            "summary": text or None,
+            "bosses_killed": None,
+            "boss_count": None,
+            "difficulty": None,
+        }
+    return {
+        "summary": text,
+        "bosses_killed": int(match.group("killed")),
+        "boss_count": int(match.group("total")),
+        "difficulty": match.group("difficulty"),
+    }
+
+
+def _leaderboard_entry_snapshot(entry: dict[str, Any]) -> dict[str, Any]:
+    progress = _progress_snapshot(entry.get("progress"))
+    return {
+        "rank": entry.get("rank"),
+        "guild_name": entry.get("guild_name"),
+        "guild_url": entry.get("guild_url"),
+        "realm": entry.get("realm"),
+        "realm_url": entry.get("realm_url"),
+        "progress": progress["summary"],
+        "bosses_killed": progress["bosses_killed"],
+        "boss_count": progress["boss_count"],
+        "difficulty": progress["difficulty"],
+    }
+
+
+def _sample_pve_leaderboard(
+    client: WowProgressClient,
+    *,
+    region: str,
+    realm: str | None,
+    limit: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    payload = client.fetch_pve_leaderboard(region=region, realm=realm, limit=limit)
+    entries = payload.get("entries") if isinstance(payload.get("entries"), list) else []
+    snapshots = [_leaderboard_entry_snapshot(entry) for entry in entries if isinstance(entry, dict)]
+    leaderboard = payload.get("leaderboard") if isinstance(payload.get("leaderboard"), dict) else {}
+    meta = {
+        "sampled_at": datetime.now(timezone.utc).isoformat(),
+        "cache_ttl_seconds": client.pve_leaderboard_ttl_seconds,
+        "page_url": str((payload.get("citations") or {}).get("page") or leaderboard.get("page_url") or ""),
+        "active_raid": leaderboard.get("active_raid"),
+        "region": leaderboard.get("region") or region.lower(),
+        "realm": leaderboard.get("realm"),
+        "title": leaderboard.get("title"),
+    }
+    return snapshots, meta, leaderboard
+
+
+def _sample_summary(entries: list[dict[str, Any]], *, meta: dict[str, Any]) -> dict[str, Any]:
+    rank_values = [int(entry["rank"]) for entry in entries if isinstance(entry.get("rank"), int)]
+    killed_values = [int(entry["bosses_killed"]) for entry in entries if isinstance(entry.get("bosses_killed"), int)]
+    rank_stats: dict[str, Any] | None = None
+    if rank_values:
+        sorted_ranks = sorted(rank_values)
+        rank_stats = {
+            "min": sorted_ranks[0],
+            "max": sorted_ranks[-1],
+            "average": round(sum(sorted_ranks) / len(sorted_ranks), 2),
+            "median": median(sorted_ranks),
+        }
+    progress_stats: dict[str, Any] | None = None
+    if killed_values:
+        sorted_kills = sorted(killed_values)
+        progress_stats = {
+            "min": sorted_kills[0],
+            "max": sorted_kills[-1],
+            "average": round(sum(sorted_kills) / len(sorted_kills), 2),
+            "median": median(sorted_kills),
+        }
+    return {
+        "sampled_at": meta["sampled_at"],
+        "entry_count": len(entries),
+        "active_raid": meta.get("active_raid"),
+        "unique_realms": sorted({str(entry.get("realm") or "") for entry in entries if str(entry.get("realm") or "").strip()}),
+        "difficulty_counts": _count_map([str(entry.get("difficulty") or "unknown") for entry in entries]),
+        "rank": rank_stats,
+        "bosses_killed": progress_stats,
+    }
+
+
+def _distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
+    if metric == "rank":
+        values = [int(entry["rank"]) for entry in entries if isinstance(entry.get("rank"), int)]
+        rows = _count_map([str(value) for value in values])
+        stats = None
+        if values:
+            sorted_values = sorted(values)
+            stats = {
+                "min": sorted_values[0],
+                "max": sorted_values[-1],
+                "average": round(sum(sorted_values) / len(sorted_values), 2),
+                "median": median(sorted_values),
+            }
+        distribution = {"unit": "entries", "rows": rows, "statistics": stats}
+    else:
+        if metric == "realm":
+            values = [str(entry.get("realm") or "unknown") for entry in entries]
+        elif metric == "difficulty":
+            values = [str(entry.get("difficulty") or "unknown") for entry in entries]
+        elif metric == "bosses_killed":
+            values = [str(entry.get("bosses_killed")) for entry in entries if isinstance(entry.get("bosses_killed"), int)]
+        else:
+            values = [str(entry.get("progress") or "unknown") for entry in entries]
+        distribution = {"unit": "entries", "rows": _count_map(values), "statistics": None}
+    return {
+        "provider": "wowprogress",
+        "kind": "pve_leaderboard_distribution",
+        "metric": metric,
+        "query": query,
+        "sample": _sample_summary(entries, meta=meta),
+        "distribution": distribution,
+        "freshness": {
+            "sampled_at": meta["sampled_at"],
+            "cache_ttl_seconds": meta["cache_ttl_seconds"],
+        },
+        "citations": {
+            "leaderboard_page": meta["page_url"],
+        },
+    }
+
+
+def _nearest_threshold_rows(metric: str, target: float, entries: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for entry in entries:
+        if metric == "rank":
+            raw_value = entry.get("rank")
+        else:
+            raw_value = entry.get("bosses_killed")
+        if not isinstance(raw_value, (int, float)):
+            continue
+        rows.append(
+            {
+                "value": float(raw_value),
+                "distance": round(abs(float(raw_value) - target), 3),
+                "entry": entry,
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            float(row["distance"]),
+            float(row["value"]),
+            str((row["entry"] or {}).get("guild_name") or ""),
+        )
+    )
+    return rows[:limit]
+
+
+def _threshold_payload(metric: str, target: float, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any], nearest_limit: int) -> dict[str, Any]:
+    nearest = _nearest_threshold_rows(metric, target, entries, limit=nearest_limit)
+    if metric == "rank":
+        estimate_metric = "bosses_killed"
+        estimate_values = [int(row["entry"]["bosses_killed"]) for row in nearest if isinstance(row["entry"].get("bosses_killed"), int)]
+        caveat = "This estimates raid-progression states near a sampled WowProgress leaderboard rank, not a universal guild-performance threshold."
+    else:
+        estimate_metric = "rank"
+        estimate_values = [int(row["entry"]["rank"]) for row in nearest if isinstance(row["entry"].get("rank"), int)]
+        caveat = "This estimates leaderboard-rank ranges near a sampled boss-kill count for the active raid."
+    estimate = None
+    if estimate_values:
+        sorted_values = sorted(estimate_values)
+        estimate = {
+            "metric": estimate_metric,
+            "count": len(sorted_values),
+            "min": sorted_values[0],
+            "max": sorted_values[-1],
+            "average": round(sum(sorted_values) / len(sorted_values), 2),
+            "median": median(sorted_values),
+        }
+    return {
+        "provider": "wowprogress",
+        "kind": "pve_leaderboard_threshold",
+        "metric": metric,
+        "target": target,
+        "query": query,
+        "sample": _sample_summary(entries, meta=meta),
+        "threshold": {
+            "nearest_match_count": len(nearest),
+            "nearest_matches": [
+                {
+                    "value": row["value"],
+                    "distance": row["distance"],
+                    "entry": row["entry"],
+                }
+                for row in nearest
+            ],
+            "estimate": estimate,
+            "caveat": caveat,
+        },
+        "freshness": {
+            "sampled_at": meta["sampled_at"],
+            "cache_ttl_seconds": meta["cache_ttl_seconds"],
+        },
+        "citations": {
+            "leaderboard_page": meta["page_url"],
+        },
     }
 
 
@@ -447,6 +676,9 @@ def doctor(ctx: typer.Context) -> None:
                 "guild": "ready",
                 "character": "ready",
                 "leaderboard": "ready",
+                "sample_pve_leaderboard": "ready",
+                "distribution_pve_leaderboard": "ready",
+                "threshold_pve_leaderboard": "ready",
             },
             "cache": {
                 "enabled": settings.enabled,
@@ -532,6 +764,111 @@ def leaderboard(
         _handle_client_error(ctx, exc)
         return
     _emit(ctx, payload)
+
+
+@sample_app.command("pve-leaderboard")
+def sample_pve_leaderboard(
+    ctx: typer.Context,
+    region: str = typer.Option(..., "--region", help="Region slug such as world, us, or eu."),
+    realm: str | None = typer.Option(None, "--realm", help="Optional realm slug to narrow the PvE leaderboard."),
+    limit: int = typer.Option(25, "--limit", min=1, max=100, help="Maximum leaderboard rows to sample."),
+) -> None:
+    try:
+        with _client(ctx) as client:
+            entries, meta, leaderboard = _sample_pve_leaderboard(client, region=region, realm=realm, limit=limit)
+    except WowProgressClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    _emit(
+        ctx,
+        {
+            "provider": "wowprogress",
+            "kind": "pve_leaderboard_sample",
+            "query": {
+                "region": region.lower(),
+                "realm": realm.lower() if realm else None,
+                "limit": limit,
+            },
+            "leaderboard": leaderboard,
+            "sample": _sample_summary(entries, meta=meta),
+            "entries": entries,
+            "freshness": {
+                "sampled_at": meta["sampled_at"],
+                "cache_ttl_seconds": meta["cache_ttl_seconds"],
+            },
+            "citations": {
+                "leaderboard_page": meta["page_url"],
+            },
+        },
+    )
+
+
+@distribution_app.command("pve-leaderboard")
+def distribution_pve_leaderboard(
+    ctx: typer.Context,
+    metric: str = typer.Option("progress", "--metric", help="Distribution metric: progress, difficulty, realm, bosses_killed, rank."),
+    region: str = typer.Option(..., "--region", help="Region slug such as world, us, or eu."),
+    realm: str | None = typer.Option(None, "--realm", help="Optional realm slug to narrow the PvE leaderboard."),
+    limit: int = typer.Option(50, "--limit", min=1, max=100, help="Maximum leaderboard rows to sample."),
+) -> None:
+    if metric not in {"progress", "difficulty", "realm", "bosses_killed", "rank"}:
+        _fail(ctx, "invalid_query", "--metric must be one of: progress, difficulty, realm, bosses_killed, rank")
+        return
+    try:
+        with _client(ctx) as client:
+            entries, meta, _leaderboard = _sample_pve_leaderboard(client, region=region, realm=realm, limit=limit)
+    except WowProgressClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    _emit(
+        ctx,
+        _distribution_payload(
+            metric,
+            entries,
+            meta=meta,
+            query={
+                "region": region.lower(),
+                "realm": realm.lower() if realm else None,
+                "limit": limit,
+            },
+        ),
+    )
+
+
+@threshold_app.command("pve-leaderboard")
+def threshold_pve_leaderboard(
+    ctx: typer.Context,
+    metric: str = typer.Option("rank", "--metric", help="Threshold metric: rank or bosses_killed."),
+    value: float = typer.Option(..., "--value", help="Target metric value to estimate against the sampled leaderboard."),
+    region: str = typer.Option(..., "--region", help="Region slug such as world, us, or eu."),
+    realm: str | None = typer.Option(None, "--realm", help="Optional realm slug to narrow the PvE leaderboard."),
+    limit: int = typer.Option(50, "--limit", min=1, max=100, help="Maximum leaderboard rows to sample."),
+    nearest: int = typer.Option(10, "--nearest", min=1, max=50, help="Maximum nearby rows to include in the threshold estimate."),
+) -> None:
+    if metric not in {"rank", "bosses_killed"}:
+        _fail(ctx, "invalid_query", "--metric must be one of: rank, bosses_killed")
+        return
+    try:
+        with _client(ctx) as client:
+            entries, meta, _leaderboard = _sample_pve_leaderboard(client, region=region, realm=realm, limit=limit)
+    except WowProgressClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    _emit(
+        ctx,
+        _threshold_payload(
+            metric,
+            value,
+            entries,
+            meta=meta,
+            query={
+                "region": region.lower(),
+                "realm": realm.lower() if realm else None,
+                "limit": limit,
+            },
+            nearest_limit=nearest,
+        ),
+    )
 
 
 def run() -> None:

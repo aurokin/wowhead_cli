@@ -77,3 +77,48 @@ def test_live_wowprogress_character_contract() -> None:
     assert payload["item_level"]["value"] is not None
     assert payload["item_level"]["ranks"]["realm"] is not None
     assert payload["sim_dps"]["ranks"]["region"] is not None
+
+
+def test_live_wowprogress_sample_pve_leaderboard_contract() -> None:
+    require_live("WowProgress")
+    payload = payload_for_live(
+        runner,
+        app,
+        ["sample", "pve-leaderboard", "--region", "us", "--limit", "10"],
+        provider_name="WowProgress",
+    )
+
+    assert payload["kind"] == "pve_leaderboard_sample"
+    assert payload["sample"]["entry_count"] == len(payload["entries"])
+    assert payload["sample"]["active_raid"]
+    assert payload["freshness"]["cache_ttl_seconds"] is not None
+
+
+def test_live_wowprogress_distribution_pve_leaderboard_contract() -> None:
+    require_live("WowProgress")
+    payload = payload_for_live(
+        runner,
+        app,
+        ["distribution", "pve-leaderboard", "--region", "us", "--metric", "difficulty", "--limit", "10"],
+        provider_name="WowProgress",
+    )
+
+    assert payload["kind"] == "pve_leaderboard_distribution"
+    assert payload["metric"] == "difficulty"
+    assert payload["distribution"]["rows"]
+    assert payload["citations"]["leaderboard_page"]
+
+
+def test_live_wowprogress_threshold_pve_leaderboard_contract() -> None:
+    require_live("WowProgress")
+    payload = payload_for_live(
+        runner,
+        app,
+        ["threshold", "pve-leaderboard", "--region", "us", "--metric", "rank", "--value", "25", "--nearest", "5", "--limit", "25"],
+        provider_name="WowProgress",
+    )
+
+    assert payload["kind"] == "pve_leaderboard_threshold"
+    assert payload["metric"] == "rank"
+    assert payload["threshold"]["nearest_matches"]
+    assert payload["threshold"]["estimate"] is not None
