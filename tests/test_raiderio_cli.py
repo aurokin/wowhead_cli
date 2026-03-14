@@ -8,7 +8,9 @@ from typer.testing import CliRunner
 from raiderio_cli.main import (
     _candidate_dedupe_key,
     _dedupe_search_candidates,
+    _distribution_values,
     _player_snapshots,
+    _ranking_roster_entry,
     _resolve_candidate_is_confident,
     _resolve_confidence_label,
     _run_matches_filters,
@@ -134,6 +136,53 @@ def test_raiderio_resolve_confidence_helpers() -> None:
     assert _resolve_confidence_label(45, resolved=True) == "high"
     assert _resolve_confidence_label(30, resolved=False) == "medium"
     assert _resolve_confidence_label(20, resolved=False) == "low"
+
+
+def test_raiderio_ranking_roster_entry_builds_profile_summary() -> None:
+    entry = _ranking_roster_entry(
+        {
+            "character": {
+                "name": "Cotti",
+                "realm": {"slug": "tarren-mill"},
+                "region": {"slug": "eu"},
+                "class": {"name": "Druid", "slug": "druid"},
+                "spec": {"name": "Balance", "slug": "balance"},
+                "path": "/characters/eu/tarren-mill/Cotti",
+            },
+            "role": "dps",
+        }
+    )
+    assert entry["name"] == "Cotti"
+    assert entry["spec_slug"] == "balance"
+    assert entry["profile_url"] == "https://raider.io/characters/eu/tarren-mill/Cotti"
+
+
+def test_raiderio_distribution_values_cover_numeric_and_composition_metrics() -> None:
+    runs = [
+        {
+            "mythic_level": 26,
+            "dungeon": "The Dawnbreaker",
+            "roster": [
+                {"role": "dps", "class_slug": "druid", "spec_slug": "balance", "region": "eu"},
+                {"role": "healer", "class_slug": "shaman", "spec_slug": "restoration", "region": "eu"},
+            ],
+        }
+    ]
+
+    values, unit, numeric = _distribution_values("mythic_level", runs)
+    assert values == [26]
+    assert unit == "runs"
+    assert numeric is True
+
+    values, unit, numeric = _distribution_values("composition", runs)
+    assert values == ["dps:balance | healer:restoration"]
+    assert unit == "runs"
+    assert numeric is False
+
+    values, unit, numeric = _distribution_values("player_region", runs)
+    assert values == ["eu", "eu"]
+    assert unit == "roster_entries"
+    assert numeric is False
 
 
 def test_raiderio_search_uses_structured_direct_guild_probe_when_search_is_empty(monkeypatch) -> None:

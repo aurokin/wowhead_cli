@@ -530,6 +530,26 @@ def _recent_run_summary(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _ranking_roster_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    character = entry.get("character") if isinstance(entry.get("character"), dict) else {}
+    realm = character.get("realm") if isinstance(character.get("realm"), dict) else {}
+    region = character.get("region") if isinstance(character.get("region"), dict) else {}
+    class_row = character.get("class") if isinstance(character.get("class"), dict) else {}
+    spec_row = character.get("spec") if isinstance(character.get("spec"), dict) else {}
+    path = character.get("path")
+    return {
+        "name": character.get("name"),
+        "realm": realm.get("slug"),
+        "region": region.get("slug"),
+        "class_name": class_row.get("name"),
+        "class_slug": class_row.get("slug"),
+        "spec_name": spec_row.get("name"),
+        "spec_slug": spec_row.get("slug"),
+        "profile_url": f"https://raider.io{path}" if isinstance(path, str) and path.startswith("/") else None,
+        "role": entry.get("role"),
+    }
+
+
 def _ranking_run_summary(row: dict[str, Any]) -> dict[str, Any]:
     run = row.get("run") if isinstance(row.get("run"), dict) else {}
     dungeon = run.get("dungeon") if isinstance(run.get("dungeon"), dict) else {}
@@ -542,27 +562,7 @@ def _ranking_run_summary(row: dict[str, Any]) -> dict[str, Any]:
         "dungeon_slug": dungeon.get("slug"),
         "completed_at": run.get("completed_at"),
         "affixes": [affix.get("slug") for affix in run.get("weekly_modifiers", []) if isinstance(affix, dict)],
-        "roster": [
-            {
-                "name": ((entry.get("character") or {}).get("name") if isinstance(entry, dict) else None),
-                "realm": ((((entry.get("character") or {}).get("realm") or {}).get("slug")) if isinstance(entry, dict) else None),
-                "region": ((((entry.get("character") or {}).get("region") or {}).get("slug")) if isinstance(entry, dict) else None),
-                "class_name": (((((entry.get("character") or {}).get("class")) or {}).get("name")) if isinstance(entry, dict) else None),
-                "class_slug": (((((entry.get("character") or {}).get("class")) or {}).get("slug")) if isinstance(entry, dict) else None),
-                "spec_name": (((((entry.get("character") or {}).get("spec")) or {}).get("name")) if isinstance(entry, dict) else None),
-                "spec_slug": (((((entry.get("character") or {}).get("spec")) or {}).get("slug")) if isinstance(entry, dict) else None),
-                "profile_url": (
-                    f"https://raider.io{((entry.get('character') or {}).get('path'))}"
-                    if isinstance(entry, dict)
-                    and isinstance(((entry.get("character") or {}).get("path")), str)
-                    and str(((entry.get("character") or {}).get("path"))).startswith("/")
-                    else None
-                ),
-                "role": entry.get("role") if isinstance(entry, dict) else None,
-            }
-            for entry in roster[:5]
-            if isinstance(entry, dict)
-        ],
+        "roster": [_ranking_roster_entry(entry) for entry in roster[:5] if isinstance(entry, dict)],
     }
 
 
@@ -1097,64 +1097,68 @@ def _distribution_response(
     }
 
 
-def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
-    sample = _sample_summary(runs, meta=meta)
+def _run_distribution_values(metric: str, runs: list[dict[str, Any]]) -> tuple[list[int | float] | list[str], str, bool] | None:
     if metric == "mythic_level":
-        values = [int(run["mythic_level"]) for run in runs if isinstance(run.get("mythic_level"), int)]
-        return _distribution_response(
-            kind="mythic_plus_runs_distribution",
-            metric=metric,
-            query=query,
-            sample=sample,
-            distribution=_numeric_distribution(values, unit="runs"),
-            meta=meta,
-        )
+        return [int(run["mythic_level"]) for run in runs if isinstance(run.get("mythic_level"), int)], "runs", True
     if metric == "dungeon":
-        values = [str(run.get("dungeon") or "unknown") for run in runs]
-        unit = "runs"
-    elif metric == "role":
-        values = [
+        return [str(run.get("dungeon") or "unknown") for run in runs], "runs", False
+    if metric == "composition":
+        return [_composition_key(run, mode="spec") for run in runs], "runs", False
+    if metric == "class_composition":
+        return [_composition_key(run, mode="class") for run in runs], "runs", False
+    return None
+
+
+def _roster_distribution_values(metric: str, runs: list[dict[str, Any]]) -> tuple[list[str], str]:
+    if metric == "role":
+        return [
             str(entry.get("role") or "unknown")
             for run in runs
             for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
             if isinstance(entry, dict)
-        ]
-        unit = "roster_entries"
-    elif metric == "class":
-        values = [
+        ], "roster_entries"
+    if metric == "class":
+        return [
             str(entry.get("class_slug") or entry.get("class_name") or "unknown")
             for run in runs
             for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
             if isinstance(entry, dict)
-        ]
-        unit = "roster_entries"
-    elif metric == "spec":
-        values = [
+        ], "roster_entries"
+    if metric == "spec":
+        return [
             str(entry.get("spec_slug") or entry.get("spec_name") or "unknown")
             for run in runs
             for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
             if isinstance(entry, dict)
-        ]
-        unit = "roster_entries"
-    elif metric == "composition":
-        values = [_composition_key(run, mode="spec") for run in runs]
-        unit = "runs"
-    elif metric == "class_composition":
-        values = [_composition_key(run, mode="class") for run in runs]
-        unit = "runs"
-    else:
-        values = [
-            str(entry.get("region") or "unknown")
-            for run in runs
-            for entry in _run_roster(run)
-        ]
-        unit = "roster_entries"
+        ], "roster_entries"
+    return [
+        str(entry.get("region") or "unknown")
+        for run in runs
+        for entry in _run_roster(run)
+    ], "roster_entries"
+
+
+def _distribution_values(metric: str, runs: list[dict[str, Any]]) -> tuple[list[int | float] | list[str], str, bool]:
+    run_values = _run_distribution_values(metric, runs)
+    if run_values is not None:
+        return run_values
+    roster_values, unit = _roster_distribution_values(metric, runs)
+    return roster_values, unit, False
+
+
+def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
+    sample = _sample_summary(runs, meta=meta)
+    values, unit, numeric = _distribution_values(metric, runs)
     return _distribution_response(
         kind="mythic_plus_runs_distribution",
         metric=metric,
         query=query,
         sample=sample,
-        distribution=_categorical_distribution(values, unit=unit),
+        distribution=(
+            _numeric_distribution(values, unit=unit)  # type: ignore[arg-type]
+            if numeric
+            else _categorical_distribution(values, unit=unit)  # type: ignore[arg-type]
+        ),
         meta=meta,
     )
 
