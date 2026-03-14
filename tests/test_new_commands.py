@@ -13,6 +13,7 @@ from wowhead_cli.main import (
     _guide_gatherer_matches,
     _guide_linked_entity_matches,
     _guide_navigation_matches,
+    _guide_export_manifest,
     _guide_query_top_matches,
     _guide_section_matches,
     _guide_row_matches_filters,
@@ -27,6 +28,7 @@ from wowhead_cli.main import (
     _term_match_score,
     _type_hint_score,
     _validated_guides_filters,
+    _write_guide_export_assets,
     app,
 )
 from wowhead_cli.expansion_profiles import resolve_expansion
@@ -1352,6 +1354,52 @@ def test_guides_payload_builds_expected_filters_and_facets() -> None:
     assert payload["guides_url"].endswith("/guides/classes")
     assert payload["filters"]["authors"] == ["khazakdk"]
     assert payload["facets"]["authors"] == ["Khazakdk"]
+
+
+def test_write_guide_export_assets_and_manifest_helpers(tmp_path: Path) -> None:
+    payload = {
+        "expansion": "retail",
+        "guide": {"id": 3143, "title": "Frost Death Knight DPS Guide"},
+        "page": {"title": "Frost Death Knight DPS Guide", "canonical_url": "https://www.wowhead.com/guide=3143"},
+        "body": {"raw_markup": "[h2]Overview[/h2]", "section_chunks": [{"title": "Overview", "ordinal": 1}]},
+        "navigation": {"raw_markup": "[ul][li]Overview[/li][/ul]", "links": [{"label": "Overview", "url": "https://www.wowhead.com/guide=3143#overview"}]},
+        "linked_entities": {"items": [{"entity_type": "spell", "id": 49020, "name": "Obliterate"}]},
+        "gatherer_entities": {"items": [{"entity_type": "item", "id": 249277, "name": "Bellamy's Final Judgement"}]},
+        "comments": {"items": [{"id": 91, "user": "A", "body": "Solid guide"}]},
+        "structured_data": {"@type": "Article"},
+    }
+
+    files_written, bundle_parts = _write_guide_export_assets(
+        export_dir=tmp_path,
+        payload=payload,
+        html="<html></html>",
+    )
+    assert files_written["guide_json"] == "guide.json"
+    assert files_written["structured_data_json"] == "structured-data.json"
+    assert len(bundle_parts["sections"]) == 1
+    assert len(bundle_parts["linked_items"]) == 1
+
+    manifest = _guide_export_manifest(
+        export_dir=tmp_path,
+        payload=payload,
+        guide_ref="3143",
+        max_links=10,
+        include_replies=False,
+        hydrate_linked_entities=True,
+        hydrate_types=("spell",),
+        hydrate_limit=5,
+        hydrated_summary_items=[{"entity_type": "spell", "id": 49020, "storage_source": "entity_cache"}],
+        hydrated_at="2026-03-14T00:00:00+00:00",
+        files_written=files_written,
+        sections=bundle_parts["sections"],
+        nav_links=bundle_parts["navigation_links"],
+        linked_items=bundle_parts["linked_items"],
+        gatherer_items=bundle_parts["gatherer_items"],
+        comment_items=bundle_parts["comment_items"],
+    )
+    assert manifest["counts"]["sections"] == 1
+    assert manifest["counts"]["hydrated_entities"] == 1
+    assert manifest["hydration"]["source_counts"]["entity_cache"] == 1
 
 
 
