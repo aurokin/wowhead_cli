@@ -638,33 +638,41 @@ def _distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: d
     )
 
 
-def _guild_profile_distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any], filtering: dict[str, Any] | None = None) -> dict[str, Any]:
-    sample = _guild_profile_sample_summary(entries, meta=meta, filtering=filtering)
+def _guild_profile_distribution_values(metric: str, entries: list[dict[str, Any]]) -> tuple[list[str] | list[int] | list[float], str, bool]:
     if metric == "faction":
-        values = [str(entry.get("faction") or "unknown") for entry in entries]
-        distribution = _categorical_distribution(values, unit="guild_profiles")
-    elif metric == "progress":
-        values = [str(entry.get("progress") or "unknown") for entry in entries]
-        distribution = _categorical_distribution(values, unit="guild_profiles")
-    elif metric == "encounter":
-        values = [
+        return [str(entry.get("faction") or "unknown") for entry in entries], "guild_profiles", False
+    if metric == "progress":
+        return [str(entry.get("progress") or "unknown") for entry in entries], "guild_profiles", False
+    if metric == "encounter":
+        return [
             str(encounter.get("encounter") or "unknown")
             for entry in entries
             for encounter in (entry.get("encounters") if isinstance(entry.get("encounters"), list) else [])
             if isinstance(encounter, dict)
-        ]
-        distribution = _categorical_distribution(values, unit="encounters")
-    elif metric == "world_rank":
-        numeric_values = [
+        ], "encounters", False
+    if metric == "world_rank":
+        return [
             int(str((entry.get("progress_ranks") or {}).get("world")).replace(",", ""))
             for entry in entries
-            if isinstance(entry.get("progress_ranks"), dict) and (entry.get("progress_ranks") or {}).get("world") is not None
+            if isinstance(entry.get("progress_ranks"), dict)
+            and (entry.get("progress_ranks") or {}).get("world") is not None
             and str((entry.get("progress_ranks") or {}).get("world")).replace(",", "").isdigit()
-        ]
-        distribution = _numeric_distribution(numeric_values, unit="guild_profiles")
-    else:
-        numeric_values = [float(entry["item_level_average"]) for entry in entries if isinstance(entry.get("item_level_average"), (int, float))]
-        distribution = _numeric_distribution(numeric_values, unit="guild_profiles")
+        ], "guild_profiles", True
+    return [
+        float(entry["item_level_average"])
+        for entry in entries
+        if isinstance(entry.get("item_level_average"), (int, float))
+    ], "guild_profiles", True
+
+
+def _guild_profile_distribution_payload(metric: str, entries: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any], filtering: dict[str, Any] | None = None) -> dict[str, Any]:
+    sample = _guild_profile_sample_summary(entries, meta=meta, filtering=filtering)
+    values, unit, numeric = _guild_profile_distribution_values(metric, entries)
+    distribution = (
+        _numeric_distribution(values, unit=unit)  # type: ignore[arg-type]
+        if numeric
+        else _categorical_distribution(values, unit=unit)  # type: ignore[arg-type]
+    )
     return _distribution_response(
         kind="pve_guild_profiles_distribution",
         metric=metric,
@@ -697,6 +705,25 @@ def _nearest_guild_profile_rows(metric: str, target: float, entries: list[dict[s
     return rows[:limit]
 
 
+def _guild_profile_threshold_estimate(metric: str, nearest: list[dict[str, Any]]) -> tuple[str, list[int] | list[float], str]:
+    if metric == "item_level_average":
+        return (
+            "world_rank",
+            [
+                int(str((row["entry"].get("progress_ranks") or {}).get("world")).replace(",", ""))
+                for row in nearest
+                if isinstance(row["entry"].get("progress_ranks"), dict)
+                and str((row["entry"].get("progress_ranks") or {}).get("world") or "").replace(",", "").isdigit()
+            ],
+            "This estimates sampled world-progress ranks near a target item-level average for leaderboard guilds in the active raid.",
+        )
+    return (
+        "item_level_average",
+        [float(row["entry"]["item_level_average"]) for row in nearest if isinstance(row["entry"].get("item_level_average"), (int, float))],
+        "This estimates sampled guild item-level averages near a target world-progress rank for the active raid.",
+    )
+
+
 def _guild_profile_threshold_payload(
     metric: str,
     target: float,
@@ -708,19 +735,7 @@ def _guild_profile_threshold_payload(
     filtering: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     nearest = _nearest_guild_profile_rows(metric, target, entries, limit=nearest_limit)
-    if metric == "item_level_average":
-        estimate_metric = "world_rank"
-        estimate_values = [
-            int(str((row["entry"].get("progress_ranks") or {}).get("world")).replace(",", ""))
-            for row in nearest
-            if isinstance(row["entry"].get("progress_ranks"), dict)
-            and str((row["entry"].get("progress_ranks") or {}).get("world") or "").replace(",", "").isdigit()
-        ]
-        caveat = "This estimates sampled world-progress ranks near a target item-level average for leaderboard guilds in the active raid."
-    else:
-        estimate_metric = "item_level_average"
-        estimate_values = [float(row["entry"]["item_level_average"]) for row in nearest if isinstance(row["entry"].get("item_level_average"), (int, float))]
-        caveat = "This estimates sampled guild item-level averages near a target world-progress rank for the active raid."
+    estimate_metric, estimate_values, caveat = _guild_profile_threshold_estimate(metric, nearest)
     estimate = None
     if estimate_values:
         sorted_values = sorted(estimate_values)

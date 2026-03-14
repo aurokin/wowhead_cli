@@ -7,8 +7,10 @@ from typer.testing import CliRunner
 from wowprogress_cli.client import WowProgressClient
 from wowprogress_cli.main import (
     _candidate_from_probe,
+    _guild_profile_distribution_values,
     _distinct_result_kinds,
     _guild_profile_matches_filters,
+    _guild_profile_threshold_estimate,
     _normalized_encounter_values,
     _resolve_confidence_label,
     _resolve_is_confident,
@@ -645,6 +647,49 @@ def test_wowprogress_guild_profile_matches_filters_uses_normalized_fields() -> N
         )
         is False
     )
+
+
+def test_wowprogress_guild_profile_distribution_values_cover_numeric_and_encounter_metrics() -> None:
+    entries = [
+        {
+            "faction": "Horde",
+            "progress": "8/8 (M)",
+            "encounters": [{"encounter": "Dimensius, the All-Devouring"}],
+            "progress_ranks": {"world": "12"},
+            "item_level_average": 724.5,
+        }
+    ]
+
+    values, unit, numeric = _guild_profile_distribution_values("encounter", entries)
+    assert values == ["Dimensius, the All-Devouring"]
+    assert unit == "encounters"
+    assert numeric is False
+
+    values, unit, numeric = _guild_profile_distribution_values("world_rank", entries)
+    assert values == [12]
+    assert unit == "guild_profiles"
+    assert numeric is True
+
+
+def test_wowprogress_guild_profile_threshold_estimate_switches_metric() -> None:
+    nearest = [
+        {
+            "entry": {
+                "progress_ranks": {"world": "12"},
+                "item_level_average": 724.5,
+            }
+        }
+    ]
+
+    metric, values, caveat = _guild_profile_threshold_estimate("item_level_average", nearest)
+    assert metric == "world_rank"
+    assert values == [12]
+    assert "world-progress ranks" in caveat
+
+    metric, values, caveat = _guild_profile_threshold_estimate("world_rank", nearest)
+    assert metric == "item_level_average"
+    assert values == [724.5]
+    assert "item-level averages" in caveat
 
 
 def test_wowprogress_distribution_pve_guild_profiles(monkeypatch) -> None:
