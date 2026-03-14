@@ -1922,6 +1922,92 @@ def _build_linked_entity_preview(
     }
 
 
+def _entity_page_needs_fetch(
+    *,
+    include_comments: bool,
+    linked_entity_preview_limit: int,
+    tooltip_from_page_metadata: bool,
+) -> bool:
+    return include_comments or linked_entity_preview_limit > 0 or tooltip_from_page_metadata
+
+
+def _entity_comments_payload(
+    *,
+    html: str | None,
+    page_url: str,
+    include_comments: bool,
+    include_all_comments: bool,
+    top_comment_limit: int,
+    top_comment_chars: int,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if not include_comments or html is None:
+        return None, None
+    try:
+        raw_comments = extract_comments_dataset(html)
+    except ValueError:
+        raw_comments = []
+
+    sampled_comments: list[dict[str, Any]] = []
+    all_comments: list[dict[str, Any]] = []
+    if include_all_comments:
+        all_comments = normalize_comments(
+            sort_comments(raw_comments, "newest"),
+            page_url=page_url,
+            include_replies=True,
+        )
+    else:
+        ranked = sort_comments(raw_comments, "rating")
+        sampled_norm = normalize_comments(
+            ranked[:top_comment_limit],
+            page_url=page_url,
+            include_replies=False,
+        )
+        for row in sampled_norm:
+            sampled_comments.append(
+                {
+                    "id": row.get("id"),
+                    "user": row.get("user"),
+                    "rating": row.get("rating"),
+                    "date": row.get("date"),
+                    "body": _truncate_text(row.get("body"), max_chars=top_comment_chars),
+                    "citation_url": row.get("citation_url"),
+                }
+            )
+    all_comments_included = len(all_comments) == len(raw_comments) if include_all_comments else len(sampled_comments) == len(raw_comments)
+    comments_payload: dict[str, Any] = {
+        "count": len(raw_comments),
+        "all_comments_included": all_comments_included,
+        "needs_raw_fetch": not all_comments_included,
+    }
+    if include_all_comments:
+        comments_payload["items"] = all_comments
+    else:
+        comments_payload["top"] = sampled_comments
+    return comments_payload, {"comments": f"{page_url}#comments"}
+
+
+def _entity_linked_entities_payload(
+    *,
+    html: str | None,
+    page_url: str,
+    page_entity_type: str,
+    page_entity_id: int,
+    requested_entity_type: str,
+    requested_entity_id: int,
+    linked_entity_preview_limit: int,
+) -> dict[str, Any] | None:
+    if html is None or linked_entity_preview_limit <= 0:
+        return None
+    return _build_linked_entity_preview(
+        extract_linked_entities_from_href(html, source_url=page_url)
+        + extract_gatherer_entities(html, source_url=page_url),
+        entity_type=page_entity_type,
+        entity_id=page_entity_id,
+        preview_limit=linked_entity_preview_limit,
+        fetch_more_command_builder=lambda count: _entity_page_fetch_more_command(requested_entity_type, requested_entity_id, count),
+    )
+
+
 def _build_entity_payload(
     ctx: typer.Context,
     client: WowheadClient,
@@ -1982,57 +2068,25 @@ def _build_entity_payload(
     entity_name, tooltip_payload = _normalize_tooltip_payload(tooltip)
     html: str | None = None
     metadata: dict[str, str | None] | None = None
-    raw_comments: list[dict[str, Any]] = []
-    sampled_comments: list[dict[str, Any]] = []
-    all_comments: list[dict[str, Any]] = []
 
-    if include_comments or linked_entity_preview_limit > 0:
-        html, metadata = _fetch_entity_page(ctx, client, plan.page_entity_type, plan.page_entity_id)
-        page_url = metadata["canonical_url"] or canonical
-    elif plan.tooltip_from_page_metadata:
+    if _entity_page_needs_fetch(
+        include_comments=include_comments,
+        linked_entity_preview_limit=linked_entity_preview_limit,
+        tooltip_from_page_metadata=plan.tooltip_from_page_metadata,
+    ):
         html, metadata = _fetch_entity_page(ctx, client, plan.page_entity_type, plan.page_entity_id)
         page_url = metadata["canonical_url"] or canonical
 
     if plan.tooltip_from_page_metadata and metadata is not None:
         entity_name, tooltip_payload = _build_tooltip_from_page_metadata(metadata)
-
-    if include_comments and html is not None:
-        try:
-            raw_comments = extract_comments_dataset(html)
-        except ValueError:
-            raw_comments = []
-
-        if include_all_comments:
-            all_comments = normalize_comments(
-                sort_comments(raw_comments, "newest"),
-                page_url=page_url,
-                include_replies=True,
-            )
-        else:
-            ranked = sort_comments(raw_comments, "rating")
-            sampled_norm = normalize_comments(
-                ranked[:top_comment_limit],
-                page_url=page_url,
-                include_replies=False,
-            )
-            for row in sampled_norm:
-                sampled_comments.append(
-                    {
-                        "id": row.get("id"),
-                        "user": row.get("user"),
-                        "rating": row.get("rating"),
-                        "date": row.get("date"),
-                        "body": _truncate_text(row.get("body"), max_chars=top_comment_chars),
-                        "citation_url": row.get("citation_url"),
-                    }
-                )
-
-    all_comments_included = False
-    if include_comments:
-        if include_all_comments:
-            all_comments_included = len(all_comments) == len(raw_comments)
-        else:
-            all_comments_included = len(sampled_comments) == len(raw_comments)
+    comments_payload, comments_citations = _entity_comments_payload(
+        html=html,
+        page_url=page_url,
+        include_comments=include_comments,
+        include_all_comments=include_all_comments,
+        top_comment_limit=top_comment_limit,
+        top_comment_chars=top_comment_chars,
+    )
 
     payload = {
         "expansion": cfg.expansion.key,
@@ -2045,29 +2099,20 @@ def _build_entity_payload(
     }
     if tooltip_payload:
         payload["tooltip"] = tooltip_payload
-    if include_comments:
-        payload["citations"] = {
-            "comments": f"{page_url}#comments",
-        }
-    if html is not None and linked_entity_preview_limit > 0:
-        payload["linked_entities"] = _build_linked_entity_preview(
-            extract_linked_entities_from_href(html, source_url=page_url)
-            + extract_gatherer_entities(html, source_url=page_url),
-            entity_type=plan.page_entity_type,
-            entity_id=plan.page_entity_id,
-            preview_limit=linked_entity_preview_limit,
-            fetch_more_command_builder=lambda count: _entity_page_fetch_more_command(entity_type, entity_id, count),
-        )
-    if include_comments:
-        comments_payload: dict[str, Any] = {
-            "count": len(raw_comments),
-            "all_comments_included": all_comments_included,
-            "needs_raw_fetch": not all_comments_included,
-        }
-        if include_all_comments:
-            comments_payload["items"] = all_comments
-        else:
-            comments_payload["top"] = sampled_comments
+    if comments_citations is not None:
+        payload["citations"] = comments_citations
+    linked_entities_payload = _entity_linked_entities_payload(
+        html=html,
+        page_url=page_url,
+        page_entity_type=plan.page_entity_type,
+        page_entity_id=plan.page_entity_id,
+        requested_entity_type=entity_type,
+        requested_entity_id=entity_id,
+        linked_entity_preview_limit=linked_entity_preview_limit,
+    )
+    if linked_entities_payload is not None:
+        payload["linked_entities"] = linked_entities_payload
+    if comments_payload is not None:
         payload["comments"] = comments_payload
 
     client.set_cached_entity_response(

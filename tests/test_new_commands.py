@@ -7,6 +7,9 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from wowhead_cli.main import (
+    _entity_comments_payload,
+    _entity_linked_entities_payload,
+    _entity_page_needs_fetch,
     _exact_match_score,
     _filtered_guide_category_rows,
     _guide_comment_matches,
@@ -1354,6 +1357,47 @@ def test_guides_payload_builds_expected_filters_and_facets() -> None:
     assert payload["guides_url"].endswith("/guides/classes")
     assert payload["filters"]["authors"] == ["khazakdk"]
     assert payload["facets"]["authors"] == ["Khazakdk"]
+
+
+def test_entity_page_needs_fetch_and_comments_payload_helpers() -> None:
+    assert _entity_page_needs_fetch(
+        include_comments=False,
+        linked_entity_preview_limit=0,
+        tooltip_from_page_metadata=False,
+    ) is False
+    assert _entity_page_needs_fetch(
+        include_comments=True,
+        linked_entity_preview_limit=0,
+        tooltip_from_page_metadata=False,
+    ) is True
+
+    comments_payload, citations = _entity_comments_payload(
+        html=SAMPLE_PAGE_HTML,
+        page_url="https://www.wowhead.com/item=19019/thunderfury",
+        include_comments=True,
+        include_all_comments=False,
+        top_comment_limit=1,
+        top_comment_chars=40,
+    )
+    assert comments_payload is not None
+    assert comments_payload["count"] == 1
+    assert comments_payload["top"][0]["user"] == "A"
+    assert citations == {"comments": "https://www.wowhead.com/item=19019/thunderfury#comments"}
+
+
+def test_entity_linked_entities_payload_helper_builds_preview() -> None:
+    payload = _entity_linked_entities_payload(
+        html=SAMPLE_PAGE_HTML,
+        page_url="https://www.wowhead.com/item=19019/thunderfury",
+        page_entity_type="item",
+        page_entity_id=19019,
+        requested_entity_type="item",
+        requested_entity_id=19019,
+        linked_entity_preview_limit=5,
+    )
+    assert payload is not None
+    assert payload["count"] >= 1
+    assert payload["fetch_more_command"] == "wowhead entity-page item 19019 --max-links 200"
 
 
 def test_write_guide_export_assets_and_manifest_helpers(tmp_path: Path) -> None:
