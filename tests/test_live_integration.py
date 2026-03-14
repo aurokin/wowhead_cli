@@ -404,6 +404,7 @@ def test_live_news_post_contract() -> None:
     assert isinstance(payload["content"]["text"], str)
     assert payload["content"]["text"]
     assert payload["citations"]["page"] == payload["post"]["page_url"]
+    assert isinstance(payload.get("related"), dict)
 
 
 def test_live_blue_topic_contract() -> None:
@@ -421,6 +422,7 @@ def test_live_blue_topic_contract() -> None:
     first = payload["posts"]["items"][0]
     assert isinstance(first.get("author"), str)
     assert isinstance(first.get("body_text"), str)
+    assert isinstance(payload["summary"]["participants"], list)
     assert payload["citations"]["page"] == payload["topic"]["page_url"]
 
 
@@ -452,6 +454,16 @@ def test_live_guide_category_patch_filter_contract() -> None:
         patch = row.get("patch")
         assert isinstance(patch, int)
         assert patch >= 120001
+
+
+def test_live_guide_category_updated_sort_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guides", "classes", "--sort", "updated", "--limit", "5"])
+
+    assert payload["filters"]["sort"] == "updated"
+    timestamps = [row.get("last_updated") for row in payload["results"] if isinstance(row.get("last_updated"), str)]
+    assert len(timestamps) >= 2
+    assert timestamps == sorted(timestamps, reverse=True)
 
 
 def test_live_talent_calc_contract() -> None:

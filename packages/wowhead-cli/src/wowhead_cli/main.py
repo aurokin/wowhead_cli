@@ -2331,6 +2331,25 @@ def _collect_timeline_facets(results: list[dict[str, Any]], *, fields: dict[str,
     return facets
 
 
+def _guide_sort_key(row: dict[str, Any], *, sort_by: str, fallback_index: int) -> tuple[Any, ...]:
+    if sort_by == "updated":
+        updated_at = _parse_iso8601_utc(row.get("last_updated"))
+        return (updated_at is None, -(updated_at.timestamp()) if updated_at is not None else 0.0, fallback_index)
+    if sort_by == "published":
+        published_at = _parse_iso8601_utc(row.get("published_at"))
+        return (published_at is None, -(published_at.timestamp()) if published_at is not None else 0.0, fallback_index)
+    if sort_by == "rating":
+        rating = row.get("rating")
+        votes = row.get("votes")
+        rating_value = float(rating) if isinstance(rating, (int, float)) else float("-inf")
+        vote_value = int(votes) if isinstance(votes, int) else -1
+        return (-rating_value, -vote_value, fallback_index)
+    match_score = row.get("match_score")
+    if isinstance(match_score, (int, float)):
+        return (-float(match_score), fallback_index)
+    return (fallback_index,)
+
+
 def _timeline_result_matches(
     *,
     query: str | None,
@@ -2729,6 +2748,43 @@ def _extract_news_post_markup(html: str) -> str | None:
     except json.JSONDecodeError:
         return None
     return parsed if isinstance(parsed, str) else None
+
+
+def _extract_news_recent_posts(html: str, *, limit: int) -> dict[str, Any] | None:
+    try:
+        payload = extract_json_script(html, "data.WH.News.recentPosts")
+    except (ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    normalized: dict[str, Any] = {}
+    for section_name, rows in payload.items():
+        if not isinstance(section_name, str) or not isinstance(rows, list):
+            continue
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            url = row.get("url")
+            if not isinstance(url, str):
+                continue
+            items.append(
+                {
+                    "title": row.get("name"),
+                    "url": _absolute_wowhead_url(url, fallback=url),
+                    "author": row.get("author"),
+                    "posted_short": row.get("time"),
+                    "type_name": row.get("newsTypeName"),
+                    "region": row.get("region"),
+                    "is_blue_tracker": bool(row.get("blue")),
+                    "is_news": bool(row.get("news")),
+                }
+            )
+        normalized[section_name] = {
+            "count": len(items),
+            "items": items[:limit],
+        }
+    return normalized or None
 
 
 def _normalize_blue_topic_ref(ref: str, *, expansion: ExpansionProfile) -> str:
@@ -4111,6 +4167,13 @@ def news_post(
         ...,
         help="Full Wowhead news URL or /news/... path returned by `wowhead news`.",
     ),
+    related_limit: int = typer.Option(
+        5,
+        "--related-limit",
+        min=1,
+        max=25,
+        help="Maximum related rows to keep from each embedded recent-post bucket.",
+    ),
 ) -> None:
     cfg = _cfg(ctx)
     try:
@@ -4129,6 +4192,7 @@ def news_post(
     markup = _extract_news_post_markup(html) or ""
     sections = extract_guide_sections(markup) if markup else []
     section_chunks = extract_guide_section_chunks(markup) if markup else []
+    recent_posts = _extract_news_recent_posts(html, limit=related_limit)
     author_embed = None
     try:
         raw_author = extract_json_script(html, "data.newsPost.aboutTheAuthor.embedData")
@@ -4161,6 +4225,8 @@ def news_post(
     }
     if author_embed is not None:
         payload["author"] = author_embed
+    if recent_posts is not None:
+        payload["related"] = recent_posts
     _emit(ctx, payload)
 
 
@@ -4202,17 +4268,31 @@ def blue_topic(
                 "post_id": row.get("post"),
                 "topic_id": row.get("topic"),
                 "author": row.get("author"),
+                "author_page": _absolute_wowhead_url(row.get("authorUrl")),
                 "avatar": row.get("avatar"),
                 "posted": row.get("posted"),
+                "posted_full": row.get("date"),
                 "updated": row.get("updated"),
                 "body_html": row.get("body"),
                 "body_text": _clean_htmlish_text(row.get("body")),
                 "region": row.get("region"),
                 "forum_area": row.get("forumArea"),
+                "forum_area_slug": row.get("forumAreaSlug"),
                 "forum": row.get("forum"),
                 "job_title": row.get("jobtitle"),
+                "blue": bool(row.get("blue")),
+                "system": bool(row.get("system")),
+                "index": row.get("index"),
             }
         )
+    participants = sorted({post["author"] for post in posts if isinstance(post.get("author"), str) and post["author"]})
+    blue_authors = sorted(
+        {
+            post["author"]
+            for post in posts
+            if post.get("blue") and isinstance(post.get("author"), str) and post["author"]
+        }
+    )
 
     payload = {
         "expansion": cfg.expansion.key,
@@ -4229,6 +4309,12 @@ def blue_topic(
         "posts": {
             "count": len(posts),
             "items": posts,
+        },
+        "summary": {
+            "participants": participants,
+            "participant_count": len(participants),
+            "blue_authors": blue_authors,
+            "blue_author_count": len(blue_authors),
         },
         "citations": {
             "page": page_url,
@@ -4269,6 +4355,12 @@ def guides(
         min=0,
         help="Maximum patch build number to keep.",
     ),
+    sort_by: str = typer.Option(
+        "relevance",
+        "--sort",
+        help="Sort results by relevance, updated, published, or rating.",
+        show_default=True,
+    ),
     limit: int = typer.Option(
         20,
         "--limit",
@@ -4279,6 +4371,8 @@ def guides(
 ) -> None:
     cfg = _cfg(ctx)
     client = _client(ctx)
+    if sort_by not in {"relevance", "updated", "published", "rating"}:
+        _fail(ctx, "invalid_argument", "--sort must be one of: relevance, updated, published, rating.")
     selected_authors = _normalize_text_filters(author)
     parsed_updated_after = _parse_date_bound(updated_after, end_of_day=False)
     if updated_after is not None and parsed_updated_after is None:
@@ -4338,9 +4432,7 @@ def guides(
             if score <= 0:
                 continue
             normalized_row["match_score"] = score
-            normalized_row["_sort"] = (-score, index)
-        else:
-            normalized_row["_sort"] = (index,)
+        normalized_row["_sort"] = _guide_sort_key(normalized_row, sort_by=sort_by, fallback_index=index)
         normalized_rows.append(normalized_row)
     normalized_rows.sort(key=lambda row: row.pop("_sort"))
 
@@ -4355,6 +4447,7 @@ def guides(
             "updated_before": parsed_updated_before.isoformat() if parsed_updated_before is not None else None,
             "patch_min": patch_min,
             "patch_max": patch_max,
+            "sort": sort_by,
         },
         "count": len(normalized_rows),
         "results": normalized_rows[:limit],

@@ -112,6 +112,8 @@ Implemented direction:
   - stable listing-field filters such as author/type/region/forum
   - facet summaries across the matched timeline window
   - single post/topic fetch with citations
+  - related/recent-post context on article pages when Wowhead exposes it
+  - lightweight participant and blue-author summaries on blue-tracker topic pages
 
 Still to add:
 - category/filter narrowing when the live page model allows it
@@ -189,6 +191,11 @@ Guide-category direction:
   - author
   - updated window
   - patch range
+- support explicit guide-list sorting such as:
+  - relevance
+  - updated
+  - published
+  - rating
 - expose guide-set facet summaries so agents can inspect the filtered result bucket without opening individual guide pages
 
 Current decision on database pages:

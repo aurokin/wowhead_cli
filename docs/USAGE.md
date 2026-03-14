@@ -98,6 +98,7 @@ wowhead blue-topic /blue-tracker/topic/eu/class-tuning-incoming-18-march-610948
 wowhead guides classes
 wowhead guides classes "death knight"
 wowhead guides classes --author Khazakdk --patch-min 120001 --updated-after 2026-02-01
+wowhead guides classes --sort updated --limit 10
 wowhead talent-calc druid/balance/DAQBBBBQQRUFURYVBEANVVRUVFVVVQCVQhEUEBUEBhVQ
 wowhead profession-tree alchemy/BCuA
 wowhead dressing-room "#fz8zz0zb89c8mM8YB8mN8X18mO8ub8mP8uD"
@@ -156,12 +157,17 @@ Wowhead command behavior:
   - extracted text
   - section chunks when the post body contains markup headings
   - author metadata when Wowhead exposes it
+  - embedded related/recent-post buckets when Wowhead exposes them
 - `news` also supports stable timeline metadata filters from the listing payload:
   - `--author`
   - `--type`
   - result `facets` so agents can see which authors and type buckets matched the scanned window
 - `blue-tracker` does the same for the Wowhead blue tracker and is the right surface for topic-over-time blue post research
 - `blue-topic` fetches one specific blue-tracker topic page and returns the normalized topic posts with extracted body text
+- `blue-topic` also returns a lightweight topic summary:
+  - participant list
+  - blue-author list
+  - richer per-post metadata like author page, forum-area slug, and post ordering
 - `blue-tracker` also supports stable timeline metadata filters from the listing payload:
   - `--author`
   - `--region`
@@ -175,6 +181,7 @@ Wowhead command behavior:
   - `--updated-before`
   - `--patch-min`
   - `--patch-max`
+  - `--sort relevance|updated|published|rating`
   - result `facets` so agents can quickly see which authors and category-path buckets are in the filtered guide set
 - Wowhead entity-type handling is now driven by a shared internal registry, so search suggestion types, parser support, resolve filters, and hydrate support stop drifting independently
 - `talent-calc` decodes calculator state URLs into:

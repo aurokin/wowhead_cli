@@ -267,6 +267,31 @@ SAMPLE_NEWS_POST_HTML = """
     <script type="application/json" id="data.newsPost.aboutTheAuthor.embedData">
       {"username":"staff","fullName":"Staff","title":"Author","bio":"Writes news."}
     </script>
+    <script type="application/json" id="data.WH.News.recentPosts">
+      {
+        "news": [
+          {
+            "author": "Jaydaa",
+            "name": "Another Hotfix Roundup",
+            "newsTypeName": "Live",
+            "pinned": false,
+            "time": "3h",
+            "url": "/news/another-hotfix-roundup-380700"
+          }
+        ],
+        "blueTracker": [
+          {
+            "blue": true,
+            "name": "Class Tuning Incoming -- 18 March",
+            "news": false,
+            "region": "eu",
+            "time": "1h",
+            "url": "/blue-tracker/topic/eu/610948"
+          }
+        ],
+        "video": false
+      }
+    </script>
   </head>
   <body>
     <script>
@@ -290,14 +315,20 @@ SAMPLE_BLUE_TOPIC_HTML = """
             "post": 6200022,
             "topic": 610948,
             "author": "Kaivax",
+            "authorUrl": "/blue-tracker/author/Kaivax",
             "avatar": "/avatar.png",
             "body": "<p>The first few days of Midnight max-level play have given us data.</p>",
             "posted": "2026-03-12T22:00:00-06:00",
+            "date": "2026-03-12T22:00:00-06:00",
             "updated": "2026-03-12T23:00:00-06:00",
             "region": "eu",
             "forumArea": "General Discussion",
+            "forumAreaSlug": "wow",
             "forum": "General Discussion",
-            "jobtitle": "Community Manager"
+            "jobtitle": "Community Manager",
+            "blue": true,
+            "system": true,
+            "index": 1
           }
         ]
       }
@@ -688,6 +719,19 @@ def test_guides_command_filters_by_author_and_patch(monkeypatch) -> None:
     assert payload["results"][0]["id"] == 32000
 
 
+def test_guides_command_sorts_by_rating(monkeypatch) -> None:
+    def fake_guides_page(self, category: str):  # noqa: ANN001
+        assert category == "classes"
+        return SAMPLE_GUIDE_CATEGORY_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_category_page_html", fake_guides_page)
+    result = runner.invoke(app, ["guides", "classes", "--sort", "rating", "--limit", "2"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["filters"]["sort"] == "rating"
+    assert [row["id"] for row in payload["results"]] == [32000, 33131]
+
+
 def test_talent_calc_command_decodes_url_and_embedded_builds(monkeypatch) -> None:
     def fake_page_html(self, page_url: str):  # noqa: ANN001
         assert page_url.endswith("/talent-calc/druid/balance/ABC123")
@@ -760,6 +804,8 @@ def test_news_post_command_extracts_markup_and_author(monkeypatch) -> None:
     assert payload["post"]["page_url"] == "https://www.wowhead.com/news/midnight-hotfixes-380785"
     assert payload["content"]["section_count"] == 1
     assert payload["author"]["username"] == "staff"
+    assert payload["related"]["news"]["count"] == 1
+    assert payload["related"]["blueTracker"]["items"][0]["is_blue_tracker"] is True
     assert "Death Knight fixes" in payload["content"]["text"]
 
 
@@ -775,7 +821,11 @@ def test_blue_topic_command_extracts_posts(monkeypatch) -> None:
     assert payload["posts"]["count"] == 1
     first = payload["posts"]["items"][0]
     assert first["author"] == "Kaivax"
+    assert first["author_page"] == "https://www.wowhead.com/blue-tracker/author/Kaivax"
+    assert first["blue"] is True
     assert first["body_text"].startswith("The first few days of Midnight")
+    assert payload["summary"]["participants"] == ["Kaivax"]
+    assert payload["summary"]["blue_authors"] == ["Kaivax"]
 
 
 def test_search_guide_result_includes_guide_url(monkeypatch) -> None:
