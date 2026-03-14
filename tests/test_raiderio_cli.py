@@ -5,7 +5,7 @@ import json
 import httpx
 from typer.testing import CliRunner
 
-from raiderio_cli.main import app as raiderio_app
+from raiderio_cli.main import _player_snapshots, _run_matches_filters, app as raiderio_app
 
 runner = CliRunner()
 
@@ -609,6 +609,103 @@ def test_raiderio_sample_mythic_plus_players_reports_truncation(monkeypatch) -> 
     assert payload["sample"]["player_sampling"]["returned_player_count"] == 1
     assert payload["sample"]["player_sampling"]["truncated"] is True
     assert payload["sample"]["player_sampling"]["excluded_player_count"] == 1
+
+
+def test_raiderio_run_matches_filters_with_normalized_roster_fields() -> None:
+    run = {
+        "mythic_level": 26,
+        "score": 581.5,
+        "roster": [
+            {
+                "role": "dps",
+                "class_name": "Demon Hunter",
+                "spec_name": "Havoc",
+                "region": "EU",
+            }
+        ],
+    }
+
+    assert (
+        _run_matches_filters(
+            run,
+            level_min=25,
+            level_max=27,
+            score_min=580.0,
+            score_max=590.0,
+            contains_role=["dps"],
+            contains_class=["demon-hunter"],
+            contains_spec=["havoc"],
+            player_region=["eu"],
+        )
+        is True
+    )
+    assert (
+        _run_matches_filters(
+            run,
+            level_min=27,
+            level_max=None,
+            score_min=None,
+            score_max=None,
+            contains_role=[],
+            contains_class=[],
+            contains_spec=[],
+            player_region=[],
+        )
+        is False
+    )
+
+
+def test_raiderio_player_snapshots_merge_repeated_roster_entries() -> None:
+    runs = [
+        {
+            "mythic_level": 26,
+            "score": 581.5,
+            "completed_at": "2026-01-21T18:27:09.000Z",
+            "dungeon": "The Dawnbreaker",
+            "dungeon_slug": "the-dawnbreaker",
+            "roster": [
+                {
+                    "name": "Cotti",
+                    "realm": "tarren-mill",
+                    "region": "eu",
+                    "role": "dps",
+                    "class_name": "Druid",
+                    "spec_name": "Balance",
+                    "profile_url": "https://raider.io/characters/eu/tarren-mill/Cotti",
+                }
+            ],
+        },
+        {
+            "mythic_level": 25,
+            "score": 575.0,
+            "completed_at": "2026-01-21T18:30:09.000Z",
+            "dungeon": "Operation: Floodgate",
+            "dungeon_slug": "operation-floodgate",
+            "roster": [
+                {
+                    "name": "Cotti",
+                    "realm": "tarren-mill",
+                    "region": "eu",
+                    "role": "dps",
+                    "class_slug": "druid",
+                    "spec_slug": "balance",
+                    "profile_url": "https://raider.io/characters/eu/tarren-mill/Cotti",
+                }
+            ],
+        },
+    ]
+
+    snapshots = _player_snapshots(runs)
+
+    assert len(snapshots) == 1
+    assert snapshots[0]["name"] == "Cotti"
+    assert snapshots[0]["appearance_count"] == 2
+    assert snapshots[0]["top_mythic_level"] == 26
+    assert snapshots[0]["top_score"] == 581.5
+    assert snapshots[0]["latest_completed_at"] == "2026-01-21T18:30:09.000Z"
+    assert snapshots[0]["class_slugs"] == ["druid"]
+    assert snapshots[0]["spec_slugs"] == ["balance"]
+    assert snapshots[0]["dungeon_slugs"] == ["the-dawnbreaker", "operation-floodgate"]
 
 
 def test_raiderio_distribution_mythic_plus_runs(monkeypatch) -> None:

@@ -603,6 +603,63 @@ def _normalize_filter_values(values: list[str] | None) -> list[str]:
     return normalized
 
 
+def _run_roster(run: dict[str, Any]) -> list[dict[str, Any]]:
+    roster = run.get("roster")
+    if not isinstance(roster, list):
+        return []
+    return [entry for entry in roster if isinstance(entry, dict)]
+
+
+def _metric_meets_bounds(value: Any, *, minimum: float | None, maximum: float | None) -> bool:
+    if not isinstance(value, (int, float)):
+        return True
+    numeric_value = float(value)
+    if minimum is not None and numeric_value < minimum:
+        return False
+    if maximum is not None and numeric_value > maximum:
+        return False
+    return True
+
+
+def _roster_field_values(
+    roster: list[dict[str, Any]],
+    *,
+    primary_key: str,
+    fallback_key: str | None = None,
+    slugify_spaces: bool = False,
+) -> set[str]:
+    values: set[str] = set()
+    for entry in roster:
+        raw_value = entry.get(primary_key)
+        if not raw_value and fallback_key is not None:
+            raw_value = entry.get(fallback_key)
+        text = str(raw_value or "").strip().lower()
+        if slugify_spaces:
+            text = text.replace(" ", "-")
+        if text:
+            values.add(text)
+    return values
+
+
+def _roster_contains_any(
+    roster: list[dict[str, Any]],
+    expected: list[str],
+    *,
+    primary_key: str,
+    fallback_key: str | None = None,
+    slugify_spaces: bool = False,
+) -> bool:
+    if not expected:
+        return True
+    values = _roster_field_values(
+        roster,
+        primary_key=primary_key,
+        fallback_key=fallback_key,
+        slugify_spaces=slugify_spaces,
+    )
+    return any(value in values for value in expected)
+
+
 def _run_matches_filters(
     run: dict[str, Any],
     *,
@@ -615,46 +672,18 @@ def _run_matches_filters(
     contains_spec: list[str],
     player_region: list[str],
 ) -> bool:
-    mythic_level = run.get("mythic_level")
-    if level_min is not None and isinstance(mythic_level, int) and mythic_level < level_min:
+    if not _metric_meets_bounds(run.get("mythic_level"), minimum=level_min, maximum=level_max):
         return False
-    if level_max is not None and isinstance(mythic_level, int) and mythic_level > level_max:
+    if not _metric_meets_bounds(run.get("score"), minimum=score_min, maximum=score_max):
         return False
-    score = run.get("score")
-    if score_min is not None and isinstance(score, (int, float)) and float(score) < score_min:
+    roster = _run_roster(run)
+    if not _roster_contains_any(roster, contains_role, primary_key="role"):
         return False
-    if score_max is not None and isinstance(score, (int, float)) and float(score) > score_max:
+    if not _roster_contains_any(roster, contains_class, primary_key="class_slug", fallback_key="class_name", slugify_spaces=True):
         return False
-    roster = run.get("roster") if isinstance(run.get("roster"), list) else []
-    if contains_role:
-        role_values = {str(entry.get("role") or "").strip().lower() for entry in roster if isinstance(entry, dict)}
-        if not any(value in role_values for value in contains_role):
-            return False
-    if contains_class:
-        class_values = {
-            str(entry.get("class_slug") or entry.get("class_name") or "").strip().lower().replace(" ", "-")
-            for entry in roster
-            if isinstance(entry, dict)
-        }
-        if not any(value in class_values for value in contains_class):
-            return False
-    if contains_spec:
-        spec_values = {
-            str(entry.get("spec_slug") or entry.get("spec_name") or "").strip().lower().replace(" ", "-")
-            for entry in roster
-            if isinstance(entry, dict)
-        }
-        if not any(value in spec_values for value in contains_spec):
-            return False
-    if player_region:
-        region_values = {
-            str(entry.get("region") or "").strip().lower()
-            for entry in roster
-            if isinstance(entry, dict)
-        }
-        if not any(value in region_values for value in player_region):
-            return False
-    return True
+    if not _roster_contains_any(roster, contains_spec, primary_key="spec_slug", fallback_key="spec_name", slugify_spaces=True):
+        return False
+    return _roster_contains_any(roster, player_region, primary_key="region")
 
 
 def _filtered_runs(
@@ -781,8 +810,7 @@ def _sample_summary(runs: list[dict[str, Any]], *, meta: dict[str, Any]) -> dict
     roster_entries = [
         entry
         for run in runs
-        for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
-        if isinstance(entry, dict)
+        for entry in _run_roster(run)
     ]
     role_values = [str(entry.get("role") or "unknown") for entry in roster_entries]
     region_values = [str(entry.get("region") or "unknown") for entry in roster_entries]
@@ -820,68 +848,90 @@ def _sample_summary(runs: list[dict[str, Any]], *, meta: dict[str, Any]) -> dict
     }
 
 
+def _player_snapshot_key(entry: dict[str, Any]) -> tuple[str, str, str] | None:
+    name = str(entry.get("name") or "").strip()
+    realm = str(entry.get("realm") or "").strip().lower()
+    region = str(entry.get("region") or "").strip().lower()
+    if not name or not realm or not region:
+        return None
+    return region, realm, name
+
+
+def _new_player_snapshot(key: tuple[str, str, str], entry: dict[str, Any]) -> dict[str, Any]:
+    region, realm, name = key
+    return {
+        "name": name,
+        "realm": realm,
+        "region": region,
+        "profile_url": entry.get("profile_url"),
+        "appearance_count": 0,
+        "roles": [],
+        "class_slugs": [],
+        "spec_slugs": [],
+        "top_mythic_level": None,
+        "top_score": None,
+        "latest_completed_at": None,
+        "dungeons": [],
+        "dungeon_slugs": [],
+    }
+
+
+def _append_unique(snapshot: dict[str, Any], field: str, value: str) -> None:
+    if not value:
+        return
+    values = snapshot.get(field)
+    if isinstance(values, list) and value not in values:
+        values.append(value)
+
+
+def _normalized_roster_label(entry: dict[str, Any], primary_key: str, fallback_key: str) -> str:
+    return str(entry.get(primary_key) or entry.get(fallback_key) or "").strip().lower().replace(" ", "-")
+
+
+def _update_player_snapshot(snapshot: dict[str, Any], entry: dict[str, Any], run: dict[str, Any]) -> None:
+    snapshot["appearance_count"] += 1
+    _append_unique(snapshot, "roles", str(entry.get("role") or "").strip().lower())
+    _append_unique(snapshot, "class_slugs", _normalized_roster_label(entry, "class_slug", "class_name"))
+    _append_unique(snapshot, "spec_slugs", _normalized_roster_label(entry, "spec_slug", "spec_name"))
+
+    mythic_level = run.get("mythic_level")
+    if isinstance(mythic_level, int):
+        current_top = snapshot.get("top_mythic_level")
+        if not isinstance(current_top, int) or mythic_level > current_top:
+            snapshot["top_mythic_level"] = mythic_level
+
+    score = run.get("score")
+    if isinstance(score, (int, float)):
+        current_score = snapshot.get("top_score")
+        if not isinstance(current_score, (int, float)) or float(score) > float(current_score):
+            snapshot["top_score"] = float(score)
+
+    completed_at = run.get("completed_at")
+    if isinstance(completed_at, str):
+        latest = snapshot.get("latest_completed_at")
+        if not isinstance(latest, str) or completed_at > latest:
+            snapshot["latest_completed_at"] = completed_at
+
+    dungeon = run.get("dungeon")
+    if isinstance(dungeon, str):
+        _append_unique(snapshot, "dungeons", dungeon)
+    dungeon_slug = run.get("dungeon_slug")
+    if isinstance(dungeon_slug, str):
+        _append_unique(snapshot, "dungeon_slugs", dungeon_slug)
+
+
 def _player_snapshots(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     players: dict[tuple[str, str, str], dict[str, Any]] = {}
     for run in runs:
-        mythic_level = run.get("mythic_level")
-        score = run.get("score")
-        completed_at = run.get("completed_at")
-        dungeon = run.get("dungeon")
-        dungeon_slug = run.get("dungeon_slug")
-        roster = run.get("roster") if isinstance(run.get("roster"), list) else []
-        for entry in roster:
-            if not isinstance(entry, dict):
+        for entry in _run_roster(run):
+            key = _player_snapshot_key(entry)
+            if key is None:
                 continue
-            name = str(entry.get("name") or "").strip()
-            realm = str(entry.get("realm") or "").strip().lower()
-            region = str(entry.get("region") or "").strip().lower()
-            if not name or not realm or not region:
-                continue
-            key = (region, realm, name)
             snapshot = players.get(key)
             if snapshot is None:
-                snapshot = {
-                    "name": name,
-                    "realm": realm,
-                    "region": region,
-                    "profile_url": entry.get("profile_url"),
-                    "appearance_count": 0,
-                    "roles": [],
-                    "class_slugs": [],
-                    "spec_slugs": [],
-                    "top_mythic_level": None,
-                    "top_score": None,
-                    "latest_completed_at": None,
-                    "dungeons": [],
-                    "dungeon_slugs": [],
-                }
+                snapshot = _new_player_snapshot(key, entry)
                 players[key] = snapshot
-            snapshot["appearance_count"] += 1
-            role = str(entry.get("role") or "").strip().lower()
-            if role and role not in snapshot["roles"]:
-                snapshot["roles"].append(role)
-            class_slug = str(entry.get("class_slug") or entry.get("class_name") or "").strip().lower().replace(" ", "-")
-            if class_slug and class_slug not in snapshot["class_slugs"]:
-                snapshot["class_slugs"].append(class_slug)
-            spec_slug = str(entry.get("spec_slug") or entry.get("spec_name") or "").strip().lower().replace(" ", "-")
-            if spec_slug and spec_slug not in snapshot["spec_slugs"]:
-                snapshot["spec_slugs"].append(spec_slug)
-            if isinstance(mythic_level, int):
-                current_top = snapshot.get("top_mythic_level")
-                if not isinstance(current_top, int) or mythic_level > current_top:
-                    snapshot["top_mythic_level"] = mythic_level
-            if isinstance(score, (int, float)):
-                current_score = snapshot.get("top_score")
-                if not isinstance(current_score, (int, float)) or float(score) > float(current_score):
-                    snapshot["top_score"] = float(score)
-            if isinstance(completed_at, str):
-                latest = snapshot.get("latest_completed_at")
-                if not isinstance(latest, str) or completed_at > latest:
-                    snapshot["latest_completed_at"] = completed_at
-            if isinstance(dungeon, str) and dungeon and dungeon not in snapshot["dungeons"]:
-                snapshot["dungeons"].append(dungeon)
-            if isinstance(dungeon_slug, str) and dungeon_slug and dungeon_slug not in snapshot["dungeon_slugs"]:
-                snapshot["dungeon_slugs"].append(dungeon_slug)
+            _update_player_snapshot(snapshot, entry, run)
     snapshots = list(players.values())
     snapshots.sort(
         key=lambda row: (
@@ -947,38 +997,78 @@ def _player_sample_summary(
     return summary
 
 
+def _freshness_payload(meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sampled_at": meta["sampled_at"],
+        "cache_ttl_seconds": meta["cache_ttl_seconds"],
+    }
+
+
+def _citations_payload(meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "leaderboard_urls": meta["leaderboard_urls"],
+    }
+
+
+def _numeric_distribution(values: list[int | float], *, unit: str) -> dict[str, Any]:
+    rows = _count_map([str(value) for value in values])
+    stats = None
+    if values:
+        sorted_values = sorted(values)
+        stats = {
+            "min": sorted_values[0],
+            "max": sorted_values[-1],
+            "average": round(sum(sorted_values) / len(sorted_values), 2),
+            "median": median(sorted_values),
+        }
+    return {
+        "unit": unit,
+        "rows": rows,
+        "statistics": stats,
+    }
+
+
+def _categorical_distribution(values: list[str], *, unit: str) -> dict[str, Any]:
+    return {
+        "unit": unit,
+        "rows": _count_map(values),
+        "statistics": None,
+    }
+
+
+def _distribution_response(
+    *,
+    kind: str,
+    metric: str,
+    query: dict[str, Any],
+    sample: dict[str, Any],
+    distribution: dict[str, Any],
+    meta: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "provider": "raiderio",
+        "kind": kind,
+        "metric": metric,
+        "query": query,
+        "sample": sample,
+        "distribution": distribution,
+        "freshness": _freshness_payload(meta),
+        "citations": _citations_payload(meta),
+    }
+
+
 def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
+    sample = _sample_summary(runs, meta=meta)
     if metric == "mythic_level":
         values = [int(run["mythic_level"]) for run in runs if isinstance(run.get("mythic_level"), int)]
-        rows = _count_map([str(value) for value in values])
-        stats = None
-        if values:
-            sorted_values = sorted(values)
-            stats = {
-                "min": sorted_values[0],
-                "max": sorted_values[-1],
-                "average": round(sum(sorted_values) / len(sorted_values), 2),
-                "median": median(sorted_values),
-            }
-        return {
-            "provider": "raiderio",
-            "kind": "mythic_plus_runs_distribution",
-            "metric": metric,
-            "query": query,
-            "sample": _sample_summary(runs, meta=meta),
-            "distribution": {
-                "unit": "runs",
-                "rows": rows,
-                "statistics": stats,
-            },
-            "freshness": {
-                "sampled_at": meta["sampled_at"],
-                "cache_ttl_seconds": meta["cache_ttl_seconds"],
-            },
-            "citations": {
-                "leaderboard_urls": meta["leaderboard_urls"],
-            },
-        }
+        return _distribution_response(
+            kind="mythic_plus_runs_distribution",
+            metric=metric,
+            query=query,
+            sample=sample,
+            distribution=_numeric_distribution(values, unit="runs"),
+            meta=meta,
+        )
     if metric == "dungeon":
         values = [str(run.get("dungeon") or "unknown") for run in runs]
         unit = "runs"
@@ -1016,29 +1106,17 @@ def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict
         values = [
             str(entry.get("region") or "unknown")
             for run in runs
-            for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
-            if isinstance(entry, dict)
+            for entry in _run_roster(run)
         ]
         unit = "roster_entries"
-    return {
-        "provider": "raiderio",
-        "kind": "mythic_plus_runs_distribution",
-        "metric": metric,
-        "query": query,
-        "sample": _sample_summary(runs, meta=meta),
-        "distribution": {
-            "unit": unit,
-            "rows": _count_map(values),
-            "statistics": None,
-        },
-        "freshness": {
-            "sampled_at": meta["sampled_at"],
-            "cache_ttl_seconds": meta["cache_ttl_seconds"],
-        },
-        "citations": {
-            "leaderboard_urls": meta["leaderboard_urls"],
-        },
-    }
+    return _distribution_response(
+        kind="mythic_plus_runs_distribution",
+        metric=metric,
+        query=query,
+        sample=sample,
+        distribution=_categorical_distribution(values, unit=unit),
+        meta=meta,
+    )
 
 
 def _player_distribution_payload(
@@ -1051,71 +1129,48 @@ def _player_distribution_payload(
     filtering: dict[str, Any],
     player_sampling: dict[str, Any],
 ) -> dict[str, Any]:
+    sample = _player_sample_summary(players, runs=runs, meta=meta, filtering=filtering, player_sampling=player_sampling)
     if metric == "appearance_count":
         values = [int(player["appearance_count"]) for player in players if isinstance(player.get("appearance_count"), int)]
-        rows = _count_map([str(value) for value in values])
-        stats = None
-        if values:
-            sorted_values = sorted(values)
-            stats = {
-                "min": sorted_values[0],
-                "max": sorted_values[-1],
-                "average": round(sum(sorted_values) / len(sorted_values), 2),
-                "median": median(sorted_values),
-            }
-        unit = "players"
+        distribution = _numeric_distribution(values, unit="players")
     elif metric == "top_mythic_level":
         values = [int(player["top_mythic_level"]) for player in players if isinstance(player.get("top_mythic_level"), int)]
-        rows = _count_map([str(value) for value in values])
-        stats = None
-        if values:
-            sorted_values = sorted(values)
-            stats = {
-                "min": sorted_values[0],
-                "max": sorted_values[-1],
-                "average": round(sum(sorted_values) / len(sorted_values), 2),
-                "median": median(sorted_values),
-            }
-        unit = "players"
+        distribution = _numeric_distribution(values, unit="players")
     elif metric == "class":
-        values = [str(value) for player in players for value in (player.get("class_slugs") if isinstance(player.get("class_slugs"), list) else []) if value]
-        rows = _count_map(values)
-        stats = None
-        unit = "player_class_tags"
+        values = [
+            str(value)
+            for player in players
+            for value in (player.get("class_slugs") if isinstance(player.get("class_slugs"), list) else [])
+            if value
+        ]
+        distribution = _categorical_distribution(values, unit="player_class_tags")
     elif metric == "spec":
-        values = [str(value) for player in players for value in (player.get("spec_slugs") if isinstance(player.get("spec_slugs"), list) else []) if value]
-        rows = _count_map(values)
-        stats = None
-        unit = "player_spec_tags"
+        values = [
+            str(value)
+            for player in players
+            for value in (player.get("spec_slugs") if isinstance(player.get("spec_slugs"), list) else [])
+            if value
+        ]
+        distribution = _categorical_distribution(values, unit="player_spec_tags")
     elif metric == "role":
-        values = [str(value) for player in players for value in (player.get("roles") if isinstance(player.get("roles"), list) else []) if value]
-        rows = _count_map(values)
-        stats = None
-        unit = "player_role_tags"
+        values = [
+            str(value)
+            for player in players
+            for value in (player.get("roles") if isinstance(player.get("roles"), list) else [])
+            if value
+        ]
+        distribution = _categorical_distribution(values, unit="player_role_tags")
     else:
         values = [str(player.get("region") or "unknown") for player in players]
-        rows = _count_map(values)
-        stats = None
-        unit = "players"
-    return {
-        "provider": "raiderio",
-        "kind": "mythic_plus_players_distribution",
-        "metric": metric,
-        "query": query,
-        "sample": _player_sample_summary(players, runs=runs, meta=meta, filtering=filtering, player_sampling=player_sampling),
-        "distribution": {
-            "unit": unit,
-            "rows": rows,
-            "statistics": stats,
-        },
-        "freshness": {
-            "sampled_at": meta["sampled_at"],
-            "cache_ttl_seconds": meta["cache_ttl_seconds"],
-        },
-        "citations": {
-            "leaderboard_urls": meta["leaderboard_urls"],
-        },
-    }
+        distribution = _categorical_distribution(values, unit="players")
+    return _distribution_response(
+        kind="mythic_plus_players_distribution",
+        metric=metric,
+        query=query,
+        sample=sample,
+        distribution=distribution,
+        meta=meta,
+    )
 
 
 def _nearest_threshold_rows(metric: str, target: float, runs: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
@@ -1185,13 +1240,8 @@ def _threshold_payload(metric: str, target: float, runs: list[dict[str, Any]], *
             "estimate": estimate,
             "caveat": caveat,
         },
-        "freshness": {
-            "sampled_at": meta["sampled_at"],
-            "cache_ttl_seconds": meta["cache_ttl_seconds"],
-        },
-        "citations": {
-            "leaderboard_urls": meta["leaderboard_urls"],
-        },
+        "freshness": _freshness_payload(meta),
+        "citations": _citations_payload(meta),
     }
 
 
