@@ -23,6 +23,7 @@ def test_raiderio_doctor_reports_phase_one_capabilities() -> None:
     assert payload["capabilities"]["search"] == "ready"
     assert payload["capabilities"]["sample_mythic_plus_runs"] == "ready"
     assert payload["capabilities"]["distribution_mythic_plus_runs"] == "ready"
+    assert payload["capabilities"]["threshold_mythic_plus_runs"] == "ready"
 
 
 def test_raiderio_search_returns_ranked_matches(monkeypatch) -> None:
@@ -360,8 +361,28 @@ def test_raiderio_sample_mythic_plus_runs(monkeypatch) -> None:
                         "weekly_modifiers": [{"slug": "tyrannical"}],
                         "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
                         "roster": [
-                            {"character": {"name": "Cotti", "realm": {"slug": "tarren-mill"}, "region": {"slug": "eu"}}, "role": "dps"},
-                            {"character": {"name": "Meowfreak", "realm": {"slug": "tarren-mill"}, "region": {"slug": "eu"}}, "role": "tank"},
+                            {
+                                "character": {
+                                    "name": "Cotti",
+                                    "realm": {"slug": "tarren-mill"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Druid", "slug": "druid"},
+                                    "spec": {"name": "Balance", "slug": "balance"},
+                                    "path": "/characters/eu/tarren-mill/Cotti",
+                                },
+                                "role": "dps",
+                            },
+                            {
+                                "character": {
+                                    "name": "Meowfreak",
+                                    "realm": {"slug": "tarren-mill"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Demon Hunter", "slug": "demon-hunter"},
+                                    "spec": {"name": "Vengeance", "slug": "vengeance"},
+                                    "path": "/characters/eu/tarren-mill/Meowfreak",
+                                },
+                                "role": "tank",
+                            },
                         ],
                     },
                 },
@@ -379,8 +400,28 @@ def test_raiderio_sample_mythic_plus_runs(monkeypatch) -> None:
                         "weekly_modifiers": [{"slug": "tyrannical"}],
                         "dungeon": {"name": "Operation: Floodgate", "slug": "operation-floodgate"},
                         "roster": [
-                            {"character": {"name": "Meowtide", "realm": {"slug": "sylvanas"}, "region": {"slug": "eu"}}, "role": "healer"},
-                            {"character": {"name": "Solanis", "realm": {"slug": "sylvanas"}, "region": {"slug": "eu"}}, "role": "dps"},
+                            {
+                                "character": {
+                                    "name": "Meowtide",
+                                    "realm": {"slug": "sylvanas"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Shaman", "slug": "shaman"},
+                                    "spec": {"name": "Restoration", "slug": "restoration"},
+                                    "path": "/characters/eu/sylvanas/Meowtide",
+                                },
+                                "role": "healer",
+                            },
+                            {
+                                "character": {
+                                    "name": "Solanis",
+                                    "realm": {"slug": "sylvanas"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Mage", "slug": "mage"},
+                                    "spec": {"name": "Frost", "slug": "frost"},
+                                    "path": "/characters/eu/sylvanas/Solanis",
+                                },
+                                "role": "dps",
+                            },
                         ],
                     },
                 },
@@ -444,8 +485,28 @@ def test_raiderio_distribution_mythic_plus_runs(monkeypatch) -> None:
                         "weekly_modifiers": [{"slug": "tyrannical"}],
                         "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
                         "roster": [
-                            {"character": {"name": "Cotti", "realm": {"slug": "tarren-mill"}, "region": {"slug": "eu"}}, "role": "dps"},
-                            {"character": {"name": "Meowfreak", "realm": {"slug": "tarren-mill"}, "region": {"slug": "eu"}}, "role": "tank"},
+                            {
+                                "character": {
+                                    "name": "Cotti",
+                                    "realm": {"slug": "tarren-mill"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Druid", "slug": "druid"},
+                                    "spec": {"name": "Balance", "slug": "balance"},
+                                    "path": "/characters/eu/tarren-mill/Cotti",
+                                },
+                                "role": "dps",
+                            },
+                            {
+                                "character": {
+                                    "name": "Meowfreak",
+                                    "realm": {"slug": "tarren-mill"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Demon Hunter", "slug": "demon-hunter"},
+                                    "spec": {"name": "Vengeance", "slug": "vengeance"},
+                                    "path": "/characters/eu/tarren-mill/Meowfreak",
+                                },
+                                "role": "tank",
+                            },
                         ],
                     },
                 },
@@ -460,8 +521,28 @@ def test_raiderio_distribution_mythic_plus_runs(monkeypatch) -> None:
                         "weekly_modifiers": [{"slug": "tyrannical"}],
                         "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
                         "roster": [
-                            {"character": {"name": "Meowtide", "realm": {"slug": "sylvanas"}, "region": {"slug": "eu"}}, "role": "healer"},
-                            {"character": {"name": "Solanis", "realm": {"slug": "sylvanas"}, "region": {"slug": "eu"}}, "role": "dps"},
+                            {
+                                "character": {
+                                    "name": "Meowtide",
+                                    "realm": {"slug": "sylvanas"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Shaman", "slug": "shaman"},
+                                    "spec": {"name": "Restoration", "slug": "restoration"},
+                                    "path": "/characters/eu/sylvanas/Meowtide",
+                                },
+                                "role": "healer",
+                            },
+                            {
+                                "character": {
+                                    "name": "Solanis",
+                                    "realm": {"slug": "sylvanas"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Mage", "slug": "mage"},
+                                    "spec": {"name": "Frost", "slug": "frost"},
+                                    "path": "/characters/eu/sylvanas/Solanis",
+                                },
+                                "role": "dps",
+                            },
                         ],
                     },
                 },
@@ -482,9 +563,118 @@ def test_raiderio_distribution_mythic_plus_runs(monkeypatch) -> None:
     assert role_payload["distribution"]["unit"] == "roster_entries"
     assert role_payload["distribution"]["rows"][0]["value"] == "dps"
 
+    spec_result = runner.invoke(raiderio_app, ["distribution", "mythic-plus-runs", "--metric", "spec"])
+    assert spec_result.exit_code == 0
+    spec_payload = json.loads(spec_result.stdout)
+    assert spec_payload["distribution"]["unit"] == "roster_entries"
+    assert spec_payload["distribution"]["rows"][0]["value"] in {"balance", "frost", "restoration", "vengeance"}
+
+    class_result = runner.invoke(raiderio_app, ["distribution", "mythic-plus-runs", "--metric", "class"])
+    assert class_result.exit_code == 0
+    class_payload = json.loads(class_result.stdout)
+    assert class_payload["distribution"]["unit"] == "roster_entries"
+    assert class_payload["distribution"]["rows"][0]["value"] in {"druid", "demon-hunter", "shaman", "mage"}
+
+    comp_result = runner.invoke(raiderio_app, ["distribution", "mythic-plus-runs", "--metric", "composition"])
+    assert comp_result.exit_code == 0
+    comp_payload = json.loads(comp_result.stdout)
+    assert comp_payload["distribution"]["unit"] == "runs"
+    assert len(comp_payload["distribution"]["rows"]) >= 1
+
 
 def test_raiderio_distribution_rejects_unknown_metric() -> None:
     result = runner.invoke(raiderio_app, ["distribution", "mythic-plus-runs", "--metric", "spec"])
+    assert result.exit_code == 0
+
+
+def test_raiderio_distribution_rejects_unknown_metric_name() -> None:
+    result = runner.invoke(raiderio_app, ["distribution", "mythic-plus-runs", "--metric", "unknown"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+
+
+def test_raiderio_threshold_mythic_plus_runs(monkeypatch) -> None:
+    def fake_runs(self, *, season: str | None, region: str, dungeon: str, affixes: str | None, page: int):  # noqa: ANN001
+        return {
+            "season": "season-tww-3",
+            "leaderboard_url": "https://raider.io/mythic-plus-runs/season-tww-3/world/all/0",
+            "rankings": [
+                {
+                    "rank": 1,
+                    "score": 581.5,
+                    "run": {
+                        "keystone_run_id": 1001,
+                        "season": "season-tww-3",
+                        "mythic_level": 26,
+                        "completed_at": "2026-01-21T18:27:09.000Z",
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
+                        "roster": [
+                            {
+                                "character": {
+                                    "name": "Cotti",
+                                    "realm": {"slug": "tarren-mill"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Druid", "slug": "druid"},
+                                    "spec": {"name": "Balance", "slug": "balance"},
+                                    "path": "/characters/eu/tarren-mill/Cotti",
+                                },
+                                "role": "dps",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "rank": 2,
+                    "score": 560.0,
+                    "run": {
+                        "keystone_run_id": 1002,
+                        "season": "season-tww-3",
+                        "mythic_level": 25,
+                        "completed_at": "2026-01-21T18:30:09.000Z",
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "Operation: Floodgate", "slug": "operation-floodgate"},
+                        "roster": [
+                            {
+                                "character": {
+                                    "name": "Meowtide",
+                                    "realm": {"slug": "sylvanas"},
+                                    "region": {"slug": "eu"},
+                                    "class": {"name": "Shaman", "slug": "shaman"},
+                                    "spec": {"name": "Restoration", "slug": "restoration"},
+                                    "path": "/characters/eu/sylvanas/Meowtide",
+                                },
+                                "role": "healer",
+                            }
+                        ],
+                    },
+                },
+            ],
+        }
+
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.mythic_plus_runs", fake_runs)
+    score_result = runner.invoke(
+        raiderio_app,
+        ["threshold", "mythic-plus-runs", "--metric", "score", "--value", "560", "--nearest", "2"],
+    )
+    assert score_result.exit_code == 0
+    score_payload = json.loads(score_result.stdout)
+    assert score_payload["threshold"]["nearest_match_count"] == 2
+    assert score_payload["threshold"]["estimate"]["metric"] == "mythic_level"
+    assert score_payload["threshold"]["nearest_matches"][0]["value"] == 560.0
+
+    level_result = runner.invoke(
+        raiderio_app,
+        ["threshold", "mythic-plus-runs", "--metric", "mythic_level", "--value", "25", "--nearest", "2"],
+    )
+    assert level_result.exit_code == 0
+    level_payload = json.loads(level_result.stdout)
+    assert level_payload["threshold"]["estimate"]["metric"] == "score"
+
+
+def test_raiderio_threshold_rejects_unknown_metric() -> None:
+    result = runner.invoke(raiderio_app, ["threshold", "mythic-plus-runs", "--metric", "rating", "--value", "3000"])
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "invalid_query"

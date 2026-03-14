@@ -56,3 +56,15 @@ def test_live_raiderio_distribution_mythic_plus_runs_contract() -> None:
     assert payload["metric"] == "dungeon"
     assert payload["distribution"]["unit"] == "runs"
     assert len(payload["distribution"]["rows"]) >= 1
+
+
+@pytest.mark.live
+def test_live_raiderio_threshold_mythic_plus_runs_contract() -> None:
+    payload = _payload_for(
+        ["threshold", "mythic-plus-runs", "--metric", "score", "--value", "560", "--pages", "1", "--limit", "20", "--nearest", "5"]
+    )
+
+    assert payload["kind"] == "mythic_plus_runs_threshold"
+    assert payload["metric"] == "score"
+    assert payload["threshold"]["nearest_match_count"] >= 1
+    assert payload["threshold"]["estimate"]["metric"] == "mythic_level"

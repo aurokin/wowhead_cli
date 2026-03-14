@@ -14,8 +14,10 @@ from warcraft_core.output import emit
 app = typer.Typer(add_completion=False, help="Raider.IO profile and leaderboard CLI.")
 sample_app = typer.Typer(add_completion=False, help="Sample-backed Raider.IO analytics primitives.")
 distribution_app = typer.Typer(add_completion=False, help="Derived distributions built from Raider.IO samples.")
+threshold_app = typer.Typer(add_completion=False, help="Threshold-style estimates derived from sampled Raider.IO runs.")
 app.add_typer(sample_app, name="sample")
 app.add_typer(distribution_app, name="distribution")
+app.add_typer(threshold_app, name="threshold")
 
 
 @dataclass(slots=True)
@@ -505,6 +507,17 @@ def _ranking_run_summary(row: dict[str, Any]) -> dict[str, Any]:
                 "name": ((entry.get("character") or {}).get("name") if isinstance(entry, dict) else None),
                 "realm": ((((entry.get("character") or {}).get("realm") or {}).get("slug")) if isinstance(entry, dict) else None),
                 "region": ((((entry.get("character") or {}).get("region") or {}).get("slug")) if isinstance(entry, dict) else None),
+                "class_name": (((((entry.get("character") or {}).get("class")) or {}).get("name")) if isinstance(entry, dict) else None),
+                "class_slug": (((((entry.get("character") or {}).get("class")) or {}).get("slug")) if isinstance(entry, dict) else None),
+                "spec_name": (((((entry.get("character") or {}).get("spec")) or {}).get("name")) if isinstance(entry, dict) else None),
+                "spec_slug": (((((entry.get("character") or {}).get("spec")) or {}).get("slug")) if isinstance(entry, dict) else None),
+                "profile_url": (
+                    f"https://raider.io{((entry.get('character') or {}).get('path'))}"
+                    if isinstance(entry, dict)
+                    and isinstance(((entry.get("character") or {}).get("path")), str)
+                    and str(((entry.get("character") or {}).get("path"))).startswith("/")
+                    else None
+                ),
                 "role": entry.get("role") if isinstance(entry, dict) else None,
             }
             for entry in roster[:5]
@@ -596,6 +609,22 @@ def _count_map(values: list[str]) -> list[dict[str, Any]]:
     ]
 
 
+def _composition_key(run: dict[str, Any], *, mode: str) -> str:
+    roster = run.get("roster") if isinstance(run.get("roster"), list) else []
+    parts: list[str] = []
+    for entry in roster:
+        if not isinstance(entry, dict):
+            continue
+        role = str(entry.get("role") or "unknown")
+        if mode == "spec":
+            label = str(entry.get("spec_slug") or entry.get("spec_name") or "unknown")
+        else:
+            label = str(entry.get("class_slug") or entry.get("class_name") or "unknown")
+        parts.append(f"{role}:{label}")
+    parts.sort()
+    return " | ".join(parts) if parts else "unknown"
+
+
 def _sample_summary(runs: list[dict[str, Any]], *, meta: dict[str, Any]) -> dict[str, Any]:
     roster_entries = [
         entry
@@ -682,6 +711,28 @@ def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict
             if isinstance(entry, dict)
         ]
         unit = "roster_entries"
+    elif metric == "class":
+        values = [
+            str(entry.get("class_slug") or entry.get("class_name") or "unknown")
+            for run in runs
+            for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
+            if isinstance(entry, dict)
+        ]
+        unit = "roster_entries"
+    elif metric == "spec":
+        values = [
+            str(entry.get("spec_slug") or entry.get("spec_name") or "unknown")
+            for run in runs
+            for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
+            if isinstance(entry, dict)
+        ]
+        unit = "roster_entries"
+    elif metric == "composition":
+        values = [_composition_key(run, mode="spec") for run in runs]
+        unit = "runs"
+    elif metric == "class_composition":
+        values = [_composition_key(run, mode="class") for run in runs]
+        unit = "runs"
     else:
         values = [
             str(entry.get("region") or "unknown")
@@ -700,6 +751,83 @@ def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict
             "unit": unit,
             "rows": _count_map(values),
             "statistics": None,
+        },
+        "freshness": {
+            "sampled_at": meta["sampled_at"],
+            "cache_ttl_seconds": meta["cache_ttl_seconds"],
+        },
+        "citations": {
+            "leaderboard_urls": meta["leaderboard_urls"],
+        },
+    }
+
+
+def _nearest_threshold_rows(metric: str, target: float, runs: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for run in runs:
+        if metric == "score":
+            raw_value = run.get("score")
+        else:
+            raw_value = run.get("mythic_level")
+        if not isinstance(raw_value, (int, float)):
+            continue
+        rows.append(
+            {
+                "value": float(raw_value),
+                "distance": round(abs(float(raw_value) - target), 3),
+                "run": run,
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            float(row["distance"]),
+            -float(row["value"]),
+            str((row["run"] or {}).get("dungeon") or ""),
+        )
+    )
+    return rows[:limit]
+
+
+def _threshold_payload(metric: str, target: float, runs: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any], nearest_limit: int) -> dict[str, Any]:
+    nearest = _nearest_threshold_rows(metric, target, runs, limit=nearest_limit)
+    if metric == "score":
+        estimate_metric = "mythic_level"
+        estimate_values = [int(row["run"]["mythic_level"]) for row in nearest if isinstance(row["run"].get("mythic_level"), int)]
+        caveat = "This estimates run-level outcomes near a sampled Raider.IO run score, not player rating."
+    else:
+        estimate_metric = "score"
+        estimate_values = [float(row["run"]["score"]) for row in nearest if isinstance(row["run"].get("score"), (int, float))]
+        caveat = "This estimates sampled run scores near a target Mythic+ level."
+    estimate = None
+    if estimate_values:
+        sorted_values = sorted(estimate_values)
+        estimate = {
+            "metric": estimate_metric,
+            "count": len(sorted_values),
+            "min": sorted_values[0],
+            "max": sorted_values[-1],
+            "average": round(sum(sorted_values) / len(sorted_values), 2),
+            "median": median(sorted_values),
+        }
+    return {
+        "provider": "raiderio",
+        "kind": "mythic_plus_runs_threshold",
+        "metric": metric,
+        "target": target,
+        "query": query,
+        "sample": _sample_summary(runs, meta=meta),
+        "threshold": {
+            "nearest_match_count": len(nearest),
+            "nearest_matches": [
+                {
+                    "value": row["value"],
+                    "distance": row["distance"],
+                    "run": row["run"],
+                }
+                for row in nearest
+            ],
+            "estimate": estimate,
+            "caveat": caveat,
         },
         "freshness": {
             "sampled_at": meta["sampled_at"],
@@ -746,6 +874,7 @@ def doctor(ctx: typer.Context) -> None:
                 "mythic_plus_runs": "ready",
                 "sample_mythic_plus_runs": "ready",
                 "distribution_mythic_plus_runs": "ready",
+                "threshold_mythic_plus_runs": "ready",
             },
             "cache": {
                 "enabled": settings.enabled,
@@ -1058,8 +1187,8 @@ def distribution_mythic_plus_runs(
     pages: int = typer.Option(1, "--pages", min=1, max=10, help="Number of pages to sample."),
     limit: int = typer.Option(100, "--limit", min=1, max=200, help="Maximum runs to retain in the sample."),
 ) -> None:
-    if metric not in {"mythic_level", "dungeon", "role", "player_region"}:
-        _fail(ctx, "invalid_query", "--metric must be one of: mythic_level, dungeon, role, player_region")
+    if metric not in {"mythic_level", "dungeon", "role", "player_region", "class", "spec", "composition", "class_composition"}:
+        _fail(ctx, "invalid_query", "--metric must be one of: mythic_level, dungeon, role, player_region, class, spec, composition, class_composition")
         return
     try:
         with _client(ctx) as client:
@@ -1086,6 +1215,51 @@ def distribution_mythic_plus_runs(
         "limit": limit,
     }
     _emit(ctx, _distribution_payload(metric, runs, meta=meta, query=query))
+
+
+@threshold_app.command("mythic-plus-runs")
+def threshold_mythic_plus_runs(
+    ctx: typer.Context,
+    metric: str = typer.Option("score", "--metric", help="Threshold metric: score or mythic_level."),
+    value: float = typer.Option(..., "--value", help="Target metric value to estimate around."),
+    season: str = typer.Option("", "--season", help="Season slug. Defaults to Raider.IO current default season."),
+    region: str = typer.Option("world", "--region", help="Region slug such as world, us, or eu."),
+    dungeon: str = typer.Option("all", "--dungeon", help="Dungeon slug or all."),
+    affixes: str = typer.Option("", "--affixes", help="Affix slug, fortified, tyrannical, current, or all."),
+    page: int = typer.Option(0, "--page", min=0, help="Starting page of rankings to request."),
+    pages: int = typer.Option(1, "--pages", min=1, max=10, help="Number of pages to sample."),
+    limit: int = typer.Option(100, "--limit", min=1, max=200, help="Maximum runs to retain in the sample."),
+    nearest: int = typer.Option(10, "--nearest", min=1, max=50, help="Number of nearest sampled runs to retain."),
+) -> None:
+    if metric not in {"score", "mythic_level"}:
+        _fail(ctx, "invalid_query", "--metric must be one of: score, mythic_level")
+        return
+    try:
+        with _client(ctx) as client:
+            runs, meta = _sample_mythic_plus_runs(
+                client,
+                season=season or None,
+                region=region,
+                dungeon=dungeon,
+                affixes=affixes or None,
+                page=page,
+                pages=pages,
+                limit=limit,
+            )
+    except httpx.HTTPStatusError as exc:
+        _handle_http_error(ctx, exc)
+        return
+    query = {
+        "season": meta.get("season") or season or None,
+        "region": region,
+        "dungeon": dungeon,
+        "affixes": affixes or None,
+        "page": page,
+        "pages": pages,
+        "limit": limit,
+        "nearest": nearest,
+    }
+    _emit(ctx, _threshold_payload(metric, value, runs, meta=meta, query=query, nearest_limit=nearest))
 
 
 def run() -> None:
