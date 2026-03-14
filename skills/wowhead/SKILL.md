@@ -78,11 +78,12 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 28. `resolve` is the conservative counterpart to `search`. It reuses the same reranked candidates and follow-up guidance, optionally narrows by `--entity-type`, and only emits a direct `next_command` when confidence is high. If confidence is not high, it keeps the best candidate plus fallbacks and tells the agent to use `search` instead of overcommitting.
 
 29. Bundle freshness summaries now include `bundle_reasons` and `hydration_reasons`, so agents can tell whether a bundle is stale because of age, missing timestamps, disabled hydration, or bundle-level staleness without opening manifest files. Root-level bundle discovery commands now also expose `stale_reason_counts`, and `guide-bundle-inspect --summary` provides a compact trust-check view when the full inspection payload is more detail than an agent needs.
-30. `news` and `blue-tracker` are timeline-native surfaces, not generic search aliases. Use them when the user needs topic history, bounded date windows, or page-window scans across posts instead of a single latest result.
+30. `news` and `blue-tracker` are timeline-native surfaces, not generic search aliases. Use them when the user needs topic history, bounded date windows, page-window scans across posts, or stable listing-field filters instead of a single latest result.
 31. `news-post` and `blue-topic` are the detail-fetch companions for those timeline commands. Prefer those over generic page scraping when you already have a specific news or blue-tracker URL.
 32. `guides <category>` is the right surface for browsable guide families like `classes`, `professions`, and `raids`; use it when the user knows the guide family but not the exact guide slug or ID.
-33. `talent-calc` and `profession-tree` are the first Wowhead tool decoders. They normalize the cited state URL and extract reliable route state like class/spec/build code or profession/loadout code.
-34. `dressing-room` and `profiler` are currently state inspectors, not full decoders. Use them for normalized share refs and citations, but do not claim they fully decode appearance payloads or profile contents yet.
+33. `guides <category>` also supports stable guide-list metadata filters such as author, updated window, and patch range. Prefer those over manually scanning long guide lists.
+34. `talent-calc` and `profession-tree` are the first Wowhead tool decoders. They normalize the cited state URL and extract reliable route state like class/spec/build code or profession/loadout code.
+35. `dressing-room` and `profiler` are currently state inspectors, not full decoders. Use them for normalized share refs and citations, but do not claim they fully decode appearance payloads or profile contents yet.
 
 ## Required Usage Rules
 
@@ -100,10 +101,13 @@ Successful responses omit `ok`; only structured failures return `ok: false` with
 ```bash
 wowhead search "Watch the Den" --limit 5
 wowhead news "hotfixes" --pages 2 --date-from 2026-03-01
+wowhead news "hotfixes" --type live --author Jaydaa --pages 2
 wowhead news-post /news/midnight-hotfixes-for-march-13th-marl-decor-cost-reduction-class-bugfixes-and-380785
 wowhead blue-tracker "class tuning" --pages 2 --date-from 2026-03-01
+wowhead blue-tracker "class tuning" --region eu --forum "General Discussion"
 wowhead blue-topic /blue-tracker/topic/eu/class-tuning-incoming-18-march-610948
 wowhead guides classes "death knight"
+wowhead guides classes --author Khazakdk --patch-min 120001 --updated-after 2026-02-01
 wowhead talent-calc druid/balance/DAQBBBBQQRUFURYVBEANVVRUVFVVVQCVQhEUEBUEBhVQ
 wowhead profession-tree alchemy/BCuA
 wowhead dressing-room "#fz8zz0zb89c8mM8YB8mN8X18mO8ub8mP8uD"

@@ -2298,6 +2298,39 @@ def _absolute_wowhead_url(value: Any, *, fallback: str | None = None) -> str | N
     return fallback
 
 
+def _normalize_text_filters(values: list[str]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for value in values:
+        for part in value.split(","):
+            candidate = part.strip().lower()
+            if candidate and candidate not in normalized:
+                normalized.append(candidate)
+    return tuple(normalized)
+
+
+def _text_filter_match(value: Any, filters: tuple[str, ...]) -> bool:
+    if not filters:
+        return True
+    if not isinstance(value, str):
+        return False
+    return value.strip().lower() in filters
+
+
+def _collect_timeline_facets(results: list[dict[str, Any]], *, fields: dict[str, str]) -> dict[str, list[str]]:
+    facets: dict[str, list[str]] = {}
+    for label, key in fields.items():
+        values = sorted(
+            {
+                str(value).strip()
+                for row in results
+                for value in [row.get(key)]
+                if isinstance(value, str) and value.strip()
+            }
+        )
+        facets[label] = values
+    return facets
+
+
 def _timeline_result_matches(
     *,
     query: str | None,
@@ -3858,6 +3891,16 @@ def search(
 def news(
     ctx: typer.Context,
     query: str | None = typer.Argument(None, help="Optional topic text used to filter Wowhead news posts."),
+    author: list[str] = typer.Option(
+        [],
+        "--author",
+        help="Restrict matches to one or more author names. Repeat or pass comma-separated values.",
+    ),
+    type_name: list[str] = typer.Option(
+        [],
+        "--type",
+        help="Restrict matches to one or more Wowhead news types such as Live or PTR. Repeat or pass comma-separated values.",
+    ),
     page: int = typer.Option(
         1,
         "--page",
@@ -3891,6 +3934,8 @@ def news(
 ) -> None:
     cfg = _cfg(ctx)
     client = _client(ctx)
+    selected_authors = _normalize_text_filters(author)
+    selected_types = _normalize_text_filters(type_name)
     parsed_date_from = _parse_date_bound(date_from, end_of_day=False)
     if date_from is not None and parsed_date_from is None:
         _fail(ctx, "invalid_argument", f"Invalid --date-from value {date_from!r}.")
@@ -3915,11 +3960,19 @@ def news(
         date_from=parsed_date_from,
         date_to=parsed_date_to,
     )
+    filtered_results = [
+        row
+        for row in collected["results"]
+        if _text_filter_match(row.get("author"), selected_authors)
+        and _text_filter_match(row.get("type_name"), selected_types)
+    ]
     payload = {
         "query": query,
         "expansion": cfg.expansion.key,
         "news_url": news_url(page=page, expansion=cfg.expansion),
         "filters": {
+            "authors": list(selected_authors),
+            "types": list(selected_types),
             "date_from": parsed_date_from.isoformat() if parsed_date_from is not None else None,
             "date_to": parsed_date_to.isoformat() if parsed_date_to is not None else None,
         },
@@ -3930,8 +3983,9 @@ def news(
             "total_pages": collected["total_pages"],
             "stop_reason": collected["stop_reason"],
         },
-        "count": len(collected["results"]),
-        "results": collected["results"][:limit],
+        "count": len(filtered_results),
+        "results": filtered_results[:limit],
+        "facets": _collect_timeline_facets(filtered_results, fields={"authors": "author", "types": "type_name"}),
     }
     _emit(ctx, payload)
 
@@ -3940,6 +3994,21 @@ def news(
 def blue_tracker(
     ctx: typer.Context,
     query: str | None = typer.Argument(None, help="Optional topic text used to filter blue tracker topics."),
+    author: list[str] = typer.Option(
+        [],
+        "--author",
+        help="Restrict matches to one or more blue-post author names. Repeat or pass comma-separated values.",
+    ),
+    region: list[str] = typer.Option(
+        [],
+        "--region",
+        help="Restrict matches to one or more regions such as us or eu. Repeat or pass comma-separated values.",
+    ),
+    forum: list[str] = typer.Option(
+        [],
+        "--forum",
+        help="Restrict matches to one or more forum names. Repeat or pass comma-separated values.",
+    ),
     page: int = typer.Option(
         1,
         "--page",
@@ -3973,6 +4042,9 @@ def blue_tracker(
 ) -> None:
     cfg = _cfg(ctx)
     client = _client(ctx)
+    selected_authors = _normalize_text_filters(author)
+    selected_regions = _normalize_text_filters(region)
+    selected_forums = _normalize_text_filters(forum)
     parsed_date_from = _parse_date_bound(date_from, end_of_day=False)
     if date_from is not None and parsed_date_from is None:
         _fail(ctx, "invalid_argument", f"Invalid --date-from value {date_from!r}.")
@@ -3997,11 +4069,21 @@ def blue_tracker(
         date_from=parsed_date_from,
         date_to=parsed_date_to,
     )
+    filtered_results = [
+        row
+        for row in collected["results"]
+        if _text_filter_match(row.get("author"), selected_authors)
+        and _text_filter_match(row.get("region"), selected_regions)
+        and _text_filter_match(row.get("forum"), selected_forums)
+    ]
     payload = {
         "query": query,
         "expansion": cfg.expansion.key,
         "blue_tracker_url": blue_tracker_url(page=page, expansion=cfg.expansion),
         "filters": {
+            "authors": list(selected_authors),
+            "regions": list(selected_regions),
+            "forums": list(selected_forums),
             "date_from": parsed_date_from.isoformat() if parsed_date_from is not None else None,
             "date_to": parsed_date_to.isoformat() if parsed_date_to is not None else None,
         },
@@ -4012,8 +4094,12 @@ def blue_tracker(
             "total_pages": collected["total_pages"],
             "stop_reason": collected["stop_reason"],
         },
-        "count": len(collected["results"]),
-        "results": collected["results"][:limit],
+        "count": len(filtered_results),
+        "results": filtered_results[:limit],
+        "facets": _collect_timeline_facets(
+            filtered_results,
+            fields={"authors": "author", "regions": "region", "forums": "forum"},
+        ),
     }
     _emit(ctx, payload)
 
@@ -4156,6 +4242,33 @@ def guides(
     ctx: typer.Context,
     category: str = typer.Argument(..., help="Wowhead guide category slug such as classes, professions, or raids."),
     query: str | None = typer.Argument(None, help="Optional text used to filter guide rows within the category."),
+    author: list[str] = typer.Option(
+        [],
+        "--author",
+        help="Restrict matches to one or more guide author names. Repeat or pass comma-separated values.",
+    ),
+    updated_after: str | None = typer.Option(
+        None,
+        "--updated-after",
+        help="Inclusive lower bound for guide last-updated timestamps. Accepts YYYY-MM-DD or full ISO-8601 timestamps.",
+    ),
+    updated_before: str | None = typer.Option(
+        None,
+        "--updated-before",
+        help="Inclusive upper bound for guide last-updated timestamps. Accepts YYYY-MM-DD or full ISO-8601 timestamps.",
+    ),
+    patch_min: int | None = typer.Option(
+        None,
+        "--patch-min",
+        min=0,
+        help="Minimum patch build number to keep.",
+    ),
+    patch_max: int | None = typer.Option(
+        None,
+        "--patch-max",
+        min=0,
+        help="Maximum patch build number to keep.",
+    ),
     limit: int = typer.Option(
         20,
         "--limit",
@@ -4166,6 +4279,21 @@ def guides(
 ) -> None:
     cfg = _cfg(ctx)
     client = _client(ctx)
+    selected_authors = _normalize_text_filters(author)
+    parsed_updated_after = _parse_date_bound(updated_after, end_of_day=False)
+    if updated_after is not None and parsed_updated_after is None:
+        _fail(ctx, "invalid_argument", f"Invalid --updated-after value {updated_after!r}.")
+    parsed_updated_before = _parse_date_bound(updated_before, end_of_day=True)
+    if updated_before is not None and parsed_updated_before is None:
+        _fail(ctx, "invalid_argument", f"Invalid --updated-before value {updated_before!r}.")
+    if (
+        parsed_updated_after is not None
+        and parsed_updated_before is not None
+        and parsed_updated_after > parsed_updated_before
+    ):
+        _fail(ctx, "invalid_argument", "--updated-after must be <= --updated-before.")
+    if patch_min is not None and patch_max is not None and patch_min > patch_max:
+        _fail(ctx, "invalid_argument", "--patch-min must be <= --patch-max.")
     normalized_category = category.strip().strip("/")
     if not normalized_category:
         _fail(ctx, "invalid_argument", "Guide category cannot be empty.")
@@ -4186,6 +4314,18 @@ def guides(
     for index, row in enumerate(rows):
         normalized_row = _normalize_guide_category_row(row)
         if normalized_row is None:
+            continue
+        if not _text_filter_match(normalized_row.get("author"), selected_authors):
+            continue
+        updated_at = _parse_iso8601_utc(normalized_row.get("last_updated"))
+        if parsed_updated_after is not None and (updated_at is None or updated_at < parsed_updated_after):
+            continue
+        if parsed_updated_before is not None and (updated_at is None or updated_at > parsed_updated_before):
+            continue
+        patch_value = normalized_row.get("patch")
+        if patch_min is not None and (not isinstance(patch_value, int) or patch_value < patch_min):
+            continue
+        if patch_max is not None and (not isinstance(patch_value, int) or patch_value > patch_max):
             continue
         if query_text is not None:
             score = _score_text_match(
@@ -4209,8 +4349,19 @@ def guides(
         "expansion": cfg.expansion.key,
         "category": normalized_category,
         "guides_url": guide_category_url(normalized_category, expansion=cfg.expansion),
+        "filters": {
+            "authors": list(selected_authors),
+            "updated_after": parsed_updated_after.isoformat() if parsed_updated_after is not None else None,
+            "updated_before": parsed_updated_before.isoformat() if parsed_updated_before is not None else None,
+            "patch_min": patch_min,
+            "patch_max": patch_max,
+        },
         "count": len(normalized_rows),
         "results": normalized_rows[:limit],
+        "facets": _collect_timeline_facets(
+            normalized_rows,
+            fields={"authors": "author", "category_paths": "category_path"},
+        ),
     }
     _emit(ctx, payload)
 

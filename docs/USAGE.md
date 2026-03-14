@@ -89,12 +89,15 @@ wowhead resolve "fairbreeze favors"
 wowhead --expansion wotlk search "thunderfury"
 wowhead news
 wowhead news "hotfixes" --pages 3 --date-from 2026-03-01
+wowhead news "hotfixes" --type live --author Jaydaa --pages 2
 wowhead news-post /news/midnight-hotfixes-for-march-13th-marl-decor-cost-reduction-class-bugfixes-and-380785
 wowhead blue-tracker
 wowhead blue-tracker "class tuning" --pages 2 --date-from 2026-03-01
+wowhead blue-tracker "class tuning" --region eu --forum "General Discussion"
 wowhead blue-topic /blue-tracker/topic/eu/class-tuning-incoming-18-march-610948
 wowhead guides classes
 wowhead guides classes "death knight"
+wowhead guides classes --author Khazakdk --patch-min 120001 --updated-after 2026-02-01
 wowhead talent-calc druid/balance/DAQBBBBQQRUFURYVBEANVVRUVFVVVQCVQhEUEBUEBhVQ
 wowhead profession-tree alchemy/BCuA
 wowhead dressing-room "#fz8zz0zb89c8mM8YB8mN8X18mO8ub8mP8uD"
@@ -153,10 +156,26 @@ Wowhead command behavior:
   - extracted text
   - section chunks when the post body contains markup headings
   - author metadata when Wowhead exposes it
+- `news` also supports stable timeline metadata filters from the listing payload:
+  - `--author`
+  - `--type`
+  - result `facets` so agents can see which authors and type buckets matched the scanned window
 - `blue-tracker` does the same for the Wowhead blue tracker and is the right surface for topic-over-time blue post research
 - `blue-topic` fetches one specific blue-tracker topic page and returns the normalized topic posts with extracted body text
+- `blue-tracker` also supports stable timeline metadata filters from the listing payload:
+  - `--author`
+  - `--region`
+  - `--forum`
+  - result `facets` so agents can see which authors, regions, and forums matched the scanned window
 - `guides <category>` uses the live guide-category listing surface for categories such as `classes`, `professions`, and `raids`
 - `guides <category> <query>` filters within the category listing instead of forcing discovery through generic `search`
+- `guides <category>` also supports metadata filters that are more reliable than browser-scanning:
+  - `--author`
+  - `--updated-after`
+  - `--updated-before`
+  - `--patch-min`
+  - `--patch-max`
+  - result `facets` so agents can quickly see which authors and category-path buckets are in the filtered guide set
 - Wowhead entity-type handling is now driven by a shared internal registry, so search suggestion types, parser support, resolve filters, and hydrate support stop drifting independently
 - `talent-calc` decodes calculator state URLs into:
   - class slug

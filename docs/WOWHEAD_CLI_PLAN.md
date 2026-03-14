@@ -109,6 +109,8 @@ Implemented direction:
   - explicit date cutoffs
   - pagination or capped historical slices
   - listing query provenance
+  - stable listing-field filters such as author/type/region/forum
+  - facet summaries across the matched timeline window
   - single post/topic fetch with citations
 
 Still to add:
@@ -180,6 +182,14 @@ Recommended additions:
 - `wowhead profession-tree ...`
 - `wowhead dressing-room ...`
 - `wowhead profiler ...`
+
+Guide-category direction:
+- keep `guides <category>` centered on the live guide listview data instead of browser-style scraping
+- prefer stable list metadata filters such as:
+  - author
+  - updated window
+  - patch range
+- expose guide-set facet summaries so agents can inspect the filtered result bucket without opening individual guide pages
 
 Current decision on database pages:
 - do not implement generic `wowhead db <family>` yet just because the pages exist

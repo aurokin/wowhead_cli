@@ -346,6 +346,18 @@ def test_live_news_contract() -> None:
     assert isinstance(first.get("posted"), str)
     assert isinstance(first.get("url"), str)
     assert first["url"].startswith("https://www.wowhead.com/news/")
+    assert isinstance(payload["facets"]["authors"], list)
+    assert isinstance(payload["facets"]["types"], list)
+
+
+def test_live_news_type_filter_contract() -> None:
+    _require_live()
+    payload = _payload_for(["news", "hotfixes", "--type", "live", "--pages", "2", "--limit", "5"])
+
+    assert payload["filters"]["types"] == ["live"]
+    assert payload["count"] >= len(payload["results"])
+    for row in payload["results"]:
+        assert str(row.get("type_name", "")).lower() == "live"
 
 
 def test_live_blue_tracker_contract() -> None:
@@ -364,6 +376,18 @@ def test_live_blue_tracker_contract() -> None:
     assert isinstance(first.get("posted"), str)
     assert isinstance(first.get("url"), str)
     assert first["url"].startswith("https://www.wowhead.com/blue-tracker/topic/")
+    assert isinstance(payload["facets"]["regions"], list)
+    assert isinstance(payload["facets"]["forums"], list)
+
+
+def test_live_blue_tracker_region_filter_contract() -> None:
+    _require_live()
+    payload = _payload_for(["blue-tracker", "class tuning", "--region", "eu", "--pages", "2", "--limit", "5"])
+
+    assert payload["filters"]["regions"] == ["eu"]
+    assert payload["count"] >= len(payload["results"])
+    for row in payload["results"]:
+        assert str(row.get("region", "")).lower() == "eu"
 
 
 def test_live_news_post_contract() -> None:
@@ -414,6 +438,20 @@ def test_live_guide_category_contract() -> None:
     assert isinstance(first.get("title"), str)
     assert isinstance(first.get("url"), str)
     assert first["url"].startswith("https://www.wowhead.com/guide/")
+    assert isinstance(payload["facets"]["authors"], list)
+    assert isinstance(payload["facets"]["category_paths"], list)
+
+
+def test_live_guide_category_patch_filter_contract() -> None:
+    _require_live()
+    payload = _payload_for(["guides", "classes", "--patch-min", "120001", "--limit", "5"])
+
+    assert payload["filters"]["patch_min"] == 120001
+    assert payload["count"] >= len(payload["results"])
+    for row in payload["results"]:
+        patch = row.get("patch")
+        assert isinstance(patch, int)
+        assert patch >= 120001
 
 
 def test_live_talent_calc_contract() -> None:

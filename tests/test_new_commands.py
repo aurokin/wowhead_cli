@@ -536,6 +536,36 @@ def test_news_command_filters_by_query_and_date(monkeypatch) -> None:
     assert payload["scan"]["pages_scanned"] == 1
     assert payload["scan"]["total_pages"] == 1637
     assert payload["news_url"] == "https://www.wowhead.com/news"
+    assert payload["facets"]["authors"] == ["Staff"]
+    assert payload["facets"]["types"] == ["News"]
+
+
+def test_news_command_filters_by_author_and_type(monkeypatch) -> None:
+    def fake_news_page(self, *, page: int = 1):  # noqa: ANN001
+        assert page == 1
+        return SAMPLE_NEWS_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.news_page_html", fake_news_page)
+
+    result = runner.invoke(
+        app,
+        [
+            "news",
+            "--author",
+            "staff",
+            "--type",
+            "news",
+            "--limit",
+            "5",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["filters"]["authors"] == ["staff"]
+    assert payload["filters"]["types"] == ["news"]
+    assert payload["count"] == 2
+    assert payload["facets"]["authors"] == ["Staff"]
+    assert payload["facets"]["types"] == ["News"]
 
 
 def test_blue_tracker_command_filters_by_topic_and_date(monkeypatch) -> None:
@@ -565,6 +595,37 @@ def test_blue_tracker_command_filters_by_topic_and_date(monkeypatch) -> None:
     assert payload["scan"]["pages_scanned"] == 1
     assert payload["scan"]["total_pages"] == 671
     assert payload["blue_tracker_url"] == "https://www.wowhead.com/blue-tracker"
+    assert payload["facets"]["regions"] == ["eu"]
+    assert payload["facets"]["forums"] == ["General Discussion"]
+
+
+def test_blue_tracker_command_filters_by_author_region_and_forum(monkeypatch) -> None:
+    def fake_blue_page(self, *, page: int = 1):  # noqa: ANN001
+        assert page == 1
+        return SAMPLE_BLUE_TRACKER_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.blue_tracker_page_html", fake_blue_page)
+
+    result = runner.invoke(
+        app,
+        [
+            "blue-tracker",
+            "--author",
+            "blizzard",
+            "--region",
+            "eu",
+            "--forum",
+            "general discussion",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["filters"]["authors"] == ["blizzard"]
+    assert payload["filters"]["regions"] == ["eu"]
+    assert payload["filters"]["forums"] == ["general discussion"]
+    assert payload["count"] == 1
+    assert payload["results"][0]["id"] == 610948
+    assert payload["facets"]["authors"] == ["Blizzard"]
 
 
 def test_blue_tracker_command_rejects_invalid_date_range(monkeypatch) -> None:
@@ -597,6 +658,34 @@ def test_guides_command_returns_category_rows(monkeypatch) -> None:
     assert payload["count"] == 1
     assert payload["results"][0]["id"] == 32000
     assert payload["results"][0]["url"].endswith("/frost/overview-pve-dps")
+    assert payload["facets"]["authors"] == ["Khazakdk"]
+
+
+def test_guides_command_filters_by_author_and_patch(monkeypatch) -> None:
+    def fake_guides_page(self, category: str):  # noqa: ANN001
+        assert category == "classes"
+        return SAMPLE_GUIDE_CATEGORY_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.guide_category_page_html", fake_guides_page)
+    result = runner.invoke(
+        app,
+        [
+            "guides",
+            "classes",
+            "--author",
+            "khazakdk",
+            "--patch-min",
+            "120001",
+            "--updated-after",
+            "2026-02-01",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["filters"]["authors"] == ["khazakdk"]
+    assert payload["filters"]["patch_min"] == 120001
+    assert payload["count"] == 1
+    assert payload["results"][0]["id"] == 32000
 
 
 def test_talent_calc_command_decodes_url_and_embedded_builds(monkeypatch) -> None:
