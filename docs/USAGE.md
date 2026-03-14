@@ -421,10 +421,15 @@ simc repo
 simc repo --set-root /home/auro/code/simc
 simc checkout
 simc version
+simc verify-clean
 simc inspect
 simc inspect /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 simc spec-files mistweaver
 simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123 --actor-class monk --spec mistweaver
+simc build-harness --actor-class warlock --spec demonology --talents ABC123 --line hero_talents=2 --line fight_style=Patchwerk
+simc validate-apl ./demonology_harness.simc ./warlock_demonology.simc --label base
+simc compare-apls ./demonology_harness.simc --base-apl ./warlock_demonology.simc --variant wowhead=./wowhead_variant.simc --variant icyveins=./icy_variant.simc --report-out ./compare.json
+simc variant-report ./compare.json
 simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 simc apl-graph /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 simc apl-talents /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
@@ -451,9 +456,14 @@ SimulationCraft behavior:
 - `repo` shows the active repo-resolution path and can persist or clear an explicit repo root
 - `checkout` performs an optional CLI-managed checkout or update under the XDG data root
 - `version` probes the local `simc` binary and extracts the printed SimulationCraft version line
+- `verify-clean` reports upstream git cleanliness and the local binary state, with optional binary hashing
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
 - `decode-build` uses the local `simc` binary to decode talent strings into enabled talents and tree-grouped talent rows
+- `build-harness` writes a reusable local profile harness so APL comparisons can swap only the action list
+- `validate-apl` builds a temporary harness+APL profile and runs a cheap one-iteration validation pass
+- `compare-apls` compares one base APL plus labeled variants on the same harness and returns DPS plus action-throughput deltas from SimC JSON output
+- `variant-report` summarizes a saved `compare-apls` report into ranking and delta rows
 - `apl-lists` returns parsed action lists and their entries from a local `.simc` file
 - `apl-graph` emits a Mermaid action-list call graph from a local `.simc` file
 - `apl-talents` returns talent gate references and a compact action frequency summary for a local `.simc` file
@@ -469,6 +479,7 @@ SimulationCraft behavior:
 - `apl-branch-compare` compares branch and focus-list changes between two target/build contexts
 - `analysis-packet` emits an agent-facing summary with branch certainty, intent lines, explained intent, escalation reasons, recommended next steps, and optional first-cast timing samples
 - if the user supplies a talent string, assume inactive talent branches should be removed from summaries; use `priority` or `inactive-actions` before making rotation claims from a shared APL
+- if the user wants to compare guide-shaped rotations or draft APLs, use `build-harness`, `validate-apl`, and `compare-apls` instead of editing upstream files
 - `first-cast` runs short one-iteration sims and records the first observed execution time for a named action across one or more seeds
 - `log-actions` inspects an existing SimC combat log and extracts the first scheduled and performed timestamps for named actions
 - `run` executes the local `simc` binary against a profile and returns bounded stdout/stderr previews

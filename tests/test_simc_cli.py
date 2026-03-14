@@ -182,6 +182,94 @@ def test_simc_decode_build_outputs_decoded_talents(monkeypatch) -> None:
     assert payload["decoded"]["enabled_talents"] == ["ancient_teachings", "jadefire_stomp"]
 
 
+def test_simc_build_harness_compare_report_and_verify_clean(monkeypatch, tmp_path: Path) -> None:
+    harness_path = tmp_path / "demo_harness.simc"
+
+    monkeypatch.setattr(
+        "simc_cli.main.load_build_spec",
+        lambda **kwargs: type(
+            "BuildSpec",
+            (),
+            {
+                "actor_class": "warlock",
+                "spec": "demonology",
+                "talents": "ABC123",
+                "class_talents": None,
+                "spec_talents": None,
+                "hero_talents": None,
+                "source_notes": ["command-line build options"],
+            },
+        )(),
+    )
+    build_result = runner.invoke(
+        simc_app,
+        ["build-harness", "--actor-class", "warlock", "--spec", "demonology", "--talents", "ABC123", "--out", str(harness_path), "--line", "hero_talents=2"],
+    )
+    assert build_result.exit_code == 0
+    build_payload = json.loads(build_result.stdout)
+    assert build_payload["kind"] == "build_harness"
+    assert build_payload["path"] == str(harness_path)
+    assert harness_path.exists()
+
+    apl = tmp_path / "variant.simc"
+    apl.write_text("actions=shadow_bolt\n")
+    profile = tmp_path / "variant_profile.simc"
+    profile.write_text("warlock=\"probe\"\nactions=shadow_bolt\n")
+    monkeypatch.setattr("simc_cli.main.build_variant_profile", lambda harness_path, apl_path, label, out_dir=None: profile)
+    monkeypatch.setattr(
+        "simc_cli.main.validate_profile_file",
+        lambda paths, profile_path: type(
+            "Validation",
+            (),
+            {
+                "result": type("Result", (), {"returncode": 0, "stdout": "ok\n", "stderr": ""})(),
+            },
+        )(),
+    )
+    validate_result = runner.invoke(simc_app, ["validate-apl", str(harness_path), str(apl), "--label", "wowhead"])
+    assert validate_result.exit_code == 0
+    validate_payload = json.loads(validate_result.stdout)
+    assert validate_payload["valid"] is True
+    assert validate_payload["label"] == "wowhead"
+
+    compare_payload = {
+        "kind": "apl_comparison",
+        "compare_dir": str(tmp_path),
+        "harness_path": str(harness_path),
+        "iterations": 250,
+        "threads": 1,
+        "validations": [],
+        "base": {"label": "base", "dps": 100.0},
+        "ranking": [{"label": "base", "dps": 100.0}, {"label": "wowhead", "dps": 99.0}],
+        "comparisons": [{"label": "wowhead", "base_label": "base", "dps_delta": -1.0, "percent_delta": -1.0, "top_action_deltas": []}],
+    }
+    monkeypatch.setattr("simc_cli.main.compare_apl_variants", lambda *args, **kwargs: compare_payload)
+    compare_result = runner.invoke(
+        simc_app,
+        ["compare-apls", str(harness_path), "--base-apl", str(apl), "--variant", f"wowhead={apl}", "--report-out", str(tmp_path / "report.json")],
+    )
+    assert compare_result.exit_code == 0
+    compare_stdout = json.loads(compare_result.stdout)
+    assert compare_stdout["kind"] == "apl_comparison"
+    assert compare_stdout["report_path"] == str((tmp_path / "report.json").resolve())
+
+    report_result = runner.invoke(simc_app, ["variant-report", str(tmp_path / "report.json")])
+    assert report_result.exit_code == 0
+    report_payload = json.loads(report_result.stdout)
+    assert report_payload["kind"] == "apl_variant_report"
+    assert report_payload["best_label"] == "base"
+
+    monkeypatch.setattr(
+        "simc_cli.main.verify_clean_payload",
+        lambda paths, hash_binary: {"kind": "verify_clean", "repo_root": "/tmp/simc", "git": {"dirty": False}, "binary": {"exists": True}},
+    )
+    clean_result = runner.invoke(simc_app, ["verify-clean"])
+    assert clean_result.exit_code == 0
+    clean_payload = json.loads(clean_result.stdout)
+    assert clean_payload["kind"] == "verify_clean"
+    assert clean_payload["git"]["dirty"] is False
+
+
 def test_simc_apl_lists_graph_talents_and_trace(monkeypatch, tmp_path: Path) -> None:
     apl = tmp_path / "monk_mistweaver.simc"
     apl.write_text(

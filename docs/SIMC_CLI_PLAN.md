@@ -12,6 +12,11 @@ Current commands:
 - `simc inspect`
 - `simc spec-files`
 - `simc decode-build`
+- `simc build-harness`
+- `simc validate-apl`
+- `simc compare-apls`
+- `simc variant-report`
+- `simc verify-clean`
 - `simc apl-lists`
 - `simc apl-graph`
 - `simc apl-talents`
@@ -74,6 +79,7 @@ This should be a local-tool service:
 - local build management
 - local binary execution
 - profile, log, and analysis helpers
+- local comparison workflows for guide-derived or user-derived APL variants without touching upstream
 
 The important planning change is that `simc` should not be thought of as only:
 - sync repo
@@ -131,6 +137,17 @@ Phase 3 is now implemented:
 - `simc log-actions`
 
 This is the agent-analysis layer proven by `simc_exp`.
+
+### Comparison Workflow
+
+The next important `simc` layer is now implemented as a local comparison workflow:
+- `simc build-harness`
+- `simc validate-apl`
+- `simc compare-apls`
+- `simc variant-report`
+- `simc verify-clean`
+
+This is the correct answer to conversations where the user wants to draft guide-shaped APL variants, compare them objectively, and keep the upstream SimulationCraft repo untouched.
 
 ## What Can Reuse Shared Code
 

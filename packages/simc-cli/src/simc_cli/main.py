@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,14 @@ from simc_cli.branch import (
     trace_apl,
 )
 from simc_cli.build_input import decode_build, extract_build_spec_from_text, infer_actor_and_spec_from_apl, load_build_spec
+from simc_cli.compare import (
+    build_variant_profile,
+    compare_apl_variants,
+    validate_profile_file,
+    variant_report_payload,
+    verify_clean_payload,
+    write_harness,
+)
 from simc_cli.packet import build_analysis_packet
 from simc_cli.prune import PruneContext, TruthValue, prune_entries, split_csv_values
 from simc_cli.repo import (
@@ -226,6 +235,18 @@ def _focus_list_summary(resolved: Path, context: PruneContext, *, start_list: st
     return summary, summary.guaranteed_dispatch or start_list
 
 
+def _parse_variant_specs(values: list[str]) -> list[tuple[str, str]]:
+    specs: list[tuple[str, str]] = []
+    for value in values:
+        label, sep, path = value.partition("=")
+        label = label.strip()
+        path = path.strip()
+        if not sep or not label or not path:
+            raise ValueError("Variants must use label=path format.")
+        specs.append((label, path))
+    return specs
+
+
 @app.callback()
 def main_callback(
     ctx: typer.Context,
@@ -278,6 +299,11 @@ def doctor(ctx: typer.Context) -> None:
                 "priority": "ready",
                 "inactive_actions": "ready",
                 "opener": "ready",
+                "build_harness": "ready",
+                "validate_apl": "ready",
+                "compare_apls": "ready",
+                "variant_report": "ready",
+                "verify_clean": "ready",
                 "apl_branch_compare": "ready",
                 "analysis_packet": "ready",
                 "first_cast": "ready",
@@ -533,6 +559,156 @@ def decode_build_command(
             },
         },
     )
+
+
+@app.command("build-harness")
+def build_harness_command(
+    ctx: typer.Context,
+    out: str | None = typer.Option(None, "--out", help="Output harness profile path."),
+    apl_path: str | None = typer.Option(None, "--apl-path", help="Optional APL path used to infer actor class and spec."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as warlock."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as demonology."),
+    line: list[str] = typer.Option([], "--line", help="Extra profile line. Repeat as needed."),
+) -> None:
+    build_spec = load_build_spec(
+        apl_path=apl_path,
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+    )
+    if not build_spec.actor_class or not build_spec.spec:
+        _fail(ctx, "invalid_query", "Could not determine actor class and spec for harness generation.")
+        return
+    try:
+        target = write_harness(build_spec, lines=line, out_path=out)
+    except ValueError as exc:
+        _fail(ctx, "build_harness_failed", str(exc))
+        return
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "kind": "build_harness",
+            "path": str(target),
+            "build_spec": _serialize_build_spec(build_spec),
+            "extra_lines": line,
+        },
+    )
+
+
+@app.command("validate-apl")
+def validate_apl_command(
+    ctx: typer.Context,
+    harness_path: str = typer.Argument(..., help="Harness profile path without APL actions."),
+    apl_path: str = typer.Argument(..., help="APL file to append to the harness."),
+    label: str = typer.Option("variant", "--label", help="Variant label for the generated temporary profile."),
+    out_dir: str | None = typer.Option(None, "--out-dir", help="Optional directory for the generated temporary profile."),
+) -> None:
+    paths = _repo_paths(ctx)
+    try:
+        profile_path = build_variant_profile(harness_path, apl_path, label=label, out_dir=out_dir)
+        validation = validate_profile_file(paths, profile_path)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "validate_apl_failed", str(exc))
+        return
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "kind": "validate_apl",
+            "label": label,
+            "apl_path": str(Path(apl_path).expanduser().resolve()),
+            "profile_path": str(profile_path),
+            "valid": validation.result.returncode == 0,
+            "returncode": validation.result.returncode,
+            "stdout_preview": _preview_text(validation.result.stdout)[0],
+            "stderr_preview": _preview_text(validation.result.stderr)[0],
+        },
+    )
+
+
+@app.command("compare-apls")
+def compare_apls_command(
+    ctx: typer.Context,
+    harness_path: str = typer.Argument(..., help="Harness profile path without APL actions."),
+    base_apl: str = typer.Option(..., "--base-apl", help="Base APL path."),
+    base_label: str = typer.Option("base", "--base-label", help="Label for the base APL."),
+    variant: list[str] = typer.Option([], "--variant", help="Variant in label=path form. Repeat as needed."),
+    iterations: int = typer.Option(250, "--iterations", min=1, help="Iterations per variant."),
+    threads: int = typer.Option(1, "--threads", min=1, help="Threads per variant."),
+    out_dir: str | None = typer.Option(None, "--out-dir", help="Optional directory for generated profiles and JSON reports."),
+    validate_first: bool = typer.Option(True, "--validate-first/--skip-validate", help="Validate each generated profile before the full comparison."),
+    report_out: str | None = typer.Option(None, "--report-out", help="Optional path to save the structured comparison JSON."),
+) -> None:
+    paths = _repo_paths(ctx)
+    try:
+        variant_specs = _parse_variant_specs(variant)
+        payload = compare_apl_variants(
+            paths,
+            harness_path=harness_path,
+            base_label=base_label,
+            base_apl_path=base_apl,
+            variant_specs=variant_specs,
+            iterations=iterations,
+            threads=threads,
+            out_dir=out_dir,
+            validate_first=validate_first,
+        )
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "compare_apls_failed", str(exc))
+        return
+    if report_out:
+        target = Path(report_out).expanduser().resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload, indent=2) + "\n")
+        payload["report_path"] = str(target)
+    _emit(ctx, {"provider": "simc", **payload})
+
+
+@app.command("variant-report")
+def variant_report_command(
+    ctx: typer.Context,
+    report_path: str = typer.Argument(..., help="Path to a saved compare-apls JSON report."),
+) -> None:
+    resolved = Path(report_path).expanduser().resolve()
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"Report not found: {resolved}")
+        return
+    try:
+        report = json.loads(resolved.read_text())
+    except json.JSONDecodeError as exc:
+        _fail(ctx, "invalid_report", str(exc))
+        return
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "report_path": str(resolved),
+            **variant_report_payload(report),
+        },
+    )
+
+
+@app.command("verify-clean")
+def verify_clean_command(
+    ctx: typer.Context,
+    hash_binary: bool = typer.Option(False, "--hash-binary", help="Hash the local simc binary as part of the cleanliness report."),
+) -> None:
+    paths = _repo_paths(ctx)
+    _emit(ctx, {"provider": "simc", **verify_clean_payload(paths, hash_binary=hash_binary)})
 
 
 @app.command("apl-lists")

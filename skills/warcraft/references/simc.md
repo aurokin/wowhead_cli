@@ -12,8 +12,10 @@
 - readiness: `simc doctor`
 - repo state: `simc repo`
 - managed checkout: `simc checkout`
+- upstream safety: `simc verify-clean`
 - source inspection: `simc spec-files ...`, `simc apl-lists ...`, `simc apl-talents ...`
 - reasoning: `simc priority ...`, `simc inactive-actions ...`, `simc opener ...`, `simc analysis-packet ...`
+- APL comparison: `simc build-harness ...`, `simc validate-apl ...`, `simc compare-apls ...`
 - execution: `simc run ...`
 
 ## Effective Use
@@ -26,6 +28,8 @@
 - use `opener` for a static early-action preview, then escalate to `first-cast` if runtime confirmation matters
 - use `analysis-packet` when you want an agent-facing summary instead of assembling outputs manually
 - use `first-cast` and `log-actions` when static analysis is not enough and you need runtime confirmation
+- if the user wants to compare guide-derived or custom APLs, build a harness and use `compare-apls`; do not edit upstream SimC files
+- use `verify-clean` before and after local comparison work when upstream cleanliness matters
 
 ## Boundaries
 
