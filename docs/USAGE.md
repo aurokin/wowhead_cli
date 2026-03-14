@@ -275,8 +275,11 @@ wowprogress character us illidan Imonthegcd
 wowprogress leaderboard pve us --limit 10
 wowprogress leaderboard pve us --realm illidan --limit 10
 wowprogress sample pve-leaderboard --region us --limit 25
+wowprogress sample pve-guild-profiles --region us --limit 10
 wowprogress distribution pve-leaderboard --region us --metric progress --limit 25
+wowprogress distribution pve-guild-profiles --region us --metric faction --limit 10
 wowprogress threshold pve-leaderboard --region us --metric rank --value 25 --limit 50
+wowprogress threshold pve-guild-profiles --region us --metric world_rank --value 25 --limit 10
 ```
 
 WowProgress phase-1 behavior:

@@ -72,6 +72,7 @@ Current provider state:
 - that `reference` metadata is also now useful on validated non-programming pages like `Renown`, `Expansion`, `Druid`, `Alchemy`, `Elwynn Forest`, and `Adventure Guide`, where it can expose family-aware summaries and patch/reference sections without making the agent parse the whole page first.
 - Use `wowprogress` when you have or can supply structured `region realm name` inputs and need progression, roster, or leaderboard context rather than guide content.
 - Use `wowprogress sample pve-leaderboard`, `distribution pve-leaderboard`, and `threshold pve-leaderboard` when you need sample-backed raid-leaderboard analytics with freshness, provenance, and caveats instead of treating one leaderboard page as a direct answer engine.
+- Use `wowprogress sample pve-guild-profiles`, `distribution pve-guild-profiles`, and `threshold pve-guild-profiles` when you need richer top-guild analytics that combine leaderboard position with direct guild-page progression, item-level, and encounter data.
 - Use `simc` when you need local SimulationCraft repo inspection, build decoding, or direct binary execution against a local profile.
 - Use `simc repo` when you need to understand or change which local SimulationCraft checkout is active.
 - Use `simc checkout` when you want the CLI to manage a local SimulationCraft checkout under the XDG data root.

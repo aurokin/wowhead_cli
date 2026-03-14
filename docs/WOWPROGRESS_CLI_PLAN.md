@@ -24,6 +24,7 @@ Current quality notes:
 - live guild and character retrieval coverage now validates rank extraction as well as basic profile parsing
 - provider-local live coverage now exists for structured search, resolve, and leaderboard contracts
 - PvE leaderboard sampling, distributions, and threshold estimates now expose freshness, provenance, and explicit caveats instead of pretending to be direct smart-answer surfaces
+- top-leaderboard guild-profile sampling now combines leaderboard context with direct guild-page data so agents can inspect progression, item level, and encounter detail without manually opening multiple browser pages
 
 ## Why Add It
 
@@ -62,8 +63,11 @@ This is now treated as a rankings/profile service using browser-fingerprint HTTP
 - `wowprogress character <region> <realm> <name>`
 - `wowprogress leaderboard pve <region> [--realm <realm>]`
 - `wowprogress sample pve-leaderboard --region <region> [--realm <realm>]`
+- `wowprogress sample pve-guild-profiles --region <region> [--realm <realm>]`
 - `wowprogress distribution pve-leaderboard --region <region> --metric <metric> [--realm <realm>]`
+- `wowprogress distribution pve-guild-profiles --region <region> --metric <metric> [--realm <realm>]`
 - `wowprogress threshold pve-leaderboard --region <region> --metric <metric> --value <value> [--realm <realm>]`
+- `wowprogress threshold pve-guild-profiles --region <region> --metric <metric> --value <value> [--realm <realm>]`
 
 ## What Can Reuse Shared Code
 
@@ -86,6 +90,7 @@ This is now treated as a rankings/profile service using browser-fingerprint HTTP
 - whether cross-source guild/character resolution belongs in shared code or only in the wrapper
 - that a browser-fingerprint HTTP transport is enough for a real no-auth WowProgress provider without adding a browser-runtime dependency
 - that leaderboard analytics can stay useful and trustworthy when they are framed as sampled primitives instead of fake direct answers
+- that enriching a sampled leaderboard slice with direct guild-profile fetches can make the CLI materially more complete than a single browser page while still preserving explicit sample boundaries
 
 ## Risks
 

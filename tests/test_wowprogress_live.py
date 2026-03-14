@@ -122,3 +122,46 @@ def test_live_wowprogress_threshold_pve_leaderboard_contract() -> None:
     assert payload["metric"] == "rank"
     assert payload["threshold"]["nearest_matches"]
     assert payload["threshold"]["estimate"] is not None
+
+
+def test_live_wowprogress_sample_pve_guild_profiles_contract() -> None:
+    require_live("WowProgress")
+    payload = payload_for_live(
+        runner,
+        app,
+        ["sample", "pve-guild-profiles", "--region", "us", "--limit", "5"],
+        provider_name="WowProgress",
+    )
+
+    assert payload["kind"] == "pve_guild_profiles_sample"
+    assert payload["sample"]["guild_profile_count"] == len(payload["guild_profiles"])
+    assert payload["guild_profiles"]
+    assert payload["guild_profiles"][0]["item_level_average"] is not None
+
+
+def test_live_wowprogress_distribution_pve_guild_profiles_contract() -> None:
+    require_live("WowProgress")
+    payload = payload_for_live(
+        runner,
+        app,
+        ["distribution", "pve-guild-profiles", "--region", "us", "--metric", "progress", "--limit", "5"],
+        provider_name="WowProgress",
+    )
+
+    assert payload["kind"] == "pve_guild_profiles_distribution"
+    assert payload["distribution"]["rows"]
+    assert payload["citations"]["leaderboard_page"]
+
+
+def test_live_wowprogress_threshold_pve_guild_profiles_contract() -> None:
+    require_live("WowProgress")
+    payload = payload_for_live(
+        runner,
+        app,
+        ["threshold", "pve-guild-profiles", "--region", "us", "--metric", "world_rank", "--value", "25", "--nearest", "5", "--limit", "5"],
+        provider_name="WowProgress",
+    )
+
+    assert payload["kind"] == "pve_guild_profiles_threshold"
+    assert payload["threshold"]["nearest_matches"]
+    assert payload["threshold"]["estimate"] is not None

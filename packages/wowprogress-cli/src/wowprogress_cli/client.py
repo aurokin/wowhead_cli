@@ -4,7 +4,7 @@ import hashlib
 import json
 import time
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from curl_cffi import requests
 
@@ -185,6 +185,15 @@ class WowProgressClient:
 
     def fetch_guild_page(self, *, region: str, realm: str, name: str) -> dict[str, Any]:
         url = guild_url(region, realm, name)
+        html = self._fetch_html(url, namespace="guild_page", ttl_seconds=self._guild_ttl)
+        return parse_guild_page(html, url=url, region=region, realm=realm, name=name)
+
+    def fetch_guild_page_url(self, url: str) -> dict[str, Any]:
+        parsed = urlparse(url)
+        parts = [part for part in parsed.path.split("/") if part]
+        region = parts[1] if len(parts) > 1 else ""
+        realm = parts[2] if len(parts) > 2 else ""
+        name = parts[3] if len(parts) > 3 else ""
         html = self._fetch_html(url, namespace="guild_page", ttl_seconds=self._guild_ttl)
         return parse_guild_page(html, url=url, region=region, realm=realm, name=name)
 
