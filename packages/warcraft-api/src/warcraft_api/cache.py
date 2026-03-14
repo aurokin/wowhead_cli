@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import importlib
 import json
 import os
-from pathlib import Path
 import time
+from contextlib import suppress
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 DEFAULT_CACHE_ROOT = Path.home() / ".cache" / "wowhead_cli"
@@ -138,10 +139,8 @@ class FileCacheStore:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001
-            try:
+            with suppress(OSError):
                 path.unlink(missing_ok=True)
-            except OSError:
-                pass
             return None
         if not isinstance(data, dict):
             return None
@@ -149,10 +148,8 @@ class FileCacheStore:
         if not isinstance(expires_at, (int, float)):
             return None
         if expires_at <= time.time():
-            try:
+            with suppress(OSError):
                 path.unlink(missing_ok=True)
-            except OSError:
-                pass
             return None
         return data.get("payload")
 

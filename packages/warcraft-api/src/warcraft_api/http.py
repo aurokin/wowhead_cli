@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 import random
 import time
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -15,7 +15,7 @@ RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 def backoff_seconds(attempt: int) -> float:
     base = 0.35 * (2 ** (attempt - 1))
     jitter = random.uniform(0.0, 0.12)
-    return min(4.0, base + jitter)
+    return float(min(4.0, base + jitter))
 
 
 def retry_after_seconds(response: httpx.Response) -> float | None:
@@ -33,8 +33,8 @@ def retry_after_seconds(response: httpx.Response) -> float | None:
         except (TypeError, ValueError, IndexError):
             return None
         if retry_at.tzinfo is None:
-            retry_at = retry_at.replace(tzinfo=timezone.utc)
-        seconds = (retry_at - datetime.now(timezone.utc)).total_seconds()
+            retry_at = retry_at.replace(tzinfo=UTC)
+        seconds = (retry_at - datetime.now(UTC)).total_seconds()
     return max(0.0, seconds)
 
 

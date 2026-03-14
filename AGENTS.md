@@ -7,6 +7,11 @@
 - Fast tests: `pytest -q`
 - Live tests: `WOWHEAD_LIVE_TESTS=1 pytest -q -m live`
 - Local deploy: `make dev-deploy`
+- Lint: `make lint`
+- Full lint report: `make lint-all`
+- Complexity report: `make complexity`
+- Type check: `make typecheck`
+- Coverage: `make coverage` (currently blocked if the local Python build lacks `sqlite3`)
 
 ## Commit Attribution
 - AI commits MUST include:

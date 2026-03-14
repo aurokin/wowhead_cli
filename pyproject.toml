@@ -18,7 +18,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "mypy>=1.18.2,<2.0.0",
   "pytest>=8.3.5,<9.0.0",
+  "radon>=6.0.1,<7.0.0",
+  "ruff>=0.12.0,<1.0.0",
+  "vulture>=2.14,<3.0.0",
+  "xenon>=0.9.3,<1.0.0",
 ]
 redis = [
   "redis>=5.0.0,<6.0.0",
@@ -39,6 +44,43 @@ testpaths = ["tests"]
 markers = [
   "live: live network contract tests against Wowhead endpoints",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 140
+
+[tool.ruff.lint]
+select = [
+  "B",
+  "E",
+  "F",
+  "I",
+  "SIM",
+  "UP",
+  "W",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = [
+  "B011",
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = [
+  "packages/warcraft-core/src/warcraft_core",
+  "packages/warcraft-api/src/warcraft_api",
+  "packages/warcraft-content/src/warcraft_content",
+]
+mypy_path = "packages/warcraft-core/src:packages/warcraft-api/src:packages/warcraft-content/src:packages/warcraft-cli/src:packages/wowhead-cli/src:packages/method-cli/src:packages/icy-veins-cli/src:packages/raiderio-cli/src:packages/warcraft-wiki-cli/src:packages/wowprogress-cli/src:packages/simc-cli/src"
+check_untyped_defs = true
+ignore_missing_imports = true
+no_implicit_optional = true
+pretty = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_ignores = true
 
 [tool.hatch.build.targets.wheel]
 packages = [

@@ -28,7 +28,10 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"Expected JSON object in {path}")
+    return value
 
 
 def load_json_or_default(path: Path, default: Any) -> Any:

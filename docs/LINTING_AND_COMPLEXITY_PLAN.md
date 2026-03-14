@@ -55,6 +55,11 @@ Why first:
 - low friction
 - immediately useful across the whole repo
 
+Phase-1 rollout note:
+- make the default `make lint` gate cover shared packages first
+- keep a broader `make lint-all` report for the whole repo backlog
+- do not block day-to-day work on the existing full-repo style backlog before the first refactor passes land
+
 ### Mypy
 
 Add `mypy`, but roll it out in phases.
@@ -105,6 +110,11 @@ Focus first on:
 
 Prefer branch coverage in critical shared logic where practical.
 
+Environment note:
+- coverage tooling depends on `sqlite3`
+- on this machine, the current Python build is missing `_sqlite3`
+- keep coverage explicitly deferred until the local runtime is fixed rather than breaking normal `pytest`
+
 ### Import-Linter
 
 Add `import-linter` to protect package boundaries.
@@ -149,11 +159,17 @@ Likely outcomes:
 
 Add tooling and commands only:
 - `make lint`
+- `make lint-all`
 - `make complexity`
 - `make typecheck`
 - `make coverage`
 
 Do not try to clean the whole repo in the same change.
+
+Practical phase-1 behavior:
+- `make lint` should be clean for shared packages
+- `make lint-all` can remain an exploratory full-repo report
+- `make coverage` should fail clearly with an environment message until `sqlite3` support exists
 
 ### Phase 2
 

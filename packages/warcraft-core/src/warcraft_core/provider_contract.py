@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Mapping
 from functools import lru_cache
-import json
 from pathlib import Path
-import re
 from typing import Any
 
 from warcraft_core.paths import config_root
@@ -52,7 +52,19 @@ DEFAULT_WRAPPER_RANKING_POLICY: dict[str, Any] = {
         ],
         "guild_profile": ["guild", "guilds", "roster", "progression", "leaderboard", "leaderboards"],
         "character_profile": ["character", "characters", "rio", "score", "scores", "keys", "runs", "m+", "mythic+", "mythicplus"],
-        "simc": ["simc", "simulationcraft", "apl", "action", "actions", "profile", "profiles", "decode-build", "branch", "branches", "trace"],
+        "simc": [
+            "simc",
+            "simulationcraft",
+            "apl",
+            "action",
+            "actions",
+            "profile",
+            "profiles",
+            "decode-build",
+            "branch",
+            "branches",
+            "trace",
+        ],
     },
     "intent_family_boosts": {
         "guide": {"article": 26, "entity": 10, "reference": -6, "profile": -18, "local_tool": -22},
@@ -334,7 +346,8 @@ def synthetic_search_candidates(query: str) -> list[dict[str, Any]]:
     ordered_tokens = [token for token in normalized.split() if token]
     if "leaderboard" not in tokens:
         return []
-    region = next((token for token in ordered_tokens if token in load_wrapper_ranking_policy()["known_region_terms"] and token != "world"), None)
+    known_region_terms = load_wrapper_ranking_policy()["known_region_terms"]
+    region = next((token for token in ordered_tokens if token in known_region_terms and token != "world"), None)
     if region is None:
         return []
     realm: str | None = None
@@ -368,7 +381,8 @@ def synthetic_resolve_payloads(query: str) -> list[tuple[str, dict[str, Any]]]:
     payloads: list[tuple[str, dict[str, Any]]] = []
     for candidate in synthetic_search_candidates(query):
         decorated = decorate_search_result(query, candidate)
-        follow_up = decorated.get("follow_up") if isinstance(decorated.get("follow_up"), Mapping) else {}
+        raw_follow_up = decorated.get("follow_up")
+        follow_up: Mapping[str, Any] = raw_follow_up if isinstance(raw_follow_up, Mapping) else {}
         payloads.append(
             (
                 "wowprogress",
