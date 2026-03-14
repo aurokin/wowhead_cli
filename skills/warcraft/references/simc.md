@@ -31,6 +31,20 @@
 - if the user wants to compare guide-derived or custom APLs, build a harness and use `compare-apls`; do not edit upstream SimC files
 - use `verify-clean` before and after local comparison work when upstream cleanliness matters
 
+## Comparison Workflow
+
+- use `build-harness` to create one shared local profile baseline
+- use `validate-apl` to catch syntax or setup issues before longer sim runs
+- use `compare-apls` to compare base and variant APLs on the same harness
+- use `variant-report` to summarize winners, DPS deltas, and action-count deltas
+- use `verify-clean` before and after the comparison if the user cares about upstream cleanliness
+
+This is the default safe path for:
+
+- guide-vs-guide APL comparisons
+- custom APL experiments
+- any workflow where local variants should stay out of the upstream SimC repo
+
 ## Boundaries
 
 - `simc` is a local-tool provider, not a web-data provider

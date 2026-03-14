@@ -29,7 +29,7 @@ Use `warcraft` first when the caller does not already know which provider they n
 | `raiderio` | character/guild profiles, Mythic+, sampled run analytics | `warcraft raiderio character ...`, `warcraft raiderio sample ...` |
 | `warcraft-wiki` | API docs, events, systems, lore, reference pages | `warcraft warcraft-wiki api ...`, `warcraft warcraft-wiki article ...` |
 | `wowprogress` | progression, rankings, guild/profile analytics | `warcraft guild ...`, `warcraft wowprogress guild ...`, `warcraft wowprogress sample ...` |
-| `simc` | local SimulationCraft inspection, reasoning, and runs | `warcraft simc doctor`, `warcraft simc apl-intent ...`, `warcraft simc run ...` |
+| `simc` | local SimulationCraft inspection, exact-build priority analysis, APL comparison, and runs | `warcraft simc doctor`, `warcraft simc priority ...`, `warcraft simc compare-apls ...` |
 
 ## Routing Rules
 
