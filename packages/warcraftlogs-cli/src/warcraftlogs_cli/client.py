@@ -11,7 +11,8 @@ import httpx
 from warcraft_api.cache import CacheSettings, CacheTTLConfig, build_cache_store, load_prefixed_cache_settings_from_env
 from warcraft_api.http import DEFAULT_RETRY_ATTEMPTS, request_with_retries
 from warcraft_content.paths import provider_cache_root
-from warcraft_core.env import find_env_file, load_env_file
+from warcraft_core.env import find_env_file, load_env_file, load_explicit_env_file
+from warcraft_core.paths import config_root
 from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug
 
 DEFAULT_CACHE_DIR = provider_cache_root("warcraftlogs") / "http"
@@ -314,6 +315,10 @@ class WarcraftLogsAuthConfig:
         return bool(self.client_id and self.client_secret)
 
 
+def warcraftlogs_provider_env_path() -> str:
+    return str(config_root() / "providers" / "warcraftlogs.env")
+
+
 class WarcraftLogsClientError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -322,7 +327,11 @@ class WarcraftLogsClientError(RuntimeError):
 
 
 def load_warcraftlogs_auth_config(*, start_dir: str | None = None) -> WarcraftLogsAuthConfig:
-    env_path = load_env_file(start_dir=start_dir)
+    env_path = load_env_file(start_dir=start_dir, override=True)
+    if not (os.getenv("WARCRAFTLOGS_CLIENT_ID") and os.getenv("WARCRAFTLOGS_CLIENT_SECRET")):
+        provider_env_path = warcraftlogs_provider_env_path()
+        if load_explicit_env_file(provider_env_path, override=True) is not None:
+            env_path = provider_env_path
     client_id = os.getenv("WARCRAFTLOGS_CLIENT_ID")
     client_secret = os.getenv("WARCRAFTLOGS_CLIENT_SECRET")
     return WarcraftLogsAuthConfig(

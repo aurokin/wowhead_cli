@@ -17,7 +17,11 @@ The CLI should become the fastest trustworthy path for:
 Implemented today:
 - retail-only phase-1 standalone provider
 - official OAuth client-credentials auth against the public GraphQL endpoint
-- local `.env.local` loading for:
+- auth lookup order:
+  - repo-local `.env.local`
+  - XDG config: `~/.config/warcraft/providers/warcraftlogs.env`
+  - process environment
+- supported variables:
   - `WARCRAFTLOGS_CLIENT_ID`
   - `WARCRAFTLOGS_CLIENT_SECRET`
 - commands:

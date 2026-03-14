@@ -33,7 +33,11 @@ Best fits:
 
 ## Inputs
 
-- credentials must be configured:
+- credentials are loaded in this order:
+  - repo-local `.env.local`
+  - XDG config: `~/.config/warcraft/providers/warcraftlogs.env`
+  - process environment
+- required variables:
   - `WARCRAFTLOGS_CLIENT_ID`
   - `WARCRAFTLOGS_CLIENT_SECRET`
 - region/realm inputs still benefit from normalized forms:

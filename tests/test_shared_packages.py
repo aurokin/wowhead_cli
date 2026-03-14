@@ -8,7 +8,7 @@ from icy_veins_cli.client import load_icy_veins_cache_settings_from_env
 from method_cli.client import load_method_cache_settings_from_env
 from warcraft_api.cache import CacheTTLConfig, load_prefixed_cache_settings_from_env
 from warcraft_api.http import request_with_retries, retry_after_seconds
-from warcraft_core.env import load_env_file
+from warcraft_core.env import load_env_file, load_explicit_env_file
 
 
 def test_load_prefixed_cache_settings_from_env_builds_provider_specific_settings(
@@ -188,3 +188,17 @@ def test_load_env_file_loads_local_gitignored_env(monkeypatch, tmp_path: Path) -
     assert loaded == env_file
     assert os.environ["WARCRAFTLOGS_CLIENT_ID"] == "test-id"
     assert os.environ["WARCRAFTLOGS_CLIENT_SECRET"] == "test-secret"
+
+
+def test_load_explicit_env_file_loads_provider_specific_env(monkeypatch, tmp_path: Path) -> None:
+    env_file = tmp_path / "warcraftlogs.env"
+    env_file.write_text("WARCRAFTLOGS_CLIENT_ID=provider-id\nWARCRAFTLOGS_CLIENT_SECRET=provider-secret\n")
+
+    monkeypatch.delenv("WARCRAFTLOGS_CLIENT_ID", raising=False)
+    monkeypatch.delenv("WARCRAFTLOGS_CLIENT_SECRET", raising=False)
+
+    loaded = load_explicit_env_file(env_file)
+
+    assert loaded == env_file
+    assert os.environ["WARCRAFTLOGS_CLIENT_ID"] == "provider-id"
+    assert os.environ["WARCRAFTLOGS_CLIENT_SECRET"] == "provider-secret"

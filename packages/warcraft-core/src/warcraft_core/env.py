@@ -13,16 +13,11 @@ def find_env_file(filename: str = ".env.local", *, start_dir: str | Path | None 
     return None
 
 
-def load_env_file(
-    filename: str = ".env.local",
-    *,
-    start_dir: str | Path | None = None,
-    override: bool = False,
-) -> Path | None:
-    path = find_env_file(filename, start_dir=start_dir)
-    if path is None:
+def load_explicit_env_file(path: str | Path, *, override: bool = False) -> Path | None:
+    candidate = Path(path).expanduser()
+    if not candidate.is_file():
         return None
-    for raw_line in path.read_text().splitlines():
+    for raw_line in candidate.read_text().splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
@@ -40,4 +35,16 @@ def load_env_file(
         if len(env_value) >= 2 and env_value[0] == env_value[-1] and env_value[0] in {"'", '"'}:
             env_value = env_value[1:-1]
         os.environ[env_key] = env_value
-    return path
+    return candidate
+
+
+def load_env_file(
+    filename: str = ".env.local",
+    *,
+    start_dir: str | Path | None = None,
+    override: bool = False,
+) -> Path | None:
+    path = find_env_file(filename, start_dir=start_dir)
+    if path is None:
+        return None
+    return load_explicit_env_file(path, override=override)

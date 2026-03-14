@@ -438,10 +438,21 @@ warcraftlogs report-fights abcdefgh --difficulty 5
 Warcraft Logs phase-1 behavior:
 - `warcraftlogs` currently targets the retail/main site profile only
 - auth is the official public OAuth client-credentials flow
-- credentials must be configured:
+- credentials are loaded in this priority order:
+  - repo-local `.env.local`
+  - XDG config: `~/.config/warcraft/providers/warcraftlogs.env`
+  - process environment
+- supported auth variables:
   - `WARCRAFTLOGS_CLIENT_ID`
   - `WARCRAFTLOGS_CLIENT_SECRET`
-- the CLI automatically loads a local `.env.local` when present
+- example XDG provider config:
+```bash
+mkdir -p ~/.config/warcraft/providers
+cat > ~/.config/warcraft/providers/warcraftlogs.env <<'EOF'
+WARCRAFTLOGS_CLIENT_ID=...
+WARCRAFTLOGS_CLIENT_SECRET=...
+EOF
+```
 - `doctor` reports auth status plus the active site profile
 - `rate-limit` exposes the official queryable API rate-limit state
 - `regions`, `server`, `zones`, and `encounter` are the first typed world-metadata slice

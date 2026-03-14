@@ -12,6 +12,7 @@ from warcraftlogs_cli.client import (
     WarcraftLogsClient,
     WarcraftLogsClientError,
     load_warcraftlogs_auth_config,
+    warcraftlogs_provider_env_path,
 )
 
 app = typer.Typer(add_completion=False, help="Warcraft Logs official API CLI.")
@@ -52,6 +53,7 @@ def _handle_client_error(ctx: typer.Context, exc: WarcraftLogsClientError) -> No
 
 def _doctor_payload() -> dict[str, Any]:
     auth = load_warcraftlogs_auth_config()
+    credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
     return {
         "ok": True,
         "provider": "warcraftlogs",
@@ -66,7 +68,8 @@ def _doctor_payload() -> dict[str, Any]:
             "required": True,
             "configured": auth.configured,
             "flow": "oauth_client_credentials",
-            "env_file": auth.env_file,
+            "credential_source": credential_source,
+            "lookup_order": [".env.local", warcraftlogs_provider_env_path(), "environment"],
             "redirect_flow_deferred": True,
         },
         "capabilities": {

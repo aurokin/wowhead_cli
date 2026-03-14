@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from typer.testing import CliRunner
+from warcraftlogs_cli.client import load_warcraftlogs_auth_config
 from warcraftlogs_cli.main import app as warcraftlogs_app
 
 runner = CliRunner()
@@ -205,6 +206,9 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["provider"] == "warcraftlogs"
     assert payload["status"] == "ready"
     assert payload["auth"]["configured"] is True
+    assert payload["auth"]["credential_source"] == "/tmp/.env.local"
+    assert payload["auth"]["lookup_order"][0] == ".env.local"
+    assert payload["auth"]["lookup_order"][-1] == "environment"
     assert payload["capabilities"]["guild"] == "ready"
     assert payload["capabilities"]["report_fights"] == "ready"
 
@@ -265,3 +269,41 @@ def test_warcraftlogs_guild_character_and_report_commands(monkeypatch) -> None:
     fights_payload = json.loads(fights_result.stdout)
     assert fights_payload["count"] == 1
     assert fights_payload["fights"][0]["encounter_id"] == 3012
+
+
+def test_warcraftlogs_auth_prefers_local_env_before_xdg_provider_env(monkeypatch, tmp_path) -> None:
+    repo_env = tmp_path / ".env.local"
+    repo_env.write_text("WARCRAFTLOGS_CLIENT_ID=repo-id\nWARCRAFTLOGS_CLIENT_SECRET=repo-secret\n")
+    config_home = tmp_path / "config-home"
+    provider_env = config_home / "warcraft" / "providers" / "warcraftlogs.env"
+    provider_env.parent.mkdir(parents=True)
+    provider_env.write_text("WARCRAFTLOGS_CLIENT_ID=provider-id\nWARCRAFTLOGS_CLIENT_SECRET=provider-secret\n")
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.delenv("WARCRAFTLOGS_CLIENT_ID", raising=False)
+    monkeypatch.delenv("WARCRAFTLOGS_CLIENT_SECRET", raising=False)
+
+    auth = load_warcraftlogs_auth_config(start_dir=str(tmp_path))
+
+    assert auth.configured is True
+    assert auth.client_id == "repo-id"
+    assert auth.client_secret == "repo-secret"
+    assert auth.env_file == str(repo_env)
+
+
+def test_warcraftlogs_auth_falls_back_to_xdg_provider_env(monkeypatch, tmp_path) -> None:
+    config_home = tmp_path / "config-home"
+    provider_env = config_home / "warcraft" / "providers" / "warcraftlogs.env"
+    provider_env.parent.mkdir(parents=True)
+    provider_env.write_text("WARCRAFTLOGS_CLIENT_ID=provider-id\nWARCRAFTLOGS_CLIENT_SECRET=provider-secret\n")
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.delenv("WARCRAFTLOGS_CLIENT_ID", raising=False)
+    monkeypatch.delenv("WARCRAFTLOGS_CLIENT_SECRET", raising=False)
+
+    auth = load_warcraftlogs_auth_config(start_dir=str(tmp_path))
+
+    assert auth.configured is True
+    assert auth.client_id == "provider-id"
+    assert auth.client_secret == "provider-secret"
+    assert auth.env_file == str(provider_env)
