@@ -72,6 +72,7 @@ Active next step:
 - [Blizzard API CLI plan](/home/auro/code/wowhead_cli/docs/BLIZZARD_API_CLI_PLAN.md)
 - [Undermine Exchange CLI plan](/home/auro/code/wowhead_cli/docs/UNDERMINE_EXCHANGE_CLI_PLAN.md)
 - [RaidPlan CLI plan](/home/auro/code/wowhead_cli/docs/RAIDPLAN_CLI_PLAN.md)
+- [CurseForge CLI plan](/home/auro/code/wowhead_cli/docs/CURSEFORGE_CLI_PLAN.md)
 - [SimulationCraft CLI plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md)
 - [SimulationCraft migration inventory](/home/auro/code/wowhead_cli/docs/SIMC_MIGRATION_INVENTORY.md)
 - [SimulationCraft implementation plan](/home/auro/code/wowhead_cli/docs/SIMC_IMPLEMENTATION_PLAN.md)
@@ -99,6 +100,7 @@ Active next step:
 | Blizzard API | Official authenticated game-data and profile APIs | Build as an API-first CLI for canonical game data, profile data, and auth-aware official lookups | [Plan](/home/auro/code/wowhead_cli/docs/BLIZZARD_API_CLI_PLAN.md) |
 | Undermine Exchange | Market-data web workflows and auction-oriented views | Build as a market-data CLI for item, commodity, and price-history lookups once the public surface is stable | [Plan](/home/auro/code/wowhead_cli/docs/UNDERMINE_EXCHANGE_CLI_PLAN.md) |
 | RaidPlan | Planning/editor workflow with shareable encounter plans | Build as a read-first planning CLI for public plan fetch, export, and query before attempting editing flows | [Plan](/home/auro/code/wowhead_cli/docs/RAIDPLAN_CLI_PLAN.md) |
+| CurseForge | Addon/mod discovery pages plus file and release metadata | Build as a read-first addon metadata CLI for search, project, file, changelog, and compatibility lookups | [Plan](/home/auro/code/wowhead_cli/docs/CURSEFORGE_CLI_PLAN.md) |
 | SimulationCraft | Local Git repo, readonly source inspection, local builds, local command execution | Build as a local-tool CLI with readonly source analysis, sync/build/run workflows, build decoding, and agent-facing APL reasoning helpers | [Plan](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md) |
 | Raidbots | Web workflow built around SimulationCraft input and result pages | Start with result/report parsing and workflow helpers, then evaluate deeper automation carefully | [Plan](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md) |
 | Warcraft Logs | Authenticated API with complex query workflows | Build as an API-first CLI with typed query helpers, auth management, and reusable report patterns | [Plan](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md) |
@@ -144,6 +146,7 @@ A good end state is:
 - `packages/blizzard-api-cli`
 - `packages/undermine-exchange-cli`
 - `packages/raidplan-cli`
+- `packages/curseforge-cli`
 - `packages/simc-cli`
 - `packages/raidbots-cli`
 - `packages/warcraftlogs-cli`
@@ -157,6 +160,7 @@ A good end state is:
 - `skills/blizzard-api/`
 - `skills/undermine-exchange/`
 - `skills/raidplan/`
+- `skills/curseforge/`
 - `skills/simc/`
 - `skills/raidbots/`
 - `skills/warcraftlogs/`
@@ -257,6 +261,7 @@ Next:
 14. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
 15. Add `undermine-exchange` once the public market-data surface is stable enough to plan against. See [UNDERMINE_EXCHANGE_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/UNDERMINE_EXCHANGE_CLI_PLAN.md).
 16. Add `raidplan` as a planning/workflow provider once we decide to tackle read-first public plan extraction. See [RAIDPLAN_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDPLAN_CLI_PLAN.md).
+17. Add `curseforge` as a read-first addon metadata provider once we want addon/project/file compatibility workflows. See [CURSEFORGE_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/CURSEFORGE_CLI_PLAN.md).
 
 ## Research Anchors
 
