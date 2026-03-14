@@ -1,69 +1,565 @@
 # Warcraft Logs CLI Plan
 
-## Why Warcraft Logs Needs Strong Isolation
+## Goal
 
-`warcraftlogs` is clearly an API-first integration, but it is also the most auth- and query-heavy service in this group.
+Build `warcraftlogs` as an official API-first provider for Warcraft Logs using the supported OAuth 2.0 and GraphQL APIs, not scraping.
 
-It should be planned as a dedicated API client with typed query helpers rather than as a generic HTTP integration.
+The CLI should become the fastest trustworthy path for:
+- guild progression and ranking lookups
+- character ranking lookups
+- report inspection
+- fight/event/table/graph extraction from reports
+- world metadata lookup for zones, encounters, regions, servers, and expansions
+- authenticated user workflows when private reports or user-scoped data matter
 
-This is the strongest candidate for a language exception if one becomes necessary. A TypeScript package is acceptable here if it stays isolated behind the service CLI boundary described in [REPO_STRUCTURE_AND_PACKAGING.md](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md).
+## Current State
 
-## Research Summary
+Implemented today:
+- planning only
 
-Observed from official documentation entry points:
-- official docs live at `https://www.warcraftlogs.com/api/docs`
-- the official docs describe OAuth 2.0 flows
-- the official docs describe a GraphQL-based v2 API
-- official docs distinguish public client access from user-authorized access
-- browserless access to the docs entry points was Cloudflare-challenged during planning research, which is an operational signal worth preserving
+What changed in the research baseline:
+- we now have a local rendered docs dump under `research/warcraftlogs-docs/`
+- the dump is produced by [dump_warcraftlogs_docs.py](/home/auro/code/wowhead_cli/scripts/dump_warcraftlogs_docs.py)
+- the dump confirms Warcraft Logs has an official OAuth 2.0 + GraphQL integration surface that is broad enough for a full CLI
 
-## Access Model
+This means `warcraftlogs` should be planned as an official integration first, with scraping treated only as a fallback for unsupported site workflows.
 
-This should be an API-first, auth-heavy service:
-- OAuth client management
-- token acquisition and refresh
-- typed GraphQL query helpers
-- reusable report, fight, actor, and ranking query patterns
+## Official Access Model
 
-## Likely CLI Shape
+Warcraft Logs officially supports OAuth 2.0 and GraphQL:
+- OAuth docs landing page: `https://www.warcraftlogs.com/api/docs`
+- public GraphQL endpoint: `https://www.warcraftlogs.com/api/v2/client`
+- user-auth GraphQL endpoint: `https://www.warcraftlogs.com/api/v2/user`
+- authorization URI: `https://www.warcraftlogs.com/oauth/authorize`
+- token URI: `https://www.warcraftlogs.com/oauth/token`
 
-- `warcraftlogs auth ...`
+Supported auth flows from the official docs:
+- client credentials flow
+  - public API only
+  - good for most read-first CLI queries
+- authorization code flow
+  - user-authorized private/user data
+- PKCE code flow
+  - user-authorized private/user data without client-secret distribution
+
+From the official docs:
+- public data belongs under `/api/v2/client`
+- user/private data belongs under `/api/v2/user`
+- the API is schema-driven GraphQL
+- rate-limit state is queryable via `RateLimitData`
+
+## Confirmed Official Schema Surface
+
+The rendered GraphQL docs dump confirms these top-level query families:
+- `characterData`
+- `gameData`
+- `guildData`
+- `progressRaceData`
+- `rateLimitData`
+- `reportData`
+- `userData`
+- `worldData`
+- `reportComponentData`
+- `systemReportComponentData`
+
+This is already enough for a substantial CLI without scraping.
+
+### Guild and Progression Surface
+
+Confirmed from `GuildData`, `Guild`, and `GuildZoneRankings`:
+- fetch a guild by:
+  - `id`
+  - or `name + serverSlug + serverRegion`
+- list guilds by:
+  - page/limit
+  - server id
+  - server slug + region
+- guild fields include:
+  - identity
+  - server
+  - faction
+  - description
+  - tags
+  - competition mode
+  - stealth mode
+- guild supports:
+  - `attendance(...)`
+  - `members(...)`
+  - `zoneRanking(zoneId: ...)`
+- zone ranking supports:
+  - `progress`
+  - `speed`
+  - `completeRaidSpeed`
+  with world / region / server rank positions
+
+This makes official guild/ranking workflows first-class.
+
+### Character Surface
+
+Confirmed from `CharacterData` and `Character`:
+- fetch a character by:
+  - `id`
+  - or `name + serverSlug + serverRegion`
+- list characters for a guild by `guildID`
+- character fields include:
+  - canonical ID
+  - class ID
+  - faction
+  - guild rank
+  - guild memberships
+  - level
+  - visibility flags
+- character supports:
+  - `encounterRankings(...)`
+  - `zoneRankings(...)`
+  - `gameData(specID, forceUpdate)`
+
+Important boundary:
+- some ranking/game data is documented as non-frozen and may change without notice
+- private-log inclusion is possible on some ranking queries only via the user endpoint
+
+### Report Surface
+
+Confirmed from `ReportData`, `Report`, and `ReportEventPaginator`:
+- fetch a report by `code`
+- opt into `allowUnlisted` when appropriate
+- list reports by:
+  - guild identity
+  - guild tag
+  - user id
+  - date range
+  - zone id
+  - game zone id
+  - page/limit
+- report fields include:
+  - code
+  - title
+  - owner
+  - guild
+  - guild tag
+  - region
+  - visibility
+  - archive status
+  - zone
+  - start/end time
+  - revision
+  - segments / exported segments
+  - phases
+- report supports:
+  - `events(...)`
+  - `fights(...)`
+  - `graph(...)`
+  - `masterData(...)`
+  - `playerDetails(...)`
+  - `rankings(...)`
+  - `table(...)`
+
+Important pagination and cost behavior:
+- event data is paginated via `ReportEventPaginator`
+- pagination continues through `nextPageTimestamp`
+- `events`, `graph`, and `table` all expose rich filter arguments
+- archived-report access is restricted unless the retrieving user has archive access
+
+### World and Static Metadata Surface
+
+Confirmed from `WorldData` and `GameData`:
+- `worldData` supports:
+  - expansions
+  - regions
+  - subregions
+  - servers
+  - zones
+  - encounters
+- `gameData` supports:
+  - abilities
+  - achievements
+  - affixes
+  - classes
+  - enchants
+  - factions
+  - items
+  - item sets
+  - maps
+  - NPCs
+  - specs
+  - zones
+
+Important caching signal:
+- the docs explicitly say game data changes only on major game patches and should be cached aggressively
+- `Zone.frozen` provides a strong freezing/caching signal for zone-scoped data
+
+### User and Private Surface
+
+Confirmed from `UserData` and `User`:
+- `currentUser` exists only on the user endpoint
+- user fields include:
+  - id
+  - name
+  - avatar
+  - battle tag
+  - guilds
+  - claimed characters
+
+Important scope boundary:
+- several fields explicitly require user authentication with the `view-user-profile` scope
+- examples include:
+  - `Guild.currentUserRank`
+  - user guilds
+  - user characters
+  - some claimed/private character data
+
+### Race and Live Competition Surface
+
+Confirmed from `ProgressRaceData`:
+- `progressRace(...)`
+- `detailedComposition(...)`
+
+Important boundary:
+- this data is only active during an ongoing race
+- the docs say the JSON is not frozen and may change without notice
+
+### Rate Limits
+
+Confirmed from `RateLimitData`:
+- `limitPerHour`
+- `pointsSpentThisHour`
+- `pointsResetIn`
+
+This should be part of `doctor` and auth diagnostics from day one.
+
+## Product Direction
+
+`warcraftlogs` should be an API-first CLI with typed query helpers over the official schema.
+
+The CLI should not start with arbitrary raw GraphQL strings as the main product.
+Raw query support may be useful later, but the default UX should be shaped around stable workflows agents actually need.
+
+## Command Families
+
+The full target shape should cover these families.
+
+### Environment and Auth
+
+- `warcraftlogs doctor`
+- `warcraftlogs auth login`
+- `warcraftlogs auth pkce-login`
+- `warcraftlogs auth logout`
+- `warcraftlogs auth status`
+- `warcraftlogs auth token`
+- `warcraftlogs auth client`
+
+These commands should clearly surface:
+- current auth mode
+- endpoint family in use (`client` vs `user`)
+- configured client id
+- token expiry
+- scope availability
+- rate-limit state
+
+### Guild Workflows
+
+- `warcraftlogs guild <region> <realm> <name>`
+- `warcraftlogs guild-members <region> <realm> <name>`
+- `warcraftlogs guild-attendance <region> <realm> <name>`
+- `warcraftlogs guild-rankings <region> <realm> <name>`
+- `warcraftlogs guild-reports <region> <realm> <name>`
+
+The ranking command should explicitly support:
+- `--zone-id`
+- `--difficulty`
+- `--size`
+- `--kind progress|speed|complete-raid-speed`
+
+### Character Workflows
+
+- `warcraftlogs character <region> <realm> <name>`
+- `warcraftlogs character-rankings <region> <realm> <name>`
+- `warcraftlogs character-zone-rankings <region> <realm> <name>`
+- `warcraftlogs character-game-data <region> <realm> <name>`
+
+Ranking support should include:
+- encounter
+- zone
+- metric
+- compare mode
+- timeframe
+- bracket
+- class/spec/role filters
+- include-private toggle only when user auth supports it
+
+### Report Workflows
+
 - `warcraftlogs report <code>`
-- `warcraftlogs query <saved-query>`
-- `warcraftlogs actor ...`
-- `warcraftlogs rankings ...`
+- `warcraftlogs report-fights <code>`
+- `warcraftlogs report-events <code>`
+- `warcraftlogs report-table <code>`
+- `warcraftlogs report-graph <code>`
+- `warcraftlogs report-rankings <code>`
+- `warcraftlogs report-player-details <code>`
+- `warcraftlogs report-master-data <code>`
+
+These commands should support:
+- fight id filters
+- encounter filters
+- difficulty filters
+- kill/wipe/trash filters
+- source/target/ability filters
+- query-language `filterExpression`
+- pagination via `nextPageTimestamp`
+- translation toggle
+- low-bandwidth toggles when the user does not need actor/ability expansion
+
+### Report Listing Workflows
+
+- `warcraftlogs reports --guild ...`
+- `warcraftlogs reports --user-id ...`
+- `warcraftlogs reports --guild-tag-id ...`
+- `warcraftlogs reports --start-time ... --end-time ...`
+- `warcraftlogs reports --zone-id ...`
+- `warcraftlogs reports --game-zone-id ...`
+
+### World and Static Metadata
+
+- `warcraftlogs expansions`
+- `warcraftlogs regions`
+- `warcraftlogs subregion <id>`
+- `warcraftlogs server <region> <slug>`
+- `warcraftlogs zones`
+- `warcraftlogs zone <id>`
+- `warcraftlogs encounter <id>`
+- `warcraftlogs abilities`
+- `warcraftlogs items`
+- `warcraftlogs npcs`
+- `warcraftlogs specs`
+- `warcraftlogs classes`
+
+This metadata layer is important for:
+- ID discovery
+- ranking/report query composition
+- reducing hard-coded IDs in agent flows
+
+### Race Workflows
+
+- `warcraftlogs progress-race`
+- `warcraftlogs progress-race-guild`
+- `warcraftlogs progress-race-composition`
+
+These should stay clearly marked as unstable JSON-backed surfaces.
+
+### Optional Advanced Surface Later
+
+- `warcraftlogs graphql`
+- `warcraftlogs saved-query ...`
+- `warcraftlogs report-component ...`
+
+These should come only after the typed workflows prove out.
+
+## Output and Modeling Strategy
+
+The CLI should expose stable typed outputs even when the GraphQL server returns `JSON` blobs.
+
+High-value normalized models:
+- guild snapshot
+- guild ranking snapshot
+- character snapshot
+- character ranking snapshot
+- report snapshot
+- report fight summary
+- report event page
+- report table/graph result wrapper
+- world metadata snapshot
+- rate-limit snapshot
+
+Every result should preserve:
+- provider
+- endpoint family (`client` or `user`)
+- source object path
+- key filters
+- pagination state
+- freshness timestamp
+
+## Normalization Requirements
+
+Warcraft Logs will need the same input quality standard we now use elsewhere:
+- normalize region names conservatively
+- normalize realm slugs
+- normalize guild and character names without losing case-preserving display forms
+- preserve the exact query inputs in output metadata
+
+Because Warcraft Logs supports:
+- `serverSlug`
+- `serverRegion`
+- `guildName`
+- `characterName`
+
+we should build on the shared Warcraft normalization layer instead of introducing another incompatible provider-local naming scheme.
+
+## Caching and Freshness
+
+Caching should be explicit and data-family-aware.
+
+Recommended policy:
+- `gameData`: cache aggressively
+- `worldData`: cache aggressively, especially frozen zone metadata
+- guild/character snapshots: short to medium TTL
+- rankings: short TTL
+- reports and report-derived views: medium TTL unless explicitly bypassed
+- race data: very short TTL
+- rate-limit data: very short TTL
+
+The CLI should expose freshness in output because:
+- ranking data is not frozen
+- report event/table/graph data is not frozen
+- race data is explicitly unstable during active races
+
+## Testing Strategy
+
+This provider needs a stronger-than-normal test plan.
+
+### Unit and Contract Tests
+
+- GraphQL payload builders
+- response parsers
+- normalization and endpoint selection
+- auth mode selection
+- pagination handling
+- rate-limit parsing
+- report event paginator handling
+
+### Recorded Fixture Tests
+
+Store recorded GraphQL responses for:
+- guild lookup
+- guild rankings
+- character lookup
+- character zone rankings
+- report summary
+- report fights
+- report events page
+- report table
+- world data lookup
+- rate-limit response
+
+### Live Tests
+
+Public live tests should cover:
+- `doctor`
+- `guild`
+- `guild-rankings`
+- `character`
+- `character-zone-rankings`
+- `report`
+- `report-fights`
+- `zones`
+- `encounter`
+- `rate-limit`
+
+User-auth live tests should be opt-in and separate.
+
+### Auth Tests
+
+Do not require real user auth in default CI.
+Instead:
+- unit test token storage and selection logic
+- unit test client/user endpoint routing
+- keep user-auth integration tests manual or explicitly gated
+
+## Phase Plan
+
+### Phase 1: Public API Foundation
+
+1. package skeleton
+2. client credentials auth bootstrap
+3. `doctor`
+4. rate-limit query
+5. world metadata:
+   - regions
+   - servers
+   - zones
+   - encounters
+6. guild lookup
+7. character lookup
+
+### Phase 2: Rankings and Report Basics
+
+1. guild rankings
+2. character rankings
+3. report lookup
+4. report listing
+5. report fights
+6. report master data
+
+### Phase 3: Report Analysis Surface
+
+1. report events
+2. report table
+3. report graph
+4. report player details
+5. report rankings
+6. event paginator handling
+7. query-expression support
+
+### Phase 4: User Auth and Private Data
+
+1. auth code / PKCE flow
+2. `auth status`
+3. `currentUser`
+4. private report access
+5. include-private ranking options
+6. user guilds and claimed characters
+
+### Phase 5: Race and Advanced Workflows
+
+1. progress race
+2. detailed composition
+3. optional raw GraphQL / saved query workflows
+4. report-component exploration if justified
 
 ## What Can Reuse Shared Code
 
-- auth/config persistence
-- cache backends and TTL policy
-- HTTP transport and retry behavior
+- config and credential storage patterns
+- cache backends and TTL handling
+- HTTP transport
+- retry/backoff primitives
 - output shaping
+- structured error contracts
+- shared normalization helpers for region/realm/name handling
 
-## What Should Stay Deeply Service-Specific
+## What Should Stay Service-Specific
 
-This service is a good reason not to over-generalize:
+- GraphQL query documents
+- response parsers for Warcraft Logs JSON surfaces
+- endpoint-family selection (`client` vs `user`)
+- auth-flow details
+- report/ranking/query-language ergonomics
+- rate-limit interpretation
 
-- GraphQL query shape
-- report/fight/actor vocabulary
-- auth scopes and access levels
-- saved-query ergonomics
-
-## First Useful Slice
-
-1. auth bootstrap and token storage
-2. one public GraphQL query path
-3. one report-oriented helper
-4. strong environment diagnostics for credentials and scopes
+This provider is still a strong reason not to over-generalize API-first services too early.
 
 ## Risks
 
-- the query surface is broad enough to overwhelm a weak initial CLI
-- schema-aware tooling matters more here than on any other service
-- this integration may need a more deliberate test strategy because of auth and private/public boundaries
+- GraphQL JSON-heavy surfaces can tempt us into weakly typed pass-through output
+- report `events`, `table`, and `graph` are broad enough to become a dumping ground if not shaped carefully
+- private/public endpoint mixing can create confusing failures if not surfaced explicitly
+- report and ranking data are documented as non-frozen in important places
+- race data is explicitly unstable
+- archived report access has subscription constraints
+- the docs landing page is Cloudflare-protected in browserless fetches, so local rendered docs dumps are useful operationally
+
+## Recommended Product Boundaries
+
+- default to official API integration
+- do not scrape ranking/report pages when the GraphQL API already provides the data
+- keep raw GraphQL support behind typed commands, not in place of them
+- treat private-data workflows as a separate phase with explicit auth diagnostics
+
+## Local Research Inputs
+
+- rendered docs dump: `research/warcraftlogs-docs/`
+- dump script: [dump_warcraftlogs_docs.py](/home/auro/code/wowhead_cli/scripts/dump_warcraftlogs_docs.py)
 
 ## Source Links
 
 - `https://www.warcraftlogs.com/api/docs`
-- `https://classic.warcraftlogs.com/v2-api-docs/warcraft`
+- `https://www.warcraftlogs.com/v2-api-docs/warcraft/`
 - [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
