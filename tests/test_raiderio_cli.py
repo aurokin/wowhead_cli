@@ -21,6 +21,8 @@ def test_raiderio_doctor_reports_phase_one_capabilities() -> None:
     assert payload["auth"]["deferred"] is True
     assert payload["capabilities"]["character"] == "ready"
     assert payload["capabilities"]["search"] == "ready"
+    assert payload["capabilities"]["sample_mythic_plus_runs"] == "ready"
+    assert payload["capabilities"]["distribution_mythic_plus_runs"] == "ready"
 
 
 def test_raiderio_search_returns_ranked_matches(monkeypatch) -> None:
@@ -338,6 +340,154 @@ def test_raiderio_mythic_plus_runs_summary(monkeypatch) -> None:
     assert payload["count"] == 1
     assert payload["runs"][0]["rank"] == 1
     assert payload["runs"][0]["roster"][0]["name"] == "Cotti"
+
+
+def test_raiderio_sample_mythic_plus_runs(monkeypatch) -> None:
+    def fake_runs(self, *, season: str | None, region: str, dungeon: str, affixes: str | None, page: int):  # noqa: ANN001
+        rows = {
+            0: [
+                {
+                    "rank": 1,
+                    "score": 580.0,
+                    "run": {
+                        "keystone_run_id": 1001,
+                        "season": "season-tww-3",
+                        "mythic_level": 26,
+                        "completed_at": "2026-01-21T18:27:09.000Z",
+                        "clear_time_ms": 1200000,
+                        "keystone_time_ms": 1500000,
+                        "num_chests": 2,
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
+                        "roster": [
+                            {"character": {"name": "Cotti", "realm": {"slug": "tarren-mill"}, "region": {"slug": "eu"}}, "role": "dps"},
+                            {"character": {"name": "Meowfreak", "realm": {"slug": "tarren-mill"}, "region": {"slug": "eu"}}, "role": "tank"},
+                        ],
+                    },
+                },
+                {
+                    "rank": 2,
+                    "score": 575.0,
+                    "run": {
+                        "keystone_run_id": 1002,
+                        "season": "season-tww-3",
+                        "mythic_level": 25,
+                        "completed_at": "2026-01-21T18:30:09.000Z",
+                        "clear_time_ms": 1210000,
+                        "keystone_time_ms": 1500000,
+                        "num_chests": 1,
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "Operation: Floodgate", "slug": "operation-floodgate"},
+                        "roster": [
+                            {"character": {"name": "Meowtide", "realm": {"slug": "sylvanas"}, "region": {"slug": "eu"}}, "role": "healer"},
+                            {"character": {"name": "Solanis", "realm": {"slug": "sylvanas"}, "region": {"slug": "eu"}}, "role": "dps"},
+                        ],
+                    },
+                },
+            ],
+            1: [
+                {
+                    "rank": 3,
+                    "score": 570.0,
+                    "run": {
+                        "keystone_run_id": 1003,
+                        "season": "season-tww-3",
+                        "mythic_level": 25,
+                        "completed_at": "2026-01-22T18:27:09.000Z",
+                        "clear_time_ms": 1220000,
+                        "keystone_time_ms": 1500000,
+                        "num_chests": 1,
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
+                        "roster": [
+                            {"character": {"name": "Azunazx", "realm": {"slug": "hyjal"}, "region": {"slug": "us"}}, "role": "dps"},
+                            {"character": {"name": "Yodadhz", "realm": {"slug": "zuljin"}, "region": {"slug": "us"}}, "role": "tank"},
+                        ],
+                    },
+                }
+            ],
+        }
+        return {
+            "season": "season-tww-3",
+            "leaderboard_url": f"https://raider.io/mythic-plus-runs/season-tww-3/world/all/{page}",
+            "rankings": rows.get(page, []),
+        }
+
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.mythic_plus_runs", fake_runs)
+    result = runner.invoke(raiderio_app, ["sample", "mythic-plus-runs", "--pages", "2", "--limit", "3"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "mythic_plus_runs_sample"
+    assert payload["query"]["pages"] == 2
+    assert payload["sample"]["pages_fetched"] == 2
+    assert payload["sample"]["run_count"] == 3
+    assert payload["sample"]["unique_player_count"] == 6
+    assert payload["sample"]["mythic_level"]["max"] == 26
+    assert payload["citations"]["leaderboard_urls"][0].startswith("https://raider.io/mythic-plus-runs/")
+
+
+def test_raiderio_distribution_mythic_plus_runs(monkeypatch) -> None:
+    def fake_runs(self, *, season: str | None, region: str, dungeon: str, affixes: str | None, page: int):  # noqa: ANN001
+        return {
+            "season": "season-tww-3",
+            "leaderboard_url": "https://raider.io/mythic-plus-runs/season-tww-3/world/all/0",
+            "rankings": [
+                {
+                    "rank": 1,
+                    "score": 580.0,
+                    "run": {
+                        "keystone_run_id": 1001,
+                        "season": "season-tww-3",
+                        "mythic_level": 26,
+                        "completed_at": "2026-01-21T18:27:09.000Z",
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
+                        "roster": [
+                            {"character": {"name": "Cotti", "realm": {"slug": "tarren-mill"}, "region": {"slug": "eu"}}, "role": "dps"},
+                            {"character": {"name": "Meowfreak", "realm": {"slug": "tarren-mill"}, "region": {"slug": "eu"}}, "role": "tank"},
+                        ],
+                    },
+                },
+                {
+                    "rank": 2,
+                    "score": 575.0,
+                    "run": {
+                        "keystone_run_id": 1002,
+                        "season": "season-tww-3",
+                        "mythic_level": 25,
+                        "completed_at": "2026-01-21T18:30:09.000Z",
+                        "weekly_modifiers": [{"slug": "tyrannical"}],
+                        "dungeon": {"name": "The Dawnbreaker", "slug": "the-dawnbreaker"},
+                        "roster": [
+                            {"character": {"name": "Meowtide", "realm": {"slug": "sylvanas"}, "region": {"slug": "eu"}}, "role": "healer"},
+                            {"character": {"name": "Solanis", "realm": {"slug": "sylvanas"}, "region": {"slug": "eu"}}, "role": "dps"},
+                        ],
+                    },
+                },
+            ],
+        }
+
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.mythic_plus_runs", fake_runs)
+    level_result = runner.invoke(raiderio_app, ["distribution", "mythic-plus-runs", "--metric", "mythic_level"])
+    assert level_result.exit_code == 0
+    level_payload = json.loads(level_result.stdout)
+    assert level_payload["distribution"]["unit"] == "runs"
+    assert level_payload["distribution"]["statistics"]["max"] == 26
+    assert level_payload["distribution"]["rows"][0]["value"] in {"25", "26"}
+
+    role_result = runner.invoke(raiderio_app, ["distribution", "mythic-plus-runs", "--metric", "role"])
+    assert role_result.exit_code == 0
+    role_payload = json.loads(role_result.stdout)
+    assert role_payload["distribution"]["unit"] == "roster_entries"
+    assert role_payload["distribution"]["rows"][0]["value"] == "dps"
+
+
+def test_raiderio_distribution_rejects_unknown_metric() -> None:
+    result = runner.invoke(raiderio_app, ["distribution", "mythic-plus-runs", "--metric", "spec"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
 
 
 def test_raiderio_http_error_maps_to_structured_error(monkeypatch) -> None:

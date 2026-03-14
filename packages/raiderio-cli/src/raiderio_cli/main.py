@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from statistics import median
 from typing import Any
 
 import httpx
@@ -10,6 +12,10 @@ from raiderio_cli.client import RaiderIOClient, load_raiderio_cache_settings_fro
 from warcraft_core.output import emit
 
 app = typer.Typer(add_completion=False, help="Raider.IO profile and leaderboard CLI.")
+sample_app = typer.Typer(add_completion=False, help="Sample-backed Raider.IO analytics primitives.")
+distribution_app = typer.Typer(add_completion=False, help="Derived distributions built from Raider.IO samples.")
+app.add_typer(sample_app, name="sample")
+app.add_typer(distribution_app, name="distribution")
 
 
 @dataclass(slots=True)
@@ -507,6 +513,204 @@ def _ranking_run_summary(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _run_snapshot(row: dict[str, Any]) -> dict[str, Any]:
+    run = row.get("run") if isinstance(row.get("run"), dict) else {}
+    snapshot = _ranking_run_summary(row)
+    snapshot["run_id"] = run.get("keystone_run_id") or run.get("logged_run_id") or run.get("keystone_team_id")
+    snapshot["season"] = run.get("season")
+    snapshot["clear_time_ms"] = run.get("clear_time_ms")
+    snapshot["keystone_time_ms"] = run.get("keystone_time_ms")
+    snapshot["num_chests"] = run.get("num_chests")
+    return snapshot
+
+
+def _sample_mythic_plus_runs(
+    client: RaiderIOClient,
+    *,
+    season: str | None,
+    region: str,
+    dungeon: str,
+    affixes: str | None,
+    page: int,
+    pages: int,
+    limit: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    seen_run_ids: set[str] = set()
+    runs: list[dict[str, Any]] = []
+    leaderboard_urls: list[str] = []
+    pages_fetched = 0
+    effective_season = season
+    for offset in range(pages):
+        current_page = page + offset
+        payload = client.mythic_plus_runs(
+            season=season,
+            region=region,
+            dungeon=dungeon,
+            affixes=affixes,
+            page=current_page,
+        )
+        pages_fetched += 1
+        if payload.get("season"):
+            effective_season = str(payload.get("season"))
+        leaderboard_url = payload.get("leaderboard_url")
+        if isinstance(leaderboard_url, str) and leaderboard_url and leaderboard_url not in leaderboard_urls:
+            leaderboard_urls.append(leaderboard_url)
+        rankings = payload.get("rankings") if isinstance(payload.get("rankings"), list) else []
+        if not rankings:
+            break
+        for row in rankings:
+            if not isinstance(row, dict):
+                continue
+            snapshot = _run_snapshot(row)
+            run_id = str(snapshot.get("run_id") or f"{snapshot.get('rank')}:{snapshot.get('dungeon_slug')}:{snapshot.get('completed_at')}")
+            if run_id in seen_run_ids:
+                continue
+            seen_run_ids.add(run_id)
+            runs.append(snapshot)
+            if len(runs) >= limit:
+                break
+        if len(runs) >= limit:
+            break
+    return runs, {
+        "sampled_at": datetime.now(timezone.utc).isoformat(),
+        "season": effective_season,
+        "pages_requested": pages,
+        "pages_fetched": pages_fetched,
+        "cache_ttl_seconds": client.mythic_plus_runs_ttl_seconds,
+        "leaderboard_urls": leaderboard_urls,
+    }
+
+
+def _count_map(values: list[str]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    total = sum(counts.values()) or 1
+    return [
+        {
+            "value": key,
+            "count": count,
+            "percent": round((count / total) * 100, 2),
+        }
+        for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+
+def _sample_summary(runs: list[dict[str, Any]], *, meta: dict[str, Any]) -> dict[str, Any]:
+    roster_entries = [
+        entry
+        for run in runs
+        for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
+        if isinstance(entry, dict)
+    ]
+    role_values = [str(entry.get("role") or "unknown") for entry in roster_entries]
+    region_values = [str(entry.get("region") or "unknown") for entry in roster_entries]
+    dungeon_values = [str(run.get("dungeon") or "unknown") for run in runs]
+    level_values = [int(run["mythic_level"]) for run in runs if isinstance(run.get("mythic_level"), int)]
+    unique_players = {
+        (
+            str(entry.get("region") or ""),
+            str(entry.get("realm") or ""),
+            str(entry.get("name") or ""),
+        )
+        for entry in roster_entries
+    }
+    level_stats: dict[str, Any] | None = None
+    if level_values:
+        sorted_levels = sorted(level_values)
+        level_stats = {
+            "min": sorted_levels[0],
+            "max": sorted_levels[-1],
+            "average": round(sum(sorted_levels) / len(sorted_levels), 2),
+            "median": median(sorted_levels),
+        }
+    return {
+        "sampled_at": meta["sampled_at"],
+        "season": meta.get("season"),
+        "pages_requested": meta["pages_requested"],
+        "pages_fetched": meta["pages_fetched"],
+        "run_count": len(runs),
+        "roster_entry_count": len(roster_entries),
+        "unique_player_count": len(unique_players),
+        "unique_dungeons": sorted({value for value in dungeon_values if value and value != "unknown"}),
+        "role_counts": _count_map(role_values),
+        "player_region_counts": _count_map(region_values),
+        "mythic_level": level_stats,
+    }
+
+
+def _distribution_payload(metric: str, runs: list[dict[str, Any]], *, meta: dict[str, Any], query: dict[str, Any]) -> dict[str, Any]:
+    if metric == "mythic_level":
+        values = [int(run["mythic_level"]) for run in runs if isinstance(run.get("mythic_level"), int)]
+        rows = _count_map([str(value) for value in values])
+        stats = None
+        if values:
+            sorted_values = sorted(values)
+            stats = {
+                "min": sorted_values[0],
+                "max": sorted_values[-1],
+                "average": round(sum(sorted_values) / len(sorted_values), 2),
+                "median": median(sorted_values),
+            }
+        return {
+            "provider": "raiderio",
+            "kind": "mythic_plus_runs_distribution",
+            "metric": metric,
+            "query": query,
+            "sample": _sample_summary(runs, meta=meta),
+            "distribution": {
+                "unit": "runs",
+                "rows": rows,
+                "statistics": stats,
+            },
+            "freshness": {
+                "sampled_at": meta["sampled_at"],
+                "cache_ttl_seconds": meta["cache_ttl_seconds"],
+            },
+            "citations": {
+                "leaderboard_urls": meta["leaderboard_urls"],
+            },
+        }
+    if metric == "dungeon":
+        values = [str(run.get("dungeon") or "unknown") for run in runs]
+        unit = "runs"
+    elif metric == "role":
+        values = [
+            str(entry.get("role") or "unknown")
+            for run in runs
+            for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
+            if isinstance(entry, dict)
+        ]
+        unit = "roster_entries"
+    else:
+        values = [
+            str(entry.get("region") or "unknown")
+            for run in runs
+            for entry in (run.get("roster") if isinstance(run.get("roster"), list) else [])
+            if isinstance(entry, dict)
+        ]
+        unit = "roster_entries"
+    return {
+        "provider": "raiderio",
+        "kind": "mythic_plus_runs_distribution",
+        "metric": metric,
+        "query": query,
+        "sample": _sample_summary(runs, meta=meta),
+        "distribution": {
+            "unit": unit,
+            "rows": _count_map(values),
+            "statistics": None,
+        },
+        "freshness": {
+            "sampled_at": meta["sampled_at"],
+            "cache_ttl_seconds": meta["cache_ttl_seconds"],
+        },
+        "citations": {
+            "leaderboard_urls": meta["leaderboard_urls"],
+        },
+    }
+
+
 @app.callback()
 def main_callback(
     ctx: typer.Context,
@@ -540,6 +744,8 @@ def doctor(ctx: typer.Context) -> None:
                 "character": "ready",
                 "guild": "ready",
                 "mythic_plus_runs": "ready",
+                "sample_mythic_plus_runs": "ready",
+                "distribution_mythic_plus_runs": "ready",
             },
             "cache": {
                 "enabled": settings.enabled,
@@ -784,6 +990,102 @@ def mythic_plus_runs(
             "runs": [_ranking_run_summary(row) for row in rankings],
         },
     )
+
+
+@sample_app.command("mythic-plus-runs")
+def sample_mythic_plus_runs(
+    ctx: typer.Context,
+    season: str = typer.Option("", "--season", help="Season slug. Defaults to Raider.IO current default season."),
+    region: str = typer.Option("world", "--region", help="Region slug such as world, us, or eu."),
+    dungeon: str = typer.Option("all", "--dungeon", help="Dungeon slug or all."),
+    affixes: str = typer.Option("", "--affixes", help="Affix slug, fortified, tyrannical, current, or all."),
+    page: int = typer.Option(0, "--page", min=0, help="Starting page of rankings to request."),
+    pages: int = typer.Option(1, "--pages", min=1, max=10, help="Number of pages to sample."),
+    limit: int = typer.Option(100, "--limit", min=1, max=200, help="Maximum runs to retain in the sample."),
+) -> None:
+    try:
+        with _client(ctx) as client:
+            runs, meta = _sample_mythic_plus_runs(
+                client,
+                season=season or None,
+                region=region,
+                dungeon=dungeon,
+                affixes=affixes or None,
+                page=page,
+                pages=pages,
+                limit=limit,
+            )
+    except httpx.HTTPStatusError as exc:
+        _handle_http_error(ctx, exc)
+        return
+    query = {
+        "season": meta.get("season") or season or None,
+        "region": region,
+        "dungeon": dungeon,
+        "affixes": affixes or None,
+        "page": page,
+        "pages": pages,
+        "limit": limit,
+    }
+    _emit(
+        ctx,
+        {
+            "provider": "raiderio",
+            "kind": "mythic_plus_runs_sample",
+            "query": query,
+            "sample": _sample_summary(runs, meta=meta),
+            "runs": runs,
+            "freshness": {
+                "sampled_at": meta["sampled_at"],
+                "cache_ttl_seconds": meta["cache_ttl_seconds"],
+            },
+            "citations": {
+                "leaderboard_urls": meta["leaderboard_urls"],
+            },
+        },
+    )
+
+
+@distribution_app.command("mythic-plus-runs")
+def distribution_mythic_plus_runs(
+    ctx: typer.Context,
+    metric: str = typer.Option("mythic_level", "--metric", help="Distribution metric: mythic_level, dungeon, role, or player_region."),
+    season: str = typer.Option("", "--season", help="Season slug. Defaults to Raider.IO current default season."),
+    region: str = typer.Option("world", "--region", help="Region slug such as world, us, or eu."),
+    dungeon: str = typer.Option("all", "--dungeon", help="Dungeon slug or all."),
+    affixes: str = typer.Option("", "--affixes", help="Affix slug, fortified, tyrannical, current, or all."),
+    page: int = typer.Option(0, "--page", min=0, help="Starting page of rankings to request."),
+    pages: int = typer.Option(1, "--pages", min=1, max=10, help="Number of pages to sample."),
+    limit: int = typer.Option(100, "--limit", min=1, max=200, help="Maximum runs to retain in the sample."),
+) -> None:
+    if metric not in {"mythic_level", "dungeon", "role", "player_region"}:
+        _fail(ctx, "invalid_query", "--metric must be one of: mythic_level, dungeon, role, player_region")
+        return
+    try:
+        with _client(ctx) as client:
+            runs, meta = _sample_mythic_plus_runs(
+                client,
+                season=season or None,
+                region=region,
+                dungeon=dungeon,
+                affixes=affixes or None,
+                page=page,
+                pages=pages,
+                limit=limit,
+            )
+    except httpx.HTTPStatusError as exc:
+        _handle_http_error(ctx, exc)
+        return
+    query = {
+        "season": meta.get("season") or season or None,
+        "region": region,
+        "dungeon": dungeon,
+        "affixes": affixes or None,
+        "page": page,
+        "pages": pages,
+        "limit": limit,
+    }
+    _emit(ctx, _distribution_payload(metric, runs, meta=meta, query=query))
 
 
 def run() -> None:

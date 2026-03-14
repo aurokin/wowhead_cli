@@ -34,3 +34,25 @@ def test_live_raiderio_structured_character_resolve_uses_direct_probe() -> None:
     assert payload["next_command"] == "raiderio character us illidan Roguecane"
     assert payload["match"]["kind"] == "character"
     assert "structured_probe" in payload["match"]["ranking"]["match_reasons"]
+
+
+@pytest.mark.live
+def test_live_raiderio_sample_mythic_plus_runs_contract() -> None:
+    payload = _payload_for(["sample", "mythic-plus-runs", "--pages", "1", "--limit", "20"])
+
+    assert payload["kind"] == "mythic_plus_runs_sample"
+    assert payload["sample"]["pages_requested"] == 1
+    assert payload["sample"]["pages_fetched"] >= 1
+    assert payload["sample"]["run_count"] >= 1
+    assert payload["freshness"]["cache_ttl_seconds"] >= 1
+    assert len(payload["citations"]["leaderboard_urls"]) >= 1
+
+
+@pytest.mark.live
+def test_live_raiderio_distribution_mythic_plus_runs_contract() -> None:
+    payload = _payload_for(["distribution", "mythic-plus-runs", "--metric", "dungeon", "--pages", "1", "--limit", "20"])
+
+    assert payload["kind"] == "mythic_plus_runs_distribution"
+    assert payload["metric"] == "dungeon"
+    assert payload["distribution"]["unit"] == "runs"
+    assert len(payload["distribution"]["rows"]) >= 1

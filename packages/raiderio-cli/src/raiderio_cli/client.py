@@ -185,3 +185,7 @@ class RaiderIOClient:
             namespace="search",
             ttl_seconds=self._static_ttl,
         )
+
+    @property
+    def mythic_plus_runs_ttl_seconds(self) -> int:
+        return self._mplus_runs_ttl

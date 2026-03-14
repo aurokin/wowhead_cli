@@ -11,10 +11,13 @@ Current command surface:
 - `raiderio character`
 - `raiderio guild`
 - `raiderio mythic-plus-runs`
+- `raiderio sample mythic-plus-runs`
+- `raiderio distribution mythic-plus-runs`
 
 Current quality notes:
 - structured `region realm name` queries now use direct profile probes before falling back to the weaker site search route
 - live search/resolve quality is materially better for exact guild and character lookups
+- the first sample-backed analytics primitives now exist for Mythic+ run sampling and run-derived distributions
 - leaderboard, broader Mythic+ surfaces, and richer profile workflows are still later-phase work
 
 ## Next Quality Direction
@@ -172,6 +175,10 @@ Good candidates:
 - `raiderio sample ...`
 - `raiderio distribution ...`
 - `raiderio threshold ...`
+
+Current implemented subset:
+- `raiderio sample mythic-plus-runs`
+- `raiderio distribution mythic-plus-runs`
 
 Possible examples:
 - `raiderio sample mythic-plus-runs --region us --limit 100`

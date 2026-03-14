@@ -61,6 +61,7 @@ Current provider state:
 - If an Icy Veins query is really about patch notes, class changes, hotfixes, or news, expect a `scope_hint` instead of guide candidates.
 - Use `raiderio` when you already know the region, realm, and character or guild you want, and need direct profile or Mythic+ run data.
 - For exact Raider.IO lookups, prefer structured queries like `character us illidan Roguecane` or `guild us illidan Liquid`; the provider now probes direct profile surfaces for those.
+- Use `raiderio sample mythic-plus-runs` and `raiderio distribution mythic-plus-runs` when you need sample-backed Mythic+ analytics primitives with freshness and provenance instead of trying to infer higher-level answers directly from one profile or one leaderboard page.
 - Use `warcraft-wiki` when you need general reference material, lore, systems pages, or addon/API documentation.
 - `warcraft-wiki` now does family-aware ranking for programming and systems queries, so `CreateFrame`, `OnKeyDown`, `World of Warcraft API`, `Expansion`, and `Renown` style queries should route more cleanly than generic article search.
 - `warcraft-wiki` also cleans leading family-hint query words like `faction`, `lore`, `guide`, `zone`, `profession`, `class`, and `expansion` when they would otherwise dilute a stronger article match, and surfaces those removals in `excluded_terms`.

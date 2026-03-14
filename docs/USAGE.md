@@ -200,6 +200,8 @@ raiderio resolve "liquid"
 raiderio character us illidan Roguecane
 raiderio guild us illidan Liquid
 raiderio mythic-plus-runs --region world --dungeon all --page 0
+raiderio sample mythic-plus-runs --pages 2 --limit 40
+raiderio distribution mythic-plus-runs --metric dungeon --pages 2 --limit 40
 ```
 
 Raider.IO phase-1 behavior:
@@ -210,6 +212,17 @@ Raider.IO phase-1 behavior:
 - `character` returns a compact profile summary with guild, Mythic+, and raid progression context
 - `guild` returns a compact guild profile with raid progression, raid rankings, and roster preview
 - `mythic-plus-runs` returns ranked Mythic+ run summaries from the documented API endpoint
+- `sample mythic-plus-runs` is the first sample-backed analytics primitive and returns:
+  - normalized run snapshots
+  - sample summary
+  - freshness
+  - leaderboard provenance
+- `distribution mythic-plus-runs` derives distributions from the sampled run set and currently supports:
+  - `mythic_level`
+  - `dungeon`
+  - `role`
+  - `player_region`
+- use the sample/distribution commands when agents need trustworthy building blocks for later reasoning, instead of treating Raider.IO as if it already answers higher-level analytics questions directly
 
 ## Warcraft Wiki Commands
 
