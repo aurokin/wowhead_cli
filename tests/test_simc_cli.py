@@ -41,6 +41,9 @@ def test_simc_doctor_reports_phase_one_capabilities(monkeypatch, tmp_path: Path)
     assert payload["capabilities"]["checkout"] == "ready"
     assert payload["capabilities"]["apl_lists"] == "ready"
     assert payload["capabilities"]["apl_prune"] == "ready"
+    assert payload["capabilities"]["priority"] == "ready"
+    assert payload["capabilities"]["inactive_actions"] == "ready"
+    assert payload["capabilities"]["opener"] == "ready"
     assert payload["capabilities"]["analysis_packet"] == "ready"
     assert payload["capabilities"]["first_cast"] == "ready"
     assert payload["capabilities"]["log_actions"] == "ready"
@@ -276,6 +279,59 @@ def test_simc_apl_prune_branch_trace_and_intent(monkeypatch, tmp_path: Path) -> 
     intent_payload = json.loads(intent_result.stdout)
     assert intent_payload["focus_list"] == "st"
     assert intent_payload["intent"]
+
+
+def test_simc_priority_inactive_actions_and_opener(monkeypatch, tmp_path: Path) -> None:
+    apl = tmp_path / "demonhunter_devourer.simc"
+    apl.write_text(
+        "\n".join(
+            [
+                "actions+=/run_action_list,name=aoe,if=active_enemies>=5",
+                "actions+=/reapers_toll",
+                "actions.aoe+=/void_ray,if=talent.void_ray",
+                "actions.aoe+=/collapsing_star,if=talent.collapsing_star",
+                "actions.aoe+=/reapers_toll",
+                "actions.aoe+=/predators_wake",
+            ]
+        )
+        + "\n"
+    )
+    monkeypatch.setattr(
+        "simc_cli.main._resolve_prune_context",
+        lambda paths, apl_path, option_values, targets: (
+            type(
+                "Context",
+                (),
+                {
+                    "enabled_talents": {"void_ray", "predators_wake"},
+                    "disabled_talents": set(),
+                    "targets": targets,
+                    "talent_sources": {"void_ray": "spec", "predators_wake": "spec"},
+                },
+            )(),
+            type("Resolution", (), {"actor_class": "demonhunter", "spec": "devourer", "source_notes": ["decoded via /tmp/simc"]})(),
+        ),
+    )
+
+    priority_result = runner.invoke(simc_app, ["priority", str(apl), "--targets", "5"])
+    assert priority_result.exit_code == 0
+    priority_payload = json.loads(priority_result.stdout)
+    assert priority_payload["priority"]["focus_list"] == "aoe"
+    assert [row["action"] for row in priority_payload["priority"]["items"][:2]] == ["void_ray", "reapers_toll"]
+    assert priority_payload["priority"]["inactive_talent_branches"][0]["action"] == "collapsing_star"
+
+    inactive_result = runner.invoke(simc_app, ["inactive-actions", str(apl), "--targets", "5"])
+    assert inactive_result.exit_code == 0
+    inactive_payload = json.loads(inactive_result.stdout)
+    assert inactive_payload["inactive_actions"]["count"] == 1
+    assert inactive_payload["inactive_actions"]["items"][0]["action"] == "collapsing_star"
+
+    opener_result = runner.invoke(simc_app, ["opener", str(apl), "--targets", "5", "--limit", "3"])
+    assert opener_result.exit_code == 0
+    opener_payload = json.loads(opener_result.stdout)
+    assert opener_payload["opener"]["kind"] == "static_priority_preview"
+    assert opener_payload["opener"]["items"][0]["action"] == "void_ray"
+    assert "static exact-build opener preview" in opener_payload["opener"]["caveat"]
 
 
 def test_simc_intent_explain_branch_compare_and_analysis_packet(monkeypatch, tmp_path: Path) -> None:

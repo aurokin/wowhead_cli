@@ -101,11 +101,15 @@ def build_analysis_packet(
 
 def recommended_next_steps(start_list: str, focus_list: str, has_unresolved_branches: bool, has_runtime_sensitive_priorities: bool) -> list[str]:
     steps: list[str] = []
+    steps.append(f"run priority on `{focus_list}` with the exact talent string before summarizing the rotation")
     if has_unresolved_branches:
         steps.append(f"run apl-branch-trace from `{start_list}` to inspect unresolved branch paths")
     if has_runtime_sensitive_priorities:
         steps.append(f"use trace-action on early `{focus_list}` actions before making runtime claims")
+        steps.append(f"use inactive-actions on `{focus_list}` to confirm talent-gated branches are excluded")
         steps.append("validate timing with first-cast or log-actions before treating priorities as an opener")
+    else:
+        steps.append(f"use opener on `{focus_list}` for a static early-action preview")
     if not steps:
         steps.append("use trace-action for any action-specific implementation questions")
     return steps

@@ -434,6 +434,9 @@ simc apl-prune /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.
 simc apl-branch-trace /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 simc apl-intent-explain /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc priority /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 5 --talents ABC123
+simc inactive-actions /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 5 --talents ABC123
+simc opener /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 5 --talents ABC123
 simc apl-branch-compare /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --left-targets 3 --right-targets 1
 simc analysis-packet /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker.simc tiger_palm --seeds 1 --max-time 20
@@ -460,8 +463,12 @@ SimulationCraft behavior:
 - `apl-branch-trace` traces likely `run_action_list` and `call_action_list` flow through one APL
 - `apl-intent` summarizes the early likely priorities in the selected focus list after branch evaluation
 - `apl-intent-explain` groups the early likely priorities into setup, helper, burst, and remaining priority buckets
+- `priority` is the preferred exact-build static priority view when the caller provides a talent string; it returns active priorities for the resolved focus list and separately surfaces inactive talent-gated branches
+- `inactive-actions` is the direct audit command for confirming which actions are excluded for the current build, with `--talent-only` on by default
+- `opener` returns a static exact-build early-action preview and explicitly warns when runtime-sensitive conditions still matter
 - `apl-branch-compare` compares branch and focus-list changes between two target/build contexts
 - `analysis-packet` emits an agent-facing summary with branch certainty, intent lines, explained intent, escalation reasons, recommended next steps, and optional first-cast timing samples
+- if the user supplies a talent string, assume inactive talent branches should be removed from summaries; use `priority` or `inactive-actions` before making rotation claims from a shared APL
 - `first-cast` runs short one-iteration sims and records the first observed execution time for a named action across one or more seeds
 - `log-actions` inspects an existing SimC combat log and extracts the first scheduled and performed timestamps for named actions
 - `run` executes the local `simc` binary against a profile and returns bounded stdout/stderr previews

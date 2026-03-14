@@ -21,6 +21,9 @@ Current commands:
 - `simc apl-branch-trace`
 - `simc apl-intent`
 - `simc apl-intent-explain`
+- `simc priority`
+- `simc inactive-actions`
+- `simc opener`
 - `simc apl-branch-compare`
 - `simc analysis-packet`
 - `simc first-cast`
@@ -119,6 +122,9 @@ Phase 3 is now implemented:
 - `simc apl-branch-trace`
 - `simc apl-intent`
 - `simc apl-intent-explain`
+- `simc priority`
+- `simc inactive-actions`
+- `simc opener`
 - `simc apl-branch-compare`
 - `simc analysis-packet`
 - `simc first-cast`
@@ -151,6 +157,7 @@ The `simc` analysis layer should stay grounded in observable local evidence.
 
 That means:
 - `analysis-packet` and intent helpers can summarize structure, branches, and runtime samples
+- exact-build views like `priority`, `inactive-actions`, and `opener` should strip inactive talent branches instead of summarizing from shared APL text blindly
 - they can recommend next commands or follow-up investigations
 - they should not drift into authoritative "smart answers" that go beyond what the local source tree or runtime sample actually proves
 

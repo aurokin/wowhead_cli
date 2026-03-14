@@ -190,6 +190,22 @@ def summarize_list_decisions(apl_path, context: PruneContext, list_name: str) ->
     return decisions
 
 
+def active_priority_decisions(apl_path, context: PruneContext, list_name: str, *, include_helpers: bool = False) -> list[ListDecision]:
+    decisions = summarize_list_decisions(apl_path, context, list_name)
+    rows = [decision for decision in decisions if decision.status != "dead"]
+    if not include_helpers:
+        rows = [decision for decision in rows if not is_helper_decision(decision)]
+    return rows
+
+
+def inactive_priority_decisions(apl_path, context: PruneContext, list_name: str, *, talent_only: bool = False) -> list[ListDecision]:
+    decisions = summarize_list_decisions(apl_path, context, list_name)
+    rows = [decision for decision in decisions if decision.status == "dead"]
+    if talent_only:
+        rows = [decision for decision in rows if "talent." in decision.reason]
+    return rows
+
+
 def summarize_intent(apl_path, context: PruneContext, list_name: str, limit: int = 6) -> list[str]:
     decisions = summarize_list_decisions(apl_path, context, list_name)
     primary = [decision for decision in decisions if not is_helper_decision(decision)]

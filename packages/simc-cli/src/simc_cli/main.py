@@ -7,7 +7,17 @@ from typing import Any
 import typer
 
 from simc_cli.apl import action_counts, group_entries, mermaid_graph, parse_apl, talent_refs, trace_action_entries
-from simc_cli.branch import attach_focus_comparison, compare_branch_summaries, explain_intent, summarize_branches, summarize_intent, trace_apl
+from simc_cli.branch import (
+    active_priority_decisions,
+    attach_focus_comparison,
+    compare_branch_summaries,
+    explain_intent,
+    format_list_decision,
+    inactive_priority_decisions,
+    summarize_branches,
+    summarize_intent,
+    trace_apl,
+)
 from simc_cli.build_input import decode_build, extract_build_spec_from_text, infer_actor_and_spec_from_apl, load_build_spec
 from simc_cli.packet import build_analysis_packet
 from simc_cli.prune import PruneContext, TruthValue, prune_entries, split_csv_values
@@ -189,6 +199,33 @@ def _resolve_prune_context(paths: RepoPaths, apl_path: Path, option_values: dict
     return context, resolution
 
 
+def _prune_context_payload(resolution: Any, context: PruneContext) -> dict[str, Any]:
+    return {
+        "actor_class": resolution.actor_class,
+        "spec": resolution.spec,
+        "targets": context.targets,
+        "enabled_talent_count": len(context.enabled_talents),
+        "enabled_talents": sorted(context.enabled_talents),
+        "source_notes": resolution.source_notes,
+    }
+
+
+def _priority_item(decision: Any) -> dict[str, Any]:
+    return {
+        "line_no": decision.line_no,
+        "action": decision.action_name,
+        "target_list": decision.target_list,
+        "status": decision.status,
+        "reason": decision.reason,
+        "text": format_list_decision(decision),
+    }
+
+
+def _focus_list_summary(resolved: Path, context: PruneContext, *, start_list: str) -> tuple[Any, str]:
+    summary = summarize_branches(resolved, context, start_list=start_list)
+    return summary, summary.guaranteed_dispatch or start_list
+
+
 @app.callback()
 def main_callback(
     ctx: typer.Context,
@@ -238,6 +275,9 @@ def doctor(ctx: typer.Context) -> None:
                 "apl_branch_trace": "ready",
                 "apl_intent": "ready",
                 "apl_intent_explain": "ready",
+                "priority": "ready",
+                "inactive_actions": "ready",
+                "opener": "ready",
                 "apl_branch_compare": "ready",
                 "analysis_packet": "ready",
                 "first_cast": "ready",
@@ -1006,6 +1046,214 @@ def apl_intent_explain_command(
                 "helpers": explanation.helpers,
                 "burst": explanation.burst,
                 "priorities": explanation.priorities,
+            },
+        },
+    )
+
+
+@app.command("priority")
+def priority_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    targets: int = typer.Option(1, "--targets", min=1, help="Active target count."),
+    list_name: str = typer.Option("default", "--list", help="Starting action list."),
+    limit: int = typer.Option(12, "--limit", min=1, max=100, help="Maximum active priority rows to return."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
+    enable: list[str] = typer.Option([], "--enable", help="Enabled talent names. Repeat or pass comma-separated values."),
+    disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    option_values = _build_option_values(
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+        enable=enable,
+        disable=disable,
+    )
+    try:
+        context, resolution = _resolve_prune_context(paths, resolved, option_values, targets)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "priority_failed", str(exc))
+        return
+    summary, focus_list = _focus_list_summary(resolved, context, start_list=list_name)
+    decisions = active_priority_decisions(resolved, context, focus_list)[:limit]
+    excluded = inactive_priority_decisions(resolved, context, focus_list, talent_only=True)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+            },
+            "build": _prune_context_payload(resolution, context),
+            "priority": {
+                "start_list": list_name,
+                "focus_list": focus_list,
+                "dispatch_certainty": "guaranteed" if summary.guaranteed_dispatch else "unresolved",
+                "count": len(decisions),
+                "items": [_priority_item(decision) for decision in decisions],
+                "inactive_talent_branches": [
+                    _priority_item(decision)
+                    for decision in excluded[:limit]
+                ],
+                "note": "This is an exact-build static priority view. Inactive talent-gated actions are excluded from the active list.",
+            },
+        },
+    )
+
+
+@app.command("inactive-actions")
+def inactive_actions_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    targets: int = typer.Option(1, "--targets", min=1, help="Active target count."),
+    list_name: str = typer.Option("default", "--list", help="Starting action list."),
+    limit: int = typer.Option(20, "--limit", min=1, max=200, help="Maximum inactive rows to return."),
+    talent_only: bool = typer.Option(True, "--talent-only/--all-dead", help="Only return talent-gated dead actions by default."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
+    enable: list[str] = typer.Option([], "--enable", help="Enabled talent names. Repeat or pass comma-separated values."),
+    disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    option_values = _build_option_values(
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+        enable=enable,
+        disable=disable,
+    )
+    try:
+        context, resolution = _resolve_prune_context(paths, resolved, option_values, targets)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "inactive_actions_failed", str(exc))
+        return
+    summary, focus_list = _focus_list_summary(resolved, context, start_list=list_name)
+    decisions = inactive_priority_decisions(resolved, context, focus_list, talent_only=talent_only)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+            },
+            "build": _prune_context_payload(resolution, context),
+            "inactive_actions": {
+                "start_list": list_name,
+                "focus_list": focus_list,
+                "dispatch_certainty": "guaranteed" if summary.guaranteed_dispatch else "unresolved",
+                "talent_only": talent_only,
+                "count": len(decisions),
+                "items": [_priority_item(decision) for decision in decisions[:limit]],
+            },
+        },
+    )
+
+
+@app.command("opener")
+def opener_command(
+    ctx: typer.Context,
+    apl_path: str = typer.Argument(..., help="Path to a .simc APL file."),
+    targets: int = typer.Option(1, "--targets", min=1, help="Active target count."),
+    list_name: str = typer.Option("default", "--list", help="Starting action list."),
+    limit: int = typer.Option(10, "--limit", min=1, max=50, help="Maximum early actions to return."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
+    enable: list[str] = typer.Option([], "--enable", help="Enabled talent names. Repeat or pass comma-separated values."),
+    disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
+) -> None:
+    paths = _repo_paths(ctx)
+    resolved = _resolve_path(paths, apl_path)
+    if not resolved.exists():
+        _fail(ctx, "not_found", f"APL file not found: {resolved}")
+        return
+    option_values = _build_option_values(
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+        enable=enable,
+        disable=disable,
+    )
+    try:
+        context, resolution = _resolve_prune_context(paths, resolved, option_values, targets)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "opener_failed", str(exc))
+        return
+    summary, focus_list = _focus_list_summary(resolved, context, start_list=list_name)
+    decisions = active_priority_decisions(resolved, context, focus_list)[:limit]
+    runtime_sensitive = [
+        _priority_item(decision)
+        for decision in decisions
+        if decision.status == "possible" and decision.reason == "depends on runtime-only state"
+    ]
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": str(resolved.relative_to(paths.root)) if resolved.is_relative_to(paths.root) else None,
+            },
+            "build": _prune_context_payload(resolution, context),
+            "opener": {
+                "kind": "static_priority_preview",
+                "start_list": list_name,
+                "focus_list": focus_list,
+                "dispatch_certainty": "guaranteed" if summary.guaranteed_dispatch else "unresolved",
+                "count": len(decisions),
+                "items": [_priority_item(decision) for decision in decisions],
+                "runtime_sensitive": runtime_sensitive,
+                "caveat": "This is a static exact-build opener preview. Use first-cast or log-actions before treating it as a runtime-perfect opener.",
             },
         },
     )
