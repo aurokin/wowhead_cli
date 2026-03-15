@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -580,6 +579,151 @@ def test_simc_run_surfaces_failure_with_preview(monkeypatch, tmp_path: Path) -> 
     payload = json.loads(result.stderr)
     assert payload["ok"] is False
     assert payload["error"]["code"] == "run_failed"
+
+
+def test_simc_sim_uses_quick_preset_and_surfaces_run_metadata(monkeypatch, tmp_path: Path) -> None:
+    profile = tmp_path / "example.simc"
+    profile.write_text('paladin="example"\n')
+
+    def _run(paths, profile_path, simc_args):
+        args = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in simc_args if "=" in item}
+        json_path = Path(args["json2"])
+        json_path.write_text(
+            json.dumps(
+                {
+                    "version": "SimulationCraft 1201-01",
+                    "sim": {
+                        "options": {
+                            "iterations": 1000,
+                            "target_error": 0,
+                            "threads": 12,
+                            "fight_style": "Patchwerk",
+                            "desired_targets": 1,
+                            "max_time": 300,
+                            "vary_combat_length": 0.2,
+                            "seed": 12345,
+                            "dbc": {
+                                "version_used": "Live",
+                                "Live": {"wow_version": "12.0.1.66263"},
+                            },
+                        },
+                        "statistics": {
+                            "elapsed_time_seconds": 4.33,
+                            "elapsed_cpu_seconds": 100.4,
+                            "init_time_seconds": 0.12,
+                            "merge_time_seconds": 0.03,
+                            "analyze_time_seconds": 0.01,
+                            "simulation_length": {"count": 1003},
+                        },
+                        "players": [
+                            {
+                                "name": "example",
+                                "specialization": "protection",
+                                "role": "tank",
+                                "collected_data": {
+                                    "fight_length": {"mean": 299.37, "count": 1003},
+                                    "dps": {"mean": 18834.4},
+                                    "dpse": {"mean": 37.2},
+                                    "dtps": {"mean": 75769.2},
+                                    "hps": {"mean": 2210.9},
+                                    "deaths": {"mean": 0.0},
+                                    "absorb": {"mean": 795348.3},
+                                    "heal": {"mean": 661816.8},
+                                },
+                            }
+                        ],
+                    },
+                }
+            )
+        )
+        return type(
+            "Result",
+            (),
+            {"command": [str(paths.build_simc), str(profile_path), *simc_args], "returncode": 0, "stdout": "ok\n", "stderr": ""},
+        )()
+
+    monkeypatch.setattr("simc_cli.main.run_profile", _run)
+    result = runner.invoke(simc_app, ["sim", str(profile)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["preset"] == "quick"
+    assert payload["input_source"] == "file"
+    assert payload["run_settings"]["iterations_requested"] == 1000
+    assert payload["run_settings"]["iterations_completed"] == 1003
+    assert payload["run_settings"]["stop_reason"] == "fixed_iterations_completed"
+    assert payload["runtime"]["elapsed_time_seconds"] == 4.33
+    assert payload["metrics"]["dps"] == 18834.4
+    assert payload["metrics"]["dtps"] == 75769.2
+    assert payload["metrics"]["fight_length"] == 299.37
+    assert payload["simc_version"] == "SimulationCraft 1201-01"
+    assert payload["game_version"] == "12.0.1.66263"
+    assert payload["json_report_path"] is None
+
+
+def test_simc_sim_reads_stdin_and_respects_overrides(monkeypatch, tmp_path: Path) -> None:
+    def _run(paths, profile_path, simc_args):
+        args = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in simc_args if "=" in item}
+        json_path = Path(args["json2"])
+        json_path.write_text(
+            json.dumps(
+                {
+                    "version": "SimulationCraft 1201-01",
+                    "sim": {
+                        "options": {
+                            "iterations": 6000,
+                            "target_error": 0,
+                            "threads": 4,
+                            "fight_style": "HecticAddCleave",
+                            "desired_targets": 5,
+                            "max_time": 180,
+                            "vary_combat_length": 0.1,
+                            "seed": 222,
+                            "dbc": {"version_used": "Live", "Live": {"wow_version": "12.0.1.66263"}},
+                        },
+                        "statistics": {"elapsed_time_seconds": 8.6, "simulation_length": {"count": 6003}},
+                        "players": [
+                            {
+                                "name": "stdin-example",
+                                "specialization": "protection",
+                                "role": "tank",
+                                "collected_data": {
+                                    "fight_length": {"mean": 180.0, "count": 6003},
+                                    "dps": {"mean": 21000.0},
+                                    "dpse": {"mean": 50.0},
+                                    "dtps": {"mean": 80000.0},
+                                    "hps": {"mean": 2500.0},
+                                    "deaths": {"mean": 0.0},
+                                    "absorb": {"mean": 1.0},
+                                    "heal": {"mean": 2.0},
+                                },
+                            }
+                        ],
+                    },
+                }
+            )
+        )
+        return type(
+            "Result",
+            (),
+            {"command": [str(paths.build_simc), str(profile_path), *simc_args], "returncode": 0, "stdout": "", "stderr": ""},
+        )()
+
+    monkeypatch.setattr("simc_cli.main.run_profile", _run)
+    result = runner.invoke(
+        simc_app,
+        ["sim", "-", "--preset", "high-accuracy", "--iterations", "6000", "--max-time", "180", "--fight-style", "HecticAddCleave", "--targets", "5", "--threads", "4", "--vary-combat-length", "0.1"],
+        input='paladin="stdin-example"\n',
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["preset"] == "high-accuracy"
+    assert payload["input_source"] == "stdin"
+    assert payload["profile_path"] is None
+    assert payload["run_settings"]["iterations_requested"] == 6000
+    assert payload["run_settings"]["threads"] == 4
+    assert payload["run_settings"]["fight_style"] == "HecticAddCleave"
+    assert payload["run_settings"]["desired_targets"] == 5
+    assert payload["run_settings"]["max_time"] == 180
 
 
 @pytest.mark.skipif(not Path("/home/auro/code/simc/build/simc").exists(), reason="local simc binary not available")

@@ -485,6 +485,9 @@ simc inspect
 simc inspect /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 simc spec-files mistweaver
 simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123 --actor-class monk --spec mistweaver
+simc sim ./profile.simc
+cat ./profile.simc | simc sim -
+simc sim ./profile.simc --preset high-accuracy
 simc build-harness --actor-class warlock --spec demonology --talents ABC123 --line hero_talents=2 --line fight_style=Patchwerk
 simc validate-apl ./demonology_harness.simc ./warlock_demonology.simc --label base
 simc compare-apls ./demonology_harness.simc --base-apl ./warlock_demonology.simc --variant wowhead=./wowhead_variant.simc --variant icyveins=./icy_variant.simc --report-out ./compare.json
@@ -519,12 +522,18 @@ SimulationCraft behavior:
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
 - `decode-build` uses the local `simc` binary to decode talent strings into enabled talents and tree-grouped talent rows
+- `sim` is the preferred consumer run path:
+  - supports profile files, `stdin`, or `--profile-text`
+  - uses explicit fixed presets instead of implicit adaptive settings
+  - always returns run settings, runtime timing, and core metrics
 - `build-harness` writes a reusable local profile harness so APL comparisons can swap only the action list
 - `validate-apl` builds a temporary harness+APL profile and runs a cheap one-iteration validation pass
 - `compare-apls` compares one base APL plus labeled variants on the same harness and returns DPS plus action-throughput deltas from SimC JSON output
 - `variant-report` summarizes a saved `compare-apls` report into ranking and delta rows
 - use `1000` iterations for most work
 - use `5000+` iterations only when the user explicitly wants higher accuracy
+- `sim --preset quick` is the default `1000`-iteration path
+- `sim --preset high-accuracy` is the default `5000`-iteration path
 - do not recommend a fixed thread count without checking the current machine; omit `threads` or inspect the environment first
 - `apl-lists` returns parsed action lists and their entries from a local `.simc` file
 - `apl-graph` emits a Mermaid action-list call graph from a local `.simc` file

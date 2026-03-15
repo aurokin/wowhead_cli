@@ -15,8 +15,9 @@
 - upstream safety: `simc verify-clean`
 - source inspection: `simc spec-files ...`, `simc apl-lists ...`, `simc apl-talents ...`
 - reasoning: `simc priority ...`, `simc inactive-actions ...`, `simc opener ...`, `simc analysis-packet ...`
+- direct sim runs: `simc sim ...`
 - APL comparison: `simc build-harness ...`, `simc validate-apl ...`, `simc compare-apls ...`
-- execution: `simc run ...`
+- low-level execution: `simc run ...`
 
 ## Effective Use
 
@@ -28,10 +29,16 @@
 - use `opener` for a static early-action preview, then escalate to `first-cast` if runtime confirmation matters
 - use `analysis-packet` when you want an agent-facing summary instead of assembling outputs manually
 - use `first-cast` and `log-actions` when static analysis is not enough and you need runtime confirmation
+- use `sim` as the default consumer run path:
+  - `simc sim ./profile.simc`
+  - `cat ./profile.simc | simc sim -`
+  - it always reports run settings, runtime, and core output metrics
 - if the user wants to compare guide-derived or custom APLs, build a harness and use `compare-apls`; do not edit upstream SimC files
 - use `verify-clean` before and after local comparison work when upstream cleanliness matters
 - use `1000` iterations for most work
 - use `5000+` iterations only when the user explicitly wants higher accuracy
+- `sim --preset quick` is the default `1000`-iteration path
+- `sim --preset high-accuracy` is the default `5000`-iteration path
 - do not recommend a fixed thread count blindly; either omit `threads` or inspect the current machine first
 
 ## Comparison Workflow

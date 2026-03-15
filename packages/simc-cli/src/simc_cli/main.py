@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+import os
+import sys
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +32,8 @@ from simc_cli.compare import (
     write_harness,
 )
 from simc_cli.packet import build_analysis_packet
-from simc_cli.prune import PruneContext, TruthValue, prune_entries, split_csv_values
+from simc_cli.prune import PruneContext, prune_entries, split_csv_values
+from simc_cli.report import load_sim_report, sim_report_payload, summarize_sim_report
 from simc_cli.repo import (
     RepoPaths,
     checkout_managed_repo,
@@ -144,6 +148,22 @@ def _resolve_path(paths: RepoPaths, value: str) -> Path:
     if not path.is_absolute():
         path = paths.root / path
     return path.resolve()
+
+
+def _write_temp_profile(*, source_name: str, text: str) -> Path:
+    fd, raw_path = tempfile.mkstemp(suffix=".simc", prefix=f"{source_name}-")
+    path = Path(raw_path).resolve()
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(text)
+        if not text.endswith("\n"):
+            handle.write("\n")
+    return path
+
+
+def _sim_preset_settings(*, preset: str) -> tuple[int, int]:
+    if preset == "high-accuracy":
+        return (5000, 300)
+    return (1000, 300)
 
 
 def _build_option_values(
@@ -1849,6 +1869,120 @@ def build(
             "stderr_truncated": stderr_truncated,
         },
     )
+
+
+@app.command("sim")
+def sim_command(
+    ctx: typer.Context,
+    profile_path: str | None = typer.Argument(None, help="Path to a SimulationCraft profile. Omit or pass '-' to read from stdin."),
+    preset: str = typer.Option("quick", "--preset", help="Run preset: quick or high-accuracy."),
+    iterations: int | None = typer.Option(None, "--iterations", min=1, help="Override the preset iteration count."),
+    max_time: int | None = typer.Option(None, "--max-time", min=1, help="Override max fight length in seconds."),
+    fight_style: str | None = typer.Option(None, "--fight-style", help="Optional fight style override."),
+    threads: int | None = typer.Option(None, "--threads", min=1, help="Optional thread override. Leave unset to use SimC defaults."),
+    targets: int | None = typer.Option(None, "--targets", min=1, help="Optional desired target count override."),
+    vary_combat_length: float | None = typer.Option(None, "--vary-combat-length", min=0.0, help="Optional combat length variance override."),
+    profile_text: str | None = typer.Option(None, "--profile-text", help="Inline SimulationCraft profile text."),
+    json_out: str | None = typer.Option(None, "--json-out", help="Optional path for the raw SimC JSON report."),
+) -> None:
+    if preset not in {"quick", "high-accuracy"}:
+        _fail(ctx, "invalid_preset", f"Unsupported sim preset: {preset}")
+        return
+    paths = _repo_paths(ctx)
+    default_iterations, default_max_time = _sim_preset_settings(preset=preset)
+    requested_iterations = iterations or default_iterations
+    requested_max_time = max_time or default_max_time
+
+    input_source = "file"
+    resolved_profile: Path
+    cleanup_paths: list[Path] = []
+    if profile_text is not None:
+        resolved_profile = _write_temp_profile(source_name="simc-profile-text", text=profile_text)
+        cleanup_paths.append(resolved_profile)
+        input_source = "profile_text"
+    elif profile_path in {None, "-"}:
+        stdin_text = sys.stdin.read()
+        if not stdin_text.strip():
+            _fail(ctx, "missing_profile", "Provide a profile path, --profile-text, or pipe a profile into stdin.")
+            return
+        resolved_profile = _write_temp_profile(source_name="simc-stdin", text=stdin_text)
+        cleanup_paths.append(resolved_profile)
+        input_source = "stdin"
+    else:
+        resolved_profile = Path(profile_path).expanduser().resolve()
+        if not resolved_profile.exists():
+            _fail(ctx, "not_found", f"Profile not found: {resolved_profile}")
+            return
+
+    if json_out is not None:
+        json_path = Path(json_out).expanduser().resolve()
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        fd, raw_json_path = tempfile.mkstemp(suffix=".json", prefix="simc-run-")
+        os.close(fd)
+        json_path = Path(raw_json_path).resolve()
+        cleanup_paths.append(json_path)
+
+    simc_args = [
+        f"iterations={requested_iterations}",
+        "target_error=0",
+        f"max_time={requested_max_time}",
+        f"json2={json_path}",
+    ]
+    if fight_style:
+        simc_args.append(f"fight_style={fight_style}")
+    if threads is not None:
+        simc_args.append(f"threads={threads}")
+    if targets is not None:
+        simc_args.append(f"desired_targets={targets}")
+    if vary_combat_length is not None:
+        simc_args.append(f"vary_combat_length={vary_combat_length}")
+
+    result = run_profile(paths, resolved_profile, simc_args=simc_args)
+    stdout_preview, stdout_truncated = _preview_text(result.stdout)
+    stderr_preview, stderr_truncated = _preview_text(result.stderr)
+    if result.returncode != 0:
+        for path in cleanup_paths:
+            path.unlink(missing_ok=True)
+        _fail(
+            ctx,
+            "run_failed",
+            "SimulationCraft sim failed.",
+            extra={
+                "command": result.command,
+                "stdout_preview": stdout_preview,
+                "stdout_truncated": stdout_truncated,
+                "stderr_preview": stderr_preview,
+                "stderr_truncated": stderr_truncated,
+            },
+        )
+        return
+
+    try:
+        report = load_sim_report(json_path)
+        summary = summarize_sim_report(report)
+    except Exception as exc:
+        for path in cleanup_paths:
+            path.unlink(missing_ok=True)
+        _fail(
+            ctx,
+            "invalid_report",
+            f"SimulationCraft sim completed but the JSON report could not be parsed: {exc}",
+            extra={"command": result.command, "json_report_path": str(json_path)},
+        )
+        return
+
+    payload = sim_report_payload(
+        summary,
+        profile_path=str(resolved_profile) if input_source == "file" else None,
+        preset=preset,
+        input_source=input_source,
+        json_report_path=str(json_path) if json_out is not None else None,
+        command=result.command,
+    )
+    _emit(ctx, payload)
+    for path in cleanup_paths:
+        path.unlink(missing_ok=True)
 
 
 @app.command("run")

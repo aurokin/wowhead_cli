@@ -9,6 +9,7 @@ Current commands:
 - `simc repo`
 - `simc checkout`
 - `simc version`
+- `simc sim`
 - `simc inspect`
 - `simc spec-files`
 - `simc decode-build`
@@ -102,12 +103,24 @@ Implemented:
 - `simc sync`
 - `simc build`
 - `simc version`
+- `simc sim`
 - `simc run <profile-or-file>`
 - `simc inspect <profile-or-result>`
 - `simc spec-files`
 - `simc decode-build`
 
 This is the minimal operational layer.
+
+Recent usability improvement:
+- `simc sim` is now the preferred consumer run path
+- it uses explicit fixed presets instead of leaving iteration counts implicit
+- it always returns:
+  - run settings
+  - runtime timing
+  - core metrics
+- default presets:
+  - `quick` -> `1000` iterations
+  - `high-accuracy` -> `5000` iterations
 
 ### Phase 2: Readonly Source Analysis
 
