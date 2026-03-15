@@ -12,6 +12,7 @@ import httpx
 from warcraft_api.cache import CacheSettings, CacheTTLConfig, build_cache_store, load_prefixed_cache_settings_from_env
 from warcraft_api.http import DEFAULT_RETRY_ATTEMPTS, request_with_retries
 from warcraft_content.paths import provider_cache_root
+from warcraft_core.auth import load_provider_auth_state
 from warcraft_core.env import find_env_file, load_env_file, load_explicit_env_file
 from warcraft_core.paths import provider_env_path
 from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug
@@ -1068,6 +1069,7 @@ class WarcraftLogsClient:
                 "grant_type": "authorization_code",
                 "code": code,
             },
+            auth=(self._client_id, self._client_secret),
             retry_attempts=self._retry_attempts,
         )
         payload = response.json()

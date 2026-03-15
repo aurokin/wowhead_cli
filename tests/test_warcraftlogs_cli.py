@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 
+import httpx
 from typer.testing import CliRunner
-from warcraftlogs_cli.client import load_warcraftlogs_auth_config
+from warcraftlogs_cli.client import WarcraftLogsClient, load_warcraftlogs_auth_config
 from warcraftlogs_cli.main import app as warcraftlogs_app
 
 runner = CliRunner()
@@ -1118,3 +1119,48 @@ def test_warcraftlogs_auth_falls_back_to_xdg_provider_env(monkeypatch, tmp_path)
     assert auth.client_id == "provider-id"
     assert auth.client_secret == "provider-secret"
     assert auth.env_file == str(provider_env)
+
+
+def test_warcraftlogs_pkce_exchange_uses_client_auth(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.client.load_warcraftlogs_auth_config",
+        lambda start_dir=None: type(
+            "Auth",
+            (),
+            {
+                "configured": True,
+                "client_id": "client-id",
+                "client_secret": "client-secret",
+                "env_file": "/tmp/.env.local",
+            },
+        )(),
+    )
+
+    captured: dict[str, object] = {}
+
+    def _fake_request(client, url, *, method="GET", data=None, auth=None, retry_attempts=1, **kwargs):  # noqa: ANN001
+        captured["url"] = url
+        captured["method"] = method
+        captured["data"] = data
+        captured["auth"] = auth
+        return httpx.Response(
+            200,
+            json={"access_token": "token", "refresh_token": "refresh"},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr("warcraftlogs_cli.client.request_with_retries", _fake_request)
+
+    client = WarcraftLogsClient()
+    try:
+        payload = client.exchange_pkce_code(
+            code="code-123",
+            redirect_uri="http://127.0.0.1:8787/callback",
+            code_verifier="verifier-123",
+        )
+    finally:
+        client.close()
+
+    assert payload["access_token"] == "token"
+    assert captured["method"] == "POST"
+    assert captured["auth"] == ("client-id", "client-secret")
