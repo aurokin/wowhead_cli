@@ -39,6 +39,7 @@ class BuildSpec:
     class_talents: str | None = None
     spec_talents: str | None = None
     hero_talents: str | None = None
+    source_kind: str | None = None
     source_notes: list[str] = field(default_factory=list)
 
 
@@ -57,6 +58,8 @@ class BuildResolution:
     spec: str
     enabled_talents: set[str]
     talents_by_tree: dict[str, list[DecodedTalent]]
+    source_kind: str | None
+    generated_profile_text: str | None
     source_notes: list[str]
 
 
@@ -74,12 +77,45 @@ def tokenize_talent_name(name: str) -> str:
     return text.strip("_")
 
 
+def detect_build_text_source_kind(text: str) -> str | None:
+    non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not non_empty_lines:
+        return None
+    if len(non_empty_lines) == 1 and "=" not in non_empty_lines[0]:
+        return "wow_talent_export"
+
+    saw_actor_line = False
+    saw_talents = False
+    saw_split_talents = False
+    for raw_line in non_empty_lines:
+        line = raw_line.split("#", 1)[0].strip()
+        if not line or "=" not in line:
+            continue
+        key, _value = line.split("=", 1)
+        key = key.strip()
+        actor_match = ACTOR_LINE_RE.match(line)
+        if actor_match and key in DEFAULT_RACE_BY_CLASS:
+            saw_actor_line = True
+            continue
+        if key == "talents":
+            saw_talents = True
+        elif key in {"class_talents", "spec_talents", "hero_talents"}:
+            saw_split_talents = True
+
+    if saw_split_talents:
+        return "simc_split_talents"
+    if saw_actor_line or saw_talents:
+        return "simc_profile"
+    return "simc_build_text"
+
+
 def extract_build_spec_from_text(text: str) -> BuildSpec:
     spec = BuildSpec()
+    spec.source_kind = detect_build_text_source_kind(text)
     non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(non_empty_lines) == 1 and "=" not in non_empty_lines[0]:
         spec.talents = non_empty_lines[0]
-        spec.source_notes.append("plain talent hash")
+        spec.source_notes.append("single-line talent export")
         return spec
 
     for raw_line in non_empty_lines:
@@ -126,6 +162,8 @@ def merge_build_specs(*specs: BuildSpec) -> BuildSpec:
             merged.spec_talents = spec.spec_talents
         if spec.hero_talents:
             merged.hero_talents = spec.hero_talents
+        if spec.source_kind:
+            merged.source_kind = spec.source_kind
         merged.source_notes.extend(spec.source_notes)
     return merged
 
@@ -180,6 +218,23 @@ def normalize_talents_input(value: str | None) -> str | None:
     return value.split("=", 1)[1].strip() if value.strip().startswith("talents=") else value.strip()
 
 
+def detect_talents_option_source_kind(
+    *,
+    talents: str | None,
+    class_talents: str | None,
+    spec_talents: str | None,
+    hero_talents: str | None,
+) -> str | None:
+    if class_talents or spec_talents or hero_talents:
+        return "simc_split_talents"
+    if not talents:
+        return None
+    stripped = talents.strip()
+    if stripped.startswith("talents="):
+        return "simc_profile"
+    return "wow_talent_export"
+
+
 def load_build_spec(
     *,
     apl_path: str | Path | None,
@@ -208,6 +263,12 @@ def load_build_spec(
         class_talents=class_talents,
         spec_talents=spec_talents,
         hero_talents=hero_talents,
+        source_kind=detect_talents_option_source_kind(
+            talents=talents,
+            class_talents=class_talents,
+            spec_talents=spec_talents,
+            hero_talents=hero_talents,
+        ),
         source_notes=["command-line build options"] if any([talents, class_talents, spec_talents, hero_talents, actor_class, spec_name]) else [],
     )
 
@@ -240,6 +301,8 @@ def decode_build(repo: RepoPaths, build_spec: BuildSpec) -> BuildResolution:
             spec=build_spec.spec,
             enabled_talents=set(),
             talents_by_tree={"class": [], "spec": [], "hero": [], "selection": []},
+            source_kind=build_spec.source_kind,
+            generated_profile_text=None,
             source_notes=build_spec.source_notes[:],
         )
     if not repo.build_simc.exists():
@@ -278,5 +341,7 @@ def decode_build(repo: RepoPaths, build_spec: BuildSpec) -> BuildResolution:
         spec=build_spec.spec,
         enabled_talents=enabled_talents,
         talents_by_tree=talents_by_tree,
+        source_kind=build_spec.source_kind,
+        generated_profile_text=profile_text,
         source_notes=notes,
     )

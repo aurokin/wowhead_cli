@@ -22,7 +22,8 @@
 ## Effective Use
 
 - prefer readonly APL inspection before jumping to a real sim run
-- if the user provides a talent string or import string, assume they want the exact build only; use `priority` or `inactive-actions` so inactive talent branches are excluded before you summarize the rotation
+- if the user provides a talent string or import string, assume they want the exact build only; use `decode-build` first when you need to confirm what the CLI recognized, then use `priority` or `inactive-actions` so inactive talent branches are excluded before you summarize the rotation
+- users may paste either a bare WoW talent export string or SimC-native build/profile text; `decode-build` reports `source_kind` and the normalized generated profile so you can verify the handoff before reasoning from it
 - use `apl-prune`, `apl-branch-trace`, and `apl-intent` for conservative flow reasoning
 - use `priority` as the default build-scoped priority view
 - use `inactive-actions` when you need to prove a shared APL branch is not active for the current build

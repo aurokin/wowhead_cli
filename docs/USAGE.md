@@ -528,6 +528,8 @@ simc inspect
 simc inspect /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 simc spec-files mistweaver
 simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123 --actor-class monk --spec mistweaver
+simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/demonhunter_devourer.simc --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB' --actor-class demonhunter --spec devourer
+simc decode-build --build-text $'demonhunter="probe"\nspec=devourer\ntalents=CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc sim ./profile.simc
 cat ./profile.simc | simc sim -
 simc sim ./profile.simc --preset high-accuracy
@@ -565,6 +567,7 @@ SimulationCraft behavior:
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
 - `decode-build` uses the local `simc` binary to decode talent strings into enabled talents and tree-grouped talent rows
+- `decode-build` accepts either a bare WoW talent export string or SimC-native build/profile text and reports the detected `source_kind` plus the normalized generated SimC profile it used for decoding
 - `sim` is the preferred consumer run path:
   - supports profile files, `stdin`, or `--profile-text`
   - uses explicit fixed presets instead of implicit adaptive settings

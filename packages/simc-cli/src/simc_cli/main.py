@@ -22,7 +22,7 @@ from simc_cli.branch import (
     summarize_intent,
     trace_apl,
 )
-from simc_cli.build_input import decode_build, extract_build_spec_from_text, infer_actor_and_spec_from_apl, load_build_spec
+from simc_cli.build_input import build_profile_text, decode_build, extract_build_spec_from_text, infer_actor_and_spec_from_apl, load_build_spec
 from simc_cli.compare import (
     build_variant_profile,
     compare_apl_variants,
@@ -139,6 +139,7 @@ def _serialize_build_spec(spec: Any) -> dict[str, Any]:
         "class_talents": spec.class_talents,
         "spec_talents": spec.spec_talents,
         "hero_talents": spec.hero_talents,
+        "source_kind": getattr(spec, "source_kind", None),
         "source_notes": spec.source_notes,
     }
 
@@ -232,6 +233,7 @@ def _prune_context_payload(resolution: Any, context: PruneContext) -> dict[str, 
     return {
         "actor_class": resolution.actor_class,
         "spec": resolution.spec,
+        "source_kind": getattr(resolution, "source_kind", None),
         "targets": context.targets,
         "enabled_talent_count": len(context.enabled_talents),
         "enabled_talents": sorted(context.enabled_talents),
@@ -552,7 +554,15 @@ def decode_build_command(
     try:
         resolution = decode_build(paths, build_spec)
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
-        _fail(ctx, "decode_failed", str(exc))
+        extra = {"build_spec": _serialize_build_spec(build_spec)}
+        if build_spec.actor_class and build_spec.spec and any(
+            [build_spec.talents, build_spec.class_talents, build_spec.spec_talents, build_spec.hero_talents]
+        ):
+            try:
+                extra["generated_profile"] = build_profile_text(build_spec)
+            except ValueError:
+                pass
+        _fail(ctx, "decode_failed", str(exc), extra=extra)
         return
     _emit(
         ctx,
@@ -562,6 +572,8 @@ def decode_build_command(
             "decoded": {
                 "actor_class": resolution.actor_class,
                 "spec": resolution.spec,
+                "source_kind": resolution.source_kind,
+                "generated_profile": resolution.generated_profile_text,
                 "enabled_talents": sorted(resolution.enabled_talents),
                 "talents_by_tree": {
                     tree: [

@@ -7,6 +7,8 @@ from unittest.mock import patch
 from simc_cli.build_input import (
     BuildSpec,
     build_profile_text,
+    detect_build_text_source_kind,
+    detect_talents_option_source_kind,
     decode_build,
     extract_build_spec_from_text,
     infer_actor_and_spec_from_apl,
@@ -28,7 +30,8 @@ def test_tokenize_talent_name_normalizes_text() -> None:
 def test_extract_build_spec_from_plain_hash() -> None:
     spec = extract_build_spec_from_text("ABC123")
     assert spec.talents == "ABC123"
-    assert "plain talent hash" in spec.source_notes
+    assert spec.source_kind == "wow_talent_export"
+    assert "single-line talent export" in spec.source_notes
 
 
 def test_extract_build_spec_from_profile_lines() -> None:
@@ -45,6 +48,7 @@ def test_extract_build_spec_from_profile_lines() -> None:
     assert spec.talents == "ABC123"
     assert spec.class_talents == "class-string"
     assert spec.hero_talents == "hero-string"
+    assert spec.source_kind == "simc_split_talents"
 
 
 def test_merge_build_specs_prefers_later_values() -> None:
@@ -67,6 +71,42 @@ def test_normalize_talents_input() -> None:
     assert normalize_talents_input("talents=ABC123") == "ABC123"
     assert normalize_talents_input("ABC123") == "ABC123"
     assert normalize_talents_input(None) is None
+
+
+def test_detect_build_text_source_kind() -> None:
+    assert detect_build_text_source_kind("ABC123") == "wow_talent_export"
+    assert detect_build_text_source_kind('warlock="probe"\nspec=demonology\ntalents=ABC123\n') == "simc_profile"
+    assert detect_build_text_source_kind("class_talents=AAA\nspec_talents=BBB\nhero_talents=CCC\n") == "simc_split_talents"
+
+
+def test_detect_talents_option_source_kind() -> None:
+    assert (
+        detect_talents_option_source_kind(
+            talents="ABC123",
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+        )
+        == "wow_talent_export"
+    )
+    assert (
+        detect_talents_option_source_kind(
+            talents="talents=ABC123",
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+        )
+        == "simc_profile"
+    )
+    assert (
+        detect_talents_option_source_kind(
+            talents=None,
+            class_talents="AAA",
+            spec_talents="BBB",
+            hero_talents="CCC",
+        )
+        == "simc_split_talents"
+    )
 
 
 def test_parse_debug_talents_ignores_selection_tree() -> None:
@@ -105,6 +145,8 @@ def test_decode_build_uses_debug_output(tmp_path: Path) -> None:
 
     assert result.actor_class == "demonhunter"
     assert result.spec == "devourer"
+    assert result.source_kind is None
+    assert 'demonhunter="simc_decode"' in (result.generated_profile_text or "")
     assert "voidblade" in result.enabled_talents
     assert "devourers_bite" in result.enabled_talents
     assert any("decoded via" in note for note in result.source_notes)

@@ -121,6 +121,10 @@ Recent usability improvement:
 - default presets:
   - `quick` -> `1000` iterations
   - `high-accuracy` -> `5000` iterations
+- `decode-build` now distinguishes between:
+  - bare WoW talent export strings
+  - SimC-native build/profile text
+  and reports both `source_kind` and the normalized generated SimC profile used for decode/debug flows
 
 ### Phase 2: Readonly Source Analysis
 
@@ -255,6 +259,12 @@ It shows that a readonly local SimulationCraft source tree can support:
 - build decoding
 - branch reasoning
 - runtime escalation when needed
+
+Agent-experience boundary:
+- exact-build workflows should make the input handoff explicit
+- a user may paste either a WoW talent export or SimC-native build text
+- the CLI should identify which one it received before downstream APL reasoning begins
+- decode failures should carry enough metadata to debug the generated profile quickly
 
 That is a strong use case for the monorepo because it is a different kind of provider than every site-backed CLI in this repo.
 

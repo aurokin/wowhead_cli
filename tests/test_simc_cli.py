@@ -156,6 +156,7 @@ def test_simc_decode_build_outputs_decoded_talents(monkeypatch) -> None:
             "class_talents": None,
             "spec_talents": None,
             "hero_talents": None,
+            "source_kind": "wow_talent_export",
             "source_notes": ["command-line build options"],
         })(),
     )
@@ -165,6 +166,8 @@ def test_simc_decode_build_outputs_decoded_talents(monkeypatch) -> None:
             "actor_class": "monk",
             "spec": "mistweaver",
             "enabled_talents": {"ancient_teachings", "jadefire_stomp"},
+            "source_kind": "wow_talent_export",
+            "generated_profile_text": 'monk="simc_decode"\nlevel=90\nrace=pandaren\nspec=mistweaver\ntalents=ABC123\n',
             "talents_by_tree": {
                 "class": [],
                 "spec": [type("Talent", (), {"name": "Ancient Teachings", "token": "ancient_teachings", "rank": 1, "max_rank": 1})()],
@@ -177,8 +180,49 @@ def test_simc_decode_build_outputs_decoded_talents(monkeypatch) -> None:
     result = runner.invoke(simc_app, ["decode-build", "--actor-class", "monk", "--spec", "mistweaver", "--talents", "ABC123"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
+    assert payload["build_spec"]["source_kind"] == "wow_talent_export"
     assert payload["decoded"]["actor_class"] == "monk"
+    assert payload["decoded"]["source_kind"] == "wow_talent_export"
+    assert 'talents=ABC123' in payload["decoded"]["generated_profile"]
     assert payload["decoded"]["enabled_talents"] == ["ancient_teachings", "jadefire_stomp"]
+
+
+def test_simc_decode_build_failure_includes_source_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "simc_cli.main.load_build_spec",
+        lambda **kwargs: type("BuildSpec", (), {
+            "actor_class": "demonhunter",
+            "spec": "devourer",
+            "talents": "CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB",
+            "class_talents": None,
+            "spec_talents": None,
+            "hero_talents": None,
+            "source_kind": "wow_talent_export",
+            "source_notes": ["single-line talent export", "inline build text"],
+        })(),
+    )
+
+    def _raise_decode(_paths, _build_spec):
+        raise RuntimeError("Nothing to sim!")
+
+    monkeypatch.setattr("simc_cli.main.decode_build", _raise_decode)
+    result = runner.invoke(
+        simc_app,
+        [
+            "decode-build",
+            "--actor-class",
+            "demonhunter",
+            "--spec",
+            "devourer",
+            "--build-text",
+            "CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB",
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "decode_failed"
+    assert payload["build_spec"]["source_kind"] == "wow_talent_export"
+    assert 'demonhunter="simc_decode"' in payload["generated_profile"]
 
 
 def test_simc_build_harness_compare_report_and_verify_clean(monkeypatch, tmp_path: Path) -> None:
