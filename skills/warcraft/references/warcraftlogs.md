@@ -28,6 +28,10 @@ Best fits:
   - `warcraftlogs reports --guild-region ... --guild-realm ... --guild-name ...`
   - `warcraftlogs report <code>`
   - `warcraftlogs report-fights <code>`
+  - `warcraftlogs report-master-data <code>`
+  - `warcraftlogs report-events <code> --fight-id ...`
+  - `warcraftlogs report-table <code> --data-type damage-done --fight-id ...`
+  - `warcraftlogs report-graph <code> --data-type damage-done --fight-id ...`
 
 ## Current Boundaries
 
@@ -66,9 +70,16 @@ Best fits:
 - report inspection:
   - `warcraftlogs report <code>`
   - `warcraftlogs report-fights <code> --difficulty 5`
+  - `warcraftlogs report-master-data <code> --actor-type Player`
+  - `warcraftlogs report-events <code> --fight-id 47 --limit 100`
+  - `warcraftlogs report-table <code> --data-type damage-done --fight-id 47`
+  - `warcraftlogs report-graph <code> --data-type damage-done --fight-id 47`
 
 ## Notes
 
 - prefer `warcraftlogs` when official log data matters more than convenience summaries
 - use `wowprogress` or `raiderio` for their own ranking/profile strengths, not as substitutes for Warcraft Logs report data
 - `character-rankings` can return a provider permission error or a provider-side failure for some characters; treat it as useful but less stable than `guild-rankings`
+- `report-table` and `report-graph` accept user-friendly enum filters like `damage-done` and normalize them for the API
+- `report-events` intentionally requires a narrowed slice such as `--fight-id`, `--encounter-id`, `--start-time`, or `--end-time`
+- `report-events` can still return `events: null` for some valid report slices; use it as a typed event-query surface, not a guarantee of non-empty data

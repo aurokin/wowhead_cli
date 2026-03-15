@@ -40,6 +40,10 @@ Implemented today:
   - `warcraftlogs reports`
   - `warcraftlogs report`
   - `warcraftlogs report-fights`
+  - `warcraftlogs report-master-data`
+  - `warcraftlogs report-events`
+  - `warcraftlogs report-table`
+  - `warcraftlogs report-graph`
 - unit coverage for the current JSON contract
 - live coverage for:
   - `regions`
@@ -49,6 +53,10 @@ Implemented today:
   - `zone`
   - `guild-rankings`
   - `reports`
+  - `report`
+  - constrained `report-master-data`
+  - constrained `report-table`
+  - constrained `report-graph`
 
 Current intentional boundary:
 - standalone only for now
@@ -72,10 +80,11 @@ This means `warcraftlogs` should be planned as an official integration first, wi
 ## Immediate Next Steps
 
 Highest-value next implementation slices:
-- `report-events`
-- `report-table`
-- `report-graph`
 - make `character-rankings` more reliable across public characters before treating it as fully validated
+- deepen report workflows beyond the current phase-1 slice:
+  - `playerDetails(...)`
+  - `rankings(...)`
+  - safer event pagination patterns once `events(...)` can be validated more broadly
 
 After that:
 - user-auth plumbing
@@ -286,6 +295,10 @@ Important pagination and cost behavior:
 - pagination continues through `nextPageTimestamp`
 - `events`, `graph`, and `table` all expose rich filter arguments
 - archived-report access is restricted unless the retrieving user has archive access
+- practical phase-1 behavior:
+  - `report-table` and `report-graph` should accept user-friendly enum-like CLI values and normalize them to GraphQL enum values
+  - `report-events` should require a narrowed slice such as `fightIDs`, `encounterID`, or an explicit time window instead of encouraging whole-report pulls
+  - even valid narrowed `events(...)` queries can still return `null` event data on some public reports, so the command contract should expose that honestly instead of forcing fake summaries
 
 ### World and Static Metadata Surface
 

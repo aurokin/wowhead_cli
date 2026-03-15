@@ -21,6 +21,20 @@ def _require_warcraftlogs_auth() -> None:
         pytest.skip("Warcraft Logs credentials are not configured.")
 
 
+def _public_raid_report() -> tuple[str, int]:
+    payload = _payload_for(["reports", "--zone-id", "38", "--limit", "1"])
+    reports = payload.get("reports")
+    assert isinstance(reports, list) and reports, payload
+    code = reports[0].get("code")
+    assert isinstance(code, str) and code
+    fights_payload = _payload_for(["report-fights", code, "--difficulty", "5"])
+    fights = fights_payload.get("fights")
+    assert isinstance(fights, list) and fights, fights_payload
+    fight_id = fights[0].get("id")
+    assert isinstance(fight_id, int)
+    return code, fight_id
+
+
 @pytest.mark.live
 def test_live_warcraftlogs_regions_contract() -> None:
     _require_warcraftlogs_auth()
@@ -89,3 +103,36 @@ def test_live_warcraftlogs_reports_contract() -> None:
     report = payload["reports"][0]
     assert "code" in report
     assert isinstance(report["archive_status"], dict) or report["archive_status"] is None
+
+
+@pytest.mark.live
+def test_live_warcraftlogs_report_detail_contracts() -> None:
+    _require_warcraftlogs_auth()
+    code, fight_id = _public_raid_report()
+
+    report_payload = _payload_for(["report", code])
+    assert report_payload["provider"] == "warcraftlogs"
+    assert report_payload["report"]["code"] == code
+
+    master_data_payload = _payload_for(["report-master-data", code, "--actor-type", "Player"])
+    assert master_data_payload["provider"] == "warcraftlogs"
+    assert master_data_payload["report"]["code"] == code
+    assert isinstance(master_data_payload["master_data"]["actors"], list)
+
+    events_payload = _payload_for(["report-events", code, "--fight-id", str(fight_id), "--limit", "5"])
+    assert events_payload["provider"] == "warcraftlogs"
+    assert events_payload["report"]["code"] == code
+    assert "events" in events_payload
+    assert events_payload["query"]["fight_ids"] == [fight_id]
+
+    table_payload = _payload_for(["report-table", code, "--data-type", "damage-done", "--fight-id", str(fight_id)])
+    assert table_payload["provider"] == "warcraftlogs"
+    assert table_payload["report"]["code"] == code
+    assert table_payload["query"]["data_type"] == "DamageDone"
+    assert "table" in table_payload
+
+    graph_payload = _payload_for(["report-graph", code, "--data-type", "damage-done", "--fight-id", str(fight_id)])
+    assert graph_payload["provider"] == "warcraftlogs"
+    assert graph_payload["report"]["code"] == code
+    assert graph_payload["query"]["data_type"] == "DamageDone"
+    assert "graph" in graph_payload

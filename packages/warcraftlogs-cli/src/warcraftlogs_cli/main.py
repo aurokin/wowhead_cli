@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any
 
 import typer
@@ -9,6 +10,7 @@ from warcraft_core.wow_normalization import normalize_region
 
 from warcraftlogs_cli.client import (
     RETAIL_PROFILE,
+    ReportFilterOptions,
     WarcraftLogsClient,
     WarcraftLogsClientError,
     load_warcraftlogs_auth_config,
@@ -16,6 +18,8 @@ from warcraftlogs_cli.client import (
 )
 
 app = typer.Typer(add_completion=False, help="Warcraft Logs official API CLI.")
+
+FIGHT_ID_OPTION = typer.Option(None, "--fight-id", help="Optional fight ID filter. Repeat as needed.")
 
 
 @dataclass(slots=True)
@@ -37,6 +41,20 @@ def _emit(ctx: typer.Context, payload: dict[str, Any], *, err: bool = False) -> 
 def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> None:
     _emit(ctx, {"ok": False, "error": {"code": code, "message": message}}, err=True)
     raise typer.Exit(status)
+
+
+def _normalize_graphql_enum(value: str | None) -> str | None:
+    if not value:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if any(sep in text for sep in ("-", "_", " ")):
+        parts = [part for part in re.split(r"[-_\s]+", text) if part]
+        return "".join(part[:1].upper() + part[1:] for part in parts)
+    if text.islower():
+        return text[:1].upper() + text[1:]
+    return text
 
 
 def _client(ctx: typer.Context) -> WarcraftLogsClient:
@@ -88,6 +106,10 @@ def _doctor_payload() -> dict[str, Any]:
             "report": "ready",
             "reports": "ready",
             "report_fights": "ready",
+            "report_events": "ready",
+            "report_table": "ready",
+            "report_graph": "ready",
+            "report_master_data": "ready",
             "user_auth": "planned",
         },
     }
@@ -316,6 +338,149 @@ def _report_payload(report: dict[str, Any]) -> dict[str, Any]:
         }
         if guild
         else None,
+    }
+
+
+def _report_brief_payload(report: dict[str, Any]) -> dict[str, Any]:
+    zone = report.get("zone") if isinstance(report.get("zone"), dict) else {}
+    return {
+        "code": report.get("code"),
+        "title": report.get("title"),
+        "zone": {"id": zone.get("id"), "name": zone.get("name")} if zone else None,
+    }
+
+
+def _report_filter_query_payload(
+    *,
+    ability_id: float | None,
+    data_type: str | None,
+    difficulty: int | None,
+    encounter_id: int | None,
+    end_time: float | None,
+    fight_ids: list[int] | None,
+    filter_expression: str | None,
+    hostility_type: str | None,
+    kill_type: str | None,
+    limit: int | None,
+    source_id: int | None,
+    start_time: float | None,
+    target_id: int | None,
+    translate: bool | None,
+    view_by: str | None,
+    wipe_cutoff: int | None,
+) -> dict[str, Any]:
+    return {
+        "ability_id": ability_id,
+        "data_type": data_type,
+        "difficulty": difficulty,
+        "encounter_id": encounter_id,
+        "end_time": end_time,
+        "fight_ids": fight_ids,
+        "filter_expression": filter_expression,
+        "hostility_type": hostility_type,
+        "kill_type": kill_type,
+        "limit": limit,
+        "source_id": source_id,
+        "start_time": start_time,
+        "target_id": target_id,
+        "translate": translate,
+        "view_by": view_by,
+        "wipe_cutoff": wipe_cutoff,
+    }
+
+
+def _report_filter_options(
+    *,
+    ability_id: float | None,
+    data_type: str | None,
+    difficulty: int | None,
+    encounter_id: int | None,
+    end_time: float | None,
+    fight_ids: list[int] | None,
+    filter_expression: str | None,
+    hostility_type: str | None,
+    kill_type: str | None,
+    limit: int | None,
+    source_id: int | None,
+    start_time: float | None,
+    target_id: int | None,
+    translate: bool | None,
+    view_by: str | None,
+    wipe_cutoff: int | None,
+) -> ReportFilterOptions:
+    return ReportFilterOptions(
+        ability_id=ability_id,
+        data_type=data_type,
+        difficulty=difficulty,
+        encounter_id=encounter_id,
+        end_time=end_time,
+        fight_ids=fight_ids or None,
+        filter_expression=filter_expression,
+        hostility_type=hostility_type,
+        kill_type=kill_type,
+        limit=limit,
+        source_id=source_id,
+        start_time=start_time,
+        target_id=target_id,
+        translate=translate,
+        view_by=view_by,
+        wipe_cutoff=wipe_cutoff,
+    )
+
+
+def _report_events_payload(report: dict[str, Any]) -> dict[str, Any]:
+    paginator = report.get("events") if isinstance(report.get("events"), dict) else {}
+    return {
+        "report": _report_brief_payload(report),
+        "next_page_timestamp": paginator.get("nextPageTimestamp"),
+        "events": paginator.get("data"),
+    }
+
+
+def _report_json_payload(report: dict[str, Any], *, field: str) -> dict[str, Any]:
+    return {
+        "report": _report_brief_payload(report),
+        field: report.get(field),
+    }
+
+
+def _report_master_data_payload(report: dict[str, Any]) -> dict[str, Any]:
+    master_data = report.get("masterData") if isinstance(report.get("masterData"), dict) else {}
+    abilities = master_data.get("abilities") if isinstance(master_data.get("abilities"), list) else []
+    actors = master_data.get("actors") if isinstance(master_data.get("actors"), list) else []
+    return {
+        "report": _report_brief_payload(report),
+        "master_data": {
+            "log_version": master_data.get("logVersion"),
+            "game_version": master_data.get("gameVersion"),
+            "lang": master_data.get("lang"),
+            "ability_count": len([row for row in abilities if isinstance(row, dict)]),
+            "actor_count": len([row for row in actors if isinstance(row, dict)]),
+            "abilities": [
+                {
+                    "game_id": row.get("gameID"),
+                    "icon": row.get("icon"),
+                    "name": row.get("name"),
+                    "type": row.get("type"),
+                }
+                for row in abilities
+                if isinstance(row, dict)
+            ],
+            "actors": [
+                {
+                    "game_id": row.get("gameID"),
+                    "icon": row.get("icon"),
+                    "id": row.get("id"),
+                    "name": row.get("name"),
+                    "pet_owner": row.get("petOwner"),
+                    "server": row.get("server"),
+                    "sub_type": row.get("subType"),
+                    "type": row.get("type"),
+                }
+                for row in actors
+                if isinstance(row, dict)
+            ],
+        },
     }
 
 
@@ -772,17 +937,12 @@ def report_fights(
     finally:
         client.close()
     fights = payload.get("fights") if isinstance(payload.get("fights"), list) else []
-    zone = payload.get("zone") if isinstance(payload.get("zone"), dict) else {}
     _emit(
         ctx,
         {
             "ok": True,
             "provider": "warcraftlogs",
-            "report": {
-                "code": payload.get("code"),
-                "title": payload.get("title"),
-                "zone": {"id": zone.get("id"), "name": zone.get("name")} if zone else None,
-            },
+            "report": _report_brief_payload(payload),
             "difficulty": difficulty,
             "count": len(fights),
             "fights": [
@@ -803,6 +963,285 @@ def report_fights(
                 for fight in fights
                 if isinstance(fight, dict)
             ],
+        },
+    )
+
+
+@app.command("report-events")
+def report_events(
+    ctx: typer.Context,
+    code: str,
+    ability_id: float | None = typer.Option(None, "--ability-id", help="Optional ability game ID filter."),
+    data_type: str | None = typer.Option(None, "--data-type", help="Optional event data type."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    encounter_id: int | None = typer.Option(None, "--encounter-id", help="Optional encounter ID filter."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional event-range end timestamp."),
+    fight_id: list[int] | None = FIGHT_ID_OPTION,
+    filter_expression: str | None = typer.Option(None, "--filter-expression", help="Optional Warcraft Logs filter expression."),
+    hostility_type: str | None = typer.Option(None, "--hostility-type", help="Optional hostility filter."),
+    kill_type: str | None = typer.Option(None, "--kill-type", help="Optional kill filter."),
+    limit: int | None = typer.Option(None, "--limit", min=1, max=10000, help="Optional page event limit."),
+    source_id: int | None = typer.Option(None, "--source-id", help="Optional source actor ID filter."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional event-range start timestamp."),
+    target_id: int | None = typer.Option(None, "--target-id", help="Optional target actor ID filter."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    normalized_data_type = _normalize_graphql_enum(data_type)
+    normalized_hostility_type = _normalize_graphql_enum(hostility_type)
+    normalized_kill_type = _normalize_graphql_enum(kill_type)
+    if not any(value is not None for value in (fight_id, encounter_id, start_time, end_time)):
+        _fail(
+            ctx,
+            "missing_scope",
+            "report-events requires a narrowed slice. Provide --fight-id, --encounter-id, --start-time, or --end-time.",
+        )
+        return
+    options = _report_filter_options(
+        ability_id=ability_id,
+        data_type=normalized_data_type,
+        difficulty=difficulty,
+        encounter_id=encounter_id,
+        end_time=end_time,
+        fight_ids=fight_id,
+        filter_expression=filter_expression,
+        hostility_type=normalized_hostility_type,
+        kill_type=normalized_kill_type,
+        limit=limit,
+        source_id=source_id,
+        start_time=start_time,
+        target_id=target_id,
+        translate=translate,
+        view_by=None,
+        wipe_cutoff=None,
+    )
+    client = _client(ctx)
+    try:
+        payload = client.report_events(code=code, allow_unlisted=allow_unlisted, options=options)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    result_payload = _report_events_payload(payload)
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": _report_filter_query_payload(
+                ability_id=ability_id,
+                data_type=normalized_data_type,
+                difficulty=difficulty,
+                encounter_id=encounter_id,
+                end_time=end_time,
+                fight_ids=fight_id,
+                filter_expression=filter_expression,
+                hostility_type=normalized_hostility_type,
+                kill_type=normalized_kill_type,
+                limit=limit,
+                source_id=source_id,
+                start_time=start_time,
+                target_id=target_id,
+                translate=translate,
+                view_by=None,
+                wipe_cutoff=None,
+            ),
+            **result_payload,
+        },
+    )
+
+
+@app.command("report-table")
+def report_table(
+    ctx: typer.Context,
+    code: str,
+    ability_id: float | None = typer.Option(None, "--ability-id", help="Optional ability game ID filter."),
+    data_type: str | None = typer.Option(None, "--data-type", help="Optional table data type."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    encounter_id: int | None = typer.Option(None, "--encounter-id", help="Optional encounter ID filter."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional event-range end timestamp."),
+    fight_id: list[int] | None = FIGHT_ID_OPTION,
+    filter_expression: str | None = typer.Option(None, "--filter-expression", help="Optional Warcraft Logs filter expression."),
+    hostility_type: str | None = typer.Option(None, "--hostility-type", help="Optional hostility filter."),
+    kill_type: str | None = typer.Option(None, "--kill-type", help="Optional kill filter."),
+    source_id: int | None = typer.Option(None, "--source-id", help="Optional source actor ID filter."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional event-range start timestamp."),
+    target_id: int | None = typer.Option(None, "--target-id", help="Optional target actor ID filter."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    view_by: str | None = typer.Option(None, "--view-by", help="Optional view grouping."),
+    wipe_cutoff: int | None = typer.Option(None, "--wipe-cutoff", help="Optional wipe cutoff."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    normalized_data_type = _normalize_graphql_enum(data_type)
+    normalized_hostility_type = _normalize_graphql_enum(hostility_type)
+    normalized_kill_type = _normalize_graphql_enum(kill_type)
+    normalized_view_by = _normalize_graphql_enum(view_by)
+    options = _report_filter_options(
+        ability_id=ability_id,
+        data_type=normalized_data_type,
+        difficulty=difficulty,
+        encounter_id=encounter_id,
+        end_time=end_time,
+        fight_ids=fight_id,
+        filter_expression=filter_expression,
+        hostility_type=normalized_hostility_type,
+        kill_type=normalized_kill_type,
+        limit=None,
+        source_id=source_id,
+        start_time=start_time,
+        target_id=target_id,
+        translate=translate,
+        view_by=normalized_view_by,
+        wipe_cutoff=wipe_cutoff,
+    )
+    client = _client(ctx)
+    try:
+        payload = client.report_table(code=code, allow_unlisted=allow_unlisted, options=options)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    result_payload = _report_json_payload(payload, field="table")
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": _report_filter_query_payload(
+                ability_id=ability_id,
+                data_type=normalized_data_type,
+                difficulty=difficulty,
+                encounter_id=encounter_id,
+                end_time=end_time,
+                fight_ids=fight_id,
+                filter_expression=filter_expression,
+                hostility_type=normalized_hostility_type,
+                kill_type=normalized_kill_type,
+                limit=None,
+                source_id=source_id,
+                start_time=start_time,
+                target_id=target_id,
+                translate=translate,
+                view_by=normalized_view_by,
+                wipe_cutoff=wipe_cutoff,
+            ),
+            **result_payload,
+        },
+    )
+
+
+@app.command("report-graph")
+def report_graph(
+    ctx: typer.Context,
+    code: str,
+    ability_id: float | None = typer.Option(None, "--ability-id", help="Optional ability game ID filter."),
+    data_type: str | None = typer.Option(None, "--data-type", help="Optional graph data type."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    encounter_id: int | None = typer.Option(None, "--encounter-id", help="Optional encounter ID filter."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional event-range end timestamp."),
+    fight_id: list[int] | None = FIGHT_ID_OPTION,
+    filter_expression: str | None = typer.Option(None, "--filter-expression", help="Optional Warcraft Logs filter expression."),
+    hostility_type: str | None = typer.Option(None, "--hostility-type", help="Optional hostility filter."),
+    kill_type: str | None = typer.Option(None, "--kill-type", help="Optional kill filter."),
+    source_id: int | None = typer.Option(None, "--source-id", help="Optional source actor ID filter."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional event-range start timestamp."),
+    target_id: int | None = typer.Option(None, "--target-id", help="Optional target actor ID filter."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    view_by: str | None = typer.Option(None, "--view-by", help="Optional view grouping."),
+    wipe_cutoff: int | None = typer.Option(None, "--wipe-cutoff", help="Optional wipe cutoff."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    normalized_data_type = _normalize_graphql_enum(data_type)
+    normalized_hostility_type = _normalize_graphql_enum(hostility_type)
+    normalized_kill_type = _normalize_graphql_enum(kill_type)
+    normalized_view_by = _normalize_graphql_enum(view_by)
+    options = _report_filter_options(
+        ability_id=ability_id,
+        data_type=normalized_data_type,
+        difficulty=difficulty,
+        encounter_id=encounter_id,
+        end_time=end_time,
+        fight_ids=fight_id,
+        filter_expression=filter_expression,
+        hostility_type=normalized_hostility_type,
+        kill_type=normalized_kill_type,
+        limit=None,
+        source_id=source_id,
+        start_time=start_time,
+        target_id=target_id,
+        translate=translate,
+        view_by=normalized_view_by,
+        wipe_cutoff=wipe_cutoff,
+    )
+    client = _client(ctx)
+    try:
+        payload = client.report_graph(code=code, allow_unlisted=allow_unlisted, options=options)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    result_payload = _report_json_payload(payload, field="graph")
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": _report_filter_query_payload(
+                ability_id=ability_id,
+                data_type=normalized_data_type,
+                difficulty=difficulty,
+                encounter_id=encounter_id,
+                end_time=end_time,
+                fight_ids=fight_id,
+                filter_expression=filter_expression,
+                hostility_type=normalized_hostility_type,
+                kill_type=normalized_kill_type,
+                limit=None,
+                source_id=source_id,
+                start_time=start_time,
+                target_id=target_id,
+                translate=translate,
+                view_by=normalized_view_by,
+                wipe_cutoff=wipe_cutoff,
+            ),
+            **result_payload,
+        },
+    )
+
+
+@app.command("report-master-data")
+def report_master_data(
+    ctx: typer.Context,
+    code: str,
+    actor_type: str | None = typer.Option(None, "--actor-type", help="Optional actor type filter."),
+    actor_sub_type: str | None = typer.Option(None, "--actor-sub-type", help="Optional actor sub-type filter."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    client = _client(ctx)
+    try:
+        payload = client.report_master_data(
+            code=code,
+            allow_unlisted=allow_unlisted,
+            translate=translate,
+            actor_type=actor_type,
+            actor_sub_type=actor_sub_type,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": {"actor_type": actor_type, "actor_sub_type": actor_sub_type, "translate": translate},
+            **_report_master_data_payload(payload),
         },
     )
 

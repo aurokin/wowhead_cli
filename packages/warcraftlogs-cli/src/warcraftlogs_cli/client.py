@@ -526,6 +526,199 @@ query ReportFights($code: String!, $difficulty: Int, $allowUnlisted: Boolean) {
 }
 """
 
+REPORT_EVENTS_QUERY = """
+query ReportEvents(
+  $code: String!,
+  $allowUnlisted: Boolean,
+  $abilityID: Float,
+  $dataType: EventDataType,
+  $difficulty: Int,
+  $encounterID: Int,
+  $endTime: Float,
+  $fightIDs: [Int],
+  $filterExpression: String,
+  $hostilityType: HostilityType,
+  $killType: KillType,
+  $limit: Int,
+  $sourceID: Int,
+  $startTime: Float,
+  $targetID: Int,
+  $translate: Boolean
+) {
+  reportData {
+    report(code: $code, allowUnlisted: $allowUnlisted) {
+      code
+      title
+      zone {
+        id
+        name
+      }
+      events(
+        abilityID: $abilityID,
+        dataType: $dataType,
+        difficulty: $difficulty,
+        encounterID: $encounterID,
+        endTime: $endTime,
+        fightIDs: $fightIDs,
+        filterExpression: $filterExpression,
+        hostilityType: $hostilityType,
+        killType: $killType,
+        limit: $limit,
+        sourceID: $sourceID,
+        startTime: $startTime,
+        targetID: $targetID,
+        translate: $translate
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+REPORT_TABLE_QUERY = """
+query ReportTable(
+  $code: String!,
+  $allowUnlisted: Boolean,
+  $abilityID: Float,
+  $dataType: TableDataType,
+  $difficulty: Int,
+  $encounterID: Int,
+  $endTime: Float,
+  $fightIDs: [Int],
+  $filterExpression: String,
+  $hostilityType: HostilityType,
+  $killType: KillType,
+  $sourceID: Int,
+  $startTime: Float,
+  $targetID: Int,
+  $translate: Boolean,
+  $viewBy: ViewType,
+  $wipeCutoff: Int
+) {
+  reportData {
+    report(code: $code, allowUnlisted: $allowUnlisted) {
+      code
+      title
+      zone {
+        id
+        name
+      }
+      table(
+        abilityID: $abilityID,
+        dataType: $dataType,
+        difficulty: $difficulty,
+        encounterID: $encounterID,
+        endTime: $endTime,
+        fightIDs: $fightIDs,
+        filterExpression: $filterExpression,
+        hostilityType: $hostilityType,
+        killType: $killType,
+        sourceID: $sourceID,
+        startTime: $startTime,
+        targetID: $targetID,
+        translate: $translate,
+        viewBy: $viewBy,
+        wipeCutoff: $wipeCutoff
+      )
+    }
+  }
+}
+"""
+
+REPORT_GRAPH_QUERY = """
+query ReportGraph(
+  $code: String!,
+  $allowUnlisted: Boolean,
+  $abilityID: Float,
+  $dataType: GraphDataType,
+  $difficulty: Int,
+  $encounterID: Int,
+  $endTime: Float,
+  $fightIDs: [Int],
+  $filterExpression: String,
+  $hostilityType: HostilityType,
+  $killType: KillType,
+  $sourceID: Int,
+  $startTime: Float,
+  $targetID: Int,
+  $translate: Boolean,
+  $viewBy: ViewType,
+  $wipeCutoff: Int
+) {
+  reportData {
+    report(code: $code, allowUnlisted: $allowUnlisted) {
+      code
+      title
+      zone {
+        id
+        name
+      }
+      graph(
+        abilityID: $abilityID,
+        dataType: $dataType,
+        difficulty: $difficulty,
+        encounterID: $encounterID,
+        endTime: $endTime,
+        fightIDs: $fightIDs,
+        filterExpression: $filterExpression,
+        hostilityType: $hostilityType,
+        killType: $killType,
+        sourceID: $sourceID,
+        startTime: $startTime,
+        targetID: $targetID,
+        translate: $translate,
+        viewBy: $viewBy,
+        wipeCutoff: $wipeCutoff
+      )
+    }
+  }
+}
+"""
+
+REPORT_MASTER_DATA_QUERY = """
+query ReportMasterData(
+  $code: String!,
+  $allowUnlisted: Boolean,
+  $translate: Boolean,
+  $actorType: String,
+  $actorSubType: String
+) {
+  reportData {
+    report(code: $code, allowUnlisted: $allowUnlisted) {
+      code
+      title
+      zone {
+        id
+        name
+      }
+      masterData(translate: $translate) {
+        logVersion
+        gameVersion
+        lang
+        abilities {
+          gameID
+          icon
+          name
+          type
+        }
+        actors(type: $actorType, subType: $actorSubType) {
+          gameID
+          icon
+          id
+          name
+          petOwner
+          server
+          subType
+          type
+        }
+      }
+    }
+  }
+}
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class WarcraftLogsSiteProfile:
@@ -565,6 +758,26 @@ class WarcraftLogsClientError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+@dataclass(frozen=True, slots=True)
+class ReportFilterOptions:
+    ability_id: float | None = None
+    data_type: str | None = None
+    difficulty: int | None = None
+    encounter_id: int | None = None
+    end_time: float | None = None
+    fight_ids: list[int] | None = None
+    filter_expression: str | None = None
+    hostility_type: str | None = None
+    kill_type: str | None = None
+    limit: int | None = None
+    source_id: int | None = None
+    start_time: float | None = None
+    target_id: int | None = None
+    translate: bool | None = None
+    view_by: str | None = None
+    wipe_cutoff: int | None = None
 
 
 def load_warcraftlogs_auth_config(*, start_dir: str | None = None) -> WarcraftLogsAuthConfig:
@@ -731,6 +944,51 @@ class WarcraftLogsClient:
             raise WarcraftLogsClientError("invalid_response", f"Warcraft Logs returned no data for {operation_name}.")
         self._write_cache(cache_key, data, ttl_seconds=ttl_seconds)
         return data
+
+    def _report_query_variables(self, *, code: str, allow_unlisted: bool, options: ReportFilterOptions) -> dict[str, Any]:
+        return {
+            "code": code.strip(),
+            "allowUnlisted": allow_unlisted,
+            "abilityID": options.ability_id,
+            "dataType": options.data_type,
+            "difficulty": options.difficulty,
+            "encounterID": options.encounter_id,
+            "endTime": options.end_time,
+            "fightIDs": options.fight_ids,
+            "filterExpression": options.filter_expression,
+            "hostilityType": options.hostility_type,
+            "killType": options.kill_type,
+            "limit": options.limit,
+            "sourceID": options.source_id,
+            "startTime": options.start_time,
+            "targetID": options.target_id,
+            "translate": options.translate,
+            "viewBy": options.view_by,
+            "wipeCutoff": options.wipe_cutoff,
+        }
+
+    def _report_lookup(
+        self,
+        *,
+        operation_name: str,
+        query: str,
+        namespace: str,
+        code: str,
+        allow_unlisted: bool,
+        variables: dict[str, Any],
+    ) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name=operation_name,
+            query=query,
+            variables=variables,
+            namespace=namespace,
+            ttl_seconds=self._guild_ttl,
+        )
+        report_data = data.get("reportData")
+        report = report_data.get("report") if isinstance(report_data, dict) else None
+        if not isinstance(report, dict):
+            raise WarcraftLogsClientError("not_found", f"Report {code!r} was not found.")
+        return report
 
     def rate_limit(self) -> dict[str, Any]:
         data = self._graphql(
@@ -981,15 +1239,65 @@ class WarcraftLogsClient:
         return reports
 
     def report_fights(self, *, code: str, difficulty: int | None = None, allow_unlisted: bool = False) -> dict[str, Any]:
-        data = self._graphql(
+        return self._report_lookup(
             operation_name="ReportFights",
             query=REPORT_FIGHTS_QUERY,
-            variables={"code": code.strip(), "difficulty": difficulty, "allowUnlisted": allow_unlisted},
             namespace="report_fights",
-            ttl_seconds=self._guild_ttl,
+            code=code,
+            allow_unlisted=allow_unlisted,
+            variables={"code": code.strip(), "difficulty": difficulty, "allowUnlisted": allow_unlisted},
         )
-        report_data = data.get("reportData")
-        report = report_data.get("report") if isinstance(report_data, dict) else None
-        if not isinstance(report, dict):
-            raise WarcraftLogsClientError("not_found", f"Report {code!r} was not found.")
-        return report
+
+    def report_events(self, *, code: str, allow_unlisted: bool = False, options: ReportFilterOptions) -> dict[str, Any]:
+        return self._report_lookup(
+            operation_name="ReportEvents",
+            query=REPORT_EVENTS_QUERY,
+            namespace="report_events",
+            code=code,
+            allow_unlisted=allow_unlisted,
+            variables=self._report_query_variables(code=code, allow_unlisted=allow_unlisted, options=options),
+        )
+
+    def report_table(self, *, code: str, allow_unlisted: bool = False, options: ReportFilterOptions) -> dict[str, Any]:
+        return self._report_lookup(
+            operation_name="ReportTable",
+            query=REPORT_TABLE_QUERY,
+            namespace="report_table",
+            code=code,
+            allow_unlisted=allow_unlisted,
+            variables=self._report_query_variables(code=code, allow_unlisted=allow_unlisted, options=options),
+        )
+
+    def report_graph(self, *, code: str, allow_unlisted: bool = False, options: ReportFilterOptions) -> dict[str, Any]:
+        return self._report_lookup(
+            operation_name="ReportGraph",
+            query=REPORT_GRAPH_QUERY,
+            namespace="report_graph",
+            code=code,
+            allow_unlisted=allow_unlisted,
+            variables=self._report_query_variables(code=code, allow_unlisted=allow_unlisted, options=options),
+        )
+
+    def report_master_data(
+        self,
+        *,
+        code: str,
+        allow_unlisted: bool = False,
+        translate: bool | None = None,
+        actor_type: str | None = None,
+        actor_sub_type: str | None = None,
+    ) -> dict[str, Any]:
+        return self._report_lookup(
+            operation_name="ReportMasterData",
+            query=REPORT_MASTER_DATA_QUERY,
+            namespace="report_master_data",
+            code=code,
+            allow_unlisted=allow_unlisted,
+            variables={
+                "code": code.strip(),
+                "allowUnlisted": allow_unlisted,
+                "translate": translate,
+                "actorType": actor_type,
+                "actorSubType": actor_sub_type,
+            },
+        )
