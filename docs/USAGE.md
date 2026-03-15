@@ -460,6 +460,8 @@ warcraftlogs report-rankings abcdefgh --fight-id 47 --player-metric dps --timefr
 warcraftlogs report-encounter 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47'
 warcraftlogs report-encounter-players 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47'
 warcraftlogs report-encounter-casts 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --preview-limit 20
+warcraftlogs report-encounter-buffs 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --view-by source
+warcraftlogs report-encounter-damage-breakdown 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --window-start-ms 30000 --window-end-ms 90000
 warcraftlogs boss-kills --zone-id 38 --boss-id 3012 --difficulty 5 --top 10
 warcraftlogs top-kills --zone-id 38 --boss-name 'Dimensius' --difficulty 5 --top 5
 warcraftlogs kill-time-distribution --zone-id 38 --boss-id 3012 --difficulty 5 --bucket-seconds 30
@@ -519,10 +521,14 @@ EOF
 - `report-master-data` exposes report actor and ability catalogs, which is often the most useful companion surface for deeper report analysis
 - `report-table` and `report-graph` now accept friendly enum-like filters such as `damage-done` and normalize them to the official GraphQL enum values
 - `report-rankings` exposes the official report rankings JSON with typed query metadata
-- `report-encounter`, `report-encounter-players`, and `report-encounter-casts` are the first deep encounter-analysis slice:
+- `report-encounter`, `report-encounter-players`, `report-encounter-casts`, `report-encounter-buffs`, and `report-encounter-damage-breakdown` are the first deep encounter-analysis slice:
   - they accept either a report code plus `--fight-id`
   - or a Warcraft Logs report URL with a numeric `#fight=...` fragment
   - they return one explicitly selected fight instead of making the agent reconstruct scope manually
+  - the cast/buff/damage variants support encounter-relative timeline windows with:
+    - `--window-start-ms`
+    - `--window-end-ms`
+  - these commands preserve the resolved absolute report timestamps in the payload so the agent does not have to calculate them
 - `boss-kills`, `top-kills`, and `kill-time-distribution` are the first sampled cross-report analytics slice:
   - they sample public finished reports for one zone
   - they rank within the sampled cohort, not all possible Warcraft Logs data

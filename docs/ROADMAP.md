@@ -31,7 +31,7 @@ Completed:
 - working `raiderio` provider with direct lookup, search/resolve, and first analytics primitives
 - working `warcraft-wiki` provider with typed programming/reference surfaces and broad family coverage
 - working `wowprogress` provider with direct lookup, search/resolve, and first analytics primitives
-- working `warcraftlogs` provider with retail-only public OAuth + GraphQL metadata, guild/character lookups, guild rankings, first report-list/report-detail workflows, first deep encounter report-link workflows, and the first sampled cross-report analytics slice
+- working `warcraftlogs` provider with retail-only public OAuth + GraphQL metadata, guild/character lookups, guild rankings, first report-list/report-detail workflows, first deep encounter report-link workflows with typed cast/buff/damage slices, and the first sampled cross-report analytics slice
 - working `simc` provider with readonly source analysis, runtime helpers, and managed checkout flow
 - root `warcraft` skill
 

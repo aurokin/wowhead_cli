@@ -181,6 +181,13 @@ def test_live_warcraftlogs_report_encounter_contracts() -> None:
     assert players_payload["reference"]["fight_id"] == fight_id
     assert players_payload["player_details"]["counts"]["total"] >= 1
 
+    damage_payload = _payload_for(["report-encounter-damage-breakdown", report_url, "--view-by", "source"])
+    assert damage_payload["provider"] == "warcraftlogs"
+    assert damage_payload["kind"] == "report_encounter_damage_breakdown"
+    assert damage_payload["reference"]["fight_id"] == fight_id
+    assert damage_payload["query"]["data_type"] == "DamageDone"
+    assert "table" in damage_payload
+
 
 @pytest.mark.live
 def test_live_warcraftlogs_report_detail_contracts() -> None:

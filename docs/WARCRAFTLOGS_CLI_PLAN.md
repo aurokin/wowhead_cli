@@ -65,6 +65,8 @@ Implemented today:
   - `warcraftlogs report-encounter`
   - `warcraftlogs report-encounter-players`
   - `warcraftlogs report-encounter-casts`
+  - `warcraftlogs report-encounter-buffs`
+  - `warcraftlogs report-encounter-damage-breakdown`
   - `warcraftlogs boss-kills`
   - `warcraftlogs top-kills`
   - `warcraftlogs kill-time-distribution`
@@ -87,6 +89,7 @@ Implemented today:
   - constrained `report-rankings`
   - live `report-encounter`
   - live `report-encounter-players`
+  - constrained `report-encounter-damage-breakdown`
   - sampled `boss-kills`
 
 Current intentional boundary:

@@ -651,6 +651,10 @@ class _FakeWarcraftLogsClient:
         else:
             assert options.fight_ids == [1]
             assert options.limit == 200
+            assert options.hostility_type in {None, "Friendlies"}
+            if options.start_time is not None or options.end_time is not None:
+                assert options.start_time == 105000.0
+                assert options.end_time == 130000.0
             rows = [
                 {"type": "cast", "timestamp": 120000, "sourceID": 9, "targetID": 501, "abilityGameID": 20473},
                 {"type": "cast", "timestamp": 145000, "sourceID": 9, "targetID": 501, "abilityGameID": 20473},
@@ -668,14 +672,26 @@ class _FakeWarcraftLogsClient:
 
     def report_table(self, *, code: str, allow_unlisted: bool = False, options) -> dict[str, object]:  # noqa: ANN001
         assert code == "abcd1234"
-        assert allow_unlisted is True
-        assert options.data_type == "DamageDone"
-        assert options.view_by == "Source"
+        assert options.data_type in {"DamageDone", "Buffs"}
+        if options.encounter_id == 3012:
+            assert allow_unlisted is False
+            assert options.fight_ids == [1]
+            assert options.view_by == "Source"
+            assert options.kill_type == "Kills"
+            if options.start_time is not None or options.end_time is not None:
+                assert options.start_time == 110000.0
+                assert options.end_time == 150000.0
+            entries = [{"name": "Auropower", "total": 123456 if options.data_type == "DamageDone" else 98.7}]
+        else:
+            assert allow_unlisted is True
+            assert options.data_type == "DamageDone"
+            assert options.view_by == "Source"
+            entries = [{"name": "Auropower", "total": 123456}]
         return {
             "code": "abcd1234",
             "title": "Manaforge Omega - Liquid",
             "zone": {"id": 38, "name": "Manaforge Omega"},
-            "table": {"entries": [{"name": "Auropower", "total": 123456}]},
+            "table": {"entries": entries},
         }
 
     def report_graph(self, *, code: str, allow_unlisted: bool = False, options) -> dict[str, object]:  # noqa: ANN001
@@ -829,6 +845,8 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["auth"]["state"]["exists"] is False
     assert payload["capabilities"]["guild"] == "ready"
     assert payload["capabilities"]["report_fights"] == "ready"
+    assert payload["capabilities"]["report_encounter_buffs"] == "ready"
+    assert payload["capabilities"]["report_encounter_damage_breakdown"] == "ready"
 
 
 def test_warcraftlogs_auth_status_reports_shared_state_summary(monkeypatch) -> None:
@@ -1476,6 +1494,95 @@ def test_warcraftlogs_report_encounter_casts_summarizes_cast_rows(monkeypatch) -
     assert payload["casts"]["by_source"][0]["source"]["name"] == "Auropower"
     assert payload["casts"]["by_ability"][0]["ability"]["name"] == "Holy Shock"
     assert payload["casts"]["preview"][0]["relative_time_ms"] == 20000.0
+
+
+def test_warcraftlogs_report_encounter_casts_supports_windows_and_filters(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "report-encounter-casts",
+            "abcd1234",
+            "--fight-id",
+            "1",
+            "--hostility-type",
+            "friendlies",
+            "--window-start-ms",
+            "5000",
+            "--window-end-ms",
+            "30000",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "report_encounter_casts"
+    assert payload["query"]["hostility_type"] == "Friendlies"
+    assert payload["query"]["window_start_ms"] == 5000.0
+    assert payload["query"]["window_end_ms"] == 30000.0
+    assert payload["query"]["start_time"] == 105000.0
+    assert payload["query"]["end_time"] == 130000.0
+
+
+def test_warcraftlogs_report_encounter_window_rejects_inverted_range(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "report-encounter-casts",
+            "abcd1234",
+            "--fight-id",
+            "1",
+            "--window-start-ms",
+            "30000",
+            "--window-end-ms",
+            "5000",
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+
+
+def test_warcraftlogs_report_encounter_buffs_scopes_table_query(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "report-encounter-buffs",
+            "abcd1234",
+            "--fight-id",
+            "1",
+            "--window-start-ms",
+            "10000",
+            "--window-end-ms",
+            "50000",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "report_encounter_buffs"
+    assert payload["query"]["data_type"] == "Buffs"
+    assert payload["query"]["start_time"] == 110000.0
+    assert payload["query"]["end_time"] == 150000.0
+    assert payload["table"]["entries"][0]["total"] == 98.7
+
+
+def test_warcraftlogs_report_encounter_damage_breakdown_scopes_table_query(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-encounter-damage-breakdown", "abcd1234", "--fight-id", "1"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "report_encounter_damage_breakdown"
+    assert payload["query"]["data_type"] == "DamageDone"
+    assert payload["query"]["fight_ids"] == [1]
+    assert payload["table"]["entries"][0]["name"] == "Auropower"
 
 
 def test_warcraftlogs_report_events_requires_scope(monkeypatch) -> None:

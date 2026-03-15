@@ -146,6 +146,8 @@ def _doctor_payload() -> dict[str, Any]:
             "report_encounter": "ready",
             "report_encounter_players": "ready",
             "report_encounter_casts": "ready",
+            "report_encounter_buffs": "ready",
+            "report_encounter_damage_breakdown": "ready",
             "character": "ready",
             "character_rankings": "ready",
             "report": "ready",
@@ -608,6 +610,84 @@ def _encounter_summary_payload(*, ref: ReportReference, report: dict[str, Any], 
             "live": not _report_is_finished(report),
         },
     }
+
+
+def _encounter_window_bounds(
+    ctx: typer.Context,
+    *,
+    fight: dict[str, Any],
+    window_start_ms: float | None,
+    window_end_ms: float | None,
+) -> tuple[float | None, float | None]:
+    fight_start = fight.get("startTime")
+    if (window_start_ms is not None or window_end_ms is not None) and not isinstance(fight_start, (int, float)):
+        _fail(ctx, "invalid_response", "Selected fight did not include a start timestamp for encounter windowing.")
+    absolute_start = float(fight_start) + float(window_start_ms) if window_start_ms is not None and isinstance(fight_start, (int, float)) else None
+    absolute_end = float(fight_start) + float(window_end_ms) if window_end_ms is not None and isinstance(fight_start, (int, float)) else None
+    if absolute_start is not None and absolute_end is not None and absolute_end < absolute_start:
+        _fail(ctx, "invalid_query", "--window-end-ms must be greater than or equal to --window-start-ms.")
+    return absolute_start, absolute_end
+
+
+def _encounter_filter_options(
+    ctx: typer.Context,
+    *,
+    fight: dict[str, Any],
+    ability_id: float | None,
+    data_type: str,
+    source_id: int | None,
+    target_id: int | None,
+    hostility_type: str | None,
+    translate: bool | None,
+    view_by: str | None = None,
+    limit: int | None = None,
+    wipe_cutoff: int | None = None,
+    window_start_ms: float | None = None,
+    window_end_ms: float | None = None,
+) -> tuple[ReportFilterOptions, dict[str, Any]]:
+    start_time, end_time = _encounter_window_bounds(
+        ctx,
+        fight=fight,
+        window_start_ms=window_start_ms,
+        window_end_ms=window_end_ms,
+    )
+    encounter_id = fight.get("encounterID") if isinstance(fight.get("encounterID"), int) else None
+    fight_ids = [int(fight["id"])] if isinstance(fight.get("id"), int) else None
+    options = ReportFilterOptions(
+        ability_id=ability_id,
+        data_type=data_type,
+        encounter_id=encounter_id,
+        end_time=end_time,
+        fight_ids=fight_ids,
+        hostility_type=hostility_type,
+        kill_type=_kill_type_for_fight(fight),
+        limit=limit,
+        source_id=source_id,
+        start_time=start_time,
+        target_id=target_id,
+        translate=translate,
+        view_by=view_by,
+        wipe_cutoff=wipe_cutoff,
+    )
+    query = {
+        "ability_id": ability_id,
+        "data_type": data_type,
+        "encounter_id": encounter_id,
+        "fight_ids": fight_ids,
+        "hostility_type": hostility_type,
+        "kill_type": _kill_type_for_fight(fight),
+        "limit": limit,
+        "source_id": source_id,
+        "target_id": target_id,
+        "translate": translate,
+        "view_by": view_by,
+        "wipe_cutoff": wipe_cutoff,
+        "window_start_ms": window_start_ms,
+        "window_end_ms": window_end_ms,
+        "start_time": start_time,
+        "end_time": end_time,
+    }
+    return options, query
 
 
 def _master_data_indexes(report: dict[str, Any]) -> tuple[dict[int, dict[str, Any]], dict[int, dict[str, Any]]]:
@@ -2339,8 +2419,11 @@ def report_encounter_casts(
     source_id: int | None = typer.Option(None, "--source-id", help="Optional source actor filter."),
     target_id: int | None = typer.Option(None, "--target-id", help="Optional target actor filter."),
     ability_id: float | None = typer.Option(None, "--ability-id", help="Optional ability game ID filter."),
+    hostility_type: str | None = typer.Option(None, "--hostility-type", help="Optional hostility filter."),
     limit: int = typer.Option(200, "--limit", min=1, max=10000, help="Maximum cast events to request from Warcraft Logs."),
     preview_limit: int = typer.Option(20, "--preview-limit", min=1, max=200, help="Maximum preview cast rows to return."),
+    window_start_ms: float | None = typer.Option(None, "--window-start-ms", help="Optional encounter-relative start offset in milliseconds."),
+    window_end_ms: float | None = typer.Option(None, "--window-end-ms", help="Optional encounter-relative end offset in milliseconds."),
     translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
     allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
 ) -> None:
@@ -2353,20 +2436,24 @@ def report_encounter_casts(
             fight_id=fight_id,
             allow_unlisted=allow_unlisted,
         )
+        normalized_hostility_type = _normalize_graphql_enum(hostility_type)
+        options, query = _encounter_filter_options(
+            ctx,
+            fight=fight,
+            ability_id=ability_id,
+            data_type="Casts",
+            source_id=source_id,
+            target_id=target_id,
+            hostility_type=normalized_hostility_type,
+            translate=translate,
+            limit=limit,
+            window_start_ms=window_start_ms,
+            window_end_ms=window_end_ms,
+        )
         events_report = client.report_events(
             code=ref.code,
             allow_unlisted=allow_unlisted,
-            options=ReportFilterOptions(
-                ability_id=ability_id,
-                data_type="Casts",
-                encounter_id=fight.get("encounterID") if isinstance(fight.get("encounterID"), int) else None,
-                fight_ids=[int(fight["id"])] if isinstance(fight.get("id"), int) else None,
-                kill_type=_kill_type_for_fight(fight),
-                limit=limit,
-                source_id=source_id,
-                target_id=target_id,
-                translate=translate,
-            ),
+            options=options,
         )
         master_report = client.report_master_data(code=ref.code, allow_unlisted=allow_unlisted, actor_type="Player")
     except WarcraftLogsClientError as exc:
@@ -2381,12 +2468,8 @@ def report_encounter_casts(
             "provider": "warcraftlogs",
             "kind": "report_encounter_casts",
             "query": {
-                "source_id": source_id,
-                "target_id": target_id,
-                "ability_id": ability_id,
-                "limit": limit,
                 "preview_limit": preview_limit,
-                "translate": translate,
+                **query,
             },
             **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
             **_encounter_cast_rows_payload(
@@ -2396,6 +2479,126 @@ def report_encounter_casts(
                 master_report=master_report,
                 preview_limit=preview_limit,
             ),
+        },
+    )
+
+
+@app.command("report-encounter-buffs")
+def report_encounter_buffs(
+    ctx: typer.Context,
+    reference: str,
+    fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
+    source_id: int | None = typer.Option(None, "--source-id", help="Optional source actor filter."),
+    target_id: int | None = typer.Option(None, "--target-id", help="Optional target actor filter."),
+    ability_id: float | None = typer.Option(None, "--ability-id", help="Optional ability game ID filter."),
+    hostility_type: str | None = typer.Option(None, "--hostility-type", help="Optional hostility filter."),
+    view_by: str | None = typer.Option("source", "--view-by", help="Optional table view grouping."),
+    wipe_cutoff: int | None = typer.Option(None, "--wipe-cutoff", help="Optional wipe cutoff."),
+    window_start_ms: float | None = typer.Option(None, "--window-start-ms", help="Optional encounter-relative start offset in milliseconds."),
+    window_end_ms: float | None = typer.Option(None, "--window-end-ms", help="Optional encounter-relative end offset in milliseconds."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    client = _client(ctx)
+    try:
+        ref, report, fight, encounter = _resolve_encounter_scope(
+            ctx,
+            client=client,
+            reference=reference,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+        )
+        normalized_hostility_type = _normalize_graphql_enum(hostility_type)
+        normalized_view_by = _normalize_graphql_enum(view_by)
+        options, query = _encounter_filter_options(
+            ctx,
+            fight=fight,
+            ability_id=ability_id,
+            data_type="Buffs",
+            source_id=source_id,
+            target_id=target_id,
+            hostility_type=normalized_hostility_type,
+            translate=translate,
+            view_by=normalized_view_by,
+            wipe_cutoff=wipe_cutoff,
+            window_start_ms=window_start_ms,
+            window_end_ms=window_end_ms,
+        )
+        payload = client.report_table(code=ref.code, allow_unlisted=allow_unlisted, options=options)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "kind": "report_encounter_buffs",
+            "query": query,
+            **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
+            **_report_json_payload(payload, field="table"),
+        },
+    )
+
+
+@app.command("report-encounter-damage-breakdown")
+def report_encounter_damage_breakdown(
+    ctx: typer.Context,
+    reference: str,
+    fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
+    source_id: int | None = typer.Option(None, "--source-id", help="Optional source actor filter."),
+    target_id: int | None = typer.Option(None, "--target-id", help="Optional target actor filter."),
+    ability_id: float | None = typer.Option(None, "--ability-id", help="Optional ability game ID filter."),
+    hostility_type: str | None = typer.Option(None, "--hostility-type", help="Optional hostility filter."),
+    view_by: str | None = typer.Option("source", "--view-by", help="Optional table view grouping."),
+    wipe_cutoff: int | None = typer.Option(None, "--wipe-cutoff", help="Optional wipe cutoff."),
+    window_start_ms: float | None = typer.Option(None, "--window-start-ms", help="Optional encounter-relative start offset in milliseconds."),
+    window_end_ms: float | None = typer.Option(None, "--window-end-ms", help="Optional encounter-relative end offset in milliseconds."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    client = _client(ctx)
+    try:
+        ref, report, fight, encounter = _resolve_encounter_scope(
+            ctx,
+            client=client,
+            reference=reference,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+        )
+        normalized_hostility_type = _normalize_graphql_enum(hostility_type)
+        normalized_view_by = _normalize_graphql_enum(view_by)
+        options, query = _encounter_filter_options(
+            ctx,
+            fight=fight,
+            ability_id=ability_id,
+            data_type="DamageDone",
+            source_id=source_id,
+            target_id=target_id,
+            hostility_type=normalized_hostility_type,
+            translate=translate,
+            view_by=normalized_view_by,
+            wipe_cutoff=wipe_cutoff,
+            window_start_ms=window_start_ms,
+            window_end_ms=window_end_ms,
+        )
+        payload = client.report_table(code=ref.code, allow_unlisted=allow_unlisted, options=options)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "kind": "report_encounter_damage_breakdown",
+            "query": query,
+            **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
+            **_report_json_payload(payload, field="table"),
         },
     )
 
