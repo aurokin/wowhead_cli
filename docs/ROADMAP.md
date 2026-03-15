@@ -171,18 +171,7 @@ A good end state is:
 - `packages/raidbots-cli`
 - `packages/warcraftlogs-cli`
 - `skills/warcraft/`
-- `skills/method/`
-- `skills/icy-veins/`
-- `skills/raiderio/`
-- `skills/wowprogress/`
-- `skills/warcraft-wiki/`
-- `skills/blizzard-api/`
-- `skills/undermine-exchange/`
-- `skills/raidplan/`
-- `skills/curseforge/`
-- `skills/simc/`
-- `skills/raidbots/`
-- `skills/warcraftlogs/`
+- optional generated provider subskills under `.generated-skills/`
 
 The important split is conceptual, not naming. Shared code should live in explicit libraries, and each service CLI should remain individually runnable.
 
@@ -277,7 +266,7 @@ Next:
 11. Add `simc` as the first local-tool integration and use it to validate readonly source analysis plus non-network execution abstractions. See [SIMC_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/SIMC_CLI_PLAN.md).
 12. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDBOTS_CLI_PLAN.md).
 13. Add `blizzard-api` as the canonical official data provider for supported game-data and profile lookups once we are ready to tackle auth. Use it to validate OAuth, region handling, and namespace-aware API patterns. See [BLIZZARD_API_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/BLIZZARD_API_CLI_PLAN.md).
-14. Add `warcraftlogs` after the API-first/auth patterns have been proven elsewhere. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
+14. Deepen `warcraftlogs` from the current public retail slice toward fuller official report, auth, and site-profile coverage. See [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/WARCRAFTLOGS_CLI_PLAN.md).
 15. Add `undermine-exchange` once the public market-data surface is stable enough to plan against. See [UNDERMINE_EXCHANGE_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/UNDERMINE_EXCHANGE_CLI_PLAN.md).
 16. Add `raidplan` as a planning/workflow provider once we decide to tackle read-first public plan extraction. See [RAIDPLAN_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/RAIDPLAN_CLI_PLAN.md).
 17. Add `curseforge` as a read-first addon metadata provider once we want addon/project/file compatibility workflows. See [CURSEFORGE_CLI_PLAN.md](/home/auro/code/wowhead_cli/docs/CURSEFORGE_CLI_PLAN.md).
