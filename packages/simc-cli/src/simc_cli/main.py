@@ -170,6 +170,21 @@ def _resolve_path(paths: RepoPaths, value: str) -> Path:
     return path.resolve()
 
 
+def _relative_to_repo(paths: RepoPaths, path: Path) -> str | None:
+    return str(path.relative_to(paths.root)) if path.is_relative_to(paths.root) else None
+
+
+def _infer_default_apl_path(paths: RepoPaths, *, actor_class: str | None, spec: str | None) -> Path | None:
+    if not actor_class or not spec:
+        return None
+    file_name = f"{actor_class}_{spec}.simc"
+    for base in (paths.apl_default, paths.apl_assisted):
+        candidate = (base / file_name).resolve()
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _write_temp_profile(*, source_name: str, text: str) -> Path:
     fd, raw_path = tempfile.mkstemp(suffix=".simc", prefix=f"{source_name}-")
     path = Path(raw_path).resolve()
@@ -290,6 +305,25 @@ def _prune_context_payload(resolution: Any, context: PruneContext) -> dict[str, 
     }
 
 
+def _talent_tree_payload(resolution: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for tree in ("class", "spec", "hero"):
+        talents = resolution.talents_by_tree.get(tree, [])
+        payload[tree] = {
+            "selected": [
+                {"name": talent.name, "token": talent.token, "rank": talent.rank, "max_rank": talent.max_rank}
+                for talent in talents
+                if talent.rank > 0
+            ],
+            "skipped": [
+                {"name": talent.name, "token": talent.token, "rank": talent.rank, "max_rank": talent.max_rank}
+                for talent in talents
+                if talent.rank <= 0
+            ],
+        }
+    return payload
+
+
 def _priority_item(decision: Any) -> dict[str, Any]:
     return {
         "line_no": decision.line_no,
@@ -304,6 +338,45 @@ def _priority_item(decision: Any) -> dict[str, Any]:
 def _focus_list_summary(resolved: Path, context: PruneContext, *, start_list: str) -> tuple[Any, str]:
     summary = summarize_branches(resolved, context, start_list=start_list)
     return summary, summary.guaranteed_dispatch or start_list
+
+
+def _describe_target_payload(resolved: Path, context: PruneContext, *, start_list: str, priority_limit: int, inactive_limit: int) -> dict[str, Any]:
+    summary, focus_list = _focus_list_summary(resolved, context, start_list=start_list)
+    active = active_priority_decisions(resolved, context, focus_list)[:priority_limit]
+    inactive = inactive_priority_decisions(resolved, context, focus_list, talent_only=True)[:inactive_limit]
+    explanation = explain_intent(resolved, context, focus_list, limit=priority_limit)
+    runtime_sensitive = [
+        _priority_item(decision)
+        for decision in active
+        if decision.status == "possible" and decision.reason == "depends on runtime-only state"
+    ]
+    return {
+        "targets": context.targets,
+        "focus_list": focus_list,
+        "dispatch_certainty": "guaranteed" if summary.guaranteed_dispatch else "unresolved",
+        "branch_summary": {
+            "start_list": summary.start_list,
+            "guaranteed_dispatch": summary.guaranteed_dispatch,
+            "guaranteed_dispatch_line": summary.guaranteed_dispatch_line,
+            "guaranteed_dispatch_reason": summary.guaranteed_dispatch_reason,
+            "dead_branches": summary.dead_branches,
+            "unresolved_branches": summary.unresolved_branches,
+            "shadowed_lines": summary.shadowed_lines,
+        },
+        "active_priority": [_priority_item(decision) for decision in active],
+        "inactive_talent_branches": [_priority_item(decision) for decision in inactive],
+        "explained_intent": {
+            "setup": explanation.setup,
+            "helpers": explanation.helpers,
+            "burst": explanation.burst,
+            "priorities": explanation.priorities,
+        },
+        "runtime_sensitive": runtime_sensitive,
+    }
+
+
+def _action_names(items: list[dict[str, Any]]) -> list[str]:
+    return [str(item["action"]) for item in items if item.get("action")]
 
 
 def _parse_variant_specs(values: list[str]) -> list[tuple[str, str]]:
@@ -369,6 +442,7 @@ def doctor(ctx: typer.Context) -> None:
                 "apl_intent": "ready",
                 "apl_intent_explain": "ready",
                 "priority": "ready",
+                "describe_build": "ready",
                 "inactive_actions": "ready",
                 "opener": "ready",
                 "build_harness": "ready",
@@ -1428,6 +1502,112 @@ def priority_command(
                     for decision in excluded[:limit]
                 ],
                 "note": "This is an exact-build static priority view. Inactive talent-gated actions are excluded from the active list.",
+            },
+        },
+    )
+
+
+@app.command("describe-build")
+def describe_build_command(
+    ctx: typer.Context,
+    apl_path: str | None = typer.Option(None, "--apl-path", help="Optional APL path. If omitted, the CLI tries the default spec APL for the resolved build."),
+    targets: int = typer.Option(1, "--targets", min=1, help="Primary target count for the base build summary."),
+    aoe_targets: int = typer.Option(5, "--aoe-targets", min=2, help="Secondary target count used for the cleave/AoE comparison view."),
+    list_name: str = typer.Option("default", "--list", help="Starting action list."),
+    priority_limit: int = typer.Option(8, "--priority-limit", min=1, max=50, help="Maximum active priority rows to summarize per target view."),
+    inactive_limit: int = typer.Option(8, "--inactive-limit", min=1, max=50, help="Maximum inactive talent-gated actions to summarize per target view."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or talent-calc URL."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
+    enable: list[str] = typer.Option([], "--enable", help="Enabled talent names. Repeat or pass comma-separated values."),
+    disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
+) -> None:
+    paths = _repo_paths(ctx)
+    build_spec, identity = _load_identified_build_spec(
+        paths,
+        apl_path=apl_path,
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+    )
+    if not build_spec.actor_class or not build_spec.spec:
+        _fail(
+            ctx,
+            "invalid_query",
+            "Could not determine actor class and spec for build description.",
+            extra={"build_spec": _serialize_build_spec(build_spec), "identity": _serialize_build_identity(identity)},
+        )
+        return
+    resolved = _resolve_path(paths, apl_path) if apl_path else _infer_default_apl_path(paths, actor_class=build_spec.actor_class, spec=build_spec.spec)
+    if not resolved or not resolved.exists():
+        _fail(
+            ctx,
+            "not_found",
+            "Could not locate an APL file for the resolved build. Pass --apl-path explicitly.",
+            extra={"build_spec": _serialize_build_spec(build_spec), "identity": _serialize_build_identity(identity)},
+        )
+        return
+    option_values = _build_option_values(
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+        enable=enable,
+        disable=disable,
+    )
+    try:
+        primary_context, resolution = _resolve_prune_context(paths, resolved, option_values, targets)
+        aoe_context, _ = _resolve_prune_context(paths, resolved, option_values, aoe_targets)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "describe_build_failed", str(exc))
+        return
+    primary = _describe_target_payload(resolved, primary_context, start_list=list_name, priority_limit=priority_limit, inactive_limit=inactive_limit)
+    aoe = _describe_target_payload(resolved, aoe_context, start_list=list_name, priority_limit=priority_limit, inactive_limit=inactive_limit)
+    primary_actions = _action_names(primary["active_priority"])
+    aoe_actions = _action_names(aoe["active_priority"])
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "kind": "describe_build",
+            "apl": {
+                "path": str(resolved),
+                "relative_to_repo": _relative_to_repo(paths, resolved),
+            },
+            "build_spec": _serialize_build_spec(build_spec),
+            "identity": _serialize_build_identity(identity),
+            "build": {
+                "actor_class": resolution.actor_class,
+                "spec": resolution.spec,
+                "source_kind": resolution.source_kind,
+                "enabled_talents": sorted(resolution.enabled_talents),
+                "talents_by_tree": _talent_tree_payload(resolution),
+                "source_notes": resolution.source_notes,
+            },
+            "single_target": primary,
+            "multi_target": aoe,
+            "comparison": {
+                "primary_targets": targets,
+                "aoe_targets": aoe_targets,
+                "new_active_actions_in_aoe": [action for action in aoe_actions if action not in primary_actions],
+                "missing_active_actions_in_aoe": [action for action in primary_actions if action not in aoe_actions],
             },
         },
     )

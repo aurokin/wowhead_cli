@@ -497,7 +497,7 @@ def decode_build(repo: RepoPaths, build_spec: BuildSpec) -> BuildResolution:
         talent.token
         for talents in talents_by_tree.values()
         for talent in talents
-        if talent.tree in {"class", "spec", "hero"}
+        if talent.tree in {"class", "spec", "hero"} and talent.rank > 0
     }
     if not enabled_talents and proc.returncode != 0:
         raise RuntimeError(output.strip() or "Failed to decode build with simc")

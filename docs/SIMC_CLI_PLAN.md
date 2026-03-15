@@ -13,6 +13,7 @@ Current commands:
 - `simc inspect`
 - `simc spec-files`
 - `simc identify-build`
+- `simc describe-build`
 - `simc decode-build`
 - `simc build-harness`
 - `simc validate-apl`
@@ -127,6 +128,13 @@ Recent usability improvement:
   - Wowhead talent-calc URLs
   - SimC-native build/profile text
   and report both `source_kind` and the normalized generated SimC profile used for decode/debug flows
+- `describe-build` now sits above that exact-build layer as the default “what is this build doing?” command
+- it keeps the summary evidence-backed by combining:
+  - resolved build identity
+  - selected vs skipped talents
+  - exact-build ST and AoE priority previews
+  - inactive talent-gated branches
+  - ST vs AoE action deltas
 - exact-build workflows now auto-resolve class/spec when possible:
   - actor/spec lines and APL paths resolve directly
   - Wowhead talent-calc URLs provide class/spec directly from the URL path

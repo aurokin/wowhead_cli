@@ -538,6 +538,7 @@ simc inspect /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.si
 simc spec-files mistweaver
 simc identify-build --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc identify-build --build-text 'https://www.wowhead.com/talent-calc/demon-hunter/devourer/CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
+simc describe-build --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123
 simc decode-build --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc decode-build --build-text $'demonhunter="probe"\nspec=devourer\ntalents=CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
@@ -578,12 +579,19 @@ SimulationCraft behavior:
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
 - `identify-build` is the safest first step when the user pastes a build string or talent-calc URL; it reports `source_kind`, resolved class/spec, confidence, and any probe candidates before deeper analysis
+- `describe-build` is the safest first step when the user says “tell me about this build”; it combines:
+  - build identity
+  - selected vs skipped talents
+  - single-target and multi-target focus lists
+  - notable inactive talent-gated branches
+  - ST vs AoE active-action deltas
 - `decode-build` uses the local `simc` binary to decode talent strings into enabled talents and tree-grouped talent rows
 - `decode-build` accepts:
   - a bare WoW talent export string
   - a Wowhead talent-calc URL
   - SimC-native build/profile text
   and reports both the detected `source_kind` and the normalized generated SimC profile it used for decoding
+- `decode-build` only treats talents with positive ranks as enabled; `0/1` rows like a skipped capstone stay in the `skipped` side of `describe-build`
 - if class/spec are not supplied explicitly, `decode-build`, `build-harness`, and the exact-build APL commands now try to identify them automatically:
   - direct actor/spec lines or APL path inference win first
   - Wowhead talent-calc URLs contribute class/spec directly from the URL path

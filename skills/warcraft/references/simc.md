@@ -14,6 +14,7 @@
 - managed checkout: `simc checkout`
 - upstream safety: `simc verify-clean`
 - build identification: `simc identify-build`
+- build summary: `simc describe-build`
 - source inspection: `simc spec-files ...`, `simc apl-lists ...`, `simc apl-talents ...`
 - reasoning: `simc priority ...`, `simc inactive-actions ...`, `simc opener ...`, `simc analysis-packet ...`
 - direct sim runs: `simc sim ...`
@@ -23,13 +24,17 @@
 ## Effective Use
 
 - prefer readonly APL inspection before jumping to a real sim run
-- if the user provides a talent string, import string, or talent-calc URL, assume they want the exact build only; use `identify-build` or `decode-build` first, then use `priority` or `inactive-actions` so inactive talent branches are excluded before you summarize the rotation
+- if the user provides a talent string, import string, or talent-calc URL, assume they want the exact build only; use `describe-build` first for “what is this build doing?” requests, then use `priority` or `inactive-actions` when you need finer evidence
 - users may paste:
   - a bare WoW talent export string
   - a Wowhead talent-calc URL
   - SimC-native build/profile text
-  `identify-build` and `decode-build` report `source_kind`, resolved class/spec, and the normalized generated profile so you can verify the handoff before reasoning from it
+  `identify-build`, `describe-build`, and `decode-build` report `source_kind`, resolved class/spec, and the normalized generated profile so you can verify the handoff before reasoning from it
 - do not tell the user they must provide class/spec unless `identify-build` failed first; the CLI now probes the local SimC spec set for bare WoW exports when direct metadata is missing
+- prefer `describe-build` over ad hoc prose synthesis when you need to talk about:
+  - active hero/spec package
+  - skipped capstones or alternate branches
+  - ST vs AoE shape changes
 - use `apl-prune`, `apl-branch-trace`, and `apl-intent` for conservative flow reasoning
 - use `priority` as the default build-scoped priority view
 - use `inactive-actions` when you need to prove a shared APL branch is not active for the current build

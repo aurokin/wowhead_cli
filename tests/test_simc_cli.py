@@ -285,6 +285,121 @@ def test_simc_decode_build_auto_identifies_missing_class_and_spec(monkeypatch) -
     assert payload["decoded"]["spec"] == "devourer"
 
 
+def test_simc_describe_build_summarizes_st_and_aoe(monkeypatch, tmp_path: Path) -> None:
+    apl_path = tmp_path / "demonhunter_devourer.simc"
+    apl_path.write_text("actions=void_ray\n")
+
+    monkeypatch.setattr(
+        "simc_cli.main._load_identified_build_spec",
+        lambda *args, **kwargs: (
+            type(
+                "BuildSpec",
+                (),
+                {
+                    "actor_class": "demonhunter",
+                    "spec": "devourer",
+                    "talents": "ABC123",
+                    "class_talents": None,
+                    "spec_talents": None,
+                    "hero_talents": None,
+                    "source_kind": "wow_talent_export",
+                    "source_notes": ["single-line talent export"],
+                },
+            )(),
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": "demonhunter",
+                    "spec": "devourer",
+                    "confidence": "high",
+                    "source": "simc_probe",
+                    "candidate_count": 1,
+                    "candidates": [("demonhunter", "devourer")],
+                    "source_notes": ["single-line talent export", "identified by SimC probe"],
+                },
+            )(),
+        ),
+    )
+
+    resolution = type(
+        "Resolution",
+        (),
+        {
+            "actor_class": "demonhunter",
+            "spec": "devourer",
+            "source_kind": "wow_talent_export",
+            "enabled_talents": {"void_ray", "world_killer", "soul_immolation"},
+            "talents_by_tree": {
+                "class": [type("Talent", (), {"name": "Voidblade", "token": "voidblade", "rank": 1, "max_rank": 1})()],
+                "spec": [
+                    type("Talent", (), {"name": "Void Ray", "token": "void_ray", "rank": 1, "max_rank": 1})(),
+                    type("Talent", (), {"name": "Midnight", "token": "midnight", "rank": 0, "max_rank": 1})(),
+                    type("Talent", (), {"name": "Soul Immolation", "token": "soul_immolation", "rank": 1, "max_rank": 1})(),
+                ],
+                "hero": [type("Talent", (), {"name": "World Killer", "token": "world_killer", "rank": 1, "max_rank": 1})()],
+                "selection": [],
+            },
+            "source_notes": ["decoded via /tmp/simc"],
+        },
+    )()
+
+    def _resolve_prune_context(_paths, _apl, _values, targets):
+        context = type("Context", (), {"targets": targets, "enabled_talents": {"void_ray", "world_killer"}, "disabled_talents": set(), "talent_sources": {"void_ray": "spec"}})()
+        return context, resolution
+
+    monkeypatch.setattr("simc_cli.main._resolve_prune_context", _resolve_prune_context)
+
+    def _describe_target_payload(_resolved, context, *, start_list, priority_limit, inactive_limit):
+        if context.targets == 1:
+            return {
+                "targets": 1,
+                "focus_list": "melee_combo",
+                "dispatch_certainty": "guaranteed",
+                "branch_summary": {"start_list": start_list, "guaranteed_dispatch": "melee_combo", "guaranteed_dispatch_line": 4, "guaranteed_dispatch_reason": "no condition", "dead_branches": [], "unresolved_branches": [], "shadowed_lines": []},
+                "active_priority": [
+                    {"action": "metamorphosis", "line_no": 1, "target_list": None, "status": "guaranteed", "reason": "no condition", "text": "metamorphosis"},
+                    {"action": "void_ray", "line_no": 2, "target_list": None, "status": "possible", "reason": "depends on runtime-only state", "text": "void_ray"},
+                    {"action": "collapsing_star", "line_no": 3, "target_list": None, "status": "guaranteed", "reason": "no condition", "text": "collapsing_star"},
+                ],
+                "inactive_talent_branches": [
+                    {"action": "the_hunt", "line_no": 7, "target_list": None, "status": "dead", "reason": "talent.the_hunt.enabled is false", "text": "the_hunt"}
+                ],
+                "explained_intent": {"setup": ["setup"], "helpers": [], "burst": ["burst"], "priorities": ["priority"]},
+                "runtime_sensitive": [{"action": "void_ray", "line_no": 2, "target_list": None, "status": "possible", "reason": "depends on runtime-only state", "text": "void_ray"}],
+            }
+        return {
+            "targets": context.targets,
+            "focus_list": "aoe",
+            "dispatch_certainty": "guaranteed",
+            "branch_summary": {"start_list": start_list, "guaranteed_dispatch": "aoe", "guaranteed_dispatch_line": 8, "guaranteed_dispatch_reason": "active_enemies>1", "dead_branches": [], "unresolved_branches": [], "shadowed_lines": []},
+            "active_priority": [
+                {"action": "metamorphosis", "line_no": 1, "target_list": None, "status": "guaranteed", "reason": "no condition", "text": "metamorphosis"},
+                {"action": "soul_immolation", "line_no": 5, "target_list": None, "status": "guaranteed", "reason": "no condition", "text": "soul_immolation"},
+                {"action": "collapsing_star", "line_no": 6, "target_list": None, "status": "guaranteed", "reason": "no condition", "text": "collapsing_star"},
+            ],
+            "inactive_talent_branches": [
+                {"action": "devourers_bite", "line_no": 9, "target_list": None, "status": "dead", "reason": "talent.devourers_bite.enabled is false", "text": "devourers_bite"}
+            ],
+            "explained_intent": {"setup": ["setup"], "helpers": [], "burst": ["burst"], "priorities": ["priority"]},
+            "runtime_sensitive": [],
+        }
+
+    monkeypatch.setattr("simc_cli.main._describe_target_payload", _describe_target_payload)
+
+    result = runner.invoke(simc_app, ["describe-build", "--apl-path", str(apl_path), "--build-text", "ABC123", "--aoe-targets", "5"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "describe_build"
+    assert payload["identity"]["source"] == "simc_probe"
+    assert payload["build"]["talents_by_tree"]["spec"]["selected"][0]["token"] == "void_ray"
+    assert payload["build"]["talents_by_tree"]["spec"]["skipped"][0]["token"] == "midnight"
+    assert payload["single_target"]["focus_list"] == "melee_combo"
+    assert payload["multi_target"]["focus_list"] == "aoe"
+    assert payload["comparison"]["new_active_actions_in_aoe"] == ["soul_immolation"]
+    assert payload["single_target"]["inactive_talent_branches"][0]["action"] == "the_hunt"
+
+
 def test_simc_decode_build_failure_includes_source_metadata(monkeypatch) -> None:
     monkeypatch.setattr(
         "simc_cli.main.load_build_spec",

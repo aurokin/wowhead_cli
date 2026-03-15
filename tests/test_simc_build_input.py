@@ -169,6 +169,7 @@ def test_decode_build_uses_debug_output(tmp_path: Path) -> None:
     assert 'demonhunter="simc_decode"' in (result.generated_profile_text or "")
     assert "voidblade" in result.enabled_talents
     assert "devourers_bite" in result.enabled_talents
+    assert "midnight" not in result.enabled_talents
     assert any("decoded via" in note for note in result.source_notes)
 
 
