@@ -21,6 +21,8 @@ The safest high-level model is:
 - result/report parsing where stable report URLs or exports exist
 - cautious evaluation of any deeper automation later
 
+Shared auth direction is defined in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/wowhead_cli/docs/AUTH_ARCHITECTURE_PLAN.md). `raidbots` should be treated as a likely future session/workflow auth consumer, not as a primary driver of the shared OAuth architecture.
+
 ## Likely CLI Shape
 
 Initial scope should stay narrow:

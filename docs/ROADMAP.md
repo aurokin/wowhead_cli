@@ -14,6 +14,7 @@ The structural rules for packaging, language choice, installation, storage, auth
 The concrete package tree is defined in [PACKAGE_LAYOUT.md](/home/auro/code/wowhead_cli/docs/PACKAGE_LAYOUT.md).
 The execution order is controlled by [MIGRATION_CHECKLIST.md](/home/auro/code/wowhead_cli/docs/MIGRATION_CHECKLIST.md).
 The wrapper/provider boundary is defined in [WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/wowhead_cli/docs/WRAPPER_PROVIDER_CONTRACT.md).
+Shared auth planning is defined in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/wowhead_cli/docs/AUTH_ARCHITECTURE_PLAN.md).
 
 ## Current Status
 
@@ -60,6 +61,8 @@ Active next step:
   - deeper guild and character ranking surfaces, especially better public `character-rankings` reliability
   - broader report workflows
   - user auth after the public contract is tighter
+- use `warcraftlogs` and `blizzard-api` to drive the shared OAuth-oriented auth architecture in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/wowhead_cli/docs/AUTH_ARCHITECTURE_PLAN.md)
+- keep `raidbots` in the auth picture as a likely future session/workflow consumer, not as a driver of the shared OAuth abstraction
 - roadmap cleanup after the recent provider quality passes
 - for `raiderio`, prioritize:
   - deeper sample-backed analytics
@@ -82,6 +85,7 @@ Active next step:
 - [Wrapper provider contract](/home/auro/code/wowhead_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
 - [Expansion filtering plan](/home/auro/code/wowhead_cli/docs/EXPANSION_FILTERING_PLAN.md)
 - [Linting and complexity plan](/home/auro/code/wowhead_cli/docs/LINTING_AND_COMPLEXITY_PLAN.md)
+- [Auth architecture plan](/home/auro/code/wowhead_cli/docs/AUTH_ARCHITECTURE_PLAN.md)
 - [Warcraft wrapper plan](/home/auro/code/wowhead_cli/docs/WARCRAFT_CLI_PLAN.md)
 - [Wowhead CLI plan](/home/auro/code/wowhead_cli/docs/WOWHEAD_CLI_PLAN.md)
 - [Method.gg CLI plan](/home/auro/code/wowhead_cli/docs/METHOD_CLI_PLAN.md)

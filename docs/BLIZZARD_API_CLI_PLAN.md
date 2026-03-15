@@ -24,6 +24,8 @@ This should be treated as an official authenticated API service:
 - model region and namespace explicitly
 - cache within policy and respect the official access model
 
+Shared auth direction for this provider is defined in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/wowhead_cli/docs/AUTH_ARCHITECTURE_PLAN.md). `blizzard-api` should be the second validation point for the shared OAuth-oriented auth architecture after `warcraftlogs`.
+
 ## Likely CLI Shape
 
 - `blizzard-api doctor`
@@ -56,6 +58,11 @@ The first useful slice should stay narrower than that:
 - region and namespace rules
 - endpoint models and query builders
 - official API error normalization
+
+Recommended auth posture:
+- reuse shared credential discovery
+- reuse shared token/state persistence helpers once implemented
+- keep Battle.net OAuth, scopes, and namespace/region behavior provider-local
 
 ## What This Service Should Validate
 
