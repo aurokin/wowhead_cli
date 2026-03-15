@@ -18,6 +18,7 @@ from simc_cli.branch import (
     explain_intent,
     format_list_decision,
     inactive_priority_decisions,
+    resolve_focus_list,
     summarize_branches,
     summarize_intent,
     trace_apl,
@@ -335,16 +336,18 @@ def _priority_item(decision: Any) -> dict[str, Any]:
     }
 
 
-def _focus_list_summary(resolved: Path, context: PruneContext, *, start_list: str) -> tuple[Any, str]:
+def _focus_list_summary(resolved: Path, context: PruneContext, *, start_list: str) -> tuple[Any, Any]:
     summary = summarize_branches(resolved, context, start_list=start_list)
-    return summary, summary.guaranteed_dispatch or start_list
+    return summary, resolve_focus_list(resolved, context, start_list=start_list)
 
 
 def _describe_target_payload(resolved: Path, context: PruneContext, *, start_list: str, priority_limit: int, inactive_limit: int) -> dict[str, Any]:
-    summary, focus_list = _focus_list_summary(resolved, context, start_list=start_list)
-    active = active_priority_decisions(resolved, context, focus_list)[:priority_limit]
-    inactive = inactive_priority_decisions(resolved, context, focus_list, talent_only=True)[:inactive_limit]
-    explanation = explain_intent(resolved, context, focus_list, limit=priority_limit)
+    summary, focus = _focus_list_summary(resolved, context, start_list=start_list)
+    active_all = active_priority_decisions(resolved, context, focus.focus_list)
+    inactive_all = inactive_priority_decisions(resolved, context, focus.focus_list, talent_only=True)
+    active = active_all[:priority_limit]
+    inactive = inactive_all[:inactive_limit]
+    explanation = explain_intent(resolved, context, focus.focus_list, limit=priority_limit)
     runtime_sensitive = [
         _priority_item(decision)
         for decision in active
@@ -352,7 +355,9 @@ def _describe_target_payload(resolved: Path, context: PruneContext, *, start_lis
     ]
     return {
         "targets": context.targets,
-        "focus_list": focus_list,
+        "focus_list": focus.focus_list,
+        "focus_path": focus.path,
+        "focus_resolution": focus.reason,
         "dispatch_certainty": "guaranteed" if summary.guaranteed_dispatch else "unresolved",
         "branch_summary": {
             "start_list": summary.start_list,
@@ -364,6 +369,7 @@ def _describe_target_payload(resolved: Path, context: PruneContext, *, start_lis
             "shadowed_lines": summary.shadowed_lines,
         },
         "active_priority": [_priority_item(decision) for decision in active],
+        "active_action_names": _action_names([_priority_item(decision) for decision in active_all]),
         "inactive_talent_branches": [_priority_item(decision) for decision in inactive],
         "explained_intent": {
             "setup": explanation.setup,
@@ -1479,9 +1485,9 @@ def priority_command(
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         _fail(ctx, "priority_failed", str(exc))
         return
-    summary, focus_list = _focus_list_summary(resolved, context, start_list=list_name)
-    decisions = active_priority_decisions(resolved, context, focus_list)[:limit]
-    excluded = inactive_priority_decisions(resolved, context, focus_list, talent_only=True)
+    summary, focus = _focus_list_summary(resolved, context, start_list=list_name)
+    decisions = active_priority_decisions(resolved, context, focus.focus_list)[:limit]
+    excluded = inactive_priority_decisions(resolved, context, focus.focus_list, talent_only=True)
     _emit(
         ctx,
         {
@@ -1493,7 +1499,9 @@ def priority_command(
             "build": _prune_context_payload(resolution, context),
             "priority": {
                 "start_list": list_name,
-                "focus_list": focus_list,
+                "focus_list": focus.focus_list,
+                "focus_path": focus.path,
+                "focus_resolution": focus.reason,
                 "dispatch_certainty": "guaranteed" if summary.guaranteed_dispatch else "unresolved",
                 "count": len(decisions),
                 "items": [_priority_item(decision) for decision in decisions],
@@ -1580,8 +1588,8 @@ def describe_build_command(
         return
     primary = _describe_target_payload(resolved, primary_context, start_list=list_name, priority_limit=priority_limit, inactive_limit=inactive_limit)
     aoe = _describe_target_payload(resolved, aoe_context, start_list=list_name, priority_limit=priority_limit, inactive_limit=inactive_limit)
-    primary_actions = _action_names(primary["active_priority"])
-    aoe_actions = _action_names(aoe["active_priority"])
+    primary_actions = list(dict.fromkeys(primary.get("active_action_names") or _action_names(primary["active_priority"])))
+    aoe_actions = list(dict.fromkeys(aoe.get("active_action_names") or _action_names(aoe["active_priority"])))
     _emit(
         ctx,
         {
@@ -1656,8 +1664,8 @@ def inactive_actions_command(
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         _fail(ctx, "inactive_actions_failed", str(exc))
         return
-    summary, focus_list = _focus_list_summary(resolved, context, start_list=list_name)
-    decisions = inactive_priority_decisions(resolved, context, focus_list, talent_only=talent_only)
+    summary, focus = _focus_list_summary(resolved, context, start_list=list_name)
+    decisions = inactive_priority_decisions(resolved, context, focus.focus_list, talent_only=talent_only)
     _emit(
         ctx,
         {
@@ -1669,7 +1677,9 @@ def inactive_actions_command(
             "build": _prune_context_payload(resolution, context),
             "inactive_actions": {
                 "start_list": list_name,
-                "focus_list": focus_list,
+                "focus_list": focus.focus_list,
+                "focus_path": focus.path,
+                "focus_resolution": focus.reason,
                 "dispatch_certainty": "guaranteed" if summary.guaranteed_dispatch else "unresolved",
                 "talent_only": talent_only,
                 "count": len(decisions),
@@ -1721,8 +1731,8 @@ def opener_command(
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         _fail(ctx, "opener_failed", str(exc))
         return
-    summary, focus_list = _focus_list_summary(resolved, context, start_list=list_name)
-    decisions = active_priority_decisions(resolved, context, focus_list)[:limit]
+    summary, focus = _focus_list_summary(resolved, context, start_list=list_name)
+    decisions = active_priority_decisions(resolved, context, focus.focus_list)[:limit]
     runtime_sensitive = [
         _priority_item(decision)
         for decision in decisions
@@ -1740,7 +1750,9 @@ def opener_command(
             "opener": {
                 "kind": "static_priority_preview",
                 "start_list": list_name,
-                "focus_list": focus_list,
+                "focus_list": focus.focus_list,
+                "focus_path": focus.path,
+                "focus_resolution": focus.reason,
                 "dispatch_certainty": "guaranteed" if summary.guaranteed_dispatch else "unresolved",
                 "count": len(decisions),
                 "items": [_priority_item(decision) for decision in decisions],

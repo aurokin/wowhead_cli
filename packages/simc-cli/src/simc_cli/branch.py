@@ -94,6 +94,14 @@ class BranchComparison:
     right_focus_intent: list[str]
 
 
+@dataclass(slots=True)
+class FocusResolution:
+    start_list: str
+    focus_list: str
+    path: list[str]
+    reason: str
+
+
 def trace_apl(apl_path, context: PruneContext, start_list: str = "default", max_depth: int = 6) -> list[TraceLine]:
     entries = parse_apl(apl_path)
     grouped = group_entries(entries)
@@ -166,6 +174,40 @@ def summarize_branches(apl_path, context: PruneContext, start_list: str = "defau
         shadowed_lines=shadowed_lines,
         branch_decisions=branch_decisions,
     )
+
+
+def resolve_focus_list(apl_path, context: PruneContext, start_list: str = "default", max_depth: int = 8) -> FocusResolution:
+    current = start_list
+    path = [start_list]
+    seen = {start_list}
+    reason = "start_list"
+
+    for _ in range(max_depth):
+        summary = summarize_branches(apl_path, context, start_list=current)
+        if summary.guaranteed_dispatch and summary.guaranteed_dispatch not in seen:
+            current = summary.guaranteed_dispatch
+            path.append(current)
+            seen.add(current)
+            reason = "guaranteed_run_dispatch"
+            continue
+
+        decisions = summarize_list_decisions(apl_path, context, current)
+        non_helper_active = [
+            decision
+            for decision in decisions
+            if decision.status != "dead" and not is_helper_decision(decision)
+        ]
+        if len(non_helper_active) == 1:
+            only = non_helper_active[0]
+            if only.action_name == "call_action_list" and only.status == "guaranteed" and only.target_list and only.target_list not in seen:
+                current = only.target_list
+                path.append(current)
+                seen.add(current)
+                reason = "guaranteed_call_leaf"
+                continue
+        break
+
+    return FocusResolution(start_list=start_list, focus_list=current, path=path, reason=reason)
 
 
 def summarize_list_decisions(apl_path, context: PruneContext, list_name: str) -> list[ListDecision]:

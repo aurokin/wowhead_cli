@@ -35,6 +35,7 @@
   - active hero/spec package
   - skipped capstones or alternate branches
   - ST vs AoE shape changes
+  - dispatcher-to-leaf focus changes exposed through `focus_path`
 - use `apl-prune`, `apl-branch-trace`, and `apl-intent` for conservative flow reasoning
 - use `priority` as the default build-scoped priority view
 - use `inactive-actions` when you need to prove a shared APL branch is not active for the current build

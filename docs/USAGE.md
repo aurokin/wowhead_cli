@@ -585,6 +585,7 @@ SimulationCraft behavior:
   - single-target and multi-target focus lists
   - notable inactive talent-gated branches
   - ST vs AoE active-action deltas
+  - `focus_path` and `focus_resolution` metadata when the CLI can follow dispatcher lists into a leaf priority list
 - `decode-build` uses the local `simc` binary to decode talent strings into enabled talents and tree-grouped talent rows
 - `decode-build` accepts:
   - a bare WoW talent export string

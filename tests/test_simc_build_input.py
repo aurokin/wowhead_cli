@@ -236,3 +236,51 @@ def test_identify_build_probes_supported_specs(tmp_path: Path) -> None:
     assert "identified by SimC probe" in identified.source_notes
     assert identity.source == "simc_probe"
     assert identity.candidates == [("demonhunter", "devourer")]
+
+
+def test_identify_build_returns_none_when_probe_finds_no_matches(tmp_path: Path) -> None:
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    build_spec = BuildSpec(talents="ABC123", source_kind="wow_talent_export")
+
+    with patch("simc_cli.build_input.supported_specs", return_value=[("monk", "mistweaver"), ("demonhunter", "devourer")]):
+        with patch("simc_cli.build_input.decode_build", side_effect=RuntimeError("failed")):
+            identified, identity = identify_build(repo, build_spec)
+
+    assert identified.actor_class is None
+    assert identified.spec is None
+    assert identity.confidence == "none"
+    assert identity.candidate_count == 0
+
+
+def test_identify_build_reports_ambiguous_probe_matches(tmp_path: Path) -> None:
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    build_spec = BuildSpec(talents="ABC123", source_kind="wow_talent_export")
+
+    with patch("simc_cli.build_input.supported_specs", return_value=[("monk", "mistweaver"), ("demonhunter", "devourer")]):
+        with patch("simc_cli.build_input.decode_build") as mocked_decode:
+            mocked_decode.side_effect = [
+                type("Resolution", (), {"enabled_talents": {"ancient_teachings"}})(),
+                type("Resolution", (), {"enabled_talents": {"void_ray"}})(),
+            ]
+            identified, identity = identify_build(repo, build_spec)
+
+    assert identified.actor_class is None
+    assert identified.spec is None
+    assert identity.confidence == "low"
+    assert identity.candidates == [("monk", "mistweaver"), ("demonhunter", "devourer")]

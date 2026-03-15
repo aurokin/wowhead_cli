@@ -400,6 +400,94 @@ def test_simc_describe_build_summarizes_st_and_aoe(monkeypatch, tmp_path: Path) 
     assert payload["single_target"]["inactive_talent_branches"][0]["action"] == "the_hunt"
 
 
+def test_simc_describe_build_uses_leaf_focus_and_full_action_diff(monkeypatch, tmp_path: Path) -> None:
+    apl_path = tmp_path / "demonhunter_devourer.simc"
+    apl_path.write_text(
+        "\n".join(
+            [
+                "actions=call_action_list,name=cooldowns",
+                "actions+=call_action_list,name=leaf",
+                "actions.cooldowns=metamorphosis",
+                "actions.leaf=void_ray",
+                "actions.leaf+=collapsing_star,if=active_enemies>1",
+            ]
+        )
+        + "\n"
+    )
+
+    monkeypatch.setattr(
+        "simc_cli.main._load_identified_build_spec",
+        lambda *args, **kwargs: (
+            type(
+                "BuildSpec",
+                (),
+                {
+                    "actor_class": "demonhunter",
+                    "spec": "devourer",
+                    "talents": "ABC123",
+                    "class_talents": None,
+                    "spec_talents": None,
+                    "hero_talents": None,
+                    "source_kind": "wow_talent_export",
+                    "source_notes": ["single-line talent export"],
+                },
+            )(),
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": "demonhunter",
+                    "spec": "devourer",
+                    "confidence": "high",
+                    "source": "simc_probe",
+                    "candidate_count": 1,
+                    "candidates": [("demonhunter", "devourer")],
+                    "source_notes": ["single-line talent export", "identified by SimC probe"],
+                },
+            )(),
+        ),
+    )
+
+    resolution = type(
+        "Resolution",
+        (),
+        {
+            "actor_class": "demonhunter",
+            "spec": "devourer",
+            "source_kind": "wow_talent_export",
+            "enabled_talents": {"void_ray"},
+            "talents_by_tree": {"class": [], "spec": [], "hero": [], "selection": []},
+            "source_notes": ["decoded via /tmp/simc"],
+        },
+    )()
+
+    def _resolve_prune_context(_paths, _apl, _values, targets):
+        context = type(
+            "Context",
+            (),
+            {
+                "targets": targets,
+                "enabled_talents": {"void_ray"},
+                "disabled_talents": set(),
+                "talent_sources": {"void_ray": "spec"},
+            },
+        )()
+        return context, resolution
+
+    monkeypatch.setattr("simc_cli.main._resolve_prune_context", _resolve_prune_context)
+
+    result = runner.invoke(
+        simc_app,
+        ["describe-build", "--apl-path", str(apl_path), "--build-text", "ABC123", "--priority-limit", "1", "--aoe-targets", "5"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["single_target"]["focus_list"] == "leaf"
+    assert payload["single_target"]["focus_path"] == ["default", "leaf"]
+    assert payload["single_target"]["focus_resolution"] == "guaranteed_call_leaf"
+    assert payload["comparison"]["new_active_actions_in_aoe"] == ["collapsing_star"]
+
+
 def test_simc_decode_build_failure_includes_source_metadata(monkeypatch) -> None:
     monkeypatch.setattr(
         "simc_cli.main.load_build_spec",
