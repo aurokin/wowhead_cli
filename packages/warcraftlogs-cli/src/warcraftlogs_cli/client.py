@@ -6,6 +6,7 @@ import os
 import time
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from warcraft_api.cache import CacheSettings, CacheTTLConfig, build_cache_store, load_prefixed_cache_settings_from_env
@@ -793,16 +794,20 @@ class WarcraftLogsSiteProfile:
     key: str
     label: str
     root_url: str
+    oauth_authorize_url: str
     oauth_token_url: str
     api_url: str
+    user_api_url: str
 
 
 RETAIL_PROFILE = WarcraftLogsSiteProfile(
     key="retail",
     label="Retail / Main",
     root_url="https://www.warcraftlogs.com",
+    oauth_authorize_url="https://www.warcraftlogs.com/oauth/authorize",
     oauth_token_url="https://www.warcraftlogs.com/oauth/token",
     api_url="https://www.warcraftlogs.com/api/v2/client",
+    user_api_url="https://www.warcraftlogs.com/api/v2/user",
 )
 
 
@@ -991,6 +996,57 @@ class WarcraftLogsClient:
         self._access_token = token
         self._token_expires_at = now + int(expires_in)
         return token
+
+    @property
+    def site(self) -> WarcraftLogsSiteProfile:
+        return self._site
+
+    @property
+    def client_id(self) -> str:
+        return self._client_id
+
+    def authorization_code_url(self, *, redirect_uri: str, state: str) -> str:
+        return f"{self._site.oauth_authorize_url}?{urlencode({'client_id': self._client_id, 'state': state, 'redirect_uri': redirect_uri, 'response_type': 'code'})}"
+
+    def pkce_code_url(self, *, redirect_uri: str, state: str, code_challenge: str) -> str:
+        return f"{self._site.oauth_authorize_url}?{urlencode({'client_id': self._client_id, 'code_challenge': code_challenge, 'code_challenge_method': 'S256', 'state': state, 'redirect_uri': redirect_uri, 'response_type': 'code'})}"
+
+    def exchange_authorization_code(self, *, code: str, redirect_uri: str) -> dict[str, Any]:
+        response = request_with_retries(
+            self._client(),
+            self._site.oauth_token_url,
+            method="POST",
+            data={
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+                "code": code,
+            },
+            auth=(self._client_id, self._client_secret),
+            retry_attempts=self._retry_attempts,
+        )
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise WarcraftLogsClientError("auth_failed", "Warcraft Logs returned an invalid authorization-code token response.")
+        return payload
+
+    def exchange_pkce_code(self, *, code: str, redirect_uri: str, code_verifier: str) -> dict[str, Any]:
+        response = request_with_retries(
+            self._client(),
+            self._site.oauth_token_url,
+            method="POST",
+            data={
+                "client_id": self._client_id,
+                "code_verifier": code_verifier,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+                "code": code,
+            },
+            retry_attempts=self._retry_attempts,
+        )
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise WarcraftLogsClientError("auth_failed", "Warcraft Logs returned an invalid PKCE token response.")
+        return payload
 
     def _graphql(
         self,

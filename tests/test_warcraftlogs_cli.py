@@ -16,6 +16,38 @@ class _FakeWarcraftLogsClient:
     def close(self) -> None:
         self.closed = True
 
+    def authorization_code_url(self, *, redirect_uri: str, state: str) -> str:
+        return f"https://www.warcraftlogs.com/oauth/authorize?redirect_uri={redirect_uri}&state={state}&response_type=code"
+
+    def pkce_code_url(self, *, redirect_uri: str, state: str, code_challenge: str) -> str:
+        return (
+            "https://www.warcraftlogs.com/oauth/authorize"
+            f"?redirect_uri={redirect_uri}&state={state}&code_challenge={code_challenge}&response_type=code"
+        )
+
+    def exchange_authorization_code(self, *, code: str, redirect_uri: str) -> dict[str, object]:
+        assert code == "code-123"
+        assert redirect_uri == "http://127.0.0.1:8787/callback"
+        return {
+            "access_token": "user-token",
+            "refresh_token": "refresh-token",
+            "token_type": "Bearer",
+            "scope": "reports",
+            "expires_in": 3600,
+        }
+
+    def exchange_pkce_code(self, *, code: str, redirect_uri: str, code_verifier: str) -> dict[str, object]:
+        assert code == "code-456"
+        assert redirect_uri == "http://127.0.0.1:8787/callback"
+        assert code_verifier == "verifier-123"
+        return {
+            "access_token": "pkce-token",
+            "refresh_token": "pkce-refresh",
+            "token_type": "Bearer",
+            "scope": "reports",
+            "expires_in": 3600,
+        }
+
     def rate_limit(self) -> dict[str, object]:
         return {
             "limitPerHour": 3600,
@@ -580,7 +612,101 @@ def test_warcraftlogs_auth_status_reports_shared_state_summary(monkeypatch) -> N
     assert payload["auth"]["state"]["exists"] is True
     assert payload["auth"]["state"]["auth_mode"] == "authorization_code"
     assert payload["auth"]["grants"]["client_credentials"] == "ready"
-    assert payload["auth"]["grants"]["pkce"] == "planned"
+    assert payload["auth"]["grants"]["pkce"] == "ready_manual_exchange"
+
+
+def test_warcraftlogs_auth_login_generates_authorize_url(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state-home"))
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr("warcraftlogs_cli.main._random_state_token", lambda: "pending-state-123")
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["auth", "login", "--redirect-uri", "http://127.0.0.1:8787/callback"],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "authorization_code"
+    assert payload["step"] == "authorize"
+    assert payload["state"] == "pending-state-123"
+    assert "oauth/authorize" in payload["authorize_url"]
+
+
+def test_warcraftlogs_auth_login_exchanges_code(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state-home"))
+    state_file = tmp_path / "state-home" / "warcraft" / "providers" / "warcraftlogs.json"
+    state_file.parent.mkdir(parents=True)
+    state_file.write_text(
+        json.dumps(
+            {
+                "pending_auth_mode": "authorization_code",
+                "pending_state": "pending-state-123",
+                "redirect_uri": "http://127.0.0.1:8787/callback",
+            }
+        )
+    )
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr("warcraftlogs_cli.main.time.time", lambda: 1000.0)
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "auth",
+            "login",
+            "--redirect-uri",
+            "http://127.0.0.1:8787/callback",
+            "--code",
+            "code-123",
+            "--state",
+            "pending-state-123",
+        ],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "authorization_code"
+    assert payload["step"] == "token_exchanged"
+    assert payload["endpoint_family"] == "user"
+    assert payload["token"]["expires_at"] == 4600.0
+
+    saved_state = json.loads(state_file.read_text())
+    assert saved_state["auth_mode"] == "authorization_code"
+    assert saved_state["access_token"] == "user-token"
+
+
+def test_warcraftlogs_auth_pkce_login_generates_authorize_url(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state-home"))
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr("warcraftlogs_cli.main._random_state_token", lambda: "pending-state-456")
+    monkeypatch.setattr("warcraftlogs_cli.main._pkce_verifier", lambda: "verifier-123")
+    monkeypatch.setattr("warcraftlogs_cli.main._pkce_challenge", lambda verifier: "challenge-123")
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["auth", "pkce-login", "--redirect-uri", "http://127.0.0.1:8787/callback"],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "pkce"
+    assert payload["step"] == "authorize"
+    assert payload["state"] == "pending-state-456"
+    assert "challenge-123" in payload["authorize_url"]
+
+
+def test_warcraftlogs_auth_logout_removes_state(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state-home"))
+    state_file = tmp_path / "state-home" / "warcraft" / "providers" / "warcraftlogs.json"
+    state_file.parent.mkdir(parents=True)
+    state_file.write_text(json.dumps({"auth_mode": "authorization_code", "access_token": "token"}))
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "logout"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["removed"] is True
+    assert not state_file.exists()
 
 
 def test_warcraftlogs_rate_limit_and_world_metadata_commands(monkeypatch) -> None:

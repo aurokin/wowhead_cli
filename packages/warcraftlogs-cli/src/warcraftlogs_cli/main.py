@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import secrets
+import time
 from dataclasses import dataclass
 import re
 from typing import Any
 
 import typer
-from warcraft_core.auth import provider_auth_status
+from warcraft_core.auth import (
+    delete_provider_auth_state,
+    load_provider_auth_state,
+    provider_auth_status,
+    save_provider_auth_state,
+)
 from warcraft_core.output import emit
 from warcraft_core.paths import provider_state_path
 from warcraft_core.wow_normalization import normalize_region
@@ -93,6 +102,16 @@ def _doctor_payload() -> dict[str, Any]:
             "required": True,
             "configured": auth.configured,
             "flow": "oauth_client_credentials",
+            "active_mode": (
+                state.get("auth_mode")
+                if state.get("has_access_token") and isinstance(state.get("auth_mode"), str)
+                else "client_credentials"
+            ),
+            "endpoint_family": (
+                "user"
+                if state.get("has_access_token") and state.get("auth_mode") in {"authorization_code", "pkce"}
+                else "client"
+            ),
             "credential_source": credential_source,
             "lookup_order": [".env.local", warcraftlogs_provider_env_path(), "environment"],
             "state": state,
@@ -642,10 +661,38 @@ def doctor(ctx: typer.Context) -> None:
     _emit(ctx, _doctor_payload())
 
 
+def _random_state_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _pkce_verifier() -> str:
+    return secrets.token_urlsafe(72)[:96]
+
+
+def _pkce_challenge(code_verifier: str) -> str:
+    digest = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def _token_payload_summary(payload: dict[str, Any], *, auth_mode: str, redirect_uri: str) -> dict[str, Any]:
+    expires_in = payload.get("expires_in", 0)
+    expires_at = time.time() + int(expires_in) if isinstance(expires_in, (int, float)) else None
+    return {
+        "auth_mode": auth_mode,
+        "access_token": payload.get("access_token"),
+        "refresh_token": payload.get("refresh_token"),
+        "token_type": payload.get("token_type"),
+        "scope": payload.get("scope"),
+        "redirect_uri": redirect_uri,
+        "expires_at": expires_at,
+    }
+
+
 @auth_app.command("status")
 def auth_status(ctx: typer.Context) -> None:
     auth = load_warcraftlogs_auth_config()
     credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
+    state = provider_auth_status("warcraftlogs")
     _emit(
         ctx,
         {
@@ -654,14 +701,200 @@ def auth_status(ctx: typer.Context) -> None:
             "auth": {
                 "configured": auth.configured,
                 "flow": "oauth_client_credentials",
+                "active_mode": (
+                    state.get("auth_mode")
+                    if state.get("has_access_token") and isinstance(state.get("auth_mode"), str)
+                    else "client_credentials"
+                ),
+                "endpoint_family": (
+                    "user"
+                    if state.get("has_access_token") and state.get("auth_mode") in {"authorization_code", "pkce"}
+                    else "client"
+                ),
                 "credential_source": credential_source,
                 "lookup_order": [".env.local", warcraftlogs_provider_env_path(), "environment"],
-                "state": provider_auth_status("warcraftlogs"),
+                "state": state,
                 "grants": {
                     "client_credentials": "ready",
-                    "authorization_code": "planned",
-                    "pkce": "planned",
+                    "authorization_code": "ready_manual_exchange",
+                    "pkce": "ready_manual_exchange",
                 },
+            },
+        },
+    )
+
+
+@auth_app.command("login")
+def auth_login(
+    ctx: typer.Context,
+    redirect_uri: str = typer.Option(..., "--redirect-uri", help="Registered redirect URI for the Warcraft Logs OAuth client."),
+    code: str | None = typer.Option(None, "--code", help="Authorization code returned by the redirect callback."),
+    state: str | None = typer.Option(None, "--state", help="State value returned by the redirect callback."),
+) -> None:
+    if not code:
+        client = _client(ctx)
+        try:
+            pending_state = _random_state_token()
+            saved_path = save_provider_auth_state(
+                "warcraftlogs",
+                {
+                    "pending_auth_mode": "authorization_code",
+                    "pending_state": pending_state,
+                    "redirect_uri": redirect_uri,
+                },
+            )
+            authorize_url = client.authorization_code_url(redirect_uri=redirect_uri, state=pending_state)
+        finally:
+            client.close()
+        _emit(
+            ctx,
+            {
+                "ok": True,
+                "provider": "warcraftlogs",
+                "mode": "authorization_code",
+                "step": "authorize",
+                "authorize_url": authorize_url,
+                "redirect_uri": redirect_uri,
+                "state": pending_state,
+                "state_path": str(saved_path),
+            },
+        )
+        return
+
+    pending = load_provider_auth_state("warcraftlogs") or {}
+    expected_state = pending.get("pending_state")
+    if isinstance(expected_state, str) and expected_state and not state:
+        _fail(ctx, "missing_state", "Missing callback state. Re-run the login URL step and provide the returned state value.")
+    if isinstance(expected_state, str) and expected_state and state and state != expected_state:
+        _fail(ctx, "state_mismatch", "Callback state did not match the pending authorization flow.")
+    if isinstance(pending.get("redirect_uri"), str) and pending.get("redirect_uri") != redirect_uri:
+        _fail(ctx, "redirect_uri_mismatch", "Redirect URI did not match the pending authorization flow.")
+
+    client = _client(ctx)
+    try:
+        payload = client.exchange_authorization_code(code=code, redirect_uri=redirect_uri)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    token_summary = _token_payload_summary(payload, auth_mode="authorization_code", redirect_uri=redirect_uri)
+    saved_path = save_provider_auth_state("warcraftlogs", token_summary)
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "mode": "authorization_code",
+            "step": "token_exchanged",
+            "endpoint_family": "user",
+            "state_path": str(saved_path),
+            "token": {
+                "token_type": token_summary.get("token_type"),
+                "scope": token_summary.get("scope"),
+                "expires_at": token_summary.get("expires_at"),
+                "has_refresh_token": bool(token_summary.get("refresh_token")),
+            },
+        },
+    )
+
+
+@auth_app.command("pkce-login")
+def auth_pkce_login(
+    ctx: typer.Context,
+    redirect_uri: str = typer.Option(..., "--redirect-uri", help="Registered redirect URI for the Warcraft Logs OAuth client."),
+    code: str | None = typer.Option(None, "--code", help="Authorization code returned by the redirect callback."),
+    state: str | None = typer.Option(None, "--state", help="State value returned by the redirect callback."),
+) -> None:
+    if not code:
+        client = _client(ctx)
+        try:
+            pending_state = _random_state_token()
+            code_verifier = _pkce_verifier()
+            code_challenge = _pkce_challenge(code_verifier)
+            saved_path = save_provider_auth_state(
+                "warcraftlogs",
+                {
+                    "pending_auth_mode": "pkce",
+                    "pending_state": pending_state,
+                    "redirect_uri": redirect_uri,
+                    "code_verifier": code_verifier,
+                },
+            )
+            authorize_url = client.pkce_code_url(
+                redirect_uri=redirect_uri,
+                state=pending_state,
+                code_challenge=code_challenge,
+            )
+        finally:
+            client.close()
+        _emit(
+            ctx,
+            {
+                "ok": True,
+                "provider": "warcraftlogs",
+                "mode": "pkce",
+                "step": "authorize",
+                "authorize_url": authorize_url,
+                "redirect_uri": redirect_uri,
+                "state": pending_state,
+                "state_path": str(saved_path),
+            },
+        )
+        return
+
+    pending = load_provider_auth_state("warcraftlogs") or {}
+    expected_state = pending.get("pending_state")
+    code_verifier = pending.get("code_verifier")
+    if not isinstance(code_verifier, str) or not code_verifier:
+        _fail(ctx, "missing_code_verifier", "Missing pending PKCE verifier. Re-run `warcraftlogs auth pkce-login --redirect-uri ...` first.")
+    if isinstance(expected_state, str) and expected_state and not state:
+        _fail(ctx, "missing_state", "Missing callback state. Re-run the PKCE login URL step and provide the returned state value.")
+    if isinstance(expected_state, str) and expected_state and state and state != expected_state:
+        _fail(ctx, "state_mismatch", "Callback state did not match the pending PKCE flow.")
+    if isinstance(pending.get("redirect_uri"), str) and pending.get("redirect_uri") != redirect_uri:
+        _fail(ctx, "redirect_uri_mismatch", "Redirect URI did not match the pending PKCE flow.")
+
+    client = _client(ctx)
+    try:
+        payload = client.exchange_pkce_code(code=code, redirect_uri=redirect_uri, code_verifier=code_verifier)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    token_summary = _token_payload_summary(payload, auth_mode="pkce", redirect_uri=redirect_uri)
+    saved_path = save_provider_auth_state("warcraftlogs", token_summary)
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "mode": "pkce",
+            "step": "token_exchanged",
+            "endpoint_family": "user",
+            "state_path": str(saved_path),
+            "token": {
+                "token_type": token_summary.get("token_type"),
+                "scope": token_summary.get("scope"),
+                "expires_at": token_summary.get("expires_at"),
+                "has_refresh_token": bool(token_summary.get("refresh_token")),
+            },
+        },
+    )
+
+
+@auth_app.command("logout")
+def auth_logout(ctx: typer.Context) -> None:
+    removed = delete_provider_auth_state("warcraftlogs")
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "auth": {
+                "state_path": str(provider_state_path("warcraftlogs")),
+                "removed": removed,
             },
         },
     )

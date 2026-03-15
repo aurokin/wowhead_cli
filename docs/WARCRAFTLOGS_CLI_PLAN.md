@@ -17,6 +17,9 @@ The CLI should become the fastest trustworthy path for:
 Implemented today:
 - retail-only phase-1 standalone provider
 - official OAuth client-credentials auth against the public GraphQL endpoint
+- manual user-auth groundwork for:
+  - authorization code flow
+  - PKCE flow
 - auth lookup order:
   - repo-local `.env.local`
   - XDG config: `~/.config/warcraft/providers/warcraftlogs.env`
@@ -29,6 +32,9 @@ Implemented today:
 - commands:
   - `warcraftlogs doctor`
   - `warcraftlogs auth status`
+  - `warcraftlogs auth login`
+  - `warcraftlogs auth pkce-login`
+  - `warcraftlogs auth logout`
   - `warcraftlogs rate-limit`
   - `warcraftlogs regions`
   - `warcraftlogs expansions`
@@ -71,7 +77,7 @@ Current intentional boundary:
 - retail/main site profile only
 - public endpoint only
 - typed fields only; no raw GraphQL passthrough
-- no user auth yet
+- no wrapper-level user-auth routing yet
 - no classic/fresh site-profile routing yet
 
 What changed in the research baseline:

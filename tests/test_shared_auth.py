@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from warcraft_core.auth import load_provider_auth_state, provider_auth_status
+from warcraft_core.auth import delete_provider_auth_state, load_provider_auth_state, provider_auth_status, save_provider_auth_state
 from warcraft_core.paths import provider_env_path, provider_state_path
 
 
@@ -61,3 +61,14 @@ def test_load_provider_auth_state_returns_dict_payload(tmp_path: Path) -> None:
     payload = load_provider_auth_state("warcraftlogs", path=state_file)
 
     assert payload == {"auth_mode": "pkce", "access_token": "token"}
+
+
+def test_save_and_delete_provider_auth_state_round_trip(tmp_path: Path) -> None:
+    state_file = tmp_path / "warcraftlogs.json"
+
+    saved = save_provider_auth_state("warcraftlogs", {"auth_mode": "authorization_code"}, path=state_file)
+    deleted = delete_provider_auth_state("warcraftlogs", path=state_file)
+
+    assert saved == state_file
+    assert deleted is True
+    assert not state_file.exists()

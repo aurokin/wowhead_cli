@@ -13,6 +13,9 @@ Best fits:
 - health/auth:
   - `warcraftlogs doctor`
   - `warcraftlogs auth status`
+  - `warcraftlogs auth login --redirect-uri <uri>`
+  - `warcraftlogs auth pkce-login --redirect-uri <uri>`
+  - `warcraftlogs auth logout`
   - `warcraftlogs rate-limit`
 - world metadata:
   - `warcraftlogs regions`
@@ -40,6 +43,7 @@ Best fits:
 
 - current support is retail/main site only
 - current auth is public OAuth client credentials only
+- manual user-auth groundwork now exists for authorization-code and PKCE exchange
 - current surface is standalone; wrapper integration is deferred
 - current commands use typed payloads, not raw GraphQL passthrough
 
@@ -93,3 +97,6 @@ Best fits:
 - `report-events` can still return `events: null` for some valid report slices; use it as a typed event-query surface, not a guarantee of non-empty data
 - `report-rankings` can legitimately return zero rows for a valid public report slice
 - `warcraftlogs auth status` is the first place to check when auth looks wrong; it shows credential source and whether any persisted auth state exists
+- `warcraftlogs auth login --redirect-uri ...` and `warcraftlogs auth pkce-login --redirect-uri ...` are two-step flows:
+  - first run prints the authorize URL and saves pending state locally
+  - second run exchanges the returned `code` and `state`
