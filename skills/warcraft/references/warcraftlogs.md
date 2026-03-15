@@ -29,6 +29,8 @@ Best fits:
   - `warcraftlogs encounter <id>`
 - direct lookup:
   - `warcraftlogs guild <region> <realm> <name>`
+  - `warcraftlogs guild-members <region> <realm> <name>`
+  - `warcraftlogs guild-attendance <region> <realm> <name>`
   - `warcraftlogs guild-rankings <region> <realm> <name>`
   - `warcraftlogs character <region> <realm> <name>`
   - `warcraftlogs character-rankings <region> <realm> <name>`
@@ -73,6 +75,10 @@ Best fits:
   - `warcraftlogs guild us illidan Liquid --zone-id 38`
 - guild rankings in a specific zone:
   - `warcraftlogs guild-rankings us illidan Liquid --zone-id 38 --size 20 --difficulty 5`
+- guild roster:
+  - `warcraftlogs guild-members us illidan Liquid --limit 5`
+- guild attendance history:
+  - `warcraftlogs guild-attendance us illidan Liquid --limit 2`
 - character identity:
   - `warcraftlogs character us illidan Roguecane`
 - character rankings, when the API allows them:
@@ -94,6 +100,8 @@ Best fits:
 - prefer `warcraftlogs` when official log data matters more than convenience summaries
 - use `wowprogress` or `raiderio` for their own ranking/profile strengths, not as substitutes for Warcraft Logs report data
 - `character-rankings` can return a provider permission error or a provider-side failure for some characters; treat it as useful but less stable than `guild-rankings`
+- `guild-members` depends on Warcraft Logs being able to verify the guild roster for that game; treat it as a retail-capable roster surface, not a universal promise across every future site profile
+- `guild-attendance` is part of the official schema, but live public queries can still fail with a provider-side internal error; use it when it works, but do not assume the endpoint is fully stable
 - `report-player-details` is the easiest way to inspect the participants in a report slice before deeper event/table work
 - `report-table` and `report-graph` accept user-friendly enum filters like `damage-done` and normalize them for the API
 - `report-events` intentionally requires a narrowed slice such as `--fight-id`, `--encounter-id`, `--start-time`, or `--end-time`

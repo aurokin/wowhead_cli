@@ -202,6 +202,115 @@ class _FakeWarcraftLogsClient:
             },
         }
 
+    def guild_members(
+        self,
+        *,
+        region: str,
+        realm: str,
+        name: str,
+        limit: int = 100,
+        page: int = 1,
+    ) -> dict[str, object]:
+        assert region == "us"
+        assert realm == "illidan"
+        assert name == "Liquid"
+        assert limit == 2
+        assert page == 1
+        return {
+            "id": 5,
+            "name": "Liquid",
+            "server": {
+                "id": 10,
+                "name": "Illidan",
+                "normalizedName": "Illidan",
+                "slug": "illidan",
+                "region": {"id": 1, "compactName": "US", "name": "North America", "slug": "us"},
+                "subregion": {"id": 100, "name": "Chicago"},
+            },
+            "members": {
+                "data": [
+                    {
+                        "id": 77,
+                        "canonicalID": 88,
+                        "name": "Roguecane",
+                        "level": 80,
+                        "classID": 4,
+                        "hidden": False,
+                        "guildRank": 3,
+                        "faction": {"id": 1, "name": "Horde"},
+                        "server": {
+                            "id": 10,
+                            "name": "Illidan",
+                            "normalizedName": "Illidan",
+                            "slug": "illidan",
+                            "region": {"id": 1, "compactName": "US", "name": "North America", "slug": "us"},
+                            "subregion": {"id": 100, "name": "Chicago"},
+                            "connectedRealmID": 57,
+                            "seasonID": 3,
+                        },
+                    }
+                ],
+                "total": 1,
+                "per_page": 2,
+                "current_page": 1,
+                "from": 1,
+                "to": 1,
+                "last_page": 1,
+                "has_more_pages": False,
+            },
+        }
+
+    def guild_attendance(
+        self,
+        *,
+        region: str,
+        realm: str,
+        name: str,
+        guild_tag_id: int | None = None,
+        limit: int = 16,
+        page: int = 1,
+        zone_id: int | None = None,
+    ) -> dict[str, object]:
+        assert region == "us"
+        assert realm == "illidan"
+        assert name == "Liquid"
+        assert guild_tag_id == 5
+        assert limit == 2
+        assert page == 1
+        assert zone_id == 38
+        return {
+            "id": 5,
+            "name": "Liquid",
+            "server": {
+                "id": 10,
+                "name": "Illidan",
+                "normalizedName": "Illidan",
+                "slug": "illidan",
+                "region": {"id": 1, "compactName": "US", "name": "North America", "slug": "us"},
+                "subregion": {"id": 100, "name": "Chicago"},
+            },
+            "attendance": {
+                "data": [
+                    {
+                        "code": "ABCD1234",
+                        "startTime": 1234567890,
+                        "zone": {"id": 38, "name": "Manaforge Omega", "frozen": False},
+                        "players": [
+                            {"name": "Roguecane", "type": "Rogue", "presence": 1},
+                            {"name": "Benchlock", "type": "Warlock", "presence": 2},
+                        ],
+                    }
+                ],
+                "total": 1,
+                "per_page": 2,
+                "current_page": 1,
+                "from": 1,
+                "to": 1,
+                "last_page": 1,
+                "has_more_pages": False,
+            },
+        }
+
     def character(self, *, region: str, realm: str, name: str) -> dict[str, object]:
         assert region == "us"
         assert realm == "illidan"
@@ -858,6 +967,27 @@ def test_warcraftlogs_guild_character_and_report_commands(monkeypatch) -> None:
     assert guild_rankings_result.exit_code == 0
     guild_rankings_payload = json.loads(guild_rankings_result.stdout)
     assert guild_rankings_payload["guild_rankings"]["zone_ranking"]["speed"]["world"]["number"] == 4
+
+    guild_members_result = runner.invoke(
+        warcraftlogs_app,
+        ["guild-members", "us", "illidan", "Liquid", "--limit", "2", "--page", "1"],
+    )
+    assert guild_members_result.exit_code == 0
+    guild_members_payload = json.loads(guild_members_result.stdout)
+    assert guild_members_payload["guild_members"]["pagination"]["total"] == 1
+    assert guild_members_payload["guild_members"]["members"][0]["name"] == "Roguecane"
+    assert guild_members_payload["notes"] == ["Guild roster queries only work for games where Warcraft Logs can verify guild membership."]
+
+    guild_attendance_result = runner.invoke(
+        warcraftlogs_app,
+        ["guild-attendance", "us", "illidan", "Liquid", "--guild-tag-id", "5", "--limit", "2", "--page", "1", "--zone-id", "38"],
+    )
+    assert guild_attendance_result.exit_code == 0
+    guild_attendance_payload = json.loads(guild_attendance_result.stdout)
+    assert guild_attendance_payload["guild_attendance"]["pagination"]["total"] == 1
+    assert guild_attendance_payload["guild_attendance"]["attendance"][0]["player_count"] == 2
+    assert guild_attendance_payload["guild_attendance"]["attendance"][0]["players"][0]["presence_label"] == "present"
+    assert guild_attendance_payload["guild_attendance"]["attendance"][0]["players"][1]["presence_label"] == "benched"
 
     character_rankings_result = runner.invoke(
         warcraftlogs_app,

@@ -442,6 +442,8 @@ warcraftlogs zone 38
 warcraftlogs encounter 3012
 warcraftlogs guild us illidan Liquid
 warcraftlogs guild us illidan Liquid --zone-id 38
+warcraftlogs guild-members us illidan Liquid --limit 5
+warcraftlogs guild-attendance us illidan Liquid --limit 2
 warcraftlogs guild-rankings us illidan Liquid --zone-id 38 --size 20 --difficulty 5
 warcraftlogs character us illidan Roguecane
 warcraftlogs character-rankings us illidan Roguecane --zone-id 38 --difficulty 5 --metric dps --size 20
@@ -494,6 +496,8 @@ EOF
 - `rate-limit` exposes the official queryable API rate-limit state
 - `regions`, `expansions`, `server`, `zones`, `zone`, and `encounter` are the first typed world-metadata slice
 - `guild` returns official guild identity, server/faction details, guild tags, and current zone progress ranks when available
+- `guild-members` returns the Warcraft Logs guild roster plus pagination metadata for games where roster verification is supported
+- `guild-attendance` returns raid-night attendance history plus per-player presence markers
 - `guild-rankings` exposes the official `zoneRanking` progress/speed payloads directly
 - `character` currently stays on reliable typed fields:
   - faction
@@ -513,6 +517,8 @@ EOF
   - `--end-time`
 - `report-events` can still return `events: null` for some valid report slices; treat it as a typed paginator surface, not as a guarantee of non-empty event data for every query
 - `report-rankings` can legitimately return zero rows for a valid report slice, so treat it as a report-ranking surface, not as a guarantee that public rankings exist for every fight
+- Warcraft Logs documents that guild roster verification is game-dependent, so `guild-members` should be treated as a retail-capable roster surface, not a universal guarantee across every future site profile
+- `guild-attendance` is available as an official schema surface, but live public queries can still hit provider-side internal errors; treat it as useful when it works, not as a guaranteed stable contract yet
 - wrapper integration is intentionally deferred for now
 
 ## SimulationCraft Commands

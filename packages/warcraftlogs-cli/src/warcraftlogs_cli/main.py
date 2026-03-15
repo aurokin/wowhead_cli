@@ -128,6 +128,8 @@ def _doctor_payload() -> dict[str, Any]:
             "zones": "ready",
             "encounter": "ready",
             "guild": "ready",
+            "guild_members": "ready",
+            "guild_attendance": "ready",
             "guild_rankings": "ready",
             "character": "ready",
             "character_rankings": "ready",
@@ -305,6 +307,101 @@ def _guild_rankings_payload(guild: dict[str, Any]) -> dict[str, Any]:
         }
         if zone_ranking
         else None,
+    }
+
+
+def _pagination_payload(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        "total": value.get("total"),
+        "per_page": value.get("per_page"),
+        "current_page": value.get("current_page"),
+        "from": value.get("from"),
+        "to": value.get("to"),
+        "last_page": value.get("last_page"),
+        "has_more_pages": value.get("has_more_pages"),
+    }
+
+
+def _guild_member_payload(character: dict[str, Any]) -> dict[str, Any]:
+    faction = character.get("faction") if isinstance(character.get("faction"), dict) else {}
+    server = character.get("server") if isinstance(character.get("server"), dict) else {}
+    return {
+        "id": character.get("id"),
+        "canonical_id": character.get("canonicalID"),
+        "name": character.get("name"),
+        "level": character.get("level"),
+        "class_id": character.get("classID"),
+        "hidden": character.get("hidden"),
+        "guild_rank": character.get("guildRank"),
+        "faction": {"id": faction.get("id"), "name": faction.get("name")} if faction else None,
+        "server": _server_payload(server) if server else None,
+    }
+
+
+def _guild_members_payload(guild: dict[str, Any]) -> dict[str, Any]:
+    server = guild.get("server") if isinstance(guild.get("server"), dict) else {}
+    members = guild.get("members") if isinstance(guild.get("members"), dict) else {}
+    rows = [row for row in (members.get("data") if isinstance(members.get("data"), list) else []) if isinstance(row, dict)]
+    return {
+        "id": guild.get("id"),
+        "name": guild.get("name"),
+        "server": _server_payload(server) if server else None,
+        "pagination": _pagination_payload(members),
+        "count": len(rows),
+        "members": [_guild_member_payload(row) for row in rows],
+    }
+
+
+def _presence_label(value: int | None) -> str | None:
+    if value == 1:
+        return "present"
+    if value == 2:
+        return "benched"
+    return None
+
+
+def _attendance_player_payload(player: dict[str, Any]) -> dict[str, Any]:
+    presence = player.get("presence")
+    return {
+        "name": player.get("name"),
+        "type": player.get("type"),
+        "presence": presence,
+        "presence_label": _presence_label(presence if isinstance(presence, int) else None),
+    }
+
+
+def _guild_attendance_payload(guild: dict[str, Any]) -> dict[str, Any]:
+    server = guild.get("server") if isinstance(guild.get("server"), dict) else {}
+    attendance = guild.get("attendance") if isinstance(guild.get("attendance"), dict) else {}
+    rows = [row for row in (attendance.get("data") if isinstance(attendance.get("data"), list) else []) if isinstance(row, dict)]
+    attendance_rows = []
+    for row in rows:
+        zone = row.get("zone") if isinstance(row.get("zone"), dict) else {}
+        players = [player for player in (row.get("players") if isinstance(row.get("players"), list) else []) if isinstance(player, dict)]
+        attendance_rows.append(
+            {
+                "code": row.get("code"),
+                "start_time": row.get("startTime"),
+                "zone": {
+                    "id": zone.get("id"),
+                    "name": zone.get("name"),
+                    "frozen": zone.get("frozen"),
+                }
+                if zone
+                else None,
+                "player_count": len(players),
+                "players": [_attendance_player_payload(player) for player in players],
+            }
+        )
+    return {
+        "id": guild.get("id"),
+        "name": guild.get("name"),
+        "server": _server_payload(server) if server else None,
+        "pagination": _pagination_payload(attendance),
+        "count": len(attendance_rows),
+        "attendance": attendance_rows,
     }
 
 
@@ -1182,6 +1279,83 @@ def guild_rankings(
             "provider": "warcraftlogs",
             "query": {"region": region, "realm": realm, "name": name, "zone_id": zone_id, "size": size, "difficulty": difficulty},
             "guild_rankings": _guild_rankings_payload(payload),
+        },
+    )
+
+
+@app.command("guild-members")
+def guild_members(
+    ctx: typer.Context,
+    region: str,
+    realm: str,
+    name: str,
+    limit: int = typer.Option(100, "--limit", min=1, max=100, help="Roster rows per page."),
+    page: int = typer.Option(1, "--page", min=1, help="Page number."),
+) -> None:
+    client = _client(ctx)
+    try:
+        payload = client.guild_members(region=region, realm=realm, name=name, limit=limit, page=page)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": {"region": region, "realm": realm, "name": name, "limit": limit, "page": page},
+            "guild_members": _guild_members_payload(payload),
+            "notes": [
+                "Guild roster queries only work for games where Warcraft Logs can verify guild membership.",
+            ],
+        },
+    )
+
+
+@app.command("guild-attendance")
+def guild_attendance(
+    ctx: typer.Context,
+    region: str,
+    realm: str,
+    name: str,
+    guild_tag_id: int | None = typer.Option(None, "--guild-tag-id", help="Optional guild tag filter."),
+    limit: int = typer.Option(16, "--limit", min=1, max=25, help="Attendance rows per page."),
+    page: int = typer.Option(1, "--page", min=1, help="Page number."),
+    zone_id: int | None = typer.Option(None, "--zone-id", help="Optional zone filter."),
+) -> None:
+    client = _client(ctx)
+    try:
+        payload = client.guild_attendance(
+            region=region,
+            realm=realm,
+            name=name,
+            guild_tag_id=guild_tag_id,
+            limit=limit,
+            page=page,
+            zone_id=zone_id,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": {
+                "region": region,
+                "realm": realm,
+                "name": name,
+                "guild_tag_id": guild_tag_id,
+                "limit": limit,
+                "page": page,
+                "zone_id": zone_id,
+            },
+            "guild_attendance": _guild_attendance_payload(payload),
         },
     )
 

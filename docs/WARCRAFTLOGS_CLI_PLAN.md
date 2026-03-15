@@ -47,6 +47,8 @@ Implemented today:
   - `warcraftlogs zone`
   - `warcraftlogs encounter`
   - `warcraftlogs guild`
+  - `warcraftlogs guild-members`
+  - `warcraftlogs guild-attendance`
   - `warcraftlogs guild-rankings`
   - `warcraftlogs character`
   - `warcraftlogs character-rankings`
@@ -64,6 +66,7 @@ Implemented today:
   - `regions`
   - `server`
   - `guild`
+  - `guild-members`
   - `expansions`
   - `zone`
   - `guild-rankings`
@@ -247,6 +250,9 @@ Confirmed from `GuildData`, `Guild`, and `GuildZoneRankings`:
   with world / region / server rank positions
 
 This makes official guild/ranking workflows first-class.
+
+Current live caveat:
+- `attendance(...)` is documented and implemented, but public live queries can still return provider-side internal errors, so it should not be treated as a stable live-contract surface yet
 
 ### Character Surface
 

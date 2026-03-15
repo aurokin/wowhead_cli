@@ -298,6 +298,123 @@ query GuildRankings($name: String!, $serverSlug: String!, $serverRegion: String!
 }
 """
 
+GUILD_MEMBERS_QUERY = """
+query GuildMembers($name: String!, $serverSlug: String!, $serverRegion: String!, $limit: Int, $page: Int) {
+  guildData {
+    guild(name: $name, serverSlug: $serverSlug, serverRegion: $serverRegion) {
+      id
+      name
+      server {
+        id
+        name
+        normalizedName
+        slug
+        region {
+          id
+          compactName
+          name
+          slug
+        }
+        subregion {
+          id
+          name
+        }
+      }
+      members(limit: $limit, page: $page) {
+        data {
+          id
+          canonicalID
+          name
+          level
+          classID
+          hidden
+          guildRank
+          faction {
+            id
+            name
+          }
+          server {
+            id
+            name
+            normalizedName
+            slug
+            region {
+              id
+              compactName
+              name
+              slug
+            }
+            subregion {
+              id
+              name
+            }
+            connectedRealmID
+            seasonID
+          }
+        }
+        total
+        per_page
+        current_page
+        from
+        to
+        last_page
+        has_more_pages
+      }
+    }
+  }
+}
+"""
+
+GUILD_ATTENDANCE_QUERY = """
+query GuildAttendance($name: String!, $serverSlug: String!, $serverRegion: String!, $guildTagID: Int, $limit: Int, $page: Int, $zoneID: Int) {
+  guildData {
+    guild(name: $name, serverSlug: $serverSlug, serverRegion: $serverRegion) {
+      id
+      name
+      server {
+        id
+        name
+        normalizedName
+        slug
+        region {
+          id
+          compactName
+          name
+          slug
+        }
+        subregion {
+          id
+          name
+        }
+      }
+      attendance(guildTagID: $guildTagID, limit: $limit, page: $page, zoneID: $zoneID) {
+        data {
+          code
+          startTime
+          zone {
+            id
+            name
+            frozen
+          }
+          players {
+            name
+            type
+            presence
+          }
+        }
+        total
+        per_page
+        current_page
+        from
+        to
+        last_page
+        has_more_pages
+      }
+    }
+  }
+}
+"""
+
 CHARACTER_QUERY = """
 query Character($name: String!, $serverSlug: String!, $serverRegion: String!) {
   characterData {
@@ -1400,6 +1517,66 @@ class WarcraftLogsClient:
                 "difficulty": difficulty,
             },
             namespace="guild_rankings",
+            ttl_seconds=self._guild_ttl,
+        )
+        guild_data = data.get("guildData")
+        guild = guild_data.get("guild") if isinstance(guild_data, dict) else None
+        if not isinstance(guild, dict):
+            raise WarcraftLogsClientError("not_found", f"Guild {name!r} was not found on {region}/{realm}.")
+        return guild
+
+    def guild_members(
+        self,
+        *,
+        region: str,
+        realm: str,
+        name: str,
+        limit: int = 100,
+        page: int = 1,
+    ) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="GuildMembers",
+            query=GUILD_MEMBERS_QUERY,
+            variables={
+                "name": normalize_name(name),
+                "serverSlug": primary_realm_slug(realm),
+                "serverRegion": normalize_region(region),
+                "limit": limit,
+                "page": page,
+            },
+            namespace="guild_members",
+            ttl_seconds=self._guild_ttl,
+        )
+        guild_data = data.get("guildData")
+        guild = guild_data.get("guild") if isinstance(guild_data, dict) else None
+        if not isinstance(guild, dict):
+            raise WarcraftLogsClientError("not_found", f"Guild {name!r} was not found on {region}/{realm}.")
+        return guild
+
+    def guild_attendance(
+        self,
+        *,
+        region: str,
+        realm: str,
+        name: str,
+        guild_tag_id: int | None = None,
+        limit: int = 16,
+        page: int = 1,
+        zone_id: int | None = None,
+    ) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="GuildAttendance",
+            query=GUILD_ATTENDANCE_QUERY,
+            variables={
+                "name": normalize_name(name),
+                "serverSlug": primary_realm_slug(realm),
+                "serverRegion": normalize_region(region),
+                "guildTagID": guild_tag_id,
+                "limit": limit,
+                "page": page,
+                "zoneID": zone_id,
+            },
+            namespace="guild_attendance",
             ttl_seconds=self._guild_ttl,
         )
         guild_data = data.get("guildData")

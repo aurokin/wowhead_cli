@@ -105,6 +105,17 @@ def test_live_warcraftlogs_guild_contract() -> None:
 
 
 @pytest.mark.live
+def test_live_warcraftlogs_guild_members_contract() -> None:
+    _require_warcraftlogs_auth()
+    payload = _payload_for(["guild-members", "us", "illidan", "Liquid", "--limit", "5"])
+
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["guild_members"]["name"] == "Liquid"
+    assert isinstance(payload["guild_members"]["pagination"], dict)
+    assert isinstance(payload["guild_members"]["members"], list)
+
+
+@pytest.mark.live
 def test_live_warcraftlogs_guild_rankings_contract() -> None:
     _require_warcraftlogs_auth()
     payload = _payload_for(["guild-rankings", "us", "illidan", "Liquid", "--zone-id", "38", "--size", "20", "--difficulty", "5"])
