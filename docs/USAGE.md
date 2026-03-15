@@ -438,10 +438,12 @@ warcraftlogs character-rankings us illidan Roguecane --zone-id 38 --difficulty 5
 warcraftlogs reports --guild-region us --guild-realm illidan --guild-name Liquid --limit 10
 warcraftlogs report abcdefgh
 warcraftlogs report-fights abcdefgh --difficulty 5
+warcraftlogs report-player-details abcdefgh --fight-id 47
 warcraftlogs report-master-data abcdefgh --actor-type Player
 warcraftlogs report-events abcdefgh --fight-id 47 --limit 100
 warcraftlogs report-table abcdefgh --data-type damage-done --fight-id 47
 warcraftlogs report-graph abcdefgh --data-type damage-done --fight-id 47
+warcraftlogs report-rankings abcdefgh --fight-id 47 --player-metric dps --timeframe historical --compare rankings
 ```
 
 Warcraft Logs phase-1 behavior:
@@ -474,14 +476,17 @@ EOF
   - guild memberships
 - `character-rankings` is available now, but Warcraft Logs may return per-character permission errors or server-side errors for some characters; the CLI now surfaces provider permission errors explicitly in the payload when they are available
 - `reports`, `report`, and `report-fights` are the first typed report-inspection slice
+- `report-player-details` exposes role buckets and participant summaries for a report or fight slice
 - `report-master-data` exposes report actor and ability catalogs, which is often the most useful companion surface for deeper report analysis
 - `report-table` and `report-graph` now accept friendly enum-like filters such as `damage-done` and normalize them to the official GraphQL enum values
+- `report-rankings` exposes the official report rankings JSON with typed query metadata
 - `report-events` is available now, but it intentionally requires a narrowed slice:
   - `--fight-id`
   - `--encounter-id`
   - `--start-time`
   - `--end-time`
 - `report-events` can still return `events: null` for some valid report slices; treat it as a typed paginator surface, not as a guarantee of non-empty event data for every query
+- `report-rankings` can legitimately return zero rows for a valid report slice, so treat it as a report-ranking surface, not as a guarantee that public rankings exist for every fight
 - wrapper integration is intentionally deferred for now
 
 ## SimulationCraft Commands

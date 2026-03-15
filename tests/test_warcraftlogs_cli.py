@@ -476,6 +476,47 @@ class _FakeWarcraftLogsClient:
             },
         }
 
+    def report_player_details(self, *, code: str, allow_unlisted: bool = False, options) -> dict[str, object]:  # noqa: ANN001
+        assert code == "abcd1234"
+        assert allow_unlisted is False
+        assert options.difficulty == 5
+        assert options.encounter_id == 3012
+        assert options.fight_ids == [1, 2]
+        assert options.include_combatant_info is True
+        assert options.kill_type == "Kills"
+        return {
+            "code": "abcd1234",
+            "title": "Manaforge Omega - Liquid",
+            "zone": {"id": 38, "name": "Manaforge Omega"},
+            "playerDetails": {
+                "data": {
+                    "tanks": [{"name": "Sherway", "id": 1, "type": "Warrior", "specs": [{"spec": "Protection", "count": 1}]}],
+                    "healers": [],
+                    "dps": [{"name": "Auropower", "id": 9, "type": "Paladin", "specs": [{"spec": "Retribution", "count": 1}]}],
+                }
+            },
+        }
+
+    def report_rankings(self, *, code: str, allow_unlisted: bool = False, options) -> dict[str, object]:  # noqa: ANN001
+        assert code == "abcd1234"
+        assert allow_unlisted is True
+        assert options.compare == "Rankings"
+        assert options.difficulty == 5
+        assert options.encounter_id == 3012
+        assert options.fight_ids == [1, 2]
+        assert options.player_metric == "dps"
+        assert options.timeframe == "Historical"
+        return {
+            "code": "abcd1234",
+            "title": "Manaforge Omega - Liquid",
+            "zone": {"id": 38, "name": "Manaforge Omega"},
+            "rankings": {
+                "data": [
+                    {"name": "Auropower", "amount": 123456, "rankPercent": 95.2, "bracketData": {"size": 20}},
+                ]
+            },
+        }
+
 
 def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None:
     monkeypatch.setattr(
@@ -677,6 +718,56 @@ def test_warcraftlogs_guild_character_and_report_commands(monkeypatch) -> None:
     master_data_payload = json.loads(master_data_result.stdout)
     assert master_data_payload["master_data"]["log_version"] == 47
     assert master_data_payload["master_data"]["actors"][0]["name"] == "Auropower"
+
+    player_details_result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "report-player-details",
+            "abcd1234",
+            "--difficulty",
+            "5",
+            "--encounter-id",
+            "3012",
+            "--fight-id",
+            "1",
+            "--fight-id",
+            "2",
+            "--include-combatant-info",
+            "--kill-type",
+            "kills",
+        ],
+    )
+    assert player_details_result.exit_code == 0
+    player_details_payload = json.loads(player_details_result.stdout)
+    assert player_details_payload["player_details"]["counts"]["total"] == 2
+    assert player_details_payload["player_details"]["roles"]["tanks"][0]["name"] == "Sherway"
+
+    rankings_result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "report-rankings",
+            "abcd1234",
+            "--allow-unlisted",
+            "--compare",
+            "rankings",
+            "--difficulty",
+            "5",
+            "--encounter-id",
+            "3012",
+            "--fight-id",
+            "1",
+            "--fight-id",
+            "2",
+            "--player-metric",
+            "dps",
+            "--timeframe",
+            "historical",
+        ],
+    )
+    assert rankings_result.exit_code == 0
+    rankings_payload = json.loads(rankings_result.stdout)
+    assert rankings_payload["rankings"]["count"] == 1
+    assert rankings_payload["rankings"]["rows"][0]["name"] == "Auropower"
 
 
 def test_warcraftlogs_report_events_requires_scope(monkeypatch) -> None:

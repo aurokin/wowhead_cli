@@ -719,6 +719,74 @@ query ReportMasterData(
 }
 """
 
+REPORT_PLAYER_DETAILS_QUERY = """
+query ReportPlayerDetails(
+  $code: String!,
+  $allowUnlisted: Boolean,
+  $difficulty: Int,
+  $encounterID: Int,
+  $endTime: Float,
+  $fightIDs: [Int],
+  $killType: KillType,
+  $startTime: Float,
+  $translate: Boolean,
+  $includeCombatantInfo: Boolean
+) {
+  reportData {
+    report(code: $code, allowUnlisted: $allowUnlisted) {
+      code
+      title
+      zone {
+        id
+        name
+      }
+      playerDetails(
+        difficulty: $difficulty,
+        encounterID: $encounterID,
+        endTime: $endTime,
+        fightIDs: $fightIDs,
+        killType: $killType,
+        startTime: $startTime,
+        translate: $translate,
+        includeCombatantInfo: $includeCombatantInfo
+      )
+    }
+  }
+}
+"""
+
+REPORT_RANKINGS_QUERY = """
+query ReportRankings(
+  $code: String!,
+  $allowUnlisted: Boolean,
+  $compare: RankingCompareType,
+  $difficulty: Int,
+  $encounterID: Int,
+  $fightIDs: [Int],
+  $playerMetric: ReportRankingMetricType,
+  $timeframe: RankingTimeframeType
+) {
+  reportData {
+    report(code: $code, allowUnlisted: $allowUnlisted) {
+      code
+      title
+      zone {
+        id
+        name
+      }
+      rankings(
+        compare: $compare,
+        difficulty: $difficulty,
+        encounterID: $encounterID,
+        fightIDs: $fightIDs,
+        playerMetric: $playerMetric,
+        timeframe: $timeframe
+      )
+    }
+  }
+}
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class WarcraftLogsSiteProfile:
@@ -778,6 +846,28 @@ class ReportFilterOptions:
     translate: bool | None = None
     view_by: str | None = None
     wipe_cutoff: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReportPlayerDetailsOptions:
+    difficulty: int | None = None
+    encounter_id: int | None = None
+    end_time: float | None = None
+    fight_ids: list[int] | None = None
+    include_combatant_info: bool | None = None
+    kill_type: str | None = None
+    start_time: float | None = None
+    translate: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReportRankingsOptions:
+    compare: str | None = None
+    difficulty: int | None = None
+    encounter_id: int | None = None
+    fight_ids: list[int] | None = None
+    player_metric: str | None = None
+    timeframe: str | None = None
 
 
 def load_warcraftlogs_auth_config(*, start_dir: str | None = None) -> WarcraftLogsAuthConfig:
@@ -965,6 +1055,44 @@ class WarcraftLogsClient:
             "translate": options.translate,
             "viewBy": options.view_by,
             "wipeCutoff": options.wipe_cutoff,
+        }
+
+    def _report_player_details_variables(
+        self,
+        *,
+        code: str,
+        allow_unlisted: bool,
+        options: ReportPlayerDetailsOptions,
+    ) -> dict[str, Any]:
+        return {
+            "code": code.strip(),
+            "allowUnlisted": allow_unlisted,
+            "difficulty": options.difficulty,
+            "encounterID": options.encounter_id,
+            "endTime": options.end_time,
+            "fightIDs": options.fight_ids,
+            "killType": options.kill_type,
+            "startTime": options.start_time,
+            "translate": options.translate,
+            "includeCombatantInfo": options.include_combatant_info,
+        }
+
+    def _report_rankings_variables(
+        self,
+        *,
+        code: str,
+        allow_unlisted: bool,
+        options: ReportRankingsOptions,
+    ) -> dict[str, Any]:
+        return {
+            "code": code.strip(),
+            "allowUnlisted": allow_unlisted,
+            "compare": options.compare,
+            "difficulty": options.difficulty,
+            "encounterID": options.encounter_id,
+            "fightIDs": options.fight_ids,
+            "playerMetric": options.player_metric,
+            "timeframe": options.timeframe,
         }
 
     def _report_lookup(
@@ -1300,4 +1428,36 @@ class WarcraftLogsClient:
                 "actorType": actor_type,
                 "actorSubType": actor_sub_type,
             },
+        )
+
+    def report_player_details(
+        self,
+        *,
+        code: str,
+        allow_unlisted: bool = False,
+        options: ReportPlayerDetailsOptions,
+    ) -> dict[str, Any]:
+        return self._report_lookup(
+            operation_name="ReportPlayerDetails",
+            query=REPORT_PLAYER_DETAILS_QUERY,
+            namespace="report_player_details",
+            code=code,
+            allow_unlisted=allow_unlisted,
+            variables=self._report_player_details_variables(code=code, allow_unlisted=allow_unlisted, options=options),
+        )
+
+    def report_rankings(
+        self,
+        *,
+        code: str,
+        allow_unlisted: bool = False,
+        options: ReportRankingsOptions,
+    ) -> dict[str, Any]:
+        return self._report_lookup(
+            operation_name="ReportRankings",
+            query=REPORT_RANKINGS_QUERY,
+            namespace="report_rankings",
+            code=code,
+            allow_unlisted=allow_unlisted,
+            variables=self._report_rankings_variables(code=code, allow_unlisted=allow_unlisted, options=options),
         )

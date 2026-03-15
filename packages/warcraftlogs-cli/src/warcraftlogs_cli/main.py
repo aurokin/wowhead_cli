@@ -11,6 +11,8 @@ from warcraft_core.wow_normalization import normalize_region
 from warcraftlogs_cli.client import (
     RETAIL_PROFILE,
     ReportFilterOptions,
+    ReportPlayerDetailsOptions,
+    ReportRankingsOptions,
     WarcraftLogsClient,
     WarcraftLogsClientError,
     load_warcraftlogs_auth_config,
@@ -110,6 +112,8 @@ def _doctor_payload() -> dict[str, Any]:
             "report_table": "ready",
             "report_graph": "ready",
             "report_master_data": "ready",
+            "report_player_details": "ready",
+            "report_rankings": "ready",
             "user_auth": "planned",
         },
     }
@@ -480,6 +484,63 @@ def _report_master_data_payload(report: dict[str, Any]) -> dict[str, Any]:
                 for row in actors
                 if isinstance(row, dict)
             ],
+        },
+    }
+
+
+def _player_detail_actor_payload(actor: dict[str, Any]) -> dict[str, Any]:
+    specs = actor.get("specs") if isinstance(actor.get("specs"), list) else []
+    return {
+        "name": actor.get("name"),
+        "id": actor.get("id"),
+        "guid": actor.get("guid"),
+        "type": actor.get("type"),
+        "server": actor.get("server"),
+        "region": actor.get("region"),
+        "icon": actor.get("icon"),
+        "specs": [
+            {"spec": spec.get("spec"), "count": spec.get("count")}
+            for spec in specs
+            if isinstance(spec, dict)
+        ],
+        "min_item_level": actor.get("minItemLevel"),
+        "max_item_level": actor.get("maxItemLevel"),
+        "potion_use": actor.get("potionUse"),
+        "healthstone_use": actor.get("healthstoneUse"),
+        "combatant_info": actor.get("combatantInfo"),
+    }
+
+
+def _report_player_details_payload(report: dict[str, Any]) -> dict[str, Any]:
+    details = report.get("playerDetails") if isinstance(report.get("playerDetails"), dict) else {}
+    data = details.get("data") if isinstance(details.get("data"), dict) else {}
+    role_data = data.get("playerDetails") if isinstance(data.get("playerDetails"), dict) else data
+    roles: dict[str, list[dict[str, Any]]] = {}
+    counts: dict[str, int] = {}
+    for role in ("tanks", "healers", "dps"):
+        rows = role_data.get(role) if isinstance(role_data.get(role), list) else []
+        normalized_rows = [_player_detail_actor_payload(row) for row in rows if isinstance(row, dict)]
+        roles[role] = normalized_rows
+        counts[role] = len(normalized_rows)
+    counts["total"] = counts["tanks"] + counts["healers"] + counts["dps"]
+    return {
+        "report": _report_brief_payload(report),
+        "player_details": {
+            "counts": counts,
+            "roles": roles,
+        },
+    }
+
+
+def _report_rankings_payload(report: dict[str, Any]) -> dict[str, Any]:
+    rankings = report.get("rankings")
+    rows = rankings.get("data") if isinstance(rankings, dict) else []
+    normalized_rows = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    return {
+        "report": _report_brief_payload(report),
+        "rankings": {
+            "count": len(normalized_rows),
+            "rows": normalized_rows,
         },
     }
 
@@ -1242,6 +1303,111 @@ def report_master_data(
             "provider": "warcraftlogs",
             "query": {"actor_type": actor_type, "actor_sub_type": actor_sub_type, "translate": translate},
             **_report_master_data_payload(payload),
+        },
+    )
+
+
+@app.command("report-player-details")
+def report_player_details(
+    ctx: typer.Context,
+    code: str,
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    encounter_id: int | None = typer.Option(None, "--encounter-id", help="Optional encounter ID filter."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional event-range end timestamp."),
+    fight_id: list[int] | None = FIGHT_ID_OPTION,
+    include_combatant_info: bool | None = typer.Option(
+        None,
+        "--include-combatant-info/--no-include-combatant-info",
+        help="Optional combatant detail toggle.",
+    ),
+    kill_type: str | None = typer.Option(None, "--kill-type", help="Optional kill filter."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional event-range start timestamp."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    normalized_kill_type = _normalize_graphql_enum(kill_type)
+    options = ReportPlayerDetailsOptions(
+        difficulty=difficulty,
+        encounter_id=encounter_id,
+        end_time=end_time,
+        fight_ids=fight_id or None,
+        include_combatant_info=include_combatant_info,
+        kill_type=normalized_kill_type,
+        start_time=start_time,
+        translate=translate,
+    )
+    client = _client(ctx)
+    try:
+        payload = client.report_player_details(code=code, allow_unlisted=allow_unlisted, options=options)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": {
+                "difficulty": difficulty,
+                "encounter_id": encounter_id,
+                "end_time": end_time,
+                "fight_ids": fight_id,
+                "include_combatant_info": include_combatant_info,
+                "kill_type": normalized_kill_type,
+                "start_time": start_time,
+                "translate": translate,
+            },
+            **_report_player_details_payload(payload),
+        },
+    )
+
+
+@app.command("report-rankings")
+def report_rankings(
+    ctx: typer.Context,
+    code: str,
+    compare: str | None = typer.Option(None, "--compare", help="Optional compare mode such as rankings or parses."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    encounter_id: int | None = typer.Option(None, "--encounter-id", help="Optional encounter ID filter."),
+    fight_id: list[int] | None = FIGHT_ID_OPTION,
+    player_metric: str | None = typer.Option(None, "--player-metric", help="Optional player metric such as dps or hps."),
+    timeframe: str | None = typer.Option(None, "--timeframe", help="Optional timeframe such as today or historical."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    normalized_compare = _normalize_graphql_enum(compare)
+    normalized_timeframe = _normalize_graphql_enum(timeframe)
+    options = ReportRankingsOptions(
+        compare=normalized_compare,
+        difficulty=difficulty,
+        encounter_id=encounter_id,
+        fight_ids=fight_id or None,
+        player_metric=player_metric,
+        timeframe=normalized_timeframe,
+    )
+    client = _client(ctx)
+    try:
+        payload = client.report_rankings(code=code, allow_unlisted=allow_unlisted, options=options)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": {
+                "compare": normalized_compare,
+                "difficulty": difficulty,
+                "encounter_id": encounter_id,
+                "fight_ids": fight_id,
+                "player_metric": player_metric,
+                "timeframe": normalized_timeframe,
+            },
+            **_report_rankings_payload(payload),
         },
     )
 

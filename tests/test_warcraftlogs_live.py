@@ -119,6 +119,11 @@ def test_live_warcraftlogs_report_detail_contracts() -> None:
     assert master_data_payload["report"]["code"] == code
     assert isinstance(master_data_payload["master_data"]["actors"], list)
 
+    player_details_payload = _payload_for(["report-player-details", code, "--fight-id", str(fight_id)])
+    assert player_details_payload["provider"] == "warcraftlogs"
+    assert player_details_payload["report"]["code"] == code
+    assert player_details_payload["player_details"]["counts"]["total"] >= 1
+
     events_payload = _payload_for(["report-events", code, "--fight-id", str(fight_id), "--limit", "5"])
     assert events_payload["provider"] == "warcraftlogs"
     assert events_payload["report"]["code"] == code
@@ -136,3 +141,12 @@ def test_live_warcraftlogs_report_detail_contracts() -> None:
     assert graph_payload["report"]["code"] == code
     assert graph_payload["query"]["data_type"] == "DamageDone"
     assert "graph" in graph_payload
+
+    rankings_payload = _payload_for(
+        ["report-rankings", code, "--fight-id", str(fight_id), "--player-metric", "dps", "--timeframe", "historical", "--compare", "rankings"]
+    )
+    assert rankings_payload["provider"] == "warcraftlogs"
+    assert rankings_payload["report"]["code"] == code
+    assert rankings_payload["query"]["compare"] == "Rankings"
+    assert rankings_payload["query"]["timeframe"] == "Historical"
+    assert "rankings" in rankings_payload

@@ -41,9 +41,11 @@ Implemented today:
   - `warcraftlogs report`
   - `warcraftlogs report-fights`
   - `warcraftlogs report-master-data`
+  - `warcraftlogs report-player-details`
   - `warcraftlogs report-events`
   - `warcraftlogs report-table`
   - `warcraftlogs report-graph`
+  - `warcraftlogs report-rankings`
 - unit coverage for the current JSON contract
 - live coverage for:
   - `regions`
@@ -55,8 +57,10 @@ Implemented today:
   - `reports`
   - `report`
   - constrained `report-master-data`
+  - constrained `report-player-details`
   - constrained `report-table`
   - constrained `report-graph`
+  - constrained `report-rankings`
 
 Current intentional boundary:
 - standalone only for now
@@ -82,9 +86,8 @@ This means `warcraftlogs` should be planned as an official integration first, wi
 Highest-value next implementation slices:
 - make `character-rankings` more reliable across public characters before treating it as fully validated
 - deepen report workflows beyond the current phase-1 slice:
-  - `playerDetails(...)`
-  - `rankings(...)`
   - safer event pagination patterns once `events(...)` can be validated more broadly
+  - additional report detail surfaces after the current player/ranking slice is proven
 
 After that:
 - user-auth plumbing
@@ -296,9 +299,11 @@ Important pagination and cost behavior:
 - `events`, `graph`, and `table` all expose rich filter arguments
 - archived-report access is restricted unless the retrieving user has archive access
 - practical phase-1 behavior:
+  - `report-player-details` is a stable way to inspect role buckets and participants for a report slice before drilling into lower-level event data
   - `report-table` and `report-graph` should accept user-friendly enum-like CLI values and normalize them to GraphQL enum values
   - `report-events` should require a narrowed slice such as `fightIDs`, `encounterID`, or an explicit time window instead of encouraging whole-report pulls
   - even valid narrowed `events(...)` queries can still return `null` event data on some public reports, so the command contract should expose that honestly instead of forcing fake summaries
+  - `report-rankings` can legitimately return zero rows for a valid public report slice, so the command contract should surface that plainly
 
 ### World and Static Metadata Surface
 
