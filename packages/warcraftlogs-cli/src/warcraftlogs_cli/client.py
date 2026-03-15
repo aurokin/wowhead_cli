@@ -40,6 +40,22 @@ query Regions {
 }
 """
 
+EXPANSIONS_QUERY = """
+query Expansions {
+  worldData {
+    expansions {
+      id
+      name
+      zones {
+        id
+        name
+        frozen
+      }
+    }
+  }
+}
+"""
+
 SERVER_QUERY = """
 query Server($region: String!, $slug: String!) {
   worldData {
@@ -85,6 +101,38 @@ query Zones($expansionId: Int) {
         id
         name
         journalID
+      }
+    }
+  }
+}
+"""
+
+ZONE_QUERY = """
+query Zone($id: Int!) {
+  worldData {
+    zone(id: $id) {
+      id
+      name
+      frozen
+      expansion {
+        id
+        name
+      }
+      difficulties {
+        id
+        name
+        sizes
+      }
+      encounters {
+        id
+        name
+        journalID
+      }
+      partitions {
+        id
+        name
+        compactName
+        default
       }
     }
   }
@@ -165,6 +213,77 @@ query Guild($name: String!, $serverSlug: String!, $serverRegion: String!, $zoneI
 }
 """
 
+GUILD_RANKINGS_QUERY = """
+query GuildRankings($name: String!, $serverSlug: String!, $serverRegion: String!, $zoneId: Int, $size: Int, $difficulty: Int) {
+  guildData {
+    guild(name: $name, serverSlug: $serverSlug, serverRegion: $serverRegion) {
+      id
+      name
+      server {
+        id
+        name
+        normalizedName
+        slug
+        region {
+          id
+          compactName
+          name
+          slug
+        }
+        subregion {
+          id
+          name
+        }
+      }
+      zoneRanking(zoneId: $zoneId) {
+        progress(size: $size) {
+          worldRank {
+            number
+            color
+          }
+          regionRank {
+            number
+            color
+          }
+          serverRank {
+            number
+            color
+          }
+        }
+        speed(size: $size, difficulty: $difficulty) {
+          worldRank {
+            number
+            color
+          }
+          regionRank {
+            number
+            color
+          }
+          serverRank {
+            number
+            color
+          }
+        }
+        completeRaidSpeed(size: $size, difficulty: $difficulty) {
+          worldRank {
+            number
+            color
+          }
+          regionRank {
+            number
+            color
+          }
+          serverRank {
+            number
+            color
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
 CHARACTER_QUERY = """
 query Character($name: String!, $serverSlug: String!, $serverRegion: String!) {
   characterData {
@@ -225,6 +344,50 @@ query Character($name: String!, $serverSlug: String!, $serverRegion: String!) {
 }
 """
 
+CHARACTER_RANKINGS_QUERY = """
+query CharacterRankings(
+  $name: String!,
+  $serverSlug: String!,
+  $serverRegion: String!,
+  $zoneID: Int,
+  $difficulty: Int,
+  $metric: CharacterPageRankingMetricType,
+  $size: Int,
+  $specName: String
+) {
+  characterData {
+    character(name: $name, serverSlug: $serverSlug, serverRegion: $serverRegion) {
+      id
+      canonicalID
+      name
+      classID
+      level
+      faction {
+        id
+        name
+      }
+      server {
+        id
+        name
+        normalizedName
+        slug
+        region {
+          id
+          compactName
+          name
+          slug
+        }
+        subregion {
+          id
+          name
+        }
+      }
+      zoneRankings(zoneID: $zoneID, difficulty: $difficulty, metric: $metric, size: $size, specName: $specName)
+    }
+  }
+}
+"""
+
 REPORT_QUERY = """
 query Report($code: String!, $allowUnlisted: Boolean) {
   reportData {
@@ -234,7 +397,11 @@ query Report($code: String!, $allowUnlisted: Boolean) {
       startTime
       endTime
       visibility
-      archiveStatus
+      archiveStatus {
+        isArchived
+        isAccessible
+        archiveDate
+      }
       segments
       exportedSegments
       zone {
@@ -251,6 +418,80 @@ query Report($code: String!, $allowUnlisted: Boolean) {
           }
         }
       }
+    }
+  }
+}
+"""
+
+REPORTS_QUERY = """
+query Reports(
+  $guildName: String,
+  $guildServerSlug: String,
+  $guildServerRegion: String,
+  $limit: Int,
+  $page: Int,
+  $startTime: Float,
+  $endTime: Float,
+  $zoneID: Int,
+  $gameZoneID: Int
+) {
+  reportData {
+    reports(
+      guildName: $guildName,
+      guildServerSlug: $guildServerSlug,
+      guildServerRegion: $guildServerRegion,
+      limit: $limit,
+      page: $page,
+      startTime: $startTime,
+      endTime: $endTime,
+      zoneID: $zoneID,
+      gameZoneID: $gameZoneID
+    ) {
+      data {
+        code
+        title
+        startTime
+        endTime
+        visibility
+        archiveStatus {
+          isArchived
+          isAccessible
+          archiveDate
+        }
+        segments
+        exportedSegments
+        zone {
+          id
+          name
+        }
+        guild {
+          id
+          name
+          server {
+            id
+            name
+            normalizedName
+            slug
+            region {
+              id
+              compactName
+              name
+              slug
+            }
+            subregion {
+              id
+              name
+            }
+          }
+        }
+      }
+      total
+      per_page
+      current_page
+      from
+      to
+      last_page
+      has_more_pages
     }
   }
 }
@@ -518,6 +759,20 @@ class WarcraftLogsClient:
             raise WarcraftLogsClientError("not_found", "Warcraft Logs region data was not available.")
         return [region for region in regions if isinstance(region, dict)]
 
+    def expansions(self) -> list[dict[str, Any]]:
+        data = self._graphql(
+            operation_name="Expansions",
+            query=EXPANSIONS_QUERY,
+            variables=None,
+            namespace="expansions",
+            ttl_seconds=self._static_ttl,
+        )
+        world_data = data.get("worldData")
+        expansions = world_data.get("expansions") if isinstance(world_data, dict) else None
+        if not isinstance(expansions, list):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs expansion data was not available.")
+        return [expansion for expansion in expansions if isinstance(expansion, dict)]
+
     def server(self, *, region: str, slug: str) -> dict[str, Any]:
         data = self._graphql(
             operation_name="Server",
@@ -545,6 +800,20 @@ class WarcraftLogsClient:
         if not isinstance(zones, list):
             raise WarcraftLogsClientError("not_found", "Warcraft Logs zone data was not available.")
         return [zone for zone in zones if isinstance(zone, dict)]
+
+    def zone(self, *, zone_id: int) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="Zone",
+            query=ZONE_QUERY,
+            variables={"id": zone_id},
+            namespace="zone",
+            ttl_seconds=self._static_ttl,
+        )
+        world_data = data.get("worldData")
+        zone = world_data.get("zone") if isinstance(world_data, dict) else None
+        if not isinstance(zone, dict):
+            raise WarcraftLogsClientError("not_found", f"Zone {zone_id!r} was not found.")
+        return zone
 
     def encounter(self, *, encounter_id: int) -> dict[str, Any]:
         data = self._graphql(
@@ -579,6 +848,36 @@ class WarcraftLogsClient:
             raise WarcraftLogsClientError("not_found", f"Guild {name!r} was not found on {region}/{realm}.")
         return guild
 
+    def guild_rankings(
+        self,
+        *,
+        region: str,
+        realm: str,
+        name: str,
+        zone_id: int | None = None,
+        size: int | None = None,
+        difficulty: int | None = None,
+    ) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="GuildRankings",
+            query=GUILD_RANKINGS_QUERY,
+            variables={
+                "name": normalize_name(name),
+                "serverSlug": primary_realm_slug(realm),
+                "serverRegion": normalize_region(region),
+                "zoneId": zone_id,
+                "size": size,
+                "difficulty": difficulty,
+            },
+            namespace="guild_rankings",
+            ttl_seconds=self._guild_ttl,
+        )
+        guild_data = data.get("guildData")
+        guild = guild_data.get("guild") if isinstance(guild_data, dict) else None
+        if not isinstance(guild, dict):
+            raise WarcraftLogsClientError("not_found", f"Guild {name!r} was not found on {region}/{realm}.")
+        return guild
+
     def character(self, *, region: str, realm: str, name: str) -> dict[str, Any]:
         data = self._graphql(
             operation_name="Character",
@@ -589,6 +888,40 @@ class WarcraftLogsClient:
                 "serverRegion": normalize_region(region),
             },
             namespace="character",
+            ttl_seconds=self._guild_ttl,
+        )
+        character_data = data.get("characterData")
+        character = character_data.get("character") if isinstance(character_data, dict) else None
+        if not isinstance(character, dict):
+            raise WarcraftLogsClientError("not_found", f"Character {name!r} was not found on {region}/{realm}.")
+        return character
+
+    def character_rankings(
+        self,
+        *,
+        region: str,
+        realm: str,
+        name: str,
+        zone_id: int | None = None,
+        difficulty: int | None = None,
+        metric: str | None = None,
+        size: int | None = None,
+        spec_name: str | None = None,
+    ) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="CharacterRankings",
+            query=CHARACTER_RANKINGS_QUERY,
+            variables={
+                "name": normalize_name(name),
+                "serverSlug": primary_realm_slug(realm),
+                "serverRegion": normalize_region(region),
+                "zoneID": zone_id,
+                "difficulty": difficulty,
+                "metric": metric,
+                "size": size,
+                "specName": spec_name,
+            },
+            namespace="character_rankings",
             ttl_seconds=self._guild_ttl,
         )
         character_data = data.get("characterData")
@@ -610,6 +943,42 @@ class WarcraftLogsClient:
         if not isinstance(report, dict):
             raise WarcraftLogsClientError("not_found", f"Report {code!r} was not found.")
         return report
+
+    def reports(
+        self,
+        *,
+        guild_region: str | None = None,
+        guild_realm: str | None = None,
+        guild_name: str | None = None,
+        limit: int = 25,
+        page: int = 1,
+        start_time: float | None = None,
+        end_time: float | None = None,
+        zone_id: int | None = None,
+        game_zone_id: int | None = None,
+    ) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="Reports",
+            query=REPORTS_QUERY,
+            variables={
+                "guildName": normalize_name(guild_name) if guild_name else None,
+                "guildServerSlug": primary_realm_slug(guild_realm) if guild_realm else None,
+                "guildServerRegion": normalize_region(guild_region) if guild_region else None,
+                "limit": limit,
+                "page": page,
+                "startTime": start_time,
+                "endTime": end_time,
+                "zoneID": zone_id,
+                "gameZoneID": game_zone_id,
+            },
+            namespace="reports",
+            ttl_seconds=self._guild_ttl,
+        )
+        report_data = data.get("reportData")
+        reports = report_data.get("reports") if isinstance(report_data, dict) else None
+        if not isinstance(reports, dict):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs report listing data was not available.")
+        return reports
 
     def report_fights(self, *, code: str, difficulty: int | None = None, allow_unlisted: bool = False) -> dict[str, Any]:
         data = self._graphql(

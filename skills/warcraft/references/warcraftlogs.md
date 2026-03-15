@@ -15,12 +15,17 @@ Best fits:
   - `warcraftlogs rate-limit`
 - world metadata:
   - `warcraftlogs regions`
+  - `warcraftlogs expansions`
   - `warcraftlogs server <region> <slug>`
   - `warcraftlogs zones`
+  - `warcraftlogs zone <id>`
   - `warcraftlogs encounter <id>`
 - direct lookup:
   - `warcraftlogs guild <region> <realm> <name>`
+  - `warcraftlogs guild-rankings <region> <realm> <name>`
   - `warcraftlogs character <region> <realm> <name>`
+  - `warcraftlogs character-rankings <region> <realm> <name>`
+  - `warcraftlogs reports --guild-region ... --guild-realm ... --guild-name ...`
   - `warcraftlogs report <code>`
   - `warcraftlogs report-fights <code>`
 
@@ -50,8 +55,14 @@ Best fits:
   - `warcraftlogs guild us illidan Liquid`
 - guild progress in a specific zone:
   - `warcraftlogs guild us illidan Liquid --zone-id 38`
+- guild rankings in a specific zone:
+  - `warcraftlogs guild-rankings us illidan Liquid --zone-id 38 --size 20 --difficulty 5`
 - character identity:
   - `warcraftlogs character us illidan Roguecane`
+- character rankings, when the API allows them:
+  - `warcraftlogs character-rankings us illidan Roguecane --zone-id 38 --difficulty 5 --metric dps --size 20`
+- guild report listing:
+  - `warcraftlogs reports --guild-region us --guild-realm illidan --guild-name Liquid --limit 10`
 - report inspection:
   - `warcraftlogs report <code>`
   - `warcraftlogs report-fights <code> --difficulty 5`
@@ -60,3 +71,4 @@ Best fits:
 
 - prefer `warcraftlogs` when official log data matters more than convenience summaries
 - use `wowprogress` or `raiderio` for their own ranking/profile strengths, not as substitutes for Warcraft Logs report data
+- `character-rankings` can return a provider permission error or a provider-side failure for some characters; treat it as useful but less stable than `guild-rankings`

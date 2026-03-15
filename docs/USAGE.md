@@ -424,13 +424,18 @@ WowProgress phase-1 behavior:
 warcraftlogs doctor
 warcraftlogs rate-limit
 warcraftlogs regions
+warcraftlogs expansions
 warcraftlogs server us illidan
 warcraftlogs zones
 warcraftlogs zones --expansion-id 12
+warcraftlogs zone 38
 warcraftlogs encounter 3012
 warcraftlogs guild us illidan Liquid
 warcraftlogs guild us illidan Liquid --zone-id 38
+warcraftlogs guild-rankings us illidan Liquid --zone-id 38 --size 20 --difficulty 5
 warcraftlogs character us illidan Roguecane
+warcraftlogs character-rankings us illidan Roguecane --zone-id 38 --difficulty 5 --metric dps --size 20
+warcraftlogs reports --guild-region us --guild-realm illidan --guild-name Liquid --limit 10
 warcraftlogs report abcdefgh
 warcraftlogs report-fights abcdefgh --difficulty 5
 ```
@@ -455,14 +460,16 @@ EOF
 ```
 - `doctor` reports auth status plus the active site profile
 - `rate-limit` exposes the official queryable API rate-limit state
-- `regions`, `server`, `zones`, and `encounter` are the first typed world-metadata slice
+- `regions`, `expansions`, `server`, `zones`, `zone`, and `encounter` are the first typed world-metadata slice
 - `guild` returns official guild identity, server/faction details, guild tags, and current zone progress ranks when available
+- `guild-rankings` exposes the official `zoneRanking` progress/speed payloads directly
 - `character` currently stays on reliable typed fields:
   - faction
   - guild rank
   - server
   - guild memberships
-- `report` and `report-fights` are the first typed report-inspection slice
+- `character-rankings` is available now, but Warcraft Logs may return per-character permission errors or server-side errors for some characters; the CLI now surfaces provider permission errors explicitly in the payload when they are available
+- `reports`, `report`, and `report-fights` are the first typed report-inspection slice
 - wrapper integration is intentionally deferred for now
 
 ## SimulationCraft Commands

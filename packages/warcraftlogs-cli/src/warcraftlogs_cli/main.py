@@ -76,12 +76,17 @@ def _doctor_payload() -> dict[str, Any]:
             "doctor": "ready",
             "rate_limit": "ready",
             "regions": "ready",
+            "expansions": "ready",
             "server": "ready",
+            "zone": "ready",
             "zones": "ready",
             "encounter": "ready",
             "guild": "ready",
+            "guild_rankings": "ready",
             "character": "ready",
+            "character_rankings": "ready",
             "report": "ready",
+            "reports": "ready",
             "report_fights": "ready",
             "user_auth": "planned",
         },
@@ -145,6 +150,34 @@ def _zone_payload(zone: dict[str, Any]) -> dict[str, Any]:
         ]
         if isinstance(encounters, list)
         else [],
+        "partitions": [
+            {
+                "id": partition.get("id"),
+                "name": partition.get("name"),
+                "compact_name": partition.get("compactName"),
+                "default": partition.get("default"),
+            }
+            for partition in (zone.get("partitions") if isinstance(zone.get("partitions"), list) else [])
+            if isinstance(partition, dict)
+        ],
+    }
+
+
+def _expansion_payload(expansion: dict[str, Any]) -> dict[str, Any]:
+    zones = expansion.get("zones")
+    zone_rows = [zone for zone in zones if isinstance(zone, dict)] if isinstance(zones, list) else []
+    return {
+        "id": expansion.get("id"),
+        "name": expansion.get("name"),
+        "zone_count": len(zone_rows),
+        "zones": [
+            {
+                "id": zone.get("id"),
+                "name": zone.get("name"),
+                "frozen": zone.get("frozen"),
+            }
+            for zone in zone_rows
+        ],
     }
 
 
@@ -196,6 +229,43 @@ def _guild_payload(guild: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _rank_positions_payload(positions: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(positions, dict):
+        return None
+    return {
+        "world": _rank_payload(positions.get("worldRank")),
+        "region": _rank_payload(positions.get("regionRank")),
+        "server": _rank_payload(positions.get("serverRank")),
+    }
+
+
+def _guild_rankings_payload(guild: dict[str, Any]) -> dict[str, Any]:
+    server = guild.get("server") if isinstance(guild.get("server"), dict) else {}
+    zone_ranking = guild.get("zoneRanking") if isinstance(guild.get("zoneRanking"), dict) else {}
+    return {
+        "id": guild.get("id"),
+        "name": guild.get("name"),
+        "server": _server_payload(server) if server else None,
+        "zone_ranking": {
+            "progress": _rank_positions_payload(zone_ranking.get("progress")),
+            "speed": _rank_positions_payload(zone_ranking.get("speed")),
+            "complete_raid_speed": _rank_positions_payload(zone_ranking.get("completeRaidSpeed")),
+        }
+        if zone_ranking
+        else None,
+    }
+
+
+def _archive_status_payload(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        "is_archived": value.get("isArchived"),
+        "is_accessible": value.get("isAccessible"),
+        "archive_date": value.get("archiveDate"),
+    }
+
+
 def _character_payload(character: dict[str, Any]) -> dict[str, Any]:
     faction = character.get("faction") if isinstance(character.get("faction"), dict) else {}
     server = character.get("server") if isinstance(character.get("server"), dict) else {}
@@ -235,7 +305,7 @@ def _report_payload(report: dict[str, Any]) -> dict[str, Any]:
         "start_time": report.get("startTime"),
         "end_time": report.get("endTime"),
         "visibility": report.get("visibility"),
-        "archive_status": report.get("archiveStatus"),
+        "archive_status": _archive_status_payload(report.get("archiveStatus")),
         "segments": report.get("segments"),
         "exported_segments": report.get("exportedSegments"),
         "zone": {"id": zone.get("id"), "name": zone.get("name")} if zone else None,
@@ -246,6 +316,83 @@ def _report_payload(report: dict[str, Any]) -> dict[str, Any]:
         }
         if guild
         else None,
+    }
+
+
+def _character_rankings_payload(character: dict[str, Any], *, top: int) -> dict[str, Any]:
+    server = character.get("server") if isinstance(character.get("server"), dict) else {}
+    faction = character.get("faction") if isinstance(character.get("faction"), dict) else {}
+    rankings = character.get("zoneRankings") if isinstance(character.get("zoneRankings"), dict) else {}
+    rankings_error = rankings.get("error") if isinstance(rankings.get("error"), str) else None
+    all_stars = rankings.get("allStars") if isinstance(rankings.get("allStars"), list) else []
+    ranking_rows = rankings.get("rankings") if isinstance(rankings.get("rankings"), list) else []
+    return {
+        "id": character.get("id"),
+        "canonical_id": character.get("canonicalID"),
+        "name": character.get("name"),
+        "level": character.get("level"),
+        "class_id": character.get("classID"),
+        "server": _server_payload(server) if server else None,
+        "faction": {"id": faction.get("id"), "name": faction.get("name")} if faction else None,
+        "summary": {
+            "zone": rankings.get("zone"),
+            "difficulty": rankings.get("difficulty"),
+            "metric": rankings.get("metric"),
+            "partition": rankings.get("partition"),
+            "size": rankings.get("size"),
+            "best_performance_average": rankings.get("bestPerformanceAverage"),
+            "median_performance_average": rankings.get("medianPerformanceAverage"),
+        }
+        if not rankings_error
+        else None,
+        "error": rankings_error,
+        "all_stars": [
+            {
+                "spec": row.get("spec"),
+                "points": row.get("points"),
+                "possible_points": row.get("possiblePoints"),
+                "rank": row.get("rank"),
+                "rank_percent": row.get("rankPercent"),
+                "region_rank": row.get("regionRank"),
+                "server_rank": row.get("serverRank"),
+                "total": row.get("total"),
+            }
+            for row in all_stars[:top]
+            if isinstance(row, dict)
+        ],
+        "rankings": [
+            {
+                "encounter": row.get("encounter"),
+                "spec": row.get("spec"),
+                "best_spec": row.get("bestSpec"),
+                "rank_percent": row.get("rankPercent"),
+                "median_percent": row.get("medianPercent"),
+                "total_kills": row.get("totalKills"),
+                "all_stars": row.get("allStars"),
+                "best_rank": row.get("bestRank"),
+                "best_amount": row.get("bestAmount"),
+                "fastest_kill": row.get("fastestKill"),
+            }
+            for row in ranking_rows[:top]
+            if isinstance(row, dict)
+        ],
+        "raw": rankings,
+    }
+
+
+def _reports_payload(pagination: dict[str, Any]) -> dict[str, Any]:
+    rows = pagination.get("data") if isinstance(pagination.get("data"), list) else []
+    return {
+        "pagination": {
+            "total": pagination.get("total"),
+            "per_page": pagination.get("per_page"),
+            "current_page": pagination.get("current_page"),
+            "from": pagination.get("from"),
+            "to": pagination.get("to"),
+            "last_page": pagination.get("last_page"),
+            "has_more_pages": pagination.get("has_more_pages"),
+        },
+        "reports": [_report_payload(report) for report in rows if isinstance(report, dict)],
     }
 
 
@@ -300,6 +447,20 @@ def regions(ctx: typer.Context) -> None:
     _emit(ctx, {"ok": True, "provider": "warcraftlogs", "count": len(regions_payload), "regions": regions_payload})
 
 
+@app.command("expansions")
+def expansions(ctx: typer.Context) -> None:
+    client = _client(ctx)
+    try:
+        rows = client.expansions()
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    expansions_payload = [_expansion_payload(row) for row in rows]
+    _emit(ctx, {"ok": True, "provider": "warcraftlogs", "count": len(expansions_payload), "expansions": expansions_payload})
+
+
 @app.command("server")
 def server(
     ctx: typer.Context,
@@ -341,6 +502,19 @@ def zones(
             "zones": zones_payload,
         },
     )
+
+
+@app.command("zone")
+def zone(ctx: typer.Context, zone_id: int) -> None:
+    client = _client(ctx)
+    try:
+        payload = client.zone(zone_id=zone_id)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(ctx, {"ok": True, "provider": "warcraftlogs", "zone": _zone_payload(payload)})
 
 
 @app.command("encounter")
@@ -403,6 +577,35 @@ def guild(
     )
 
 
+@app.command("guild-rankings")
+def guild_rankings(
+    ctx: typer.Context,
+    region: str,
+    realm: str,
+    name: str,
+    zone_id: int | None = typer.Option(None, "--zone-id", help="Optional Warcraft Logs zone ID."),
+    size: int | None = typer.Option(None, "--size", help="Optional raid size."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID for speed ranks."),
+) -> None:
+    client = _client(ctx)
+    try:
+        payload = client.guild_rankings(region=region, realm=realm, name=name, zone_id=zone_id, size=size, difficulty=difficulty)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": {"region": region, "realm": realm, "name": name, "zone_id": zone_id, "size": size, "difficulty": difficulty},
+            "guild_rankings": _guild_rankings_payload(payload),
+        },
+    )
+
+
 @app.command("character")
 def character(ctx: typer.Context, region: str, realm: str, name: str) -> None:
     client = _client(ctx)
@@ -420,6 +623,57 @@ def character(ctx: typer.Context, region: str, realm: str, name: str) -> None:
             "provider": "warcraftlogs",
             "query": {"region": region, "realm": realm, "name": name},
             "character": _character_payload(payload),
+        },
+    )
+
+
+@app.command("character-rankings")
+def character_rankings(
+    ctx: typer.Context,
+    region: str,
+    realm: str,
+    name: str,
+    zone_id: int | None = typer.Option(None, "--zone-id", help="Optional Warcraft Logs zone ID."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID."),
+    metric: str | None = typer.Option(None, "--metric", help="Optional ranking metric such as dps, hps, or tankhps."),
+    size: int | None = typer.Option(None, "--size", help="Optional raid size."),
+    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec slug filter."),
+    top: int = typer.Option(5, "--top", min=1, max=20, help="Number of top ranking rows to keep in the summary."),
+) -> None:
+    client = _client(ctx)
+    try:
+        payload = client.character_rankings(
+            region=region,
+            realm=realm,
+            name=name,
+            zone_id=zone_id,
+            difficulty=difficulty,
+            metric=metric,
+            size=size,
+            spec_name=spec_name,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": {
+                "region": region,
+                "realm": realm,
+                "name": name,
+                "zone_id": zone_id,
+                "difficulty": difficulty,
+                "metric": metric,
+                "size": size,
+                "spec_name": spec_name,
+                "top": top,
+            },
+            "character_rankings": _character_rankings_payload(payload, top=top),
         },
     )
 
@@ -444,6 +698,60 @@ def report(
             "ok": True,
             "provider": "warcraftlogs",
             "report": _report_payload(payload),
+        },
+    )
+
+
+@app.command("reports")
+def reports(
+    ctx: typer.Context,
+    guild_region: str | None = typer.Option(None, "--guild-region", help="Optional guild region for guild-scoped report queries."),
+    guild_realm: str | None = typer.Option(None, "--guild-realm", help="Optional guild realm for guild-scoped report queries."),
+    guild_name: str | None = typer.Option(None, "--guild-name", help="Optional guild name for guild-scoped report queries."),
+    limit: int = typer.Option(25, "--limit", min=1, max=100, help="Reports per page."),
+    page: int = typer.Option(1, "--page", min=1, help="Page number."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional report-range start time in milliseconds."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional report-range end time in milliseconds."),
+    zone_id: int | None = typer.Option(None, "--zone-id", help="Optional Warcraft Logs zone filter."),
+    game_zone_id: int | None = typer.Option(None, "--game-zone-id", help="Optional game zone filter."),
+) -> None:
+    client = _client(ctx)
+    try:
+        payload = client.reports(
+            guild_region=guild_region,
+            guild_realm=guild_realm,
+            guild_name=guild_name,
+            limit=limit,
+            page=page,
+            start_time=start_time,
+            end_time=end_time,
+            zone_id=zone_id,
+            game_zone_id=game_zone_id,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    report_payload = _reports_payload(payload)
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": {
+                "guild_region": guild_region,
+                "guild_realm": guild_realm,
+                "guild_name": guild_name,
+                "limit": limit,
+                "page": page,
+                "start_time": start_time,
+                "end_time": end_time,
+                "zone_id": zone_id,
+                "game_zone_id": game_zone_id,
+            },
+            "count": len(report_payload["reports"]),
+            **report_payload,
         },
     )
 

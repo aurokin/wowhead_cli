@@ -28,11 +28,16 @@ Implemented today:
   - `warcraftlogs doctor`
   - `warcraftlogs rate-limit`
   - `warcraftlogs regions`
+  - `warcraftlogs expansions`
   - `warcraftlogs server`
   - `warcraftlogs zones`
+  - `warcraftlogs zone`
   - `warcraftlogs encounter`
   - `warcraftlogs guild`
+  - `warcraftlogs guild-rankings`
   - `warcraftlogs character`
+  - `warcraftlogs character-rankings`
+  - `warcraftlogs reports`
   - `warcraftlogs report`
   - `warcraftlogs report-fights`
 - unit coverage for the current JSON contract
@@ -40,6 +45,10 @@ Implemented today:
   - `regions`
   - `server`
   - `guild`
+  - `expansions`
+  - `zone`
+  - `guild-rankings`
+  - `reports`
 
 Current intentional boundary:
 - standalone only for now
@@ -63,14 +72,10 @@ This means `warcraftlogs` should be planned as an official integration first, wi
 ## Immediate Next Steps
 
 Highest-value next implementation slices:
-- `zone <id>`
-- `expansions`
-- `guild-rankings`
-- `character-rankings`
-- `reports`
 - `report-events`
 - `report-table`
 - `report-graph`
+- make `character-rankings` more reliable across public characters before treating it as fully validated
 
 After that:
 - user-auth plumbing

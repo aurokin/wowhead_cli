@@ -42,6 +42,24 @@ def test_live_warcraftlogs_server_contract() -> None:
 
 
 @pytest.mark.live
+def test_live_warcraftlogs_expansions_and_zone_contracts() -> None:
+    _require_warcraftlogs_auth()
+    expansions_payload = _payload_for(["expansions"])
+
+    assert expansions_payload["provider"] == "warcraftlogs"
+    assert expansions_payload["count"] >= 1
+    expansion = expansions_payload["expansions"][0]
+    assert "id" in expansion
+    assert "name" in expansion
+
+    zone_payload = _payload_for(["zone", "38"])
+    assert zone_payload["provider"] == "warcraftlogs"
+    assert zone_payload["zone"]["id"] == 38
+    assert isinstance(zone_payload["zone"]["encounters"], list)
+    assert isinstance(zone_payload["zone"]["partitions"], list)
+
+
+@pytest.mark.live
 def test_live_warcraftlogs_guild_contract() -> None:
     _require_warcraftlogs_auth()
     payload = _payload_for(["guild", "us", "illidan", "Liquid"])
@@ -49,3 +67,25 @@ def test_live_warcraftlogs_guild_contract() -> None:
     assert payload["provider"] == "warcraftlogs"
     assert payload["guild"]["name"] == "Liquid"
     assert payload["guild"]["server"]["slug"] == "illidan"
+
+
+@pytest.mark.live
+def test_live_warcraftlogs_guild_rankings_contract() -> None:
+    _require_warcraftlogs_auth()
+    payload = _payload_for(["guild-rankings", "us", "illidan", "Liquid", "--zone-id", "38", "--size", "20", "--difficulty", "5"])
+
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["guild_rankings"]["name"] == "Liquid"
+    assert "progress" in payload["guild_rankings"]["zone_ranking"]
+
+
+@pytest.mark.live
+def test_live_warcraftlogs_reports_contract() -> None:
+    _require_warcraftlogs_auth()
+    payload = _payload_for(["reports", "--guild-region", "us", "--guild-realm", "illidan", "--guild-name", "Liquid", "--limit", "2"])
+
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["count"] >= 1
+    report = payload["reports"][0]
+    assert "code" in report
+    assert isinstance(report["archive_status"], dict) or report["archive_status"] is None

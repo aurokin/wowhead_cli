@@ -30,7 +30,7 @@ Completed:
 - working `raiderio` provider with direct lookup, search/resolve, and first analytics primitives
 - working `warcraft-wiki` provider with typed programming/reference surfaces and broad family coverage
 - working `wowprogress` provider with direct lookup, search/resolve, and first analytics primitives
-- working `warcraftlogs` provider with retail-only public OAuth + GraphQL metadata, guild, character, and report lookups
+- working `warcraftlogs` provider with retail-only public OAuth + GraphQL metadata, guild/character lookups, guild rankings, and first report-list/report-detail workflows
 - working `simc` provider with readonly source analysis, runtime helpers, and managed checkout flow
 - root `warcraft` skill
 
@@ -57,7 +57,7 @@ Active next step:
 - focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
 - expand `warcraftlogs` from the current retail public slice toward the planned full official feature set:
   - more world/static metadata
-  - deeper guild and character ranking surfaces
+  - deeper guild and character ranking surfaces, especially better public `character-rankings` reliability
   - broader report workflows
   - user auth after the public contract is tighter
 - roadmap cleanup after the recent provider quality passes
