@@ -108,6 +108,10 @@ Highest-value next implementation slices:
 - deepen report workflows beyond the current phase-1 slice:
   - safer event pagination patterns once `events(...)` can be validated more broadly
   - additional report detail surfaces after the current player/ranking slice is proven
+- start the deep encounter analytics slice for report-link-driven questions:
+  - encounter identity from report URLs
+  - fight-scoped actor/ability normalization
+  - typed buff/cast/damage workflows instead of ad hoc event math
 
 After that:
 - user-auth plumbing
@@ -481,6 +485,111 @@ These commands should support:
 - pagination via `nextPageTimestamp`
 - translation toggle
 - low-bandwidth toggles when the user does not need actor/ability expansion
+
+### Deep Encounter Analytics
+
+This is the next major product-quality target for `warcraftlogs`.
+
+The goal is to make report-link questions safe and repeatable for agents without pushing them into inconsistent manual event calculations.
+
+Typical target questions:
+- buff uptime for one or more players in a specific fight
+- cast sequences during a pull or sub-window
+- damage on a specific wave of enemies
+- damage from a specific ability or combination of players
+- encounter-phase and wave breakdowns from one report URL
+
+The CLI should own the difficult parts:
+- report URL parsing
+- fight selection and encounter identity
+- actor normalization
+- ability normalization
+- windowing and pagination
+- wave or phase segmentation
+- typed summaries with explicit scope and provenance
+
+The agent should not be expected to:
+- hand-stitch paginated event streams
+- infer wave boundaries from raw timestamps alone
+- compute buff uptime from ad hoc event joins
+- merge player, ability, and target identity manually across inconsistent slices
+
+#### Planned Encounter Command Family
+
+- `warcraftlogs encounter <report-link-or-code>`
+- `warcraftlogs encounter-players <report-link-or-code>`
+- `warcraftlogs encounter-buffs <report-link-or-code>`
+- `warcraftlogs encounter-casts <report-link-or-code>`
+- `warcraftlogs encounter-damage-breakdown <report-link-or-code>`
+- `warcraftlogs encounter-waves <report-link-or-code>`
+- `warcraftlogs encounter-phases <report-link-or-code>`
+
+These commands should accept:
+- report code or full report URL
+- `--fight-id`
+- `--encounter-id`
+- `--start-time`
+- `--end-time`
+- `--source`
+- `--target`
+- `--ability`
+- `--hostility-type`
+- `--difficulty`
+- `--kill-only`
+- `--wipe-only`
+
+#### Encounter Contract Principles
+
+These commands should:
+- require an explicit scope when whole-report analytics would be misleading or too expensive
+- expose fight/window provenance in every payload
+- surface truncation and pagination honestly
+- prefer typed summary rows over raw GraphQL passthrough
+- make actor, ability, and target identity stable across follow-up commands
+
+They should not:
+- pretend a raw event slice is a stable answer if Warcraft Logs returned partial or null data
+- let agents silently compare different windows or fight selections
+- flatten source uncertainty into fake precision
+
+#### Planned Summary Shapes
+
+The encounter analytics layer should provide first-class summaries for:
+- buff uptime:
+  - uptime seconds
+  - uptime percent
+  - applications
+  - refreshes
+  - scoped player and fight identity
+- cast sequences:
+  - ordered casts
+  - timestamps relative to pull
+  - optional player and window filters
+- damage breakdowns:
+  - by player
+  - by ability
+  - by target
+  - by target group or wave
+- wave and phase summaries:
+  - named or inferred segment boundaries
+  - segment-local damage/cast/buff summaries
+  - explicit confidence when segmentation is inferred instead of directly exposed
+
+#### Implementation Order
+
+Recommended order:
+1. `encounter` and report-link parsing
+2. `encounter-players`
+3. `encounter-buffs`
+4. `encounter-casts`
+5. `encounter-damage-breakdown`
+6. `encounter-waves`
+7. `encounter-phases`
+
+This order is deliberate:
+- identity and scope first
+- then the high-value questions agents most often need
+- then the harder segmentation work after actor/ability/window normalization is proven
 
 ### Report Listing Workflows
 

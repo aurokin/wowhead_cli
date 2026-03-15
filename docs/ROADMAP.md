@@ -60,6 +60,7 @@ Active next step:
   - more world/static metadata
   - deeper guild and character ranking surfaces, especially better public `character-rankings` reliability
   - broader report workflows
+  - deep encounter analytics from report links with typed buff/cast/damage/wave commands so agents do not have to hand-calculate unstable event answers
   - user auth after the public contract is tighter
 - use `warcraftlogs` and `blizzard-api` to drive the shared OAuth-oriented auth architecture in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/wowhead_cli/docs/AUTH_ARCHITECTURE_PLAN.md)
 - keep `raidbots` in the auth picture as a likely future session/workflow consumer, not as a driver of the shared OAuth abstraction
