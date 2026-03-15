@@ -67,28 +67,10 @@ Reasons:
 - Python is a strong fit for HTML extraction, HTTP clients, CLI work, local tooling orchestration, and file-backed data workflows
 - the wrapper and shared layers benefit more from iteration speed and maintainability than from raw runtime performance
 
-### TypeScript Exception
-
-A service-specific package may use TypeScript if there is a strong service-specific reason.
-
-`warcraftlogs` is the best candidate for this exception because:
-- it is API-first
-- it is GraphQL-heavy
-- it may benefit from schema-driven typed tooling
-
-### Rules For Mixed-Language Packages
-
-If a service uses TypeScript:
-- it must remain isolated to that service package
-- it must not force the wrapper to move out of Python
-- it must not become the implementation language for shared core libraries unless that decision is revisited explicitly
-- communication with `warcraft` should be through a stable CLI contract, not in-process imports
-
 For now, the intended baseline is:
 - shared libraries: Python
 - wrapper: Python
-- most services: Python
-- TypeScript allowed by exception for individual service packages
+- all services: Python
 
 ## Package Boundaries
 
@@ -224,7 +206,7 @@ Service-specific root skills can be added later if they prove useful. For now, t
 - Should users be able to install one umbrella package? Yes.
 - Should users be able to install one service package? Yes.
 - Should Python remain the default? Yes.
-- Can `warcraftlogs` use TypeScript if justified? Yes.
+- Is Python the language for all services? Yes.
 
 ## Linked Planning Docs
 

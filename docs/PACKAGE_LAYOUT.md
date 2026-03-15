@@ -89,14 +89,6 @@ Individual service packages should also remain installable on their own.
 
 That means the umbrella package is a convenience distribution, not the only supported entrypoint.
 
-## Mixed-Language Layout
-
-If a service package uses another language, such as a future TypeScript `warcraftlogs` package:
-- it still lives under `packages/`
-- it still owns its own package config
-- it still communicates with `warcraft` through a stable CLI boundary
-- it does not change the Python-first shared-package layout
-
 ## Root-Level Responsibilities
 
 The repo root should own:
