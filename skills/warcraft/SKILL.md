@@ -43,16 +43,17 @@ Use `warcraft` first when the caller does not already know which provider they n
 
 ## Read Next
 
-- `wowhead`: see [references/wowhead.md](/home/auro/code/wowhead_cli/skills/warcraft/references/wowhead.md)
-- `method`: see [references/method.md](/home/auro/code/wowhead_cli/skills/warcraft/references/method.md)
-- `icy-veins`: see [references/icy-veins.md](/home/auro/code/wowhead_cli/skills/warcraft/references/icy-veins.md)
-- `raiderio`: see [references/raiderio.md](/home/auro/code/wowhead_cli/skills/warcraft/references/raiderio.md)
-- `warcraft-wiki`: see [references/warcraft-wiki.md](/home/auro/code/wowhead_cli/skills/warcraft/references/warcraft-wiki.md)
-- `wowprogress`: see [references/wowprogress.md](/home/auro/code/wowhead_cli/skills/warcraft/references/wowprogress.md)
-- `warcraftlogs`: see [references/warcraftlogs.md](/home/auro/code/wowhead_cli/skills/warcraft/references/warcraftlogs.md)
-- `simc`: see [references/simc.md](/home/auro/code/wowhead_cli/skills/warcraft/references/simc.md)
+- `wowhead`: see `references/wowhead.md`
+- `method`: see `references/method.md`
+- `icy-veins`: see `references/icy-veins.md`
+- `raiderio`: see `references/raiderio.md`
+- `warcraft-wiki`: see `references/warcraft-wiki.md`
+- `wowprogress`: see `references/wowprogress.md`
+- `warcraftlogs`: see `references/warcraftlogs.md`
+- `simc`: see `references/simc.md`
 
 ## Notes
 
 - This skill is the umbrella consumer skill.
 - Keep provider details in the reference files so they can become standalone skills later without rewriting the root skill.
+- Keep reference links portable: use relative paths like `references/simc.md`, not machine-specific absolute paths.

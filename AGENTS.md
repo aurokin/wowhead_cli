@@ -34,6 +34,7 @@ Co-Authored-By: OpenAI Codex <noreply@openai.com>
 - Skills are for CLI consumers and workflow usage.
 - Keep repo maintenance, roadmap, packaging, and internal architecture rules out of skill docs.
 - `skills/warcraft/SKILL.md` and `skills/warcraft/references/*.md` are the source of truth for consumer skill content.
+- In skill files, reference bundled docs with portable relative paths like `references/simc.md`, not absolute filesystem paths.
 - Generated provider subskills belong under `.generated-skills/` and must not be edited manually.
 - Do not mention generation or internal maintenance workflow inside consumer skill files.
 
