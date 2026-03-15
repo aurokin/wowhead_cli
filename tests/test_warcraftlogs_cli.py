@@ -845,6 +845,7 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["auth"]["state"]["exists"] is False
     assert payload["capabilities"]["guild"] == "ready"
     assert payload["capabilities"]["report_fights"] == "ready"
+    assert payload["capabilities"]["boss_spec_usage"] == "ready"
     assert payload["capabilities"]["report_encounter_buffs"] == "ready"
     assert payload["capabilities"]["report_encounter_damage_breakdown"] == "ready"
 
@@ -1426,6 +1427,39 @@ def test_warcraftlogs_kill_time_distribution_returns_histogram(monkeypatch) -> N
     assert payload["sample"]["filtered_kill_count"] == 1
     assert payload["distribution"]["statistics"]["min"] == 100.0
     assert payload["distribution"]["rows"][0]["start_seconds"] == 90
+
+
+def test_warcraftlogs_boss_spec_usage_returns_sorted_spec_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "boss-spec-usage",
+            "--zone-id",
+            "38",
+            "--boss-id",
+            "3012",
+            "--difficulty",
+            "5",
+            "--top",
+            "5",
+            "--report-pages",
+            "1",
+            "--reports-per-page",
+            "10",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "boss_spec_usage"
+    assert payload["ranking_basis"] == "sampled_finished_kill_cohort_spec_presence"
+    assert payload["sample"]["filtered_kill_count"] == 1
+    assert payload["sample"]["sampled_player_row_count"] == 2
+    assert payload["spec_usage"][0]["spec_name"] == "Protection"
+    assert payload["spec_usage"][0]["role"] == "tanks"
+    assert payload["spec_usage"][0]["kill_presence_count"] == 1
+    assert payload["spec_usage"][0]["percent_of_kills"] == 100.0
 
 
 def test_warcraftlogs_cross_report_commands_require_boss_scope(monkeypatch) -> None:

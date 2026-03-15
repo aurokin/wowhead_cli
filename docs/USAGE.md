@@ -465,6 +465,7 @@ warcraftlogs report-encounter-damage-breakdown 'https://www.warcraftlogs.com/rep
 warcraftlogs boss-kills --zone-id 38 --boss-id 3012 --difficulty 5 --top 10
 warcraftlogs top-kills --zone-id 38 --boss-name 'Dimensius' --difficulty 5 --top 5
 warcraftlogs kill-time-distribution --zone-id 38 --boss-id 3012 --difficulty 5 --bucket-seconds 30
+warcraftlogs boss-spec-usage --zone-id 38 --boss-id 3012 --difficulty 5 --top 10
 ```
 
 Warcraft Logs phase-1 behavior:
@@ -530,9 +531,11 @@ EOF
     - `--window-end-ms`
   - these commands preserve the resolved absolute report timestamps in the payload so the agent does not have to calculate them
 - `boss-kills`, `top-kills`, and `kill-time-distribution` are the first sampled cross-report analytics slice:
+- `boss-kills`, `top-kills`, `kill-time-distribution`, and `boss-spec-usage` are the current sampled cross-report analytics slice:
   - they sample public finished reports for one zone
   - they rank within the sampled cohort, not all possible Warcraft Logs data
   - they expose sample, exclusion, and truncation metadata so the agent does not have to pretend the sample is global
+  - `boss-spec-usage` summarizes spec presence inside the sampled finished-kill cohort after boss/difficulty/spec/time filters have already been applied
 - `report-events` is available now, but it intentionally requires a narrowed slice:
   - `--fight-id`
   - `--encounter-id`

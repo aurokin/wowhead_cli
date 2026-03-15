@@ -163,6 +163,21 @@ def test_live_warcraftlogs_boss_kills_contract() -> None:
 
 
 @pytest.mark.live
+def test_live_warcraftlogs_boss_spec_usage_contract() -> None:
+    _require_warcraftlogs_auth()
+    payload = _payload_for(
+        ["boss-spec-usage", "--zone-id", "38", "--boss-id", "3012", "--difficulty", "5", "--top", "5", "--report-pages", "1", "--reports-per-page", "5"]
+    )
+
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["kind"] == "boss_spec_usage"
+    assert payload["ranking_basis"] == "sampled_finished_kill_cohort_spec_presence"
+    assert payload["sample"]["filtered_kill_count"] >= 0
+    assert payload["sample"]["distinct_spec_count"] >= payload["count"]
+    assert isinstance(payload["spec_usage"], list)
+
+
+@pytest.mark.live
 def test_live_warcraftlogs_report_encounter_contracts() -> None:
     _require_warcraftlogs_auth()
     code, fight_id = _public_raid_report()

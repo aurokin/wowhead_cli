@@ -52,6 +52,7 @@ Best fits:
   - `warcraftlogs boss-kills --zone-id ... --boss-id ... --difficulty ...`
   - `warcraftlogs top-kills --zone-id ... --boss-id ... --difficulty ...`
   - `warcraftlogs kill-time-distribution --zone-id ... --boss-id ... --difficulty ...`
+  - `warcraftlogs boss-spec-usage --zone-id ... --boss-id ... --difficulty ...`
 
 ## Current Boundaries
 
@@ -114,6 +115,7 @@ Best fits:
   - `warcraftlogs boss-kills --zone-id 38 --boss-id 3012 --difficulty 5 --top 10`
   - `warcraftlogs top-kills --zone-id 38 --boss-name Dimensius --difficulty 5 --top 5`
   - `warcraftlogs kill-time-distribution --zone-id 38 --boss-id 3012 --difficulty 5 --bucket-seconds 30`
+  - `warcraftlogs boss-spec-usage --zone-id 38 --boss-id 3012 --difficulty 5 --top 10`
 
 ## Notes
 
@@ -135,6 +137,7 @@ Best fits:
 - `report-events` can still return `events: null` for some valid report slices; use it as a typed event-query surface, not a guarantee of non-empty data
 - `report-rankings` can legitimately return zero rows for a valid public report slice
 - `boss-kills`, `top-kills`, and `kill-time-distribution` are sampled cross-report analytics, not a promise that the CLI searched every possible public report
+- `boss-spec-usage` is also sampled cross-report analytics; it reports spec presence within the filtered finished-kill cohort, not a site-wide meta snapshot
 - those sampled analytics intentionally skip unfinished live reports and surface sample/truncation metadata instead of faking global certainty
 - `warcraftlogs auth status` is the first place to check when auth looks wrong; it shows credential source and whether any persisted auth state exists
 - `warcraftlogs auth login --redirect-uri ...` and `warcraftlogs auth pkce-login --redirect-uri ...` are two-step flows:

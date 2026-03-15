@@ -70,6 +70,7 @@ Implemented today:
   - `warcraftlogs boss-kills`
   - `warcraftlogs top-kills`
   - `warcraftlogs kill-time-distribution`
+  - `warcraftlogs boss-spec-usage`
 - unit coverage for the current JSON contract
 - live coverage for:
   - `regions`
@@ -91,6 +92,7 @@ Implemented today:
   - live `report-encounter-players`
   - constrained `report-encounter-damage-breakdown`
   - sampled `boss-kills`
+  - sampled `boss-spec-usage`
 
 Current intentional boundary:
 - standalone only for now
