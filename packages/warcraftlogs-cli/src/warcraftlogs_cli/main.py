@@ -140,7 +140,7 @@ def _doctor_payload() -> dict[str, Any]:
             "report_master_data": "ready",
             "report_player_details": "ready",
             "report_rankings": "ready",
-            "user_auth": "planned",
+            "user_auth": "manual_ready",
         },
     }
 
@@ -688,6 +688,18 @@ def _token_payload_summary(payload: dict[str, Any], *, auth_mode: str, redirect_
     }
 
 
+def _active_auth_mode_from_state(state: dict[str, Any]) -> str:
+    if state.get("has_access_token") and isinstance(state.get("auth_mode"), str):
+        return str(state["auth_mode"])
+    return "client_credentials"
+
+
+def _endpoint_family_from_state(state: dict[str, Any]) -> str:
+    if state.get("has_access_token") and state.get("auth_mode") in {"authorization_code", "pkce"}:
+        return "user"
+    return "client"
+
+
 @auth_app.command("status")
 def auth_status(ctx: typer.Context) -> None:
     auth = load_warcraftlogs_auth_config()
@@ -701,16 +713,8 @@ def auth_status(ctx: typer.Context) -> None:
             "auth": {
                 "configured": auth.configured,
                 "flow": "oauth_client_credentials",
-                "active_mode": (
-                    state.get("auth_mode")
-                    if state.get("has_access_token") and isinstance(state.get("auth_mode"), str)
-                    else "client_credentials"
-                ),
-                "endpoint_family": (
-                    "user"
-                    if state.get("has_access_token") and state.get("auth_mode") in {"authorization_code", "pkce"}
-                    else "client"
-                ),
+                "active_mode": _active_auth_mode_from_state(state),
+                "endpoint_family": _endpoint_family_from_state(state),
                 "credential_source": credential_source,
                 "lookup_order": [".env.local", warcraftlogs_provider_env_path(), "environment"],
                 "state": state,
@@ -724,26 +728,74 @@ def auth_status(ctx: typer.Context) -> None:
     )
 
 
+@auth_app.command("client")
+def auth_client(ctx: typer.Context) -> None:
+    auth = load_warcraftlogs_auth_config()
+    credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
+    client_id = auth.client_id or ""
+    display_client_id = f"{client_id[:8]}..." if len(client_id) > 8 else client_id
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "client": {
+                "configured": auth.configured,
+                "credential_source": credential_source,
+                "client_id": display_client_id or None,
+                "site_profile": RETAIL_PROFILE.key,
+                "authorize_url": RETAIL_PROFILE.oauth_authorize_url,
+                "token_url": RETAIL_PROFILE.oauth_token_url,
+                "client_api_url": RETAIL_PROFILE.api_url,
+                "user_api_url": RETAIL_PROFILE.user_api_url,
+            },
+        },
+    )
+
+
+@auth_app.command("token")
+def auth_token(ctx: typer.Context) -> None:
+    state = provider_auth_status("warcraftlogs")
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "token": {
+                "active_mode": _active_auth_mode_from_state(state),
+                "endpoint_family": _endpoint_family_from_state(state),
+                "state": state,
+            },
+        },
+    )
+
+
 @auth_app.command("login")
 def auth_login(
     ctx: typer.Context,
     redirect_uri: str = typer.Option(..., "--redirect-uri", help="Registered redirect URI for the Warcraft Logs OAuth client."),
     code: str | None = typer.Option(None, "--code", help="Authorization code returned by the redirect callback."),
     state: str | None = typer.Option(None, "--state", help="State value returned by the redirect callback."),
+    scope: list[str] = typer.Option([], "--scope", help="Optional scope to request. Repeat as needed."),
 ) -> None:
     if not code:
         client = _client(ctx)
         try:
             pending_state = _random_state_token()
+            scopes = [item.strip() for item in scope if item.strip()]
             saved_path = save_provider_auth_state(
                 "warcraftlogs",
                 {
                     "pending_auth_mode": "authorization_code",
                     "pending_state": pending_state,
                     "redirect_uri": redirect_uri,
+                    "requested_scopes": scopes,
                 },
             )
             authorize_url = client.authorization_code_url(redirect_uri=redirect_uri, state=pending_state)
+            if scopes:
+                joiner = "&" if "?" in authorize_url else "?"
+                authorize_url = f"{authorize_url}{joiner}scope={'+'.join(scopes)}"
         finally:
             client.close()
         _emit(
@@ -756,6 +808,7 @@ def auth_login(
                 "authorize_url": authorize_url,
                 "redirect_uri": redirect_uri,
                 "state": pending_state,
+                "requested_scopes": scopes,
                 "state_path": str(saved_path),
             },
         )
@@ -779,6 +832,8 @@ def auth_login(
     finally:
         client.close()
     token_summary = _token_payload_summary(payload, auth_mode="authorization_code", redirect_uri=redirect_uri)
+    if isinstance(pending.get("requested_scopes"), list):
+        token_summary["requested_scopes"] = pending.get("requested_scopes")
     saved_path = save_provider_auth_state("warcraftlogs", token_summary)
     _emit(
         ctx,
@@ -805,6 +860,7 @@ def auth_pkce_login(
     redirect_uri: str = typer.Option(..., "--redirect-uri", help="Registered redirect URI for the Warcraft Logs OAuth client."),
     code: str | None = typer.Option(None, "--code", help="Authorization code returned by the redirect callback."),
     state: str | None = typer.Option(None, "--state", help="State value returned by the redirect callback."),
+    scope: list[str] = typer.Option([], "--scope", help="Optional scope to request. Repeat as needed."),
 ) -> None:
     if not code:
         client = _client(ctx)
@@ -812,6 +868,7 @@ def auth_pkce_login(
             pending_state = _random_state_token()
             code_verifier = _pkce_verifier()
             code_challenge = _pkce_challenge(code_verifier)
+            scopes = [item.strip() for item in scope if item.strip()]
             saved_path = save_provider_auth_state(
                 "warcraftlogs",
                 {
@@ -819,6 +876,7 @@ def auth_pkce_login(
                     "pending_state": pending_state,
                     "redirect_uri": redirect_uri,
                     "code_verifier": code_verifier,
+                    "requested_scopes": scopes,
                 },
             )
             authorize_url = client.pkce_code_url(
@@ -826,6 +884,9 @@ def auth_pkce_login(
                 state=pending_state,
                 code_challenge=code_challenge,
             )
+            if scopes:
+                joiner = "&" if "?" in authorize_url else "?"
+                authorize_url = f"{authorize_url}{joiner}scope={'+'.join(scopes)}"
         finally:
             client.close()
         _emit(
@@ -838,6 +899,7 @@ def auth_pkce_login(
                 "authorize_url": authorize_url,
                 "redirect_uri": redirect_uri,
                 "state": pending_state,
+                "requested_scopes": scopes,
                 "state_path": str(saved_path),
             },
         )
@@ -864,6 +926,8 @@ def auth_pkce_login(
     finally:
         client.close()
     token_summary = _token_payload_summary(payload, auth_mode="pkce", redirect_uri=redirect_uri)
+    if isinstance(pending.get("requested_scopes"), list):
+        token_summary["requested_scopes"] = pending.get("requested_scopes")
     saved_path = save_provider_auth_state("warcraftlogs", token_summary)
     _emit(
         ctx,
@@ -895,6 +959,31 @@ def auth_logout(ctx: typer.Context) -> None:
             "auth": {
                 "state_path": str(provider_state_path("warcraftlogs")),
                 "removed": removed,
+            },
+        },
+    )
+
+
+@auth_app.command("whoami")
+def auth_whoami(ctx: typer.Context) -> None:
+    client = _client(ctx)
+    try:
+        payload = client.current_user()
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "endpoint_family": "user",
+            "user": {
+                "id": payload.get("id"),
+                "name": payload.get("name"),
+                "avatar": payload.get("avatar"),
             },
         },
     )

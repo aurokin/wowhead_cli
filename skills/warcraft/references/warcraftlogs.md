@@ -13,6 +13,9 @@ Best fits:
 - health/auth:
   - `warcraftlogs doctor`
   - `warcraftlogs auth status`
+  - `warcraftlogs auth client`
+  - `warcraftlogs auth token`
+  - `warcraftlogs auth whoami`
   - `warcraftlogs auth login --redirect-uri <uri>`
   - `warcraftlogs auth pkce-login --redirect-uri <uri>`
   - `warcraftlogs auth logout`
@@ -42,7 +45,7 @@ Best fits:
 ## Current Boundaries
 
 - current support is retail/main site only
-- current auth is public OAuth client credentials only
+- public OAuth client credentials are the default auth mode
 - manual user-auth groundwork now exists for authorization-code and PKCE exchange
 - current surface is standalone; wrapper integration is deferred
 - current commands use typed payloads, not raw GraphQL passthrough
@@ -100,3 +103,5 @@ Best fits:
 - `warcraftlogs auth login --redirect-uri ...` and `warcraftlogs auth pkce-login --redirect-uri ...` are two-step flows:
   - first run prints the authorize URL and saves pending state locally
   - second run exchanges the returned `code` and `state`
+- `warcraftlogs auth whoami` is the clearest verification that a saved user token actually works against the private user endpoint
+- add `--scope view-user-profile` when you want a token that can access current-user profile fields

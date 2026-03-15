@@ -4,6 +4,7 @@ import json
 
 import pytest
 from typer.testing import CliRunner
+from warcraft_core.auth import provider_auth_status
 from warcraftlogs_cli.client import load_warcraftlogs_auth_config
 from warcraftlogs_cli.main import app
 
@@ -19,6 +20,12 @@ def _payload_for(args: list[str]) -> dict[str, object]:
 def _require_warcraftlogs_auth() -> None:
     if not load_warcraftlogs_auth_config().configured:
         pytest.skip("Warcraft Logs credentials are not configured.")
+
+
+def _require_warcraftlogs_user_auth() -> None:
+    state = provider_auth_status("warcraftlogs")
+    if not (state.get("has_access_token") and state.get("auth_mode") in {"authorization_code", "pkce"} and not state.get("expired")):
+        pytest.skip("Warcraft Logs user auth token is not configured.")
 
 
 def _public_raid_report() -> tuple[str, int]:
@@ -43,6 +50,20 @@ def test_live_warcraftlogs_regions_contract() -> None:
     assert payload["provider"] == "warcraftlogs"
     assert payload["count"] >= 1
     assert any(region["slug"] == "us" for region in payload["regions"])
+
+
+@pytest.mark.live
+def test_live_warcraftlogs_auth_metadata_contract() -> None:
+    _require_warcraftlogs_auth()
+
+    status_payload = _payload_for(["auth", "status"])
+    assert status_payload["provider"] == "warcraftlogs"
+    assert status_payload["auth"]["configured"] is True
+
+    client_payload = _payload_for(["auth", "client"])
+    assert client_payload["provider"] == "warcraftlogs"
+    assert client_payload["client"]["configured"] is True
+    assert client_payload["client"]["client_api_url"].endswith("/api/v2/client")
 
 
 @pytest.mark.live
@@ -150,3 +171,15 @@ def test_live_warcraftlogs_report_detail_contracts() -> None:
     assert rankings_payload["query"]["compare"] == "Rankings"
     assert rankings_payload["query"]["timeframe"] == "Historical"
     assert "rankings" in rankings_payload
+
+
+@pytest.mark.live
+def test_live_warcraftlogs_user_whoami_contract() -> None:
+    _require_warcraftlogs_auth()
+    _require_warcraftlogs_user_auth()
+
+    payload = _payload_for(["auth", "whoami"])
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["endpoint_family"] == "user"
+    assert isinstance(payload["user"]["id"], int)
+    assert isinstance(payload["user"]["name"], str) and payload["user"]["name"]

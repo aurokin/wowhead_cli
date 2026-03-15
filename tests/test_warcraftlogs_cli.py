@@ -48,6 +48,13 @@ class _FakeWarcraftLogsClient:
             "expires_in": 3600,
         }
 
+    def current_user(self) -> dict[str, object]:
+        return {
+            "id": 55,
+            "name": "Auro",
+            "avatar": "https://assets.example/avatar.png",
+        }
+
     def rate_limit(self) -> dict[str, object]:
         return {
             "limitPerHour": 3600,
@@ -615,6 +622,49 @@ def test_warcraftlogs_auth_status_reports_shared_state_summary(monkeypatch) -> N
     assert payload["auth"]["grants"]["pkce"] == "ready_manual_exchange"
 
 
+def test_warcraftlogs_auth_client_reports_endpoint_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local", "client_id": "1234567890abcdef"})(),
+    )
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "client"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["client"]["configured"] is True
+    assert payload["client"]["client_id"] == "12345678..."
+    assert payload["client"]["client_api_url"].endswith("/api/v2/client")
+    assert payload["client"]["user_api_url"].endswith("/api/v2/user")
+
+
+def test_warcraftlogs_auth_token_reports_state_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": True,
+            "readable": True,
+            "valid_json": True,
+            "auth_mode": "pkce",
+            "pending_auth_mode": None,
+            "has_pending_state": False,
+            "has_access_token": True,
+            "has_refresh_token": True,
+            "expires_at": 1500.0,
+            "expired": False,
+        },
+    )
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "token"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["token"]["active_mode"] == "pkce"
+    assert payload["token"]["endpoint_family"] == "user"
+    assert payload["token"]["state"]["has_refresh_token"] is True
+
+
 def test_warcraftlogs_auth_login_generates_authorize_url(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state-home"))
     monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
@@ -631,6 +681,29 @@ def test_warcraftlogs_auth_login_generates_authorize_url(monkeypatch, tmp_path) 
     assert payload["step"] == "authorize"
     assert payload["state"] == "pending-state-123"
     assert "oauth/authorize" in payload["authorize_url"]
+
+
+def test_warcraftlogs_auth_login_can_request_scope(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state-home"))
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr("warcraftlogs_cli.main._random_state_token", lambda: "pending-state-123")
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "auth",
+            "login",
+            "--redirect-uri",
+            "http://127.0.0.1:8787/callback",
+            "--scope",
+            "view-user-profile",
+        ],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["requested_scopes"] == ["view-user-profile"]
+    assert "scope=view-user-profile" in payload["authorize_url"]
 
 
 def test_warcraftlogs_auth_login_exchanges_code(monkeypatch, tmp_path) -> None:
@@ -693,6 +766,17 @@ def test_warcraftlogs_auth_pkce_login_generates_authorize_url(monkeypatch, tmp_p
     assert payload["step"] == "authorize"
     assert payload["state"] == "pending-state-456"
     assert "challenge-123" in payload["authorize_url"]
+
+
+def test_warcraftlogs_auth_whoami_uses_user_endpoint_client(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "whoami"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["endpoint_family"] == "user"
+    assert payload["user"]["name"] == "Auro"
 
 
 def test_warcraftlogs_auth_logout_removes_state(monkeypatch, tmp_path) -> None:

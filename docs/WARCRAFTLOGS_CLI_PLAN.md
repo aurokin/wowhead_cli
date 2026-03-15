@@ -20,6 +20,7 @@ Implemented today:
 - manual user-auth groundwork for:
   - authorization code flow
   - PKCE flow
+- persisted user-token metadata and private-endpoint verification via `warcraftlogs auth whoami`
 - auth lookup order:
   - repo-local `.env.local`
   - XDG config: `~/.config/warcraft/providers/warcraftlogs.env`
@@ -32,6 +33,9 @@ Implemented today:
 - commands:
   - `warcraftlogs doctor`
   - `warcraftlogs auth status`
+  - `warcraftlogs auth client`
+  - `warcraftlogs auth token`
+  - `warcraftlogs auth whoami`
   - `warcraftlogs auth login`
   - `warcraftlogs auth pkce-login`
   - `warcraftlogs auth logout`

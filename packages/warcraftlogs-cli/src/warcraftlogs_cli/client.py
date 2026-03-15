@@ -28,6 +28,18 @@ query RateLimit {
 }
 """
 
+CURRENT_USER_QUERY = """
+query CurrentUser {
+  userData {
+    currentUser {
+      id
+      name
+      avatar
+    }
+  }
+}
+"""
+
 REGIONS_QUERY = """
 query Regions {
   worldData {
@@ -997,6 +1009,21 @@ class WarcraftLogsClient:
         self._token_expires_at = now + int(expires_in)
         return token
 
+    def _user_token(self) -> str:
+        payload = load_provider_auth_state("warcraftlogs")
+        if not isinstance(payload, dict):
+            raise WarcraftLogsClientError("missing_user_auth", "No Warcraft Logs user token is saved locally.")
+        auth_mode = payload.get("auth_mode")
+        token = payload.get("access_token")
+        expires_at = payload.get("expires_at")
+        if auth_mode not in {"authorization_code", "pkce"}:
+            raise WarcraftLogsClientError("missing_user_auth", "Saved Warcraft Logs auth state is not a user-auth token.")
+        if not isinstance(token, str) or not token.strip():
+            raise WarcraftLogsClientError("missing_user_auth", "Saved Warcraft Logs auth state does not include an access token.")
+        if isinstance(expires_at, (int, float)) and time.time() >= float(expires_at):
+            raise WarcraftLogsClientError("user_token_expired", "Saved Warcraft Logs user token has expired. Re-run the auth flow.")
+        return token
+
     @property
     def site(self) -> WarcraftLogsSiteProfile:
         return self._site
@@ -1047,6 +1074,65 @@ class WarcraftLogsClient:
         if not isinstance(payload, dict):
             raise WarcraftLogsClientError("auth_failed", "Warcraft Logs returned an invalid PKCE token response.")
         return payload
+
+    def _graphql_user(
+        self,
+        *,
+        operation_name: str,
+        query: str,
+        variables: dict[str, Any] | None,
+        namespace: str,
+        ttl_seconds: int,
+    ) -> dict[str, Any]:
+        cache_payload = {"operation_name": operation_name, "variables": variables or {}}
+        cache_key = self._cache_key(namespace, cache_payload)
+        cached = self._read_cache(cache_key)
+        if isinstance(cached, dict):
+            return cached
+        response = request_with_retries(
+            self._client(),
+            self._site.user_api_url,
+            method="POST",
+            retry_attempts=self._retry_attempts,
+            headers={
+                "Authorization": f"Bearer {self._user_token()}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "operationName": operation_name,
+                "query": query,
+                "variables": variables or {},
+            },
+        )
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise WarcraftLogsClientError("invalid_response", f"Unexpected Warcraft Logs user response shape for {operation_name}.")
+        errors = payload.get("errors")
+        if isinstance(errors, list) and errors:
+            first = errors[0]
+            message = first.get("message") if isinstance(first, dict) else None
+            raise WarcraftLogsClientError("graphql_error", message or f"Warcraft Logs returned GraphQL errors for {operation_name}.")
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise WarcraftLogsClientError("invalid_response", f"Warcraft Logs returned no user data for {operation_name}.")
+        self._write_cache(cache_key, data, ttl_seconds=ttl_seconds)
+        return data
+
+    def current_user(self) -> dict[str, Any]:
+        data = self._graphql_user(
+            operation_name="CurrentUser",
+            query=CURRENT_USER_QUERY,
+            variables=None,
+            namespace="user_current",
+            ttl_seconds=self._metadata_ttl,
+        )
+        user_data = data.get("userData")
+        if not isinstance(user_data, dict):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs user data was missing from the current-user response.")
+        current_user = user_data.get("currentUser")
+        if not isinstance(current_user, dict):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs did not return the current user for the saved token.")
+        return current_user
 
     def _graphql(
         self,

@@ -426,6 +426,9 @@ WowProgress phase-1 behavior:
 ```bash
 warcraftlogs doctor
 warcraftlogs auth status
+warcraftlogs auth client
+warcraftlogs auth token
+warcraftlogs auth whoami
 warcraftlogs auth login --redirect-uri http://127.0.0.1:8787/callback
 warcraftlogs auth pkce-login --redirect-uri http://127.0.0.1:8787/callback
 warcraftlogs auth logout
@@ -478,10 +481,14 @@ EOF
 ```
 - `doctor` reports auth status plus the active site profile
 - `auth status` reports credential source, runtime auth-state presence, and which grant types are currently implemented
+- `auth client` reports the configured client metadata and endpoint URLs without exposing the secret
+- `auth token` reports persisted token metadata without printing raw tokens
+- `auth whoami` uses the saved user token against the private `/api/v2/user` endpoint and is the clearest direct verification that saved user auth is actually usable
 - `auth login --redirect-uri ...` now supports a manual two-step authorization-code flow:
   - run it once to get the authorize URL
   - complete the browser consent flow
   - run it again with `--code` and `--state` from the callback URL
+- add `--scope view-user-profile` when you want a token that can access current-user profile fields
 - `auth pkce-login --redirect-uri ...` does the same for PKCE and stores the pending verifier in the XDG auth-state file
 - `auth logout` clears the local persisted auth state
 - `rate-limit` exposes the official queryable API rate-limit state
