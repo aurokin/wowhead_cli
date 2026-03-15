@@ -1157,6 +1157,97 @@ def guide_compare_query(
     raise typer.Exit(1)
 
 
+@app.command("guide-builds-simc")
+def guide_builds_simc(
+    ctx: typer.Context,
+    source: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        resolve_path=True,
+        help="Exported guide bundle directory or guide-compare-query output root.",
+    ),
+    decode: bool = typer.Option(
+        True,
+        "--decode/--no-decode",
+        help="Also run simc decode-build for each unique explicit build reference.",
+    ),
+    limit: int = typer.Option(
+        20,
+        "--limit",
+        min=1,
+        max=200,
+        help="Maximum unique explicit build references to hand off to simc.",
+    ),
+) -> None:
+    try:
+        source_kind, bundle_inputs, source_manifest = _load_guide_build_source(source)
+    except ValueError as exc:
+        _emit(
+            {
+                "ok": False,
+                "error": {"code": "invalid_bundle_source", "message": str(exc)},
+                "source": str(source),
+            },
+            pretty=_pretty(ctx),
+            err=True,
+        )
+        raise typer.Exit(1) from exc
+
+    handoff_rows = _collect_build_reference_handoff_rows(bundle_inputs)
+    selected_rows = handoff_rows[:limit]
+    build_rows: list[dict[str, Any]] = []
+    for row in selected_rows:
+        reference = row.get("reference") if isinstance(row.get("reference"), dict) else {}
+        build_url = reference.get("url")
+        if not isinstance(build_url, str) or not build_url.strip():
+            continue
+        identify_result = provider_invoke("simc", ["identify-build", "--build-text", build_url])
+        decode_result = (
+            provider_invoke("simc", ["decode-build", "--build-text", build_url])
+            if decode
+            else None
+        )
+        build_rows.append(
+            {
+                "reference": reference,
+                "sources": row.get("sources") or [],
+                "simc": {
+                    "identify": {
+                        "exit_code": identify_result.get("exit_code"),
+                        "payload": identify_result.get("payload"),
+                    },
+                    "decode": (
+                        {
+                            "exit_code": decode_result.get("exit_code"),
+                            "payload": decode_result.get("payload"),
+                        }
+                        if isinstance(decode_result, dict)
+                        else None
+                    ),
+                },
+            }
+        )
+
+    payload = {
+        "provider": "warcraft",
+        "kind": "guide_builds_simc_handoff",
+        "source": {
+            "path": str(source),
+            "kind": source_kind,
+            "manifest_kind": source_manifest.get("kind") if isinstance(source_manifest, dict) else None,
+        },
+        "bundle_count": len(bundle_inputs),
+        "build_reference_count": len(handoff_rows),
+        "truncated": len(handoff_rows) > len(selected_rows),
+        "decode_enabled": decode,
+        "builds": build_rows,
+    }
+    _emit(payload, pretty=_pretty(ctx))
+
+
 @app.command(
     "wowhead",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},

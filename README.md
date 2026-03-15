@@ -66,6 +66,7 @@ warcraft search "defias"
 warcraft resolve "fairbreeze favors"
 warcraft guide-compare ./tmp/method-mistweaver ./tmp/icy-mistweaver
 warcraft guide-compare-query "mistweaver monk guide"
+warcraft guide-builds-simc ./tmp/method-mistweaver
 warcraft wowhead guide 3143
 warcraft method search "mistweaver monk"
 warcraft icy-veins search "mistweaver monk guide"

@@ -22,6 +22,7 @@ warcraft guild-history us "Mal'Ganis" gn
 warcraft guild-ranks us "Mal'Ganis" gn
 warcraft guide-compare ./tmp/method-mistweaver ./tmp/icy-mistweaver
 warcraft guide-compare-query "mistweaver monk guide"
+warcraft guide-builds-simc ./tmp/method-mistweaver
 warcraft --expansion wotlk wowhead search "thunderfury"
 warcraft wowhead search "defias"
 warcraft wowhead guide 3143
@@ -76,6 +77,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `warcraft guide-compare-query` conservatively resolves one guide per supported provider, exports those bundles locally, and then runs the same comparison packet over the exported evidence
 - when `guide-compare-query` cannot get a guide from provider `resolve`, it may fall back to provider `search`, but only when the top guide result is clearly stronger than the alternatives
 - `guide-compare-query` now writes an orchestration manifest under the output root and reuses existing bundles only when the same guide ref is still selected and the recorded export age is within `--max-age-hours`; use `--force-refresh` to bypass reuse
+- `warcraft guide-builds-simc` reads explicit embedded guide build references from one exported guide bundle or a `guide-compare-query` output root, dedupes them, and hands those exact build refs to `simc identify-build` plus optional `simc decode-build`
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
