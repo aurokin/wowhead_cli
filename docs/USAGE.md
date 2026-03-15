@@ -579,6 +579,10 @@ SimulationCraft behavior:
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
 - `identify-build` is the safest first step when the user pastes a build string or talent-calc URL; it reports `source_kind`, resolved class/spec, confidence, and any probe candidates before deeper analysis
+- `--talents` now accepts the same common consumer inputs as `--build-text` for exact-build commands:
+  - bare WoW talent export strings
+  - Wowhead talent-calc URLs
+  - SimC `talents=...` lines
 - `describe-build` is the safest first step when the user says “tell me about this build”; it combines:
   - build identity
   - selected vs skipped talents

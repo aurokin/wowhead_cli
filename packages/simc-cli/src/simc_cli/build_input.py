@@ -290,7 +290,13 @@ def parse_debug_talents(output: str) -> dict[str, list[DecodedTalent]]:
 def normalize_talents_input(value: str | None) -> str | None:
     if not value:
         return None
-    return value.split("=", 1)[1].strip() if value.strip().startswith("talents=") else value.strip()
+    stripped = value.strip()
+    if stripped.startswith("talents="):
+        return stripped.split("=", 1)[1].strip()
+    wowhead_ref = parse_wowhead_talent_calc_ref(stripped)
+    if wowhead_ref is not None and wowhead_ref.talents:
+        return wowhead_ref.talents
+    return stripped
 
 
 def detect_talents_option_source_kind(
@@ -305,6 +311,8 @@ def detect_talents_option_source_kind(
     if not talents:
         return None
     stripped = talents.strip()
+    if parse_wowhead_talent_calc_ref(stripped) is not None:
+        return "wowhead_talent_calc_url"
     if stripped.startswith("talents="):
         return "simc_profile"
     return "wow_talent_export"
@@ -330,6 +338,12 @@ def load_build_spec(
         inferred.spec = inferred_spec
         if inferred.actor_class or inferred.spec:
             inferred.source_notes.append(f"inferred from apl: {Path(apl_path).stem}")
+
+    from_talents_option = BuildSpec()
+    if talents:
+        from_talents_option = parse_wowhead_talent_calc_ref(talents) or BuildSpec()
+        if from_talents_option.source_notes:
+            from_talents_option.source_notes.append("command-line talents option")
 
     explicit = BuildSpec(
         actor_class=actor_class,
@@ -364,7 +378,7 @@ def load_build_spec(
         from_build_text = extract_build_spec_from_text(build_text)
         from_build_text.source_notes.append("inline build text")
 
-    return merge_build_specs(inferred, from_profile, from_build_file, from_build_text, explicit)
+    return merge_build_specs(inferred, from_profile, from_build_file, from_build_text, from_talents_option, explicit)
 
 
 def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, BuildIdentity]:

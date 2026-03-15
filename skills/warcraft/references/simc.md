@@ -30,6 +30,7 @@
   - a Wowhead talent-calc URL
   - SimC-native build/profile text
   `identify-build`, `describe-build`, and `decode-build` report `source_kind`, resolved class/spec, and the normalized generated profile so you can verify the handoff before reasoning from it
+- for exact-build commands, `--talents` is now safe for the same common consumer inputs as `--build-text`, including bare WoW exports and Wowhead talent-calc URLs
 - do not tell the user they must provide class/spec unless `identify-build` failed first; the CLI now probes the local SimC spec set for bare WoW exports when direct metadata is missing
 - prefer `describe-build` over ad hoc prose synthesis when you need to talk about:
   - active hero/spec package

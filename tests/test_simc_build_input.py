@@ -13,6 +13,7 @@ from simc_cli.build_input import (
     extract_build_spec_from_text,
     identify_build,
     infer_actor_and_spec_from_apl,
+    load_build_spec,
     merge_build_specs,
     normalize_talents_input,
     parse_debug_talents,
@@ -89,6 +90,7 @@ def test_infer_actor_and_spec_from_apl() -> None:
 def test_normalize_talents_input() -> None:
     assert normalize_talents_input("talents=ABC123") == "ABC123"
     assert normalize_talents_input("ABC123") == "ABC123"
+    assert normalize_talents_input("https://www.wowhead.com/talent-calc/demon-hunter/devourer/ABC123") == "ABC123"
     assert normalize_talents_input(None) is None
 
 
@@ -111,6 +113,15 @@ def test_detect_talents_option_source_kind() -> None:
     )
     assert (
         detect_talents_option_source_kind(
+            talents="https://www.wowhead.com/talent-calc/demon-hunter/devourer/ABC123",
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+        )
+        == "wowhead_talent_calc_url"
+    )
+    assert (
+        detect_talents_option_source_kind(
             talents="talents=ABC123",
             class_talents=None,
             spec_talents=None,
@@ -127,6 +138,26 @@ def test_detect_talents_option_source_kind() -> None:
         )
         == "simc_split_talents"
     )
+
+
+def test_load_build_spec_extracts_class_and_spec_from_talents_url() -> None:
+    spec = load_build_spec(
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents="https://www.wowhead.com/talent-calc/demon-hunter/devourer/ABC123",
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+    )
+
+    assert spec.actor_class == "demonhunter"
+    assert spec.spec == "devourer"
+    assert spec.talents == "ABC123"
+    assert spec.source_kind == "wowhead_talent_calc_url"
 
 
 def test_parse_debug_talents_ignores_selection_tree() -> None:
