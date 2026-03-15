@@ -50,6 +50,7 @@ Implemented today:
   - `warcraftlogs guild-members`
   - `warcraftlogs guild-attendance`
   - `warcraftlogs guild-rankings`
+  - `warcraftlogs guild-reports`
   - `warcraftlogs character`
   - `warcraftlogs character-rankings`
   - `warcraftlogs reports`
@@ -70,6 +71,7 @@ Implemented today:
   - `expansions`
   - `zone`
   - `guild-rankings`
+  - `guild-reports`
   - `reports`
   - `report`
   - constrained `report-master-data`
@@ -253,6 +255,11 @@ This makes official guild/ranking workflows first-class.
 
 Current live caveat:
 - `attendance(...)` is documented and implemented, but public live queries can still return provider-side internal errors, so it should not be treated as a stable live-contract surface yet
+
+Current report boundary:
+- `guild-reports` is now implemented as the convenience guild-scoped history view
+- `report-fights` remains on the stable broad fight-list contract
+- richer fight-filter and phase-transition workflows are still deferred until the public API behavior is reliable enough to support them honestly
 
 ### Character Surface
 

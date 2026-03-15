@@ -32,6 +32,7 @@ Best fits:
   - `warcraftlogs guild-members <region> <realm> <name>`
   - `warcraftlogs guild-attendance <region> <realm> <name>`
   - `warcraftlogs guild-rankings <region> <realm> <name>`
+  - `warcraftlogs guild-reports <region> <realm> <name>`
   - `warcraftlogs character <region> <realm> <name>`
   - `warcraftlogs character-rankings <region> <realm> <name>`
   - `warcraftlogs reports --guild-region ... --guild-realm ... --guild-name ...`
@@ -79,6 +80,8 @@ Best fits:
   - `warcraftlogs guild-members us illidan Liquid --limit 5`
 - guild attendance history:
   - `warcraftlogs guild-attendance us illidan Liquid --limit 2`
+- guild report history:
+  - `warcraftlogs guild-reports us illidan Liquid --limit 10`
 - character identity:
   - `warcraftlogs character us illidan Roguecane`
 - character rankings, when the API allows them:
@@ -102,7 +105,9 @@ Best fits:
 - `character-rankings` can return a provider permission error or a provider-side failure for some characters; treat it as useful but less stable than `guild-rankings`
 - `guild-members` depends on Warcraft Logs being able to verify the guild roster for that game; treat it as a retail-capable roster surface, not a universal promise across every future site profile
 - `guild-attendance` is part of the official schema, but live public queries can still fail with a provider-side internal error; use it when it works, but do not assume the endpoint is fully stable
+- `guild-reports` is the easiest official path when the user wants report history for one guild without manually shaping the broader `reports` query
 - `report-player-details` is the easiest way to inspect the participants in a report slice before deeper event/table work
+- `report-fights` is still the stable broad fight-list surface; use it to get fight IDs first, then move to `report-player-details`, `report-events`, `report-table`, or `report-graph` for deeper filtered analysis
 - `report-table` and `report-graph` accept user-friendly enum filters like `damage-done` and normalize them for the API
 - `report-events` intentionally requires a narrowed slice such as `--fight-id`, `--encounter-id`, `--start-time`, or `--end-time`
 - `report-events` can still return `events: null` for some valid report slices; use it as a typed event-query surface, not a guarantee of non-empty data

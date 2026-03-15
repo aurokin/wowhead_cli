@@ -989,6 +989,33 @@ def test_warcraftlogs_guild_character_and_report_commands(monkeypatch) -> None:
     assert guild_attendance_payload["guild_attendance"]["attendance"][0]["players"][0]["presence_label"] == "present"
     assert guild_attendance_payload["guild_attendance"]["attendance"][0]["players"][1]["presence_label"] == "benched"
 
+    guild_reports_result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "guild-reports",
+            "us",
+            "illidan",
+            "Liquid",
+            "--limit",
+            "10",
+            "--page",
+            "2",
+            "--start-time",
+            "1000",
+            "--end-time",
+            "2000",
+            "--zone-id",
+            "38",
+            "--game-zone-id",
+            "12961",
+        ],
+    )
+    assert guild_reports_result.exit_code == 0
+    guild_reports_payload = json.loads(guild_reports_result.stdout)
+    assert guild_reports_payload["guild"]["name"] == "Liquid"
+    assert guild_reports_payload["count"] == 1
+    assert guild_reports_payload["reports"][0]["code"] == "abcd1234"
+
     character_rankings_result = runner.invoke(
         warcraftlogs_app,
         [

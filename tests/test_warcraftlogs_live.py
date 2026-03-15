@@ -136,6 +136,11 @@ def test_live_warcraftlogs_reports_contract() -> None:
     assert "code" in report
     assert isinstance(report["archive_status"], dict) or report["archive_status"] is None
 
+    guild_payload = _payload_for(["guild-reports", "us", "illidan", "Liquid", "--limit", "2"])
+    assert guild_payload["provider"] == "warcraftlogs"
+    assert guild_payload["guild"]["name"] == "Liquid"
+    assert isinstance(guild_payload["reports"], list)
+
 
 @pytest.mark.live
 def test_live_warcraftlogs_report_detail_contracts() -> None:

@@ -477,6 +477,23 @@ def _report_brief_payload(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _fight_payload(fight: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": fight.get("id"),
+        "name": fight.get("name"),
+        "encounter_id": fight.get("encounterID"),
+        "difficulty": fight.get("difficulty"),
+        "kill": fight.get("kill"),
+        "complete_raid": fight.get("completeRaid"),
+        "start_time": fight.get("startTime"),
+        "end_time": fight.get("endTime"),
+        "fight_percentage": fight.get("fightPercentage"),
+        "boss_percentage": fight.get("bossPercentage"),
+        "average_item_level": fight.get("averageItemLevel"),
+        "size": fight.get("size"),
+    }
+
+
 def _report_filter_query_payload(
     *,
     ability_id: float | None,
@@ -1510,6 +1527,61 @@ def reports(
     )
 
 
+@app.command("guild-reports")
+def guild_reports(
+    ctx: typer.Context,
+    region: str,
+    realm: str,
+    name: str,
+    limit: int = typer.Option(25, "--limit", min=1, max=100, help="Reports per page."),
+    page: int = typer.Option(1, "--page", min=1, help="Page number."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional report-range start time in milliseconds."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional report-range end time in milliseconds."),
+    zone_id: int | None = typer.Option(None, "--zone-id", help="Optional Warcraft Logs zone filter."),
+    game_zone_id: int | None = typer.Option(None, "--game-zone-id", help="Optional game zone filter."),
+) -> None:
+    client = _client(ctx)
+    try:
+        payload = client.reports(
+            guild_region=region,
+            guild_realm=realm,
+            guild_name=name,
+            limit=limit,
+            page=page,
+            start_time=start_time,
+            end_time=end_time,
+            zone_id=zone_id,
+            game_zone_id=game_zone_id,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    report_payload = _reports_payload(payload)
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "query": {
+                "region": region,
+                "realm": realm,
+                "name": name,
+                "limit": limit,
+                "page": page,
+                "start_time": start_time,
+                "end_time": end_time,
+                "zone_id": zone_id,
+                "game_zone_id": game_zone_id,
+            },
+            "guild": {"region": region, "realm": realm, "name": name},
+            "count": len(report_payload["reports"]),
+            **report_payload,
+        },
+    )
+
+
 @app.command("report-fights")
 def report_fights(
     ctx: typer.Context,
@@ -1534,24 +1606,7 @@ def report_fights(
             "report": _report_brief_payload(payload),
             "difficulty": difficulty,
             "count": len(fights),
-            "fights": [
-                {
-                    "id": fight.get("id"),
-                    "name": fight.get("name"),
-                    "encounter_id": fight.get("encounterID"),
-                    "difficulty": fight.get("difficulty"),
-                    "kill": fight.get("kill"),
-                    "complete_raid": fight.get("completeRaid"),
-                    "start_time": fight.get("startTime"),
-                    "end_time": fight.get("endTime"),
-                    "fight_percentage": fight.get("fightPercentage"),
-                    "boss_percentage": fight.get("bossPercentage"),
-                    "average_item_level": fight.get("averageItemLevel"),
-                    "size": fight.get("size"),
-                }
-                for fight in fights
-                if isinstance(fight, dict)
-            ],
+            "fights": [_fight_payload(fight) for fight in fights if isinstance(fight, dict)],
         },
     )
 

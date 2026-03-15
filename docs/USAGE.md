@@ -445,6 +445,7 @@ warcraftlogs guild us illidan Liquid --zone-id 38
 warcraftlogs guild-members us illidan Liquid --limit 5
 warcraftlogs guild-attendance us illidan Liquid --limit 2
 warcraftlogs guild-rankings us illidan Liquid --zone-id 38 --size 20 --difficulty 5
+warcraftlogs guild-reports us illidan Liquid --limit 10
 warcraftlogs character us illidan Roguecane
 warcraftlogs character-rankings us illidan Roguecane --zone-id 38 --difficulty 5 --metric dps --size 20
 warcraftlogs reports --guild-region us --guild-realm illidan --guild-name Liquid --limit 10
@@ -499,6 +500,7 @@ EOF
 - `guild-members` returns the Warcraft Logs guild roster plus pagination metadata for games where roster verification is supported
 - `guild-attendance` returns raid-night attendance history plus per-player presence markers
 - `guild-rankings` exposes the official `zoneRanking` progress/speed payloads directly
+- `guild-reports` is the convenient guild-scoped report listing surface on top of the official paginated report query
 - `character` currently stays on reliable typed fields:
   - faction
   - guild rank
@@ -506,6 +508,7 @@ EOF
   - guild memberships
 - `character-rankings` is available now, but Warcraft Logs may return per-character permission errors or server-side errors for some characters; the CLI now surfaces provider permission errors explicitly in the payload when they are available
 - `reports`, `report`, and `report-fights` are the first typed report-inspection slice
+- `report-fights` stays on the stable broad fight-list contract for now; deeper fight-filter and phase workflows are still deferred
 - `report-player-details` exposes role buckets and participant summaries for a report or fight slice
 - `report-master-data` exposes report actor and ability catalogs, which is often the most useful companion surface for deeper report analysis
 - `report-table` and `report-graph` now accept friendly enum-like filters such as `damage-done` and normalize them to the official GraphQL enum values
