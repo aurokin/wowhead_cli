@@ -112,6 +112,11 @@ Highest-value next implementation slices:
   - encounter identity from report URLs
   - fight-scoped actor/ability normalization
   - typed buff/cast/damage workflows instead of ad hoc event math
+- plan and build the multi-report analytics slice for high-level filtered questions:
+  - top kills for a boss
+  - spec-filtered kill samples
+  - kill-time-bounded report cohorts
+  - cross-report composition and ability summaries
 
 After that:
 - user-auth plumbing
@@ -590,6 +595,161 @@ This order is deliberate:
 - identity and scope first
 - then the high-value questions agents most often need
 - then the harder segmentation work after actor/ability/window normalization is proven
+
+### Cross-Report Analytics
+
+This is the companion layer to deep encounter analytics.
+
+Encounter analytics answers:
+- one report
+- one fight
+- one scoped window
+
+Cross-report analytics answers:
+- many kills
+- one boss
+- one filtered cohort
+- aggregated summaries with explicit sample boundaries
+
+Typical target questions:
+- top `x` kills for boss `y` with spec `z`
+- kills under or over a given duration
+- how often a spec or comp appears in high-ranking kills
+- ability usage across a filtered set of kills
+- compare composition or kill-time behavior across report cohorts
+
+The CLI should own:
+- report discovery
+- fight selection across reports
+- encounter and boss normalization
+- ranking basis and top-`N` semantics
+- kill-time filtering
+- spec/class/role filtering
+- aggregation and sample metadata
+
+The agent should not be expected to:
+- search report pages manually and guess which fights belong in scope
+- combine per-report slices into one cohort by hand
+- infer top-kill semantics without a defined ranking basis
+- compute cross-report summaries from raw event payloads
+
+#### Planned Cross-Report Command Family
+
+- `warcraftlogs top-kills`
+- `warcraftlogs boss-kills`
+- `warcraftlogs boss-spec-usage`
+- `warcraftlogs kill-time-distribution`
+- `warcraftlogs comp-samples`
+- `warcraftlogs ability-usage-summary`
+
+These commands should support:
+- `--zone`
+- `--boss`
+- `--difficulty`
+- `--size`
+- `--spec`
+- `--class`
+- `--role`
+- `--kill-time-min`
+- `--kill-time-max`
+- `--top`
+- `--start-date`
+- `--end-date`
+- `--guild`
+- `--public-only`
+
+#### Cross-Report Contract Principles
+
+These commands should:
+- make the ranking basis explicit:
+  - top by rank
+  - top by fastest kill
+  - top by filtered sample order
+- expose sample metadata:
+  - source fight count
+  - returned fight count
+  - excluded fight count
+  - truncation
+- preserve the exact boss/zone/difficulty/spec filters in the payload
+- separate aggregated summaries from raw fight rows
+
+They should not:
+- flatten many reports into one fake “global truth” without sample boundaries
+- hide when the query was truncated to a top-`N` subset
+- let the agent compare mismatched difficulties, kill states, or fight durations silently
+
+#### Implementation Order
+
+Recommended order:
+1. `boss-kills`
+2. `top-kills`
+3. `kill-time-distribution`
+4. `boss-spec-usage`
+5. `comp-samples`
+6. `ability-usage-summary`
+
+This order keeps the first cross-report layer simple:
+- discover cohort
+- expose sample boundaries
+- then add higher-level aggregate summaries
+
+### Caching Policy
+
+Caching should be a first-class part of the `warcraftlogs` contract.
+
+The important split is:
+- finished reports and frozen metadata are good cache targets
+- live logs are not
+
+#### Safe Cache Targets
+
+These should be cached aggressively:
+- `gameData`
+- `worldData`
+- expansions, regions, servers, zones, encounters
+- finished report metadata
+- finished fight lists
+- finished encounter-scoped summaries
+- finished cross-report cohorts derived from stable report/fight rows
+
+These should use moderate TTLs or conditional refresh:
+- public report listings
+- guild report history
+- rankings or top-kill cohort discovery
+
+These should not be cached as stable results:
+- live reports
+- live event streams
+- in-progress fight windows
+- race/live competition surfaces while they are actively changing
+
+#### Report-Finish Policy
+
+The CLI should treat a report as cache-safe only when it is clearly finished.
+
+Planned signals:
+- report has a stable end time
+- the report is not currently live or updating
+- no command in the chain requested a live-only view
+
+If a report is live:
+- return fresh data
+- avoid storing it as a stable reusable cache artifact
+- surface `live: true` or equivalent metadata in the payload
+
+#### Analytics Cache Principles
+
+For both encounter and cross-report analytics:
+- cache the normalized intermediate slices when they are derived from finished reports
+- keep cache keys tied to:
+  - report code
+  - fight id
+  - boss/zone filters
+  - actor/spec filters
+  - time-window filters
+  - ranking basis
+- expose freshness and cache provenance in the output
+- never hide live-vs-finished differences behind one shared cache path
 
 ### Report Listing Workflows
 
