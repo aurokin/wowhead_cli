@@ -12,6 +12,7 @@ Best fits:
 
 - health/auth:
   - `warcraftlogs doctor`
+  - `warcraftlogs auth status`
   - `warcraftlogs rate-limit`
 - world metadata:
   - `warcraftlogs regions`
@@ -48,6 +49,8 @@ Best fits:
   - repo-local `.env.local`
   - XDG config: `~/.config/warcraft/providers/warcraftlogs.env`
   - process environment
+- runtime auth state is stored separately:
+  - `~/.local/state/warcraft/providers/warcraftlogs.json`
 - required variables:
   - `WARCRAFTLOGS_CLIENT_ID`
   - `WARCRAFTLOGS_CLIENT_SECRET`
@@ -89,3 +92,4 @@ Best fits:
 - `report-events` intentionally requires a narrowed slice such as `--fight-id`, `--encounter-id`, `--start-time`, or `--end-time`
 - `report-events` can still return `events: null` for some valid report slices; use it as a typed event-query surface, not a guarantee of non-empty data
 - `report-rankings` can legitimately return zero rows for a valid public report slice
+- `warcraftlogs auth status` is the first place to check when auth looks wrong; it shows credential source and whether any persisted auth state exists

@@ -5,7 +5,9 @@ import re
 from typing import Any
 
 import typer
+from warcraft_core.auth import provider_auth_status
 from warcraft_core.output import emit
+from warcraft_core.paths import provider_state_path
 from warcraft_core.wow_normalization import normalize_region
 
 from warcraftlogs_cli.client import (
@@ -20,6 +22,8 @@ from warcraftlogs_cli.client import (
 )
 
 app = typer.Typer(add_completion=False, help="Warcraft Logs official API CLI.")
+auth_app = typer.Typer(add_completion=False, help="Warcraft Logs authentication helpers.")
+app.add_typer(auth_app, name="auth")
 
 FIGHT_ID_OPTION = typer.Option(None, "--fight-id", help="Optional fight ID filter. Repeat as needed.")
 
@@ -74,6 +78,7 @@ def _handle_client_error(ctx: typer.Context, exc: WarcraftLogsClientError) -> No
 def _doctor_payload() -> dict[str, Any]:
     auth = load_warcraftlogs_auth_config()
     credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
+    state = provider_auth_status("warcraftlogs")
     return {
         "ok": True,
         "provider": "warcraftlogs",
@@ -90,6 +95,8 @@ def _doctor_payload() -> dict[str, Any]:
             "flow": "oauth_client_credentials",
             "credential_source": credential_source,
             "lookup_order": [".env.local", warcraftlogs_provider_env_path(), "environment"],
+            "state": state,
+            "state_path": str(provider_state_path("warcraftlogs")),
             "redirect_flow_deferred": True,
         },
         "capabilities": {
@@ -633,6 +640,31 @@ def main(
 @app.command("doctor")
 def doctor(ctx: typer.Context) -> None:
     _emit(ctx, _doctor_payload())
+
+
+@auth_app.command("status")
+def auth_status(ctx: typer.Context) -> None:
+    auth = load_warcraftlogs_auth_config()
+    credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "auth": {
+                "configured": auth.configured,
+                "flow": "oauth_client_credentials",
+                "credential_source": credential_source,
+                "lookup_order": [".env.local", warcraftlogs_provider_env_path(), "environment"],
+                "state": provider_auth_status("warcraftlogs"),
+                "grants": {
+                    "client_credentials": "ready",
+                    "authorization_code": "planned",
+                    "pkce": "planned",
+                },
+            },
+        },
+    )
 
 
 @app.command("rate-limit")

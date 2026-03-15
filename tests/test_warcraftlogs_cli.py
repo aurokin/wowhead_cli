@@ -523,6 +523,20 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
         "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
         lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local"})(),
     )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": False,
+            "readable": False,
+            "valid_json": False,
+            "auth_mode": None,
+            "has_access_token": False,
+            "has_refresh_token": False,
+            "expires_at": None,
+            "expired": None,
+        },
+    )
     result = runner.invoke(warcraftlogs_app, ["doctor"])
     assert result.exit_code == 0
 
@@ -533,8 +547,40 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["auth"]["credential_source"] == "/tmp/.env.local"
     assert payload["auth"]["lookup_order"][0] == ".env.local"
     assert payload["auth"]["lookup_order"][-1] == "environment"
+    assert payload["auth"]["state"]["exists"] is False
     assert payload["capabilities"]["guild"] == "ready"
     assert payload["capabilities"]["report_fights"] == "ready"
+
+
+def test_warcraftlogs_auth_status_reports_shared_state_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local"})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": True,
+            "readable": True,
+            "valid_json": True,
+            "auth_mode": "authorization_code",
+            "has_access_token": True,
+            "has_refresh_token": True,
+            "expires_at": 1500.0,
+            "expired": False,
+        },
+    )
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "status"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["configured"] is True
+    assert payload["auth"]["state"]["exists"] is True
+    assert payload["auth"]["state"]["auth_mode"] == "authorization_code"
+    assert payload["auth"]["grants"]["client_credentials"] == "ready"
+    assert payload["auth"]["grants"]["pkce"] == "planned"
 
 
 def test_warcraftlogs_rate_limit_and_world_metadata_commands(monkeypatch) -> None:

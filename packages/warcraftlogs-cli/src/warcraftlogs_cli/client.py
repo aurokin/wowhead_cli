@@ -12,7 +12,7 @@ from warcraft_api.cache import CacheSettings, CacheTTLConfig, build_cache_store,
 from warcraft_api.http import DEFAULT_RETRY_ATTEMPTS, request_with_retries
 from warcraft_content.paths import provider_cache_root
 from warcraft_core.env import find_env_file, load_env_file, load_explicit_env_file
-from warcraft_core.paths import config_root
+from warcraft_core.paths import provider_env_path
 from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug
 
 DEFAULT_CACHE_DIR = provider_cache_root("warcraftlogs") / "http"
@@ -818,7 +818,7 @@ class WarcraftLogsAuthConfig:
 
 
 def warcraftlogs_provider_env_path() -> str:
-    return str(config_root() / "providers" / "warcraftlogs.env")
+    return str(provider_env_path("warcraftlogs"))
 
 
 class WarcraftLogsClientError(RuntimeError):

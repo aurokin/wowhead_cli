@@ -21,11 +21,14 @@ Implemented today:
   - repo-local `.env.local`
   - XDG config: `~/.config/warcraft/providers/warcraftlogs.env`
   - process environment
+- runtime auth state path:
+  - `~/.local/state/warcraft/providers/warcraftlogs.json`
 - supported variables:
   - `WARCRAFTLOGS_CLIENT_ID`
   - `WARCRAFTLOGS_CLIENT_SECRET`
 - commands:
   - `warcraftlogs doctor`
+  - `warcraftlogs auth status`
   - `warcraftlogs rate-limit`
   - `warcraftlogs regions`
   - `warcraftlogs expansions`

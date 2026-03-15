@@ -36,6 +36,7 @@ warcraft warcraft-wiki event "OnKeyDown"
 warcraft wowprogress guild us illidan Liquid
 warcraft wowprogress leaderboard pve us --limit 10
 warcraftlogs doctor
+warcraftlogs auth status
 warcraftlogs regions
 warcraftlogs guild us illidan Liquid
 warcraft simc doctor
@@ -422,6 +423,7 @@ WowProgress phase-1 behavior:
 
 ```bash
 warcraftlogs doctor
+warcraftlogs auth status
 warcraftlogs rate-limit
 warcraftlogs regions
 warcraftlogs expansions
@@ -453,6 +455,8 @@ Warcraft Logs phase-1 behavior:
   - repo-local `.env.local`
   - XDG config: `~/.config/warcraft/providers/warcraftlogs.env`
   - process environment
+- runtime auth state is stored separately under:
+  - XDG state: `~/.local/state/warcraft/providers/warcraftlogs.json`
 - supported auth variables:
   - `WARCRAFTLOGS_CLIENT_ID`
   - `WARCRAFTLOGS_CLIENT_SECRET`
@@ -465,6 +469,7 @@ WARCRAFTLOGS_CLIENT_SECRET=...
 EOF
 ```
 - `doctor` reports auth status plus the active site profile
+- `auth status` reports credential source, runtime auth-state presence, and which grant types are currently implemented
 - `rate-limit` exposes the official queryable API rate-limit state
 - `regions`, `expansions`, `server`, `zones`, `zone`, and `encounter` are the first typed world-metadata slice
 - `guild` returns official guild identity, server/faction details, guild tags, and current zone progress ranks when available
