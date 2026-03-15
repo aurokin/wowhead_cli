@@ -44,6 +44,9 @@ Best fits:
   - `warcraftlogs report-table <code> --data-type damage-done --fight-id ...`
   - `warcraftlogs report-graph <code> --data-type damage-done --fight-id ...`
   - `warcraftlogs report-rankings <code> --fight-id ... --player-metric dps`
+  - `warcraftlogs report-encounter <report-url-or-code>`
+  - `warcraftlogs report-encounter-players <report-url-or-code>`
+  - `warcraftlogs report-encounter-casts <report-url-or-code>`
   - `warcraftlogs boss-kills --zone-id ... --boss-id ... --difficulty ...`
   - `warcraftlogs top-kills --zone-id ... --boss-id ... --difficulty ...`
   - `warcraftlogs kill-time-distribution --zone-id ... --boss-id ... --difficulty ...`
@@ -94,6 +97,9 @@ Best fits:
 - report inspection:
   - `warcraftlogs report <code>`
   - `warcraftlogs report-fights <code> --difficulty 5`
+  - `warcraftlogs report-encounter 'https://www.warcraftlogs.com/reports/<code>#fight=47'`
+  - `warcraftlogs report-encounter-players 'https://www.warcraftlogs.com/reports/<code>#fight=47'`
+  - `warcraftlogs report-encounter-casts 'https://www.warcraftlogs.com/reports/<code>#fight=47' --preview-limit 20`
   - `warcraftlogs report-player-details <code> --fight-id 47`
   - `warcraftlogs report-master-data <code> --actor-type Player`
   - `warcraftlogs report-events <code> --fight-id 47 --limit 100`
@@ -113,6 +119,7 @@ Best fits:
 - `guild-members` depends on Warcraft Logs being able to verify the guild roster for that game; treat it as a retail-capable roster surface, not a universal promise across every future site profile
 - `guild-attendance` is part of the official schema, but live public queries can still fail with a provider-side internal error; use it when it works, but do not assume the endpoint is fully stable
 - `guild-reports` is the easiest official path when the user wants report history for one guild without manually shaping the broader `reports` query
+- for one-fight analysis from a report link, prefer `report-encounter*` commands over manually combining `report-fights`, `report-player-details`, and `report-events`
 - `report-player-details` is the easiest way to inspect the participants in a report slice before deeper event/table work
 - `report-fights` is still the stable broad fight-list surface; use it to get fight IDs first, then move to `report-player-details`, `report-events`, `report-table`, or `report-graph` for deeper filtered analysis
 - `report-table` and `report-graph` accept user-friendly enum filters like `damage-done` and normalize them for the API

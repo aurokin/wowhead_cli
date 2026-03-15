@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 import re
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import typer
 from warcraft_core.analytics import numeric_summary
@@ -41,6 +42,13 @@ FIGHT_ID_OPTION = typer.Option(None, "--fight-id", help="Optional fight ID filte
 @dataclass(slots=True)
 class RuntimeConfig:
     pretty: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ReportReference:
+    code: str
+    fight_id: int | None
+    source_url: str | None = None
 
 
 def _cfg(ctx: typer.Context) -> RuntimeConfig:
@@ -135,6 +143,9 @@ def _doctor_payload() -> dict[str, Any]:
             "boss_kills": "ready",
             "top_kills": "ready",
             "kill_time_distribution": "ready",
+            "report_encounter": "ready",
+            "report_encounter_players": "ready",
+            "report_encounter_casts": "ready",
             "character": "ready",
             "character_rankings": "ready",
             "report": "ready",
@@ -495,6 +506,216 @@ def _fight_payload(fight: dict[str, Any]) -> dict[str, Any]:
         "boss_percentage": fight.get("bossPercentage"),
         "average_item_level": fight.get("averageItemLevel"),
         "size": fight.get("size"),
+    }
+
+
+def _parse_report_reference(reference: str, *, explicit_fight_id: int | None) -> ReportReference:
+    text = reference.strip()
+    if not text:
+        raise ValueError("Report reference is required.")
+    source_url: str | None = None
+    code = text
+    parsed = urlparse(text)
+    parsed_fight_id: int | None = None
+    if parsed.scheme and parsed.netloc:
+        source_url = text
+        parts = [part for part in parsed.path.strip("/").split("/") if part]
+        try:
+            reports_index = parts.index("reports")
+            code = parts[reports_index + 1]
+        except (ValueError, IndexError):
+            raise ValueError("Could not extract a Warcraft Logs report code from the provided URL.") from None
+        fragments = parse_qs(parsed.fragment)
+        fight_values = fragments.get("fight") or []
+        if fight_values:
+            try:
+                parsed_fight_id = int(fight_values[0])
+            except ValueError:
+                parsed_fight_id = None
+    fight_id = explicit_fight_id if explicit_fight_id is not None else parsed_fight_id
+    return ReportReference(code=code, fight_id=fight_id, source_url=source_url)
+
+
+def _kill_type_for_fight(fight: dict[str, Any]) -> str:
+    return "Kills" if fight.get("kill") else "Wipes"
+
+
+def _resolve_encounter_scope(
+    ctx: typer.Context,
+    *,
+    client: WarcraftLogsClient,
+    reference: str,
+    fight_id: int | None,
+    allow_unlisted: bool,
+) -> tuple[ReportReference, dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+    try:
+        ref = _parse_report_reference(reference, explicit_fight_id=fight_id)
+    except ValueError as exc:
+        _fail(ctx, "invalid_query", str(exc))
+        raise AssertionError("unreachable") from exc
+    report = client.report(code=ref.code, allow_unlisted=allow_unlisted)
+    fights_report = client.report_fights(code=ref.code, difficulty=None, allow_unlisted=allow_unlisted)
+    fights = fights_report.get("fights") if isinstance(fights_report.get("fights"), list) else []
+    fight_rows = [row for row in fights if isinstance(row, dict)]
+    selected: dict[str, Any] | None = None
+    if ref.fight_id is not None:
+        selected = next((row for row in fight_rows if row.get("id") == ref.fight_id), None)
+        if selected is None:
+            _fail(ctx, "not_found", f"Fight {ref.fight_id} was not found in report {ref.code!r}.")
+    elif len(fight_rows) == 1:
+        selected = fight_rows[0]
+    else:
+        _fail(ctx, "missing_scope", "Provide --fight-id or a report URL with a numeric #fight=... fragment for encounter-scoped analysis.")
+    encounter_id = selected.get("encounterID")
+    encounter = None
+    if isinstance(encounter_id, int):
+        try:
+            encounter = client.encounter(encounter_id=encounter_id)
+        except WarcraftLogsClientError:
+            encounter = None
+    return ref, report, selected, encounter
+
+
+def _report_reference_payload(ref: ReportReference) -> dict[str, Any]:
+    return {"code": ref.code, "fight_id": ref.fight_id, "source_url": ref.source_url}
+
+
+def _encounter_summary_payload(*, ref: ReportReference, report: dict[str, Any], fight: dict[str, Any], encounter: dict[str, Any] | None) -> dict[str, Any]:
+    encounter_payload = None
+    if isinstance(encounter, dict):
+        zone = encounter.get("zone") if isinstance(encounter.get("zone"), dict) else {}
+        expansion = zone.get("expansion") if isinstance(zone.get("expansion"), dict) else {}
+        encounter_payload = {
+            "id": encounter.get("id"),
+            "name": encounter.get("name"),
+            "journal_id": encounter.get("journalID"),
+            "zone": {
+                "id": zone.get("id"),
+                "name": zone.get("name"),
+                "expansion": {"id": expansion.get("id"), "name": expansion.get("name")} if expansion else None,
+            }
+            if zone
+            else None,
+        }
+    return {
+        "reference": _report_reference_payload(ref),
+        "report": _report_payload(report),
+        "fight": _fight_payload(fight),
+        "encounter": encounter_payload,
+        "stability": {
+            "report_finished": _report_is_finished(report),
+            "cache_safe": _report_is_finished(report),
+            "live": not _report_is_finished(report),
+        },
+    }
+
+
+def _master_data_indexes(report: dict[str, Any]) -> tuple[dict[int, dict[str, Any]], dict[int, dict[str, Any]]]:
+    payload = _report_master_data_payload(report)["master_data"]
+    actor_index = {
+        int(row["id"]): row
+        for row in payload["actors"]
+        if isinstance(row, dict) and isinstance(row.get("id"), int)
+    }
+    ability_index = {
+        int(row["game_id"]): row
+        for row in payload["abilities"]
+        if isinstance(row, dict) and isinstance(row.get("game_id"), int)
+    }
+    return actor_index, ability_index
+
+
+def _named_actor(actor_index: dict[int, dict[str, Any]], actor_id: int | None) -> dict[str, Any] | None:
+    if actor_id is None:
+        return None
+    actor = actor_index.get(actor_id)
+    if not isinstance(actor, dict):
+        return {"id": actor_id, "name": f"actor:{actor_id}"}
+    return {"id": actor_id, "name": actor.get("name"), "type": actor.get("type"), "sub_type": actor.get("sub_type")}
+
+
+def _named_ability(ability_index: dict[int, dict[str, Any]], ability_id: int | None) -> dict[str, Any] | None:
+    if ability_id is None:
+        return None
+    ability = ability_index.get(ability_id)
+    if not isinstance(ability, dict):
+        return {"game_id": ability_id, "name": f"ability:{ability_id}"}
+    return {"game_id": ability_id, "name": ability.get("name"), "type": ability.get("type"), "icon": ability.get("icon")}
+
+
+def _event_id(value: Any) -> int | None:
+    return int(value) if isinstance(value, (int, float)) else None
+
+
+def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any], events_report: dict[str, Any], master_report: dict[str, Any], preview_limit: int) -> dict[str, Any]:
+    actor_index, ability_index = _master_data_indexes(master_report)
+    paginator = events_report.get("events") if isinstance(events_report.get("events"), dict) else {}
+    rows = paginator.get("data") if isinstance(paginator.get("data"), list) else []
+    cast_rows = [row for row in rows if isinstance(row, dict)]
+    by_source: dict[tuple[int | None, str | None], int] = {}
+    by_ability: dict[tuple[int | None, str | None], int] = {}
+    by_source_ability: dict[tuple[int | None, int | None], int] = {}
+    preview: list[dict[str, Any]] = []
+    fight_start = fight.get("startTime") if isinstance(fight.get("startTime"), (int, float)) else None
+
+    for row in cast_rows:
+        source_id = _event_id(row.get("sourceID"))
+        ability_id = _event_id(row.get("abilityGameID"))
+        source = _named_actor(actor_index, source_id)
+        ability = _named_ability(ability_index, ability_id)
+        source_key = (source_id, str(source.get("name") if source else None))
+        ability_key = (ability_id, str(ability.get("name") if ability else None))
+        by_source[source_key] = by_source.get(source_key, 0) + 1
+        by_ability[ability_key] = by_ability.get(ability_key, 0) + 1
+        by_source_ability[(source_id, ability_id)] = by_source_ability.get((source_id, ability_id), 0) + 1
+        if len(preview) < preview_limit:
+            timestamp = row.get("timestamp")
+            relative_ms = None
+            if isinstance(timestamp, (int, float)) and isinstance(fight_start, (int, float)):
+                relative_ms = float(timestamp) - float(fight_start)
+            preview.append(
+                {
+                    "timestamp": timestamp,
+                    "relative_time_ms": relative_ms,
+                    "source": source,
+                    "target": _named_actor(actor_index, _event_id(row.get("targetID"))),
+                    "ability": ability,
+                    "type": row.get("type"),
+                }
+            )
+
+    def _sorted_rows(counts: dict[tuple[Any, Any], int], *, field: str) -> list[dict[str, Any]]:
+        rows_out: list[dict[str, Any]] = []
+        for (numeric_id, name), count in sorted(counts.items(), key=lambda item: (-item[1], str(item[0][1] or ""))):
+            base = {"count": count}
+            if field == "source":
+                base["source"] = _named_actor(actor_index, numeric_id if isinstance(numeric_id, int) else None) or {"id": numeric_id, "name": name}
+            else:
+                base["ability"] = _named_ability(ability_index, numeric_id if isinstance(numeric_id, int) else None) or {"game_id": numeric_id, "name": name}
+            rows_out.append(base)
+        return rows_out
+
+    combo_rows = []
+    for (source_id, ability_id), count in sorted(by_source_ability.items(), key=lambda item: (-item[1], item[0])):
+        combo_rows.append(
+            {
+                "count": count,
+                "source": _named_actor(actor_index, source_id),
+                "ability": _named_ability(ability_index, ability_id),
+            }
+        )
+
+    return {
+        "report": _report_brief_payload(report),
+        "fight": _fight_payload(fight),
+        "casts": {
+            "event_count": len(cast_rows),
+            "next_page_timestamp": paginator.get("nextPageTimestamp"),
+            "by_source": _sorted_rows(by_source, field="source"),
+            "by_ability": _sorted_rows(by_ability, field="ability"),
+            "by_source_ability": combo_rows,
+            "preview": preview,
+        },
     }
 
 
@@ -2025,6 +2246,157 @@ def top_kills(
             ),
             top=top,
         ),
+    )
+
+
+@app.command("report-encounter")
+def report_encounter(
+    ctx: typer.Context,
+    reference: str,
+    fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    client = _client(ctx)
+    try:
+        ref, report, fight, encounter = _resolve_encounter_scope(
+            ctx,
+            client=client,
+            reference=reference,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "kind": "report_encounter",
+            **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
+        },
+    )
+
+
+@app.command("report-encounter-players")
+def report_encounter_players(
+    ctx: typer.Context,
+    reference: str,
+    fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
+    include_combatant_info: bool | None = typer.Option(
+        None,
+        "--include-combatant-info/--no-include-combatant-info",
+        help="Optional combatant detail toggle.",
+    ),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    client = _client(ctx)
+    try:
+        ref, report, fight, encounter = _resolve_encounter_scope(
+            ctx,
+            client=client,
+            reference=reference,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+        )
+        payload = client.report_player_details(
+            code=ref.code,
+            allow_unlisted=allow_unlisted,
+            options=ReportPlayerDetailsOptions(
+                encounter_id=fight.get("encounterID") if isinstance(fight.get("encounterID"), int) else None,
+                fight_ids=[int(fight["id"])] if isinstance(fight.get("id"), int) else None,
+                include_combatant_info=include_combatant_info,
+                kill_type=_kill_type_for_fight(fight),
+                translate=translate,
+            ),
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "kind": "report_encounter_players",
+            **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
+            **_report_player_details_payload(payload),
+        },
+    )
+
+
+@app.command("report-encounter-casts")
+def report_encounter_casts(
+    ctx: typer.Context,
+    reference: str,
+    fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
+    source_id: int | None = typer.Option(None, "--source-id", help="Optional source actor filter."),
+    target_id: int | None = typer.Option(None, "--target-id", help="Optional target actor filter."),
+    ability_id: float | None = typer.Option(None, "--ability-id", help="Optional ability game ID filter."),
+    limit: int = typer.Option(200, "--limit", min=1, max=10000, help="Maximum cast events to request from Warcraft Logs."),
+    preview_limit: int = typer.Option(20, "--preview-limit", min=1, max=200, help="Maximum preview cast rows to return."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    client = _client(ctx)
+    try:
+        ref, report, fight, encounter = _resolve_encounter_scope(
+            ctx,
+            client=client,
+            reference=reference,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+        )
+        events_report = client.report_events(
+            code=ref.code,
+            allow_unlisted=allow_unlisted,
+            options=ReportFilterOptions(
+                ability_id=ability_id,
+                data_type="Casts",
+                encounter_id=fight.get("encounterID") if isinstance(fight.get("encounterID"), int) else None,
+                fight_ids=[int(fight["id"])] if isinstance(fight.get("id"), int) else None,
+                kill_type=_kill_type_for_fight(fight),
+                limit=limit,
+                source_id=source_id,
+                target_id=target_id,
+                translate=translate,
+            ),
+        )
+        master_report = client.report_master_data(code=ref.code, allow_unlisted=allow_unlisted, actor_type="Player")
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "kind": "report_encounter_casts",
+            "query": {
+                "source_id": source_id,
+                "target_id": target_id,
+                "ability_id": ability_id,
+                "limit": limit,
+                "preview_limit": preview_limit,
+                "translate": translate,
+            },
+            **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
+            **_encounter_cast_rows_payload(
+                report=report,
+                fight=fight,
+                events_report=events_report,
+                master_report=master_report,
+                preview_limit=preview_limit,
+            ),
+        },
     )
 
 

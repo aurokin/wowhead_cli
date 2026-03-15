@@ -62,6 +62,9 @@ Implemented today:
   - `warcraftlogs report-table`
   - `warcraftlogs report-graph`
   - `warcraftlogs report-rankings`
+  - `warcraftlogs report-encounter`
+  - `warcraftlogs report-encounter-players`
+  - `warcraftlogs report-encounter-casts`
   - `warcraftlogs boss-kills`
   - `warcraftlogs top-kills`
   - `warcraftlogs kill-time-distribution`
@@ -82,6 +85,8 @@ Implemented today:
   - constrained `report-table`
   - constrained `report-graph`
   - constrained `report-rankings`
+  - live `report-encounter`
+  - live `report-encounter-players`
   - sampled `boss-kills`
 
 Current intentional boundary:
@@ -113,9 +118,9 @@ Highest-value next implementation slices:
   - safer event pagination patterns once `events(...)` can be validated more broadly
   - additional report detail surfaces after the current player/ranking slice is proven
 - start the deep encounter analytics slice for report-link-driven questions:
-  - encounter identity from report URLs
-  - fight-scoped actor/ability normalization
-  - typed buff/cast/damage workflows instead of ad hoc event math
+  - report-link encounter identity is now implemented
+  - fight-scoped player and cast normalization is now implemented
+  - next: typed buff and damage workflows instead of ad hoc event math
 - continue the multi-report analytics slice after the first sampled cohort commands:
   - stronger top-kill discovery semantics beyond sampled fastest kills
   - spec-filtered kill samples

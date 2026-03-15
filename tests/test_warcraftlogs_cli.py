@@ -426,7 +426,7 @@ class _FakeWarcraftLogsClient:
 
     def report(self, *, code: str, allow_unlisted: bool = False) -> dict[str, object]:
         assert code == "abcd1234"
-        assert allow_unlisted is True
+        assert allow_unlisted in {True, False}
         return {
             "code": "abcd1234",
             "title": "Manaforge Omega - Liquid",
@@ -586,7 +586,7 @@ class _FakeWarcraftLogsClient:
 
     def report_fights(self, *, code: str, difficulty: int | None = None, allow_unlisted: bool = False) -> dict[str, object]:
         assert code == "abcd1234"
-        assert difficulty == 5
+        assert difficulty in {None, 5}
         assert allow_unlisted is False
         return {
             "code": "abcd1234",
@@ -642,17 +642,26 @@ class _FakeWarcraftLogsClient:
         assert code == "abcd1234"
         assert allow_unlisted is False
         assert options.data_type == "Casts"
-        assert options.difficulty == 5
         assert options.encounter_id == 3012
-        assert options.fight_ids == [1, 2]
-        assert options.limit == 50
-        assert options.source_id == 9
+        if options.fight_ids == [1, 2]:
+            assert options.difficulty == 5
+            assert options.limit == 50
+            assert options.source_id == 9
+            rows = [{"type": "cast", "abilityGameID": 12345}]
+        else:
+            assert options.fight_ids == [1]
+            assert options.limit == 200
+            rows = [
+                {"type": "cast", "timestamp": 120000, "sourceID": 9, "targetID": 501, "abilityGameID": 20473},
+                {"type": "cast", "timestamp": 145000, "sourceID": 9, "targetID": 501, "abilityGameID": 20473},
+                {"type": "cast", "timestamp": 160000, "sourceID": 1, "targetID": 501, "abilityGameID": 57795},
+            ]
         return {
             "code": "abcd1234",
             "title": "Manaforge Omega - Liquid",
             "zone": {"id": 38, "name": "Manaforge Omega"},
             "events": {
-                "data": [{"type": "cast", "abilityGameID": 12345}],
+                "data": rows,
                 "nextPageTimestamp": 999.0,
             },
         }
@@ -692,9 +701,10 @@ class _FakeWarcraftLogsClient:
     ) -> dict[str, object]:
         assert code == "abcd1234"
         assert allow_unlisted is False
-        assert translate is False
         assert actor_type == "Player"
-        assert actor_sub_type == "Paladin"
+        if actor_sub_type is not None:
+            assert translate is False
+            assert actor_sub_type == "Paladin"
         return {
             "code": "abcd1234",
             "title": "Manaforge Omega - Liquid",
@@ -703,7 +713,10 @@ class _FakeWarcraftLogsClient:
                 "logVersion": 47,
                 "gameVersion": 120001,
                 "lang": "en",
-                "abilities": [{"gameID": 20473, "icon": "spell_holy_holybolt", "name": "Holy Shock", "type": "Holy"}],
+                "abilities": [
+                    {"gameID": 20473, "icon": "spell_holy_holybolt", "name": "Holy Shock", "type": "Holy"},
+                    {"gameID": 57795, "icon": "ability_paladin_judgementblue", "name": "Judgment", "type": "Holy"},
+                ],
                 "actors": [
                     {
                         "gameID": 0,
@@ -714,7 +727,27 @@ class _FakeWarcraftLogsClient:
                         "server": "Mal'Ganis",
                         "subType": "Paladin",
                         "type": "Player",
-                    }
+                    },
+                    {
+                        "gameID": 0,
+                        "icon": "classicon_warrior",
+                        "id": 1,
+                        "name": "Sherway",
+                        "petOwner": None,
+                        "server": "Illidan",
+                        "subType": "Warrior",
+                        "type": "Player",
+                    },
+                    {
+                        "gameID": 0,
+                        "icon": "inv_misc_questionmark",
+                        "id": 501,
+                        "name": "Dimensius, the All-Devouring",
+                        "petOwner": None,
+                        "server": None,
+                        "subType": "Boss",
+                        "type": "NPC",
+                    },
                 ],
             },
         }
@@ -722,11 +755,14 @@ class _FakeWarcraftLogsClient:
     def report_player_details(self, *, code: str, allow_unlisted: bool = False, options) -> dict[str, object]:  # noqa: ANN001
         assert code == "abcd1234"
         assert allow_unlisted is False
-        assert options.difficulty == 5
         assert options.encounter_id == 3012
         assert options.fight_ids in ([1, 2], [1])
-        assert options.include_combatant_info is True
         assert options.kill_type == "Kills"
+        if options.fight_ids == [1, 2]:
+            assert options.difficulty == 5
+            assert options.include_combatant_info is True
+        else:
+            assert options.difficulty in {None, 5}
         return {
             "code": "abcd1234",
             "title": "Manaforge Omega - Liquid",
@@ -1384,6 +1420,62 @@ def test_warcraftlogs_cross_report_commands_require_boss_scope(monkeypatch) -> N
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "missing_boss"
+
+
+def test_warcraftlogs_report_encounter_accepts_report_url(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-encounter", "https://www.warcraftlogs.com/reports/abcd1234#fight=1"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "report_encounter"
+    assert payload["reference"]["code"] == "abcd1234"
+    assert payload["reference"]["fight_id"] == 1
+    assert payload["fight"]["encounter_id"] == 3012
+    assert payload["stability"]["cache_safe"] is True
+
+
+def test_warcraftlogs_report_encounter_requires_explicit_fight_scope(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(warcraftlogs_app, ["report-encounter", "abcd1234"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_scope"
+
+
+def test_warcraftlogs_report_encounter_players_scopes_to_selected_fight(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-encounter-players", "abcd1234", "--fight-id", "1", "--include-combatant-info"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "report_encounter_players"
+    assert payload["reference"]["fight_id"] == 1
+    assert payload["player_details"]["counts"]["total"] == 2
+    assert payload["player_details"]["roles"]["dps"][0]["name"] == "Auropower"
+
+
+def test_warcraftlogs_report_encounter_casts_summarizes_cast_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-encounter-casts", "abcd1234", "--fight-id", "1", "--preview-limit", "2"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "report_encounter_casts"
+    assert payload["casts"]["event_count"] == 3
+    assert payload["casts"]["by_source"][0]["source"]["name"] == "Auropower"
+    assert payload["casts"]["by_ability"][0]["ability"]["name"] == "Holy Shock"
+    assert payload["casts"]["preview"][0]["relative_time_ms"] == 20000.0
 
 
 def test_warcraftlogs_report_events_requires_scope(monkeypatch) -> None:

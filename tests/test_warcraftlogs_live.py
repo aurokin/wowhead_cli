@@ -163,6 +163,26 @@ def test_live_warcraftlogs_boss_kills_contract() -> None:
 
 
 @pytest.mark.live
+def test_live_warcraftlogs_report_encounter_contracts() -> None:
+    _require_warcraftlogs_auth()
+    code, fight_id = _public_raid_report()
+    report_url = f"https://www.warcraftlogs.com/reports/{code}#fight={fight_id}"
+
+    encounter_payload = _payload_for(["report-encounter", report_url])
+    assert encounter_payload["provider"] == "warcraftlogs"
+    assert encounter_payload["kind"] == "report_encounter"
+    assert encounter_payload["reference"]["code"] == code
+    assert encounter_payload["reference"]["fight_id"] == fight_id
+    assert encounter_payload["fight"]["id"] == fight_id
+
+    players_payload = _payload_for(["report-encounter-players", report_url])
+    assert players_payload["provider"] == "warcraftlogs"
+    assert players_payload["kind"] == "report_encounter_players"
+    assert players_payload["reference"]["fight_id"] == fight_id
+    assert players_payload["player_details"]["counts"]["total"] >= 1
+
+
+@pytest.mark.live
 def test_live_warcraftlogs_report_detail_contracts() -> None:
     _require_warcraftlogs_auth()
     code, fight_id = _public_raid_report()
