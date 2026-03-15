@@ -29,17 +29,22 @@ def _require_warcraftlogs_user_auth() -> None:
 
 
 def _public_raid_report() -> tuple[str, int]:
-    payload = _payload_for(["reports", "--zone-id", "38", "--limit", "1"])
-    reports = payload.get("reports")
-    assert isinstance(reports, list) and reports, payload
-    code = reports[0].get("code")
-    assert isinstance(code, str) and code
-    fights_payload = _payload_for(["report-fights", code, "--difficulty", "5"])
-    fights = fights_payload.get("fights")
-    assert isinstance(fights, list) and fights, fights_payload
-    fight_id = fights[0].get("id")
-    assert isinstance(fight_id, int)
-    return code, fight_id
+    for page in (1, 2):
+        payload = _payload_for(["reports", "--zone-id", "38", "--limit", "5", "--page", str(page)])
+        reports = payload.get("reports")
+        assert isinstance(reports, list), payload
+        for report in reports:
+            code = report.get("code")
+            if not isinstance(code, str) or not code:
+                continue
+            fights_payload = _payload_for(["report-fights", code, "--difficulty", "5"])
+            fights = fights_payload.get("fights")
+            if not isinstance(fights, list) or not fights:
+                continue
+            fight_id = fights[0].get("id")
+            if isinstance(fight_id, int):
+                return code, fight_id
+    raise AssertionError("Could not find a sampled public report with at least one mythic fight.")
 
 
 @pytest.mark.live
@@ -140,6 +145,21 @@ def test_live_warcraftlogs_reports_contract() -> None:
     assert guild_payload["provider"] == "warcraftlogs"
     assert guild_payload["guild"]["name"] == "Liquid"
     assert isinstance(guild_payload["reports"], list)
+
+
+@pytest.mark.live
+def test_live_warcraftlogs_boss_kills_contract() -> None:
+    _require_warcraftlogs_auth()
+    payload = _payload_for(
+        ["boss-kills", "--zone-id", "38", "--boss-id", "3012", "--difficulty", "5", "--top", "3", "--report-pages", "1", "--reports-per-page", "5"]
+    )
+
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["kind"] == "boss_kills"
+    assert payload["ranking_basis"] == "sampled_fastest_kills"
+    assert payload["sample"]["source_report_count"] >= payload["sample"]["finished_report_count"]
+    assert payload["sample"]["filtered_kill_count"] >= payload["count"]
+    assert isinstance(payload["kills"], list)
 
 
 @pytest.mark.live

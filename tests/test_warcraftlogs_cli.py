@@ -470,15 +470,54 @@ class _FakeWarcraftLogsClient:
         zone_id: int | None = None,
         game_zone_id: int | None = None,
     ) -> dict[str, object]:
-        assert guild_region == "us"
-        assert guild_realm == "illidan"
-        assert guild_name == "Liquid"
-        assert limit == 10
-        assert page == 2
+        if guild_region == "us" and guild_realm == "illidan" and guild_name == "Liquid":
+            assert limit == 10
+            assert page == 2
+            assert zone_id == 38
+            assert game_zone_id == 12961
+            assert start_time == 1000.0
+            assert end_time == 2000.0
+            return {
+                "data": [
+                    {
+                        "code": "abcd1234",
+                        "title": "Manaforge Omega - Liquid",
+                        "startTime": 123,
+                        "endTime": 456,
+                        "visibility": "public",
+                        "archiveStatus": {
+                            "isArchived": True,
+                            "isAccessible": True,
+                            "archiveDate": 789,
+                        },
+                        "segments": 1,
+                        "exportedSegments": 0,
+                        "zone": {"id": 38, "name": "Manaforge Omega"},
+                        "guild": {
+                            "id": 5,
+                            "name": "Liquid",
+                            "server": {
+                                "id": 10,
+                                "name": "Illidan",
+                                "normalizedName": "Illidan",
+                                "slug": "illidan",
+                                "region": {"id": 1, "compactName": "US", "name": "North America", "slug": "us"},
+                                "subregion": {"id": 100, "name": "Chicago"},
+                            },
+                        },
+                    }
+                ],
+                "total": 25,
+                "per_page": 10,
+                "current_page": 2,
+                "from": 11,
+                "to": 20,
+                "last_page": 3,
+                "has_more_pages": True,
+            }
+
         assert zone_id == 38
-        assert game_zone_id == 12961
-        assert start_time == 1000.0
-        assert end_time == 2000.0
+        assert game_zone_id is None
         return {
             "data": [
                 {
@@ -507,15 +546,42 @@ class _FakeWarcraftLogsClient:
                             "subregion": {"id": 100, "name": "Chicago"},
                         },
                     },
-                }
+                },
+                {
+                    "code": "live9999",
+                    "title": "Manaforge Omega - Live Pull",
+                    "startTime": 789,
+                    "endTime": None,
+                    "visibility": "public",
+                    "archiveStatus": {
+                        "isArchived": False,
+                        "isAccessible": True,
+                        "archiveDate": None,
+                    },
+                    "segments": 1,
+                    "exportedSegments": 0,
+                    "zone": {"id": 38, "name": "Manaforge Omega"},
+                    "guild": {
+                        "id": 6,
+                        "name": "Echo",
+                        "server": {
+                            "id": 11,
+                            "name": "Tarren Mill",
+                            "normalizedName": "Tarren Mill",
+                            "slug": "tarren-mill",
+                            "region": {"id": 2, "compactName": "EU", "name": "Europe", "slug": "eu"},
+                            "subregion": {"id": 101, "name": "Paris"},
+                        },
+                    },
+                },
             ],
-            "total": 25,
-            "per_page": 10,
-            "current_page": 2,
-            "from": 11,
-            "to": 20,
-            "last_page": 3,
-            "has_more_pages": True,
+            "total": 2,
+            "per_page": limit,
+            "current_page": page,
+            "from": 1,
+            "to": 2,
+            "last_page": 1,
+            "has_more_pages": False,
         }
 
     def report_fights(self, *, code: str, difficulty: int | None = None, allow_unlisted: bool = False) -> dict[str, object]:
@@ -534,8 +600,36 @@ class _FakeWarcraftLogsClient:
                     "difficulty": 5,
                     "kill": True,
                     "completeRaid": False,
-                    "startTime": 100,
-                    "endTime": 200,
+                    "startTime": 100000,
+                    "endTime": 200000,
+                    "fightPercentage": 100,
+                    "bossPercentage": 0,
+                    "averageItemLevel": 685.2,
+                    "size": 20,
+                },
+                {
+                    "id": 2,
+                    "name": "Dimensius, the All-Devouring",
+                    "encounterID": 3012,
+                    "difficulty": 5,
+                    "kill": False,
+                    "completeRaid": False,
+                    "startTime": 300000,
+                    "endTime": 700000,
+                    "fightPercentage": 12.4,
+                    "bossPercentage": 12.4,
+                    "averageItemLevel": 685.2,
+                    "size": 20,
+                },
+                {
+                    "id": 3,
+                    "name": "Forgeweaver Araz",
+                    "encounterID": 3002,
+                    "difficulty": 5,
+                    "kill": True,
+                    "completeRaid": False,
+                    "startTime": 800000,
+                    "endTime": 1250000,
                     "fightPercentage": 100,
                     "bossPercentage": 0,
                     "averageItemLevel": 685.2,
@@ -630,7 +724,7 @@ class _FakeWarcraftLogsClient:
         assert allow_unlisted is False
         assert options.difficulty == 5
         assert options.encounter_id == 3012
-        assert options.fight_ids == [1, 2]
+        assert options.fight_ids in ([1, 2], [1])
         assert options.include_combatant_info is True
         assert options.kill_type == "Kills"
         return {
@@ -1079,7 +1173,7 @@ def test_warcraftlogs_guild_character_and_report_commands(monkeypatch) -> None:
     fights_result = runner.invoke(warcraftlogs_app, ["report-fights", "abcd1234", "--difficulty", "5"])
     assert fights_result.exit_code == 0
     fights_payload = json.loads(fights_result.stdout)
-    assert fights_payload["count"] == 1
+    assert fights_payload["count"] == 3
     assert fights_payload["fights"][0]["encounter_id"] == 3012
 
     events_result = runner.invoke(
@@ -1182,6 +1276,114 @@ def test_warcraftlogs_guild_character_and_report_commands(monkeypatch) -> None:
     rankings_payload = json.loads(rankings_result.stdout)
     assert rankings_payload["rankings"]["count"] == 1
     assert rankings_payload["rankings"]["rows"][0]["name"] == "Auropower"
+
+
+def test_warcraftlogs_boss_kills_samples_finished_reports_and_filters_by_spec(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "boss-kills",
+            "--zone-id",
+            "38",
+            "--boss-id",
+            "3012",
+            "--difficulty",
+            "5",
+            "--spec-name",
+            "Retribution",
+            "--kill-time-max",
+            "150",
+            "--top",
+            "5",
+            "--report-pages",
+            "1",
+            "--reports-per-page",
+            "10",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "boss_kills"
+    assert payload["ranking_basis"] == "sampled_fastest_kills"
+    assert payload["sample"]["source_report_count"] == 2
+    assert payload["sample"]["finished_report_count"] == 1
+    assert payload["sample"]["skipped_live_report_count"] == 1
+    assert payload["sample"]["filtered_kill_count"] == 1
+    assert payload["kills"][0]["fight"]["encounter_id"] == 3012
+    assert payload["kills"][0]["duration_seconds"] == 100.0
+    assert payload["kills"][0]["matching_players"][0]["name"] == "Auropower"
+
+
+def test_warcraftlogs_top_kills_reports_truncation(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "top-kills",
+            "--zone-id",
+            "38",
+            "--boss-id",
+            "3012",
+            "--difficulty",
+            "5",
+            "--top",
+            "1",
+            "--report-pages",
+            "1",
+            "--reports-per-page",
+            "10",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "top_kills"
+    assert payload["count"] == 1
+    assert payload["sample"]["truncated"] is False
+    assert payload["kills"][0]["fight"]["name"] == "Dimensius, the All-Devouring"
+
+
+def test_warcraftlogs_kill_time_distribution_returns_histogram(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "kill-time-distribution",
+            "--zone-id",
+            "38",
+            "--boss-name",
+            "Dimensius",
+            "--difficulty",
+            "5",
+            "--report-pages",
+            "1",
+            "--reports-per-page",
+            "10",
+            "--bucket-seconds",
+            "30",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "kill_time_distribution"
+    assert payload["sample"]["filtered_kill_count"] == 1
+    assert payload["distribution"]["statistics"]["min"] == 100.0
+    assert payload["distribution"]["rows"][0]["start_seconds"] == 90
+
+
+def test_warcraftlogs_cross_report_commands_require_boss_scope(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["boss-kills", "--zone-id", "38"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_boss"
 
 
 def test_warcraftlogs_report_events_requires_scope(monkeypatch) -> None:

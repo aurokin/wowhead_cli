@@ -62,6 +62,9 @@ Implemented today:
   - `warcraftlogs report-table`
   - `warcraftlogs report-graph`
   - `warcraftlogs report-rankings`
+  - `warcraftlogs boss-kills`
+  - `warcraftlogs top-kills`
+  - `warcraftlogs kill-time-distribution`
 - unit coverage for the current JSON contract
 - live coverage for:
   - `regions`
@@ -79,6 +82,7 @@ Implemented today:
   - constrained `report-table`
   - constrained `report-graph`
   - constrained `report-rankings`
+  - sampled `boss-kills`
 
 Current intentional boundary:
 - standalone only for now
@@ -112,8 +116,8 @@ Highest-value next implementation slices:
   - encounter identity from report URLs
   - fight-scoped actor/ability normalization
   - typed buff/cast/damage workflows instead of ad hoc event math
-- plan and build the multi-report analytics slice for high-level filtered questions:
-  - top kills for a boss
+- continue the multi-report analytics slice after the first sampled cohort commands:
+  - stronger top-kill discovery semantics beyond sampled fastest kills
   - spec-filtered kill samples
   - kill-time-bounded report cohorts
   - cross-report composition and ability summaries

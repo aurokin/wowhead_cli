@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 import typer
+from warcraft_core.analytics import numeric_summary
 from warcraft_core.auth import (
     delete_provider_auth_state,
     load_provider_auth_state,
@@ -131,6 +132,9 @@ def _doctor_payload() -> dict[str, Any]:
             "guild_members": "ready",
             "guild_attendance": "ready",
             "guild_rankings": "ready",
+            "boss_kills": "ready",
+            "top_kills": "ready",
+            "kill_time_distribution": "ready",
             "character": "ready",
             "character_rankings": "ready",
             "report": "ready",
@@ -491,6 +495,262 @@ def _fight_payload(fight: dict[str, Any]) -> dict[str, Any]:
         "boss_percentage": fight.get("bossPercentage"),
         "average_item_level": fight.get("averageItemLevel"),
         "size": fight.get("size"),
+    }
+
+
+def _normalize_match_text(value: str | None) -> str:
+    if not value:
+        return ""
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _report_is_finished(report: dict[str, Any]) -> bool:
+    end_time = report.get("endTime")
+    return isinstance(end_time, (int, float)) and float(end_time) > 0
+
+
+def _fight_duration_ms(fight: dict[str, Any]) -> float | None:
+    start_time = fight.get("startTime")
+    end_time = fight.get("endTime")
+    if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
+        return None
+    duration = float(end_time) - float(start_time)
+    if duration <= 0:
+        return None
+    return duration
+
+
+def _boss_matches(fight: dict[str, Any], *, boss_id: int | None, boss_name: str | None) -> bool:
+    if boss_id is not None and fight.get("encounterID") != boss_id:
+        return False
+    if boss_name is None:
+        return True
+    actual = _normalize_match_text(str(fight.get("name") or ""))
+    query = _normalize_match_text(boss_name)
+    if not query:
+        return True
+    return query in actual or actual in query
+
+
+def _player_spec_matches(actor: dict[str, Any], spec_name: str) -> bool:
+    wanted = _normalize_match_text(spec_name)
+    for spec in actor.get("specs") if isinstance(actor.get("specs"), list) else []:
+        if not isinstance(spec, dict):
+            continue
+        if _normalize_match_text(str(spec.get("spec") or "")) == wanted:
+            return True
+    return False
+
+
+def _matching_spec_players(report: dict[str, Any], *, spec_name: str) -> list[dict[str, Any]]:
+    details = _report_player_details_payload(report)["player_details"]["roles"]
+    matches: list[dict[str, Any]] = []
+    for role, rows in details.items():
+        for row in rows:
+            if _player_spec_matches(row, spec_name):
+                matches.append(
+                    {
+                        "name": row.get("name"),
+                        "id": row.get("id"),
+                        "role": role,
+                        "type": row.get("type"),
+                        "matching_specs": [
+                            spec
+                            for spec in (row.get("specs") if isinstance(row.get("specs"), list) else [])
+                            if _normalize_match_text(str(spec.get("spec") or "")) == _normalize_match_text(spec_name)
+                        ],
+                    }
+                )
+    return matches
+
+
+def _duration_bucket_rows(values: list[float], *, bucket_seconds: int) -> list[dict[str, Any]]:
+    if not values:
+        return []
+    counts: dict[int, int] = {}
+    for value in values:
+        bucket_start = int(value // bucket_seconds) * bucket_seconds
+        counts[bucket_start] = counts.get(bucket_start, 0) + 1
+    rows = []
+    total = len(values)
+    for bucket_start, count in sorted(counts.items()):
+        bucket_end = bucket_start + bucket_seconds
+        rows.append(
+            {
+                "start_seconds": bucket_start,
+                "end_seconds": bucket_end,
+                "count": count,
+                "percent": round((count / total) * 100, 2),
+            }
+        )
+    return rows
+
+
+def _boss_kill_row(*, report: dict[str, Any], fight: dict[str, Any], matching_players: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    duration_ms = _fight_duration_ms(fight)
+    return {
+        "report": _report_brief_payload(report),
+        "report_finished": _report_is_finished(report),
+        "guild": _report_payload(report).get("guild"),
+        "fight": _fight_payload(fight),
+        "duration_ms": duration_ms,
+        "duration_seconds": round(duration_ms / 1000, 2) if duration_ms is not None else None,
+        "matching_players": matching_players or [],
+    }
+
+
+def _collect_boss_kill_rows(
+    *,
+    client: WarcraftLogsClient,
+    zone_id: int,
+    boss_id: int | None,
+    boss_name: str | None,
+    difficulty: int | None,
+    spec_name: str | None,
+    kill_time_min: float | None,
+    kill_time_max: float | None,
+    report_pages: int,
+    reports_per_page: int,
+    start_time: float | None,
+    end_time: float | None,
+    guild_region: str | None,
+    guild_realm: str | None,
+    guild_name: str | None,
+) -> dict[str, Any]:
+    report_rows: list[dict[str, Any]] = []
+    for page in range(1, report_pages + 1):
+        pagination = client.reports(
+            guild_region=guild_region,
+            guild_realm=guild_realm,
+            guild_name=guild_name,
+            limit=reports_per_page,
+            page=page,
+            start_time=start_time,
+            end_time=end_time,
+            zone_id=zone_id,
+            game_zone_id=None,
+        )
+        page_rows = pagination.get("data") if isinstance(pagination.get("data"), list) else []
+        report_rows.extend([row for row in page_rows if isinstance(row, dict)])
+        if not pagination.get("has_more_pages"):
+            break
+
+    live_reports = [row for row in report_rows if not _report_is_finished(row)]
+    finished_reports = [row for row in report_rows if _report_is_finished(row)]
+
+    boss_kills: list[dict[str, Any]] = []
+    scanned_fight_count = 0
+    matched_boss_kill_count = 0
+
+    for report in finished_reports:
+        fights_payload = client.report_fights(code=str(report.get("code") or ""), difficulty=difficulty, allow_unlisted=False)
+        fights = fights_payload.get("fights") if isinstance(fights_payload.get("fights"), list) else []
+        for fight in fights:
+            if not isinstance(fight, dict):
+                continue
+            scanned_fight_count += 1
+            if not fight.get("kill"):
+                continue
+            if not _boss_matches(fight, boss_id=boss_id, boss_name=boss_name):
+                continue
+            duration_ms = _fight_duration_ms(fight)
+            if duration_ms is None:
+                continue
+            duration_seconds = duration_ms / 1000
+            if kill_time_min is not None and duration_seconds < kill_time_min:
+                continue
+            if kill_time_max is not None and duration_seconds > kill_time_max:
+                continue
+            matched_boss_kill_count += 1
+            matching_players: list[dict[str, Any]] = []
+            if spec_name:
+                details_report = client.report_player_details(
+                    code=str(report.get("code") or ""),
+                    allow_unlisted=False,
+                    options=ReportPlayerDetailsOptions(
+                        difficulty=difficulty,
+                        encounter_id=fight.get("encounterID") if isinstance(fight.get("encounterID"), int) else None,
+                        fight_ids=[int(fight["id"])] if isinstance(fight.get("id"), int) else None,
+                        include_combatant_info=True,
+                        kill_type="Kills",
+                    ),
+                )
+                matching_players = _matching_spec_players(details_report, spec_name=spec_name)
+                if not matching_players:
+                    continue
+            boss_kills.append(_boss_kill_row(report=report, fight=fight, matching_players=matching_players))
+
+    boss_kills.sort(
+        key=lambda row: (
+            row.get("duration_ms") if isinstance(row.get("duration_ms"), (int, float)) else float("inf"),
+            str((row.get("report") or {}).get("code") or ""),
+            int(((row.get("fight") or {}).get("id") or 0)),
+        )
+    )
+
+    return {
+        "rows": boss_kills,
+        "sample": {
+            "source_report_count": len(report_rows),
+            "finished_report_count": len(finished_reports),
+            "skipped_live_report_count": len(live_reports),
+            "scanned_fight_count": scanned_fight_count,
+            "matched_boss_kill_count": matched_boss_kill_count,
+        },
+    }
+
+
+def _boss_kills_payload(
+    *,
+    kind: str,
+    rows: list[dict[str, Any]],
+    sample: dict[str, Any],
+    query: dict[str, Any],
+    top: int,
+) -> dict[str, Any]:
+    returned = rows[:top]
+    return {
+        "ok": True,
+        "provider": "warcraftlogs",
+        "kind": kind,
+        "ranking_basis": "sampled_fastest_kills",
+        "query": query,
+        "sample": {
+            **sample,
+            "filtered_kill_count": len(rows),
+            "returned_kill_count": len(returned),
+            "excluded_kill_count": max(0, len(rows) - len(returned)),
+            "truncated": len(rows) > top,
+            "stable_source_only": True,
+        },
+        "count": len(returned),
+        "kills": returned,
+    }
+
+
+def _kill_time_distribution_payload(*, rows: list[dict[str, Any]], sample: dict[str, Any], query: dict[str, Any], bucket_seconds: int) -> dict[str, Any]:
+    durations = [
+        float(duration)
+        for duration in (row.get("duration_seconds") for row in rows)
+        if isinstance(duration, (int, float))
+    ]
+    return {
+        "ok": True,
+        "provider": "warcraftlogs",
+        "kind": "kill_time_distribution",
+        "query": query,
+        "sample": {
+            **sample,
+            "filtered_kill_count": len(rows),
+            "stable_source_only": True,
+        },
+        "distribution": {
+            "unit": "seconds",
+            "bucket_seconds": bucket_seconds,
+            "statistics": numeric_summary(durations),
+            "rows": _duration_bucket_rows(durations, bucket_seconds=bucket_seconds),
+        },
+        "fastest_kills_preview": rows[: min(5, len(rows))],
     }
 
 
@@ -1579,6 +1839,263 @@ def guild_reports(
             "count": len(report_payload["reports"]),
             **report_payload,
         },
+    )
+
+
+def _cross_report_query(
+    *,
+    zone_id: int,
+    boss_id: int | None,
+    boss_name: str | None,
+    difficulty: int | None,
+    spec_name: str | None,
+    kill_time_min: float | None,
+    kill_time_max: float | None,
+    top: int,
+    report_pages: int,
+    reports_per_page: int,
+    start_time: float | None,
+    end_time: float | None,
+    guild_region: str | None,
+    guild_realm: str | None,
+    guild_name: str | None,
+) -> dict[str, Any]:
+    return {
+        "zone_id": zone_id,
+        "boss_id": boss_id,
+        "boss_name": boss_name,
+        "difficulty": difficulty,
+        "spec_name": spec_name,
+        "kill_time_min": kill_time_min,
+        "kill_time_max": kill_time_max,
+        "top": top,
+        "report_pages": report_pages,
+        "reports_per_page": reports_per_page,
+        "start_time": start_time,
+        "end_time": end_time,
+        "guild_region": guild_region,
+        "guild_realm": guild_realm,
+        "guild_name": guild_name,
+    }
+
+
+def _require_boss_scope(ctx: typer.Context, *, boss_id: int | None, boss_name: str | None) -> None:
+    if boss_id is None and not boss_name:
+        _fail(ctx, "missing_boss", "Provide --boss-id or --boss-name for cross-report boss analytics.")
+
+
+@app.command("boss-kills")
+def boss_kills(
+    ctx: typer.Context,
+    zone_id: int = typer.Option(..., "--zone-id", help="Warcraft Logs zone ID to sample reports from."),
+    boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
+    boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants."),
+    kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
+    kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
+    top: int = typer.Option(10, "--top", min=1, max=100, help="Maximum returned kill rows after ranking."),
+    report_pages: int = typer.Option(1, "--report-pages", min=1, max=10, help="How many report-list pages to sample."),
+    reports_per_page: int = typer.Option(25, "--reports-per-page", min=1, max=100, help="Reports to fetch per sampled page."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional report-range start time in milliseconds."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional report-range end time in milliseconds."),
+    guild_region: str | None = typer.Option(None, "--guild-region", help="Optional guild-region scope for report discovery."),
+    guild_realm: str | None = typer.Option(None, "--guild-realm", help="Optional guild-realm scope for report discovery."),
+    guild_name: str | None = typer.Option(None, "--guild-name", help="Optional guild-name scope for report discovery."),
+) -> None:
+    _require_boss_scope(ctx, boss_id=boss_id, boss_name=boss_name)
+    client = _client(ctx)
+    try:
+        analytics = _collect_boss_kill_rows(
+            client=client,
+            zone_id=zone_id,
+            boss_id=boss_id,
+            boss_name=boss_name,
+            difficulty=difficulty,
+            spec_name=spec_name,
+            kill_time_min=kill_time_min,
+            kill_time_max=kill_time_max,
+            report_pages=report_pages,
+            reports_per_page=reports_per_page,
+            start_time=start_time,
+            end_time=end_time,
+            guild_region=guild_region,
+            guild_realm=guild_realm,
+            guild_name=guild_name,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        _boss_kills_payload(
+            kind="boss_kills",
+            rows=analytics["rows"],
+            sample=analytics["sample"],
+            query=_cross_report_query(
+                zone_id=zone_id,
+                boss_id=boss_id,
+                boss_name=boss_name,
+                difficulty=difficulty,
+                spec_name=spec_name,
+                kill_time_min=kill_time_min,
+                kill_time_max=kill_time_max,
+                top=top,
+                report_pages=report_pages,
+                reports_per_page=reports_per_page,
+                start_time=start_time,
+                end_time=end_time,
+                guild_region=guild_region,
+                guild_realm=guild_realm,
+                guild_name=guild_name,
+            ),
+            top=top,
+        ),
+    )
+
+
+@app.command("top-kills")
+def top_kills(
+    ctx: typer.Context,
+    zone_id: int = typer.Option(..., "--zone-id", help="Warcraft Logs zone ID to sample reports from."),
+    boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
+    boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants."),
+    kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
+    kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
+    top: int = typer.Option(10, "--top", min=1, max=100, help="Maximum returned kill rows after ranking."),
+    report_pages: int = typer.Option(1, "--report-pages", min=1, max=10, help="How many report-list pages to sample."),
+    reports_per_page: int = typer.Option(25, "--reports-per-page", min=1, max=100, help="Reports to fetch per sampled page."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional report-range start time in milliseconds."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional report-range end time in milliseconds."),
+    guild_region: str | None = typer.Option(None, "--guild-region", help="Optional guild-region scope for report discovery."),
+    guild_realm: str | None = typer.Option(None, "--guild-realm", help="Optional guild-realm scope for report discovery."),
+    guild_name: str | None = typer.Option(None, "--guild-name", help="Optional guild-name scope for report discovery."),
+) -> None:
+    _require_boss_scope(ctx, boss_id=boss_id, boss_name=boss_name)
+    client = _client(ctx)
+    try:
+        analytics = _collect_boss_kill_rows(
+            client=client,
+            zone_id=zone_id,
+            boss_id=boss_id,
+            boss_name=boss_name,
+            difficulty=difficulty,
+            spec_name=spec_name,
+            kill_time_min=kill_time_min,
+            kill_time_max=kill_time_max,
+            report_pages=report_pages,
+            reports_per_page=reports_per_page,
+            start_time=start_time,
+            end_time=end_time,
+            guild_region=guild_region,
+            guild_realm=guild_realm,
+            guild_name=guild_name,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        _boss_kills_payload(
+            kind="top_kills",
+            rows=analytics["rows"],
+            sample=analytics["sample"],
+            query=_cross_report_query(
+                zone_id=zone_id,
+                boss_id=boss_id,
+                boss_name=boss_name,
+                difficulty=difficulty,
+                spec_name=spec_name,
+                kill_time_min=kill_time_min,
+                kill_time_max=kill_time_max,
+                top=top,
+                report_pages=report_pages,
+                reports_per_page=reports_per_page,
+                start_time=start_time,
+                end_time=end_time,
+                guild_region=guild_region,
+                guild_realm=guild_realm,
+                guild_name=guild_name,
+            ),
+            top=top,
+        ),
+    )
+
+
+@app.command("kill-time-distribution")
+def kill_time_distribution(
+    ctx: typer.Context,
+    zone_id: int = typer.Option(..., "--zone-id", help="Warcraft Logs zone ID to sample reports from."),
+    boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
+    boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants."),
+    kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
+    kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
+    report_pages: int = typer.Option(1, "--report-pages", min=1, max=10, help="How many report-list pages to sample."),
+    reports_per_page: int = typer.Option(25, "--reports-per-page", min=1, max=100, help="Reports to fetch per sampled page."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional report-range start time in milliseconds."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional report-range end time in milliseconds."),
+    guild_region: str | None = typer.Option(None, "--guild-region", help="Optional guild-region scope for report discovery."),
+    guild_realm: str | None = typer.Option(None, "--guild-realm", help="Optional guild-realm scope for report discovery."),
+    guild_name: str | None = typer.Option(None, "--guild-name", help="Optional guild-name scope for report discovery."),
+    bucket_seconds: int = typer.Option(30, "--bucket-seconds", min=5, max=600, help="Bucket size in seconds for the returned histogram."),
+) -> None:
+    _require_boss_scope(ctx, boss_id=boss_id, boss_name=boss_name)
+    client = _client(ctx)
+    try:
+        analytics = _collect_boss_kill_rows(
+            client=client,
+            zone_id=zone_id,
+            boss_id=boss_id,
+            boss_name=boss_name,
+            difficulty=difficulty,
+            spec_name=spec_name,
+            kill_time_min=kill_time_min,
+            kill_time_max=kill_time_max,
+            report_pages=report_pages,
+            reports_per_page=reports_per_page,
+            start_time=start_time,
+            end_time=end_time,
+            guild_region=guild_region,
+            guild_realm=guild_realm,
+            guild_name=guild_name,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        _kill_time_distribution_payload(
+            rows=analytics["rows"],
+            sample=analytics["sample"],
+            query=_cross_report_query(
+                zone_id=zone_id,
+                boss_id=boss_id,
+                boss_name=boss_name,
+                difficulty=difficulty,
+                spec_name=spec_name,
+                kill_time_min=kill_time_min,
+                kill_time_max=kill_time_max,
+                top=len(analytics["rows"]),
+                report_pages=report_pages,
+                reports_per_page=reports_per_page,
+                start_time=start_time,
+                end_time=end_time,
+                guild_region=guild_region,
+                guild_realm=guild_realm,
+                guild_name=guild_name,
+            ),
+            bucket_seconds=bucket_seconds,
+        ),
     )
 
 
