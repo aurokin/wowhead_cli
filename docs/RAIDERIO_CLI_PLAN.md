@@ -221,4 +221,4 @@ The exact names matter less than keeping the outputs:
 
 - `https://raider.io/api`
 - `https://raider.io/openapi.json`
-- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
+- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)

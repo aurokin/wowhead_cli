@@ -272,4 +272,4 @@ The goal is to make `warcraft-wiki` trustworthy, not just broad.
 - `https://warcraft.wiki.gg/wiki/Zone_scaling`
 - `https://warcraft.wiki.gg/wiki/Housing`
 - `https://warcraft.wiki.gg/wiki/Patch_2.2.0`
-- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
+- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)

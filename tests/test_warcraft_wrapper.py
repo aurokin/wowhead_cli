@@ -1,17 +1,91 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
-from typer.testing import CliRunner
-
-from icy_veins_cli.main import app as icy_veins_app
-from raiderio_cli.main import app as raiderio_app
 from method_cli.main import app as method_app
-from simc_cli.main import app as simc_app
+from typer.testing import CliRunner
 from warcraft_cli.main import app as warcraft_app
-from wowprogress_cli.main import app as wowprogress_app
+from warcraft_content.article_bundle import write_article_bundle
 
 runner = CliRunner()
+
+
+def _comparison_payload(
+    *,
+    provider: str,
+    slug: str,
+    page_url: str,
+    page_title: str,
+    analysis_tags: list[str],
+    build_code: str | None = None,
+) -> dict[str, object]:
+    build_items: list[dict[str, object]] = []
+    if build_code is not None:
+        build_items.append(
+            {
+                "kind": "build_reference",
+                "reference_type": "wowhead_talent_calc_url",
+                "url": f"https://www.wowhead.com/talent-calc/monk/mistweaver/{build_code}",
+                "label": "Raid Build",
+                "build_code": build_code,
+                "build_identity": {
+                    "kind": "build_identity",
+                    "status": "inferred",
+                    "class_spec_identity": {"identity": {"actor_class": "monk", "spec": "mistweaver"}},
+                },
+                "source_urls": [page_url],
+            }
+        )
+    return {
+        "guide": {
+            "slug": slug,
+            "page_url": page_url,
+            "section_slug": "overview",
+            "section_title": "Overview",
+            "page_count": 1,
+        },
+        "page": {
+            "title": page_title,
+            "description": page_title,
+            "canonical_url": page_url,
+        },
+        "navigation": {"count": 1, "items": [{"title": "Overview", "url": page_url, "section_slug": "overview", "active": True, "ordinal": 1}]},
+        "pages": [
+            {
+                "guide": {"slug": slug, "page_url": page_url, "section_slug": "overview", "section_title": "Overview"},
+                "page": {"title": page_title, "description": page_title, "canonical_url": page_url},
+                "article": {
+                    "html": "<h2>Overview</h2><p>Guide copy</p>",
+                    "text": "Overview Guide copy",
+                    "headings": [{"title": "Overview", "level": 2, "ordinal": 1}],
+                    "sections": [{"title": "Overview", "level": 2, "ordinal": 1, "text": "Guide copy", "html": "<p>Guide copy</p>"}],
+                },
+            }
+        ],
+        "linked_entities": {"count": 0, "items": []},
+        "build_references": {"count": len(build_items), "items": build_items},
+        "analysis_surfaces": {
+            "count": 1,
+            "items": [
+                {
+                    "kind": "guide_analysis_surface",
+                    "surface_tags": analysis_tags,
+                    "confidence": "high",
+                    "source_kind": "section_heading",
+                    "provider": provider,
+                    "content_family": None,
+                    "page_url": page_url,
+                    "section_slug": "overview",
+                    "section_title": "Overview",
+                    "page_title": page_title,
+                    "text_preview": "Guide copy",
+                    "match_reasons": ["keyword:overview"],
+                    "citation": {"page_url": page_url, "section_title": "Overview", "page_title": page_title},
+                }
+            ],
+        },
+    }
 
 
 def test_method_stub_commands_expose_coming_soon_contract() -> None:
@@ -30,24 +104,28 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["wrapper"]["provider_count"] == 7
+    assert payload["wrapper"]["provider_count"] == 8
     providers = {row["provider"]: row for row in payload["providers"]}
     assert providers["wowhead"]["status"] == "ready"
     assert providers["method"]["status"] == "ready"
     assert providers["icy-veins"]["status"] == "ready"
-    assert providers["raiderio"]["status"] == "ready"
+    assert providers["raiderio"]["status"] == "partial"
+    assert providers["warcraftlogs"]["status"] == "partial"
     assert providers["warcraft-wiki"]["status"] == "ready"
-    assert providers["wowprogress"]["status"] == "ready"
-    assert providers["simc"]["status"] == "ready"
+    assert providers["wowprogress"]["status"] == "partial"
+    assert providers["simc"]["status"] == "partial"
     assert providers["wowhead"]["expansion_support"]["mode"] == "profiled"
     assert providers["wowhead"]["expansion_support"]["review_status"] == "reviewed"
     assert providers["method"]["expansion_support"]["mode"] == "fixed"
     assert providers["method"]["expansion_support"]["review_status"] == "reviewed"
+    assert providers["warcraftlogs"]["expansion_support"]["mode"] == "fixed"
+    assert providers["warcraftlogs"]["expansion_support"]["review_status"] == "reviewed"
     assert providers["warcraft-wiki"]["expansion_support"]["mode"] == "none"
     assert providers["warcraft-wiki"]["expansion_support"]["review_status"] == "deferred"
     assert providers["method"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["icy-veins"]["details"]["capabilities"]["guide"] == "ready"
     assert providers["raiderio"]["details"]["capabilities"]["search"] == "ready"
+    assert providers["warcraftlogs"]["details"]["capabilities"]["search"] == "ready_explicit_report_only"
     assert providers["warcraft-wiki"]["details"]["capabilities"]["article"] == "ready"
     assert providers["wowprogress"]["details"]["capabilities"]["leaderboard"] == "ready"
     assert providers["simc"]["details"]["capabilities"]["decode_build"] == "ready"
@@ -65,6 +143,7 @@ def test_warcraft_doctor_reports_expansion_filtering_state() -> None:
         "method",
         "icy-veins",
         "raiderio",
+        "warcraftlogs",
         "warcraft-wiki",
         "wowprogress",
         "simc",
@@ -83,6 +162,7 @@ def test_warcraft_doctor_reports_retail_filter_state() -> None:
         "method",
         "icy-veins",
         "raiderio",
+        "warcraftlogs",
         "wowprogress",
     }
     assert {row["provider"] for row in payload["excluded_providers"]} == {
@@ -112,18 +192,501 @@ def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["provider_count"] == 7
+    assert payload["provider_count"] == 8
     assert payload["count"] == 1
     assert payload["results"][0]["provider"] == "wowhead"
     providers = {row["provider"]: row for row in payload["providers"]}
     assert providers["method"]["payload"]["count"] == 0
     assert providers["icy-veins"]["payload"]["count"] == 0
     assert providers["raiderio"]["payload"]["count"] == 0
+    assert providers["warcraftlogs"]["payload"]["count"] == 0
+    assert "explicit report URL or a bare report code" in providers["warcraftlogs"]["payload"]["message"]
     assert providers["warcraft-wiki"]["payload"]["count"] == 0
     assert providers["wowprogress"]["payload"]["count"] == 0
     assert "structured queries" in providers["wowprogress"]["payload"]["message"]
     assert providers["simc"]["payload"]["coming_soon"] is True
     assert providers["wowhead"]["payload"]["results"][0]["name"] == "Thunderfury"
+
+
+def test_warcraft_guide_compare_returns_cross_provider_bundle_packet(tmp_path: Path) -> None:
+    method_dir = tmp_path / "method-guide"
+    icy_dir = tmp_path / "icy-guide"
+    write_article_bundle(
+        _comparison_payload(
+            provider="method",
+            slug="mistweaver-monk",
+            page_url="https://www.method.gg/guides/mistweaver-monk/talents",
+            page_title="Method Talents",
+            analysis_tags=["builds_talents", "talent_recommendations"],
+            build_code="ABC123",
+        ),
+        provider="method",
+        export_dir=method_dir,
+    )
+    write_article_bundle(
+        _comparison_payload(
+            provider="icy-veins",
+            slug="mistweaver-monk-pve-healing-guide",
+            page_url="https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide",
+            page_title="Icy Overview",
+            analysis_tags=["overview"],
+            build_code="ABC123",
+        ),
+        provider="icy-veins",
+        export_dir=icy_dir,
+    )
+
+    result = runner.invoke(warcraft_app, ["guide-compare", str(method_dir), str(icy_dir)])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "warcraft"
+    assert payload["kind"] == "guide_bundle_comparison"
+    assert payload["compared_bundle_count"] == 2
+    assert payload["comparison_scope"] == ["section_evidence", "analysis_surfaces", "build_references"]
+    assert payload["section_evidence"]["matching_rule"] == "exact_normalized_section_title"
+    assert payload["section_evidence"]["shared"] == ["overview"]
+    assert payload["analysis_surface_tags"]["count"] == 3
+    assert payload["build_references"]["count"] == 1
+    assert payload["build_references"]["shared"] == [
+        "monk::mistweaver::ABC123::https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"
+    ]
+
+
+def test_warcraft_guide_compare_query_orchestrates_resolve_export_and_compare(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_provider_resolve(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, object]:
+        assert query == "mistweaver monk guide"
+        assert limit == 5
+        assert expansion is None
+        refs = {
+            "method": ("mistweaver-monk", "Method Mistweaver Monk Guide"),
+            "icy-veins": ("mistweaver-monk-pve-healing-guide", "Icy Veins Mistweaver Monk Guide"),
+        }
+        ref, name = refs[provider]
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "resolved": True,
+                "confidence": "high",
+                "match": {
+                    "id": ref,
+                    "name": name,
+                    "entity_type": "guide",
+                    "url": f"https://example.test/{ref}",
+                },
+                "next_command": f"{provider} guide {ref}",
+            },
+        }
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert args[0] == "guide-export"
+        export_dir = Path(args[3])
+        payload = _comparison_payload(
+            provider=provider,
+            slug=args[1],
+            page_url=f"https://example.test/{provider}/{args[1]}",
+            page_title=f"{provider} guide",
+            analysis_tags=["overview"] if provider == "icy-veins" else ["builds_talents", "talent_recommendations"],
+            build_code="ABC123",
+        )
+        write_article_bundle(payload, provider=provider, export_dir=export_dir)
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {"output_dir": str(export_dir), "guide": payload["guide"]},
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_resolve", fake_provider_resolve)
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        [
+            "guide-compare-query",
+            "mistweaver monk guide",
+            "--provider",
+            "method",
+            "--provider",
+            "icy-veins",
+            "--out-root",
+            str(tmp_path / "orchestrated"),
+        ],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "guide_bundle_comparison_orchestration"
+    assert payload["exported_bundle_count"] == 2
+    assert payload["comparison"]["kind"] == "guide_bundle_comparison"
+    assert payload["comparison"]["compared_bundle_count"] == 2
+    assert all(row["status"] == "exported" for row in payload["provider_results"])
+    assert {row["candidate"]["selection_source"] for row in payload["provider_results"]} == {"resolve"}
+
+
+def test_warcraft_guide_compare_query_uses_conservative_search_fallback(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_provider_resolve(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, object]:
+        if provider == "method":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "resolved": True,
+                    "confidence": "high",
+                    "match": {
+                        "id": "mistweaver-monk",
+                        "name": "Method Mistweaver Monk Guide",
+                        "entity_type": "guide",
+                        "url": "https://example.test/method/mistweaver-monk",
+                    },
+                    "next_command": "method guide mistweaver-monk",
+                },
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "resolved": False,
+                "confidence": "none",
+                "match": None,
+                "next_command": None,
+            },
+        }
+
+    def fake_provider_search(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, object]:
+        if provider == "icy-veins":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "results": [
+                        {
+                            "id": "mistweaver-monk-pve-healing-guide",
+                            "name": "Icy Veins Mistweaver Monk Guide",
+                            "entity_type": "guide",
+                            "url": "https://example.test/icy-veins/mistweaver-monk-pve-healing-guide",
+                            "ranking": {"score": 44},
+                            "follow_up": {
+                                "recommended_command": "icy-veins guide mistweaver-monk-pve-healing-guide",
+                            },
+                        },
+                        {
+                            "id": "mistweaver-monk-pvp-guide",
+                            "name": "Icy Veins Mistweaver Monk PvP Guide",
+                            "entity_type": "guide",
+                            "url": "https://example.test/icy-veins/mistweaver-monk-pvp-guide",
+                            "ranking": {"score": 20},
+                        },
+                    ]
+                },
+            }
+        return {"provider": provider, "exit_code": 0, "payload": {"results": []}}
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        export_dir = Path(args[3])
+        payload = _comparison_payload(
+            provider=provider,
+            slug=args[1],
+            page_url=f"https://example.test/{provider}/{args[1]}",
+            page_title=f"{provider} guide",
+            analysis_tags=["overview"] if provider == "icy-veins" else ["builds_talents", "talent_recommendations"],
+            build_code="ABC123",
+        )
+        write_article_bundle(payload, provider=provider, export_dir=export_dir)
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {"output_dir": str(export_dir), "guide": payload["guide"]},
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_resolve", fake_provider_resolve)
+    monkeypatch.setattr("warcraft_cli.main.provider_search", fake_provider_search)
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        [
+            "guide-compare-query",
+            "mistweaver monk guide",
+            "--provider",
+            "method",
+            "--provider",
+            "icy-veins",
+            "--out-root",
+            str(tmp_path / "orchestrated"),
+        ],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["comparison"]["compared_bundle_count"] == 2
+    icy_row = next(row for row in payload["provider_results"] if row["provider"] == "icy-veins")
+    assert icy_row["candidate"]["selection_source"] == "search_fallback"
+
+
+def test_warcraft_guide_compare_query_reuses_fresh_orchestrated_bundles(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    invoke_calls: list[tuple[str, str]] = []
+
+    def fake_provider_resolve(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, object]:
+        refs = {
+            "method": ("mistweaver-monk", "Method Mistweaver Monk Guide"),
+            "icy-veins": ("mistweaver-monk-pve-healing-guide", "Icy Veins Mistweaver Monk Guide"),
+        }
+        ref, name = refs[provider]
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "resolved": True,
+                "confidence": "high",
+                "match": {
+                    "id": ref,
+                    "name": name,
+                    "entity_type": "guide",
+                    "url": f"https://example.test/{ref}",
+                },
+                "next_command": f"{provider} guide {ref}",
+            },
+        }
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        invoke_calls.append((provider, args[1]))
+        export_dir = Path(args[3])
+        payload = _comparison_payload(
+            provider=provider,
+            slug=args[1],
+            page_url=f"https://example.test/{provider}/{args[1]}",
+            page_title=f"{provider} guide",
+            analysis_tags=["overview"] if provider == "icy-veins" else ["builds_talents", "talent_recommendations"],
+            build_code="ABC123",
+        )
+        write_article_bundle(payload, provider=provider, export_dir=export_dir)
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {"output_dir": str(export_dir), "guide": payload["guide"]},
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_resolve", fake_provider_resolve)
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    out_root = tmp_path / "orchestrated"
+    first = runner.invoke(
+        warcraft_app,
+        ["guide-compare-query", "mistweaver monk guide", "--provider", "method", "--provider", "icy-veins", "--out-root", str(out_root)],
+    )
+    assert first.exit_code == 0
+    second = runner.invoke(
+        warcraft_app,
+        ["guide-compare-query", "mistweaver monk guide", "--provider", "method", "--provider", "icy-veins", "--out-root", str(out_root)],
+    )
+    assert second.exit_code == 0
+
+    first_payload = json.loads(first.stdout)
+    second_payload = json.loads(second.stdout)
+    assert [row["status"] for row in first_payload["provider_results"]] == ["exported", "exported"]
+    assert [row["status"] for row in second_payload["provider_results"]] == ["reused", "reused"]
+    assert len(invoke_calls) == 2
+
+
+def test_warcraft_guide_compare_query_refreshes_stale_orchestrated_bundles(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    invoke_calls: list[tuple[str, str]] = []
+
+    def fake_provider_resolve(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, object]:
+        refs = {
+            "method": ("mistweaver-monk", "Method Mistweaver Monk Guide"),
+            "icy-veins": ("mistweaver-monk-pve-healing-guide", "Icy Veins Mistweaver Monk Guide"),
+        }
+        ref, name = refs[provider]
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "resolved": True,
+                "confidence": "high",
+                "match": {
+                    "id": ref,
+                    "name": name,
+                    "entity_type": "guide",
+                    "url": f"https://example.test/{ref}",
+                },
+                "next_command": f"{provider} guide {ref}",
+            },
+        }
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        invoke_calls.append((provider, args[1]))
+        export_dir = Path(args[3])
+        payload = _comparison_payload(
+            provider=provider,
+            slug=args[1],
+            page_url=f"https://example.test/{provider}/{args[1]}",
+            page_title=f"{provider} guide",
+            analysis_tags=["overview"] if provider == "icy-veins" else ["builds_talents", "talent_recommendations"],
+            build_code="ABC123",
+        )
+        write_article_bundle(payload, provider=provider, export_dir=export_dir)
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {"output_dir": str(export_dir), "guide": payload["guide"]},
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_resolve", fake_provider_resolve)
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    out_root = tmp_path / "orchestrated"
+    first = runner.invoke(
+        warcraft_app,
+        ["guide-compare-query", "mistweaver monk guide", "--provider", "method", "--provider", "icy-veins", "--out-root", str(out_root)],
+    )
+    assert first.exit_code == 0
+
+    manifest_path = out_root / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for row in manifest["providers"]:
+        row["exported_at"] = "2000-01-01T00:00:00Z"
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    second = runner.invoke(
+        warcraft_app,
+        [
+            "guide-compare-query",
+            "mistweaver monk guide",
+            "--provider",
+            "method",
+            "--provider",
+            "icy-veins",
+            "--out-root",
+            str(out_root),
+            "--max-age-hours",
+            "1",
+        ],
+    )
+    assert second.exit_code == 0
+
+    second_payload = json.loads(second.stdout)
+    assert [row["status"] for row in second_payload["provider_results"]] == ["exported", "exported"]
+    assert len(invoke_calls) == 4
+
+
+def test_warcraft_guide_compare_query_fails_when_too_few_guides_export(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_provider_resolve(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, object]:
+        if provider == "method":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "resolved": True,
+                    "confidence": "high",
+                    "match": {
+                        "id": "mistweaver-monk",
+                        "name": "Method Mistweaver Monk Guide",
+                        "entity_type": "guide",
+                        "url": "https://example.test/method/mistweaver-monk",
+                    },
+                    "next_command": "method guide mistweaver-monk",
+                },
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "resolved": False,
+                "confidence": "none",
+                "match": None,
+                "next_command": None,
+            },
+        }
+
+    def fake_provider_search(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, object]:
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "results": [
+                    {
+                        "id": "mistweaver-monk-pve-healing-guide",
+                        "name": "Icy Veins Mistweaver Monk Guide",
+                        "entity_type": "guide",
+                        "url": "https://example.test/icy-veins/mistweaver-monk-pve-healing-guide",
+                        "ranking": {"score": 25},
+                    },
+                    {
+                        "id": "mistweaver-monk-pvp-guide",
+                        "name": "Icy Veins Mistweaver Monk PvP Guide",
+                        "entity_type": "guide",
+                        "url": "https://example.test/icy-veins/mistweaver-monk-pvp-guide",
+                        "ranking": {"score": 22},
+                    },
+                ]
+            },
+        }
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        export_dir = Path(args[3])
+        payload = _comparison_payload(
+            provider=provider,
+            slug="mistweaver-monk",
+            page_url="https://example.test/method/mistweaver-monk",
+            page_title="method guide",
+            analysis_tags=["builds_talents", "talent_recommendations"],
+            build_code="ABC123",
+        )
+        write_article_bundle(payload, provider=provider, export_dir=export_dir)
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {"output_dir": str(export_dir), "guide": payload["guide"]},
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_resolve", fake_provider_resolve)
+    monkeypatch.setattr("warcraft_cli.main.provider_search", fake_provider_search)
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        [
+            "guide-compare-query",
+            "mistweaver monk guide",
+            "--provider",
+            "method",
+            "--provider",
+            "icy-veins",
+            "--out-root",
+            str(tmp_path / "orchestrated"),
+        ],
+    )
+    assert result.exit_code == 1
+
+    payload = json.loads(result.stderr)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "insufficient_guides"
+    assert payload["exported_bundle_count"] == 1
+    assert payload["comparison"] is None
+    icy_row = next(row for row in payload["provider_results"] if row["provider"] == "icy-veins")
+    assert icy_row["status"] == "skipped"
+    assert icy_row["reason"] == "search_top_guide_score_too_low:25"
 
 
 def test_warcraft_search_sorts_results_globally_by_ranking(monkeypatch) -> None:
@@ -206,6 +769,7 @@ def test_warcraft_search_expansion_filter_excludes_nonmatching_providers(monkeyp
         "method",
         "icy-veins",
         "raiderio",
+        "warcraftlogs",
         "warcraft-wiki",
         "wowprogress",
         "simc",
@@ -294,6 +858,7 @@ def test_warcraft_search_retail_filter_keeps_fixed_retail_providers_and_excludes
         "method",
         "icy-veins",
         "raiderio",
+        "warcraftlogs",
         "wowprogress",
     }
     assert {row["provider"] for row in payload["excluded_providers"]} == {"warcraft-wiki", "simc"}
@@ -341,6 +906,7 @@ def test_warcraft_resolve_retail_filter_keeps_fixed_retail_profile_provider(monk
         "method",
         "icy-veins",
         "raiderio",
+        "warcraftlogs",
         "wowprogress",
     }
     assert {row["provider"] for row in payload["excluded_providers"]} == {"warcraft-wiki", "simc"}
@@ -499,6 +1065,7 @@ def test_warcraft_resolve_expansion_filter_blocks_retail_only_resolution(monkeyp
         "method",
         "icy-veins",
         "raiderio",
+        "warcraftlogs",
         "warcraft-wiki",
         "wowprogress",
         "simc",
@@ -668,6 +1235,24 @@ def test_warcraft_resolve_can_select_wowprogress(monkeypatch) -> None:
     assert payload["match"]["wrapper_ranking"]["provider_family"] == "profile"
 
 
+def test_warcraft_resolve_can_select_warcraftlogs_for_explicit_report_reference(monkeypatch) -> None:
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", lambda self, query: {"search": query, "results": []})
+    monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: [])
+    monkeypatch.setattr("raiderio_cli.main.RaiderIOClient.search", lambda self, *, term, kind=None: {"matches": []})
+    monkeypatch.setattr("warcraft_wiki_cli.main.WarcraftWikiClient.search_articles", lambda self, query, limit: (0, []))
+    monkeypatch.setattr("wowprogress_cli.main.WowProgressClient.probe_search_route", lambda self, *, region, realm, name, obj_type: None)
+
+    result = runner.invoke(warcraft_app, ["resolve", "https://www.warcraftlogs.com/reports/abcd1234#fight=3"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["resolved"] is True
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["next_command"] == "warcraftlogs report-encounter abcd1234 --fight-id 3"
+    assert payload["match"]["wrapper_ranking"]["provider_family"] == "logs"
+
+
 def test_warcraft_resolve_compact_and_ranking_debug(monkeypatch) -> None:
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", lambda self, query: {"search": query, "results": []})
     monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: [])
@@ -698,7 +1283,7 @@ def test_warcraft_resolve_compact_and_ranking_debug(monkeypatch) -> None:
     assert payload["ranking_debug"][0]["provider"] == "wowprogress"
 
 
-def test_warcraft_resolve_adds_synthetic_wowprogress_leaderboard_route(monkeypatch) -> None:
+def test_warcraft_resolve_does_not_fabricate_synthetic_wowprogress_leaderboard_route(monkeypatch) -> None:
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.search_suggestions", lambda self, query: {"search": query, "results": []})
     monkeypatch.setattr("method_cli.main.MethodClient.sitemap_guides", lambda self: [])
     monkeypatch.setattr("icy_veins_cli.main.IcyVeinsClient.sitemap_guides", lambda self: [])
@@ -709,10 +1294,10 @@ def test_warcraft_resolve_adds_synthetic_wowprogress_leaderboard_route(monkeypat
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["resolved"] is True
-    assert payload["provider"] == "wowprogress"
-    assert payload["next_command"] == "wowprogress leaderboard pve us --realm illidan"
-    assert payload["match"]["kind"] == "leaderboard"
+    assert payload["resolved"] is False
+    assert payload["provider"] is None
+    assert payload["next_command"] is None
+    assert payload["match"] is None
 
 
 def test_warcraft_passthrough_to_wowhead(monkeypatch) -> None:
@@ -939,6 +1524,19 @@ def test_warcraft_passthrough_to_wowprogress(monkeypatch) -> None:
 
     payload = json.loads(result.stdout)
     assert payload["guild"]["name"] == "Liquid"
+
+
+def test_warcraft_passthrough_to_warcraftlogs() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["warcraftlogs", "resolve", "https://www.warcraftlogs.com/reports/abcd1234#fight=3"],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["resolved"] is True
+    assert payload["next_command"] == "warcraftlogs report-encounter abcd1234 --fight-id 3"
 
 
 def test_warcraft_guild_merges_sources_and_normalizes_query(monkeypatch) -> None:

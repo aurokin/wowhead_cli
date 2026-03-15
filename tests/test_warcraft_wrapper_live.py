@@ -27,6 +27,7 @@ def test_live_warcraft_search_expansion_filter_only_uses_supported_providers() -
         "method",
         "icy-veins",
         "raiderio",
+        "warcraftlogs",
         "warcraft-wiki",
         "wowprogress",
         "simc",
@@ -57,6 +58,7 @@ def test_live_warcraft_search_retail_filter_is_not_same_as_unfiltered_search() -
         "method",
         "icy-veins",
         "raiderio",
+        "warcraftlogs",
         "wowprogress",
     }
     assert {row["provider"] for row in payload["excluded_providers"]} == {"warcraft-wiki", "simc"}
@@ -74,6 +76,7 @@ def test_live_warcraft_resolve_retail_filter_can_use_fixed_retail_provider() -> 
         "method",
         "icy-veins",
         "raiderio",
+        "warcraftlogs",
         "wowprogress",
     }
     assert {row["provider"] for row in payload["excluded_providers"]} == {"warcraft-wiki", "simc"}

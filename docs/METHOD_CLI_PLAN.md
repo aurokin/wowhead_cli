@@ -96,8 +96,8 @@ Out of scope until there is a clear data reason:
 - search and resolve interfaces
 
 Validated after milestone 2:
-- article bundle export/load/query helpers are now shared in [warcraft_content.article_bundle](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py)
-- article discovery payload helpers are now shared in [warcraft_content.article_discovery](/home/auro/code/wowhead_cli/packages/warcraft-content/src/warcraft_content/article_discovery.py)
+- article bundle export/load/query helpers are now shared in [warcraft_content.article_bundle](/home/auro/code/warcraft_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py)
+- article discovery payload helpers are now shared in [warcraft_content.article_discovery](/home/auro/code/warcraft_cli/packages/warcraft-content/src/warcraft_content/article_discovery.py)
 
 ## What Should Only Be Shared After `method`
 
@@ -272,4 +272,4 @@ Keep four layers of coverage:
 ## Source Links
 
 - `https://www.method.gg/guides/mistweaver-monk`
-- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
+- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)

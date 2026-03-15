@@ -1,25 +1,22 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 from typing import Any
 
 import typer
-
-from method_cli.client import MethodClient, guide_ref_parts, load_method_cache_settings_from_env
-from method_cli.page_parser import UNSUPPORTED_ROOT_GUIDE_SLUGS, classify_guide_family
-from warcraft_core.output import emit
-from warcraft_content.article_discovery import (
-    article_candidate,
-    merge_article_linked_entities,
-    sort_article_candidates,
-)
 from warcraft_content.article_bundle import (
     default_article_export_dir,
     load_article_bundle,
     query_article_bundle,
     write_article_bundle,
+)
+from warcraft_content.article_discovery import (
+    article_candidate,
+    merge_article_build_references,
+    merge_article_linked_entities,
+    sort_article_candidates,
 )
 from warcraft_content.article_provider_cli import (
     build_article_resolve_response,
@@ -27,6 +24,11 @@ from warcraft_content.article_provider_cli import (
     fail_with_error,
     unsupported_guide_surface_message,
 )
+from warcraft_content.guide_analysis import extract_guide_analysis_surfaces, merge_guide_analysis_surfaces
+from warcraft_core.output import emit
+
+from method_cli.client import MethodClient, guide_ref_parts, load_method_cache_settings_from_env
+from method_cli.page_parser import UNSUPPORTED_ROOT_GUIDE_SLUGS, classify_guide_family
 
 app = typer.Typer(add_completion=False, help="Method.gg guide CLI.")
 
@@ -239,6 +241,8 @@ def _build_guide_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
     navigation = list(page_payload["navigation"])
     article = dict(page_payload["article"])
     linked_entities = list(page_payload["linked_entities"])
+    build_references = list(page_payload.get("build_references") or [])
+    analysis_surfaces = list(page_payload.get("analysis_surfaces") or [])
     return {
         "guide": guide,
         "page": page,
@@ -265,6 +269,18 @@ def _build_guide_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
             "more_available": len(linked_entities) > 10,
             "fetch_more_command": f"method guide-full {guide['slug']}",
         },
+        "build_references": {
+            "count": len(build_references),
+            "items": build_references[:10],
+            "more_available": len(build_references) > 10,
+            "fetch_more_command": f"method guide-full {guide['slug']}",
+        },
+        "analysis_surfaces": {
+            "count": len(analysis_surfaces),
+            "items": analysis_surfaces[:10],
+            "more_available": len(analysis_surfaces) > 10,
+            "fetch_more_command": f"method guide-full {guide['slug']}",
+        },
         "citations": {
             "page": guide["page_url"],
         },
@@ -288,12 +304,19 @@ def _fetch_guide_pages(client: MethodClient, guide_ref: str) -> dict[str, Any]:
         if page_url in seen:
             continue
         seen.add(page_url)
-        pages.append(client.fetch_guide_page(page_url))
+        page_payload = client.fetch_guide_page(page_url)
+        page_payload["analysis_surfaces"] = extract_guide_analysis_surfaces(page_payload, provider="method")
+        pages.append(page_payload)
     if initial["guide"]["page_url"] not in seen:
+        initial["analysis_surfaces"] = extract_guide_analysis_surfaces(initial, provider="method")
         pages.insert(0, initial)
+    elif "analysis_surfaces" not in initial:
+        initial["analysis_surfaces"] = extract_guide_analysis_surfaces(initial, provider="method")
     guide = dict(initial["guide"])
     guide["page_count"] = len(pages)
     linked_entities = merge_article_linked_entities(pages)
+    build_references = merge_article_build_references(pages)
+    analysis_surfaces = merge_guide_analysis_surfaces(pages)
     return {
         "guide": guide,
         "page": dict(initial["page"]),
@@ -306,12 +329,22 @@ def _fetch_guide_pages(client: MethodClient, guide_ref: str) -> dict[str, Any]:
                 "guide": page["guide"],
                 "page": page["page"],
                 "article": page["article"],
+                "build_references": page.get("build_references") or [],
+                "analysis_surfaces": page.get("analysis_surfaces") or [],
             }
             for page in pages
         ],
         "linked_entities": {
             "count": len(linked_entities),
             "items": linked_entities,
+        },
+        "build_references": {
+            "count": len(build_references),
+            "items": build_references,
+        },
+        "analysis_surfaces": {
+            "count": len(analysis_surfaces),
+            "items": analysis_surfaces,
         },
         "citations": {
             "page": guide["page_url"],
@@ -419,7 +452,9 @@ def resolve(
 @app.command("guide")
 def guide(ctx: typer.Context, guide_ref: str = typer.Argument(..., help="Guide slug or Method.gg guide URL.")) -> None:
     with _client(ctx) as client:
-        payload = _build_guide_summary(_fetch_guide_page_or_fail(ctx, client, guide_ref))
+        page_payload = _fetch_guide_page_or_fail(ctx, client, guide_ref)
+        page_payload["analysis_surfaces"] = extract_guide_analysis_surfaces(page_payload, provider="method")
+        payload = _build_guide_summary(page_payload)
     _emit(ctx, payload)
 
 
@@ -461,7 +496,7 @@ def guide_query(
     kind: list[str] = typer.Option(
         [],
         "--kind",
-        help="Restrict search kinds. Repeat or pass comma-separated values from: sections, navigation, linked_entities.",
+        help="Restrict search kinds. Repeat or pass comma-separated values from: sections, navigation, linked_entities, build_references, analysis_surfaces.",
     ),
     section_title: str | None = typer.Option(
         None,
@@ -477,8 +512,10 @@ def guide_query(
         "sections",
         "navigation",
         "linked_entities",
+        "build_references",
+        "analysis_surfaces",
     }
-    invalid = sorted(selected_kinds - {"sections", "navigation", "linked_entities"})
+    invalid = sorted(selected_kinds - {"sections", "navigation", "linked_entities", "build_references", "analysis_surfaces"})
     if invalid:
         _fail(ctx, "invalid_kind", f"Unsupported guide-query kinds: {', '.join(invalid)}")
     payload = query_article_bundle(

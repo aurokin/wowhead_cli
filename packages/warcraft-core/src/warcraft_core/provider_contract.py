@@ -15,6 +15,7 @@ DEFAULT_WRAPPER_RANKING_POLICY: dict[str, Any] = {
         "method": "article",
         "icy-veins": "article",
         "raiderio": "profile",
+        "warcraftlogs": "logs",
         "warcraft-wiki": "reference",
         "wowprogress": "profile",
         "simc": "local_tool",
@@ -52,6 +53,21 @@ DEFAULT_WRAPPER_RANKING_POLICY: dict[str, Any] = {
         ],
         "guild_profile": ["guild", "guilds", "roster", "progression", "leaderboard", "leaderboards"],
         "character_profile": ["character", "characters", "rio", "score", "scores", "keys", "runs", "m+", "mythic+", "mythicplus"],
+        "log_analysis": [
+            "warcraftlogs",
+            "log",
+            "logs",
+            "report",
+            "reports",
+            "fight",
+            "fights",
+            "encounter",
+            "encounters",
+            "pull",
+            "pulls",
+            "timeline",
+            "timelines",
+        ],
         "simc": [
             "simc",
             "simulationcraft",
@@ -72,12 +88,14 @@ DEFAULT_WRAPPER_RANKING_POLICY: dict[str, Any] = {
         "entity": {"entity": 30, "article": -10, "reference": -6, "profile": -16, "local_tool": -18},
         "guild_profile": {"profile": 30, "article": -14, "reference": -10, "entity": -12, "local_tool": -20},
         "character_profile": {"profile": 28, "entity": 6, "article": -14, "reference": -10, "local_tool": -18},
+        "log_analysis": {"logs": 40, "profile": -14, "article": -16, "reference": -12, "entity": -10, "local_tool": -12},
         "structured_profile": {"profile": 34, "article": -16, "reference": -12, "entity": -10, "local_tool": -18},
         "simc": {"local_tool": 40, "article": -18, "reference": -14, "entity": -14, "profile": -20},
     },
     "intent_provider_boosts": {
         "guild_profile": {"wowprogress": 10, "raiderio": -4},
         "character_profile": {"raiderio": 28, "wowprogress": -14},
+        "log_analysis": {"warcraftlogs": 28},
         "structured_profile": {"wowprogress": 4, "raiderio": 2},
     },
     "intent_kind_boosts": {
@@ -97,6 +115,7 @@ DEFAULT_WRAPPER_RANKING_POLICY: dict[str, Any] = {
         },
         "guild_profile": {"guild": 24, "leaderboard": 18},
         "character_profile": {"character": 24, "mythic_plus_runs": 12},
+        "log_analysis": {"report": 24, "report_encounter": 28},
         "structured_profile": {"guild": 20, "character": 20},
         "simc": {"analysis": 16, "apl": 20, "decode_build": 18, "inspect": 12, "run": 10},
     },
@@ -105,6 +124,7 @@ DEFAULT_WRAPPER_RANKING_POLICY: dict[str, Any] = {
         "method": {"guide": 6},
         "icy-veins": {"guide": 6},
         "raiderio": {"character": 16, "guild": 6, "mythic_plus_runs": 8},
+        "warcraftlogs": {"report": 12, "report_encounter": 16},
         "warcraft-wiki": {"article": 8},
         "wowprogress": {"character": 0, "guild": 12, "leaderboard": 8},
         "simc": {"analysis": 8, "apl": 10, "decode_build": 10, "inspect": 8, "run": 8},
@@ -378,28 +398,8 @@ def synthetic_search_candidates(query: str) -> list[dict[str, Any]]:
 
 
 def synthetic_resolve_payloads(query: str) -> list[tuple[str, dict[str, Any]]]:
-    payloads: list[tuple[str, dict[str, Any]]] = []
-    for candidate in synthetic_search_candidates(query):
-        decorated = decorate_search_result(query, candidate)
-        raw_follow_up = decorated.get("follow_up")
-        follow_up: Mapping[str, Any] = raw_follow_up if isinstance(raw_follow_up, Mapping) else {}
-        payloads.append(
-            (
-                "wowprogress",
-                {
-                    "provider": "wowprogress",
-                    "query": query,
-                    "search_query": query,
-                    "resolved": True,
-                    "confidence": "high",
-                    "match": decorated,
-                    "next_command": follow_up.get("command"),
-                    "fallback_search_command": None,
-                    "wrapper_ranking": decorated.get("wrapper_ranking"),
-                },
-            )
-        )
-    return payloads
+    del query
+    return []
 
 
 def decorate_search_result(query: str, row: Mapping[str, Any]) -> dict[str, Any]:

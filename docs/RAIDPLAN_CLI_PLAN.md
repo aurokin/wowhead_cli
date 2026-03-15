@@ -68,4 +68,4 @@ The first useful slice should stay narrow:
 ## Source Links
 
 - `https://raidplan.io/`
-- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
+- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)

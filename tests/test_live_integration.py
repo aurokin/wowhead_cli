@@ -483,6 +483,8 @@ def test_live_talent_calc_contract() -> None:
     assert payload["tool"]["spec_slug"] == "balance"
     assert payload["tool"]["build_code"] == "DAQBBBBQQRUFURYVBEANVVRUVFVVVQCVQhEUEBUEBhVQ"
     assert payload["tool"]["state_url"].startswith("https://www.wowhead.com/talent-calc/druid/balance/")
+    assert payload["build_identity"]["status"] == "inferred"
+    assert payload["build_identity"]["class_spec_identity"]["identity"]["actor_class"] == "druid"
     assert payload["citations"]["page"] == payload["tool"]["state_url"]
     assert payload["page"]["title"].startswith("Balance Druid")
     assert payload["listed_builds"]["count"] >= len(payload["listed_builds"]["items"])

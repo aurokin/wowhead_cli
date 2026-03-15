@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from warcraft_content.article_bundle import (
+    compare_article_bundles,
     default_article_export_dir,
     load_article_bundle,
     query_article_bundle,
@@ -80,6 +81,48 @@ def _method_like_payload() -> dict[str, object]:
                 {"type": "spell", "id": 388020, "name": "Tea of Serenity", "url": "https://www.wowhead.com/spell=388020/tea-of-serenity", "source_urls": ["https://www.method.gg/guides/mistweaver-monk/talents"]},
             ],
         },
+        "build_references": {
+            "count": 1,
+            "items": [
+                {
+                    "kind": "build_reference",
+                    "reference_type": "wowhead_talent_calc_url",
+                    "url": "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123",
+                    "label": "Raid Build",
+                    "build_code": "ABC123",
+                    "build_identity": {
+                        "kind": "build_identity",
+                        "status": "inferred",
+                        "class_spec_identity": {"identity": {"actor_class": "monk", "spec": "mistweaver"}},
+                    },
+                    "source_urls": ["https://www.method.gg/guides/mistweaver-monk/talents"],
+                },
+            ],
+        },
+        "analysis_surfaces": {
+            "count": 1,
+            "items": [
+                {
+                    "kind": "guide_analysis_surface",
+                    "surface_tags": ["builds_talents", "talent_recommendations"],
+                    "confidence": "medium",
+                    "source_kind": "title_slug_heuristic",
+                    "provider": "method",
+                    "content_family": "class_guide",
+                    "page_url": "https://www.method.gg/guides/mistweaver-monk/talents",
+                    "section_slug": "talents",
+                    "section_title": "Talents",
+                    "page_title": "Talents",
+                    "text_preview": "Talent page copy",
+                    "match_reasons": ["keyword:talent"],
+                    "citation": {
+                        "page_url": "https://www.method.gg/guides/mistweaver-monk/talents",
+                        "section_title": "Talents",
+                        "page_title": "Talents",
+                    },
+                }
+            ],
+        },
     }
 
 
@@ -135,6 +178,133 @@ def _icy_like_payload() -> dict[str, object]:
                 {"type": "page", "id": 1, "name": "Builds and Talents", "url": "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-spec-builds-talents", "source_urls": ["https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide"]},
             ],
         },
+        "build_references": {
+            "count": 0,
+            "items": [],
+        },
+        "analysis_surfaces": {
+            "count": 1,
+            "items": [
+                {
+                    "kind": "guide_analysis_surface",
+                    "surface_tags": ["overview"],
+                    "confidence": "high",
+                    "source_kind": "content_family",
+                    "provider": "icy-veins",
+                    "content_family": "spec_guide",
+                    "page_url": "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide",
+                    "section_slug": "intro",
+                    "section_title": "General Information",
+                    "page_title": "Mistweaver Monk Healing Guide - Midnight (12.0.1)",
+                    "text_preview": "Healing intro",
+                    "match_reasons": ["content_family:spec_guide"],
+                    "citation": {
+                        "page_url": "https://www.icy-veins.com/wow/mistweaver-monk-pve-healing-guide",
+                        "section_title": "General Information",
+                        "page_title": "Mistweaver Monk Healing Guide - Midnight (12.0.1)",
+                    },
+                }
+            ],
+        },
+    }
+
+
+def _wowhead_like_payload() -> dict[str, object]:
+    return {
+        "guide": {
+            "id": 3143,
+            "slug": "frost-death-knight-overview-pve-dps",
+            "page_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+            "section_slug": "overview",
+            "section_title": "Overview",
+            "page_count": 1,
+        },
+        "page": {
+            "title": "Frost Death Knight DPS Guide - Midnight",
+            "description": "Wowhead guide",
+            "canonical_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+        },
+        "navigation": {
+            "count": 1,
+            "items": [
+                {
+                    "title": "Overview",
+                    "url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                    "section_slug": "overview",
+                    "active": True,
+                    "ordinal": 1,
+                }
+            ],
+        },
+        "pages": [
+            {
+                "guide": {
+                    "slug": "frost-death-knight-overview-pve-dps",
+                    "page_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                    "section_slug": "overview",
+                    "section_title": "Overview",
+                },
+                "page": {
+                    "title": "Frost Death Knight DPS Guide - Midnight",
+                    "description": "Wowhead guide",
+                    "canonical_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                },
+                "article": {
+                    "html": "<h2>Overview</h2><p>Welcome to the guide.</p>",
+                    "text": "Overview Welcome to the guide.",
+                    "headings": [{"title": "Overview", "level": 2, "ordinal": 1}],
+                    "sections": [{"title": "Overview", "level": 2, "ordinal": 1, "text": "Welcome to the guide.", "html": "<p>Welcome to the guide.</p>"}],
+                },
+            }
+        ],
+        "linked_entities": {
+            "count": 1,
+            "items": [
+                {"type": "spell", "id": 49020, "name": "Obliterate", "url": "https://www.wowhead.com/spell=49020/obliterate", "source_urls": ["https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps"]},
+            ],
+        },
+        "build_references": {
+            "count": 1,
+            "items": [
+                {
+                    "kind": "build_reference",
+                    "reference_type": "wowhead_talent_calc_url",
+                    "url": "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123",
+                    "label": "Raid Build",
+                    "build_code": "ABC123",
+                    "build_identity": {
+                        "kind": "build_identity",
+                        "status": "inferred",
+                        "class_spec_identity": {"identity": {"actor_class": "monk", "spec": "mistweaver"}},
+                    },
+                    "source_urls": ["https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps"],
+                },
+            ],
+        },
+        "analysis_surfaces": {
+            "count": 1,
+            "items": [
+                {
+                    "kind": "guide_analysis_surface",
+                    "surface_tags": ["overview"],
+                    "confidence": "high",
+                    "source_kind": "section_heading",
+                    "provider": "wowhead",
+                    "content_family": None,
+                    "page_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                    "section_slug": "overview",
+                    "section_title": "Overview",
+                    "page_title": "Frost Death Knight DPS Guide - Midnight",
+                    "text_preview": "Welcome to the guide.",
+                    "match_reasons": ["keyword:overview"],
+                    "citation": {
+                        "page_url": "https://www.wowhead.com/guide/classes/death-knight/frost/overview-pve-dps",
+                        "section_title": "Overview",
+                        "page_title": "Frost Death Knight DPS Guide - Midnight",
+                    },
+                }
+            ],
+        },
     }
 
 
@@ -146,20 +316,46 @@ def test_default_article_export_dir_uses_provider_root() -> None:
 def test_write_and_query_article_bundle_for_method_shape(tmp_path: Path) -> None:
     export_dir = tmp_path / "method-guide"
     manifest = write_article_bundle(_method_like_payload(), provider="method", export_dir=export_dir)
-    assert manifest["counts"] == {"pages": 2, "sections": 2, "navigation_links": 2, "linked_entities": 1}
+    assert manifest["counts"] == {
+        "pages": 2,
+        "sections": 2,
+        "navigation_links": 2,
+        "linked_entities": 1,
+        "build_references": 1,
+        "analysis_surfaces": 1,
+    }
     assert manifest["files"]["page_files_json"] == "page-files.json"
     bundle = load_article_bundle(export_dir)
     assert bundle["page_files"][0]["section_slug"] == "introduction"
-    result = query_article_bundle(bundle, query="tea serenity", limit=5, kinds={"sections", "navigation", "linked_entities"}, section_title_filter=None)
+    result = query_article_bundle(
+        bundle,
+        query="tea serenity",
+        limit=5,
+        kinds={"sections", "navigation", "linked_entities", "build_references"},
+        section_title_filter=None,
+    )
     assert result["match_counts"]["linked_entities"] == 1
     assert result["top"][0]["name"] == "Tea of Serenity"
+    build_result = query_article_bundle(bundle, query="abc123 mistweaver", limit=5, kinds={"build_references"}, section_title_filter=None)
+    assert build_result["match_counts"]["build_references"] == 1
+    assert build_result["matches"]["build_references"][0]["build_code"] == "ABC123"
+    analysis_result = query_article_bundle(bundle, query="talent recommendations", limit=5, kinds={"analysis_surfaces"}, section_title_filter=None)
+    assert analysis_result["match_counts"]["analysis_surfaces"] == 1
+    assert analysis_result["matches"]["analysis_surfaces"][0]["surface_tags"] == ["builds_talents", "talent_recommendations"]
 
 
 def test_write_and_query_article_bundle_for_icy_shape(tmp_path: Path) -> None:
     export_dir = tmp_path / "icy-guide"
     manifest = write_article_bundle(_icy_like_payload(), provider="icy-veins", export_dir=export_dir)
     assert manifest["provider"] == "icy-veins"
-    assert manifest["counts"] == {"pages": 1, "sections": 1, "navigation_links": 3, "linked_entities": 1}
+    assert manifest["counts"] == {
+        "pages": 1,
+        "sections": 1,
+        "navigation_links": 3,
+        "linked_entities": 1,
+        "build_references": 0,
+        "analysis_surfaces": 1,
+    }
     bundle = load_article_bundle(export_dir)
     result = query_article_bundle(bundle, query="builds talents", limit=5, kinds={"navigation", "linked_entities"}, section_title_filter=None)
     assert result["match_counts"]["navigation"] >= 1
@@ -209,6 +405,14 @@ def test_write_article_bundle_supports_article_resource_key(tmp_path: Path) -> N
                 {"type": "wiki_article", "id": "UIOBJECT_Frame", "name": "UIOBJECT Frame", "url": "https://warcraft.wiki.gg/wiki/UIOBJECT_Frame", "source_urls": ["https://warcraft.wiki.gg/wiki/World_of_Warcraft_API"]},
             ],
         },
+        "build_references": {
+            "count": 0,
+            "items": [],
+        },
+        "analysis_surfaces": {
+            "count": 0,
+            "items": [],
+        },
     }
     manifest = write_article_bundle(
         payload,
@@ -250,3 +454,43 @@ def test_load_article_bundle_tolerates_missing_page_files_metadata(tmp_path: Pat
     bundle = load_article_bundle(export_dir)
 
     assert bundle["page_files"] == []
+
+
+def test_compare_article_bundles_preserves_additive_surface_and_build_evidence(tmp_path: Path) -> None:
+    method_dir = tmp_path / "method-guide"
+    icy_dir = tmp_path / "icy-guide"
+    wowhead_dir = tmp_path / "wowhead-guide"
+    write_article_bundle(_method_like_payload(), provider="method", export_dir=method_dir)
+    write_article_bundle(_icy_like_payload(), provider="icy-veins", export_dir=icy_dir)
+    write_article_bundle(_wowhead_like_payload(), provider="wowhead", export_dir=wowhead_dir)
+
+    comparison = compare_article_bundles(
+        [
+            (method_dir, load_article_bundle(method_dir)),
+            (icy_dir, load_article_bundle(icy_dir)),
+            (wowhead_dir, load_article_bundle(wowhead_dir)),
+        ]
+    )
+
+    assert comparison["kind"] == "guide_bundle_comparison"
+    assert comparison["compared_bundle_count"] == 3
+    assert comparison["comparison_scope"] == ["section_evidence", "analysis_surfaces", "build_references"]
+    assert comparison["section_evidence"]["matching_rule"] == "exact_normalized_section_title"
+    assert comparison["section_evidence"]["shared"] == []
+    assert "overview" in comparison["section_evidence"]["partial"]
+    overview_section_row = next(
+        row for row in comparison["section_evidence"]["items"] if row["section_title_key"] == "overview"
+    )
+    assert overview_section_row["bundle_count"] == 1
+    assert {row["provider"] for row in overview_section_row["bundles"]} == {"wowhead"}
+    assert "mistweaver monk overview" in comparison["section_evidence"]["partial"]
+    assert comparison["analysis_surface_tags"]["shared"] == []
+    assert "overview" in comparison["analysis_surface_tags"]["partial"]
+    overview_row = next(row for row in comparison["analysis_surface_tags"]["items"] if row["tag"] == "overview")
+    assert overview_row["bundle_count"] == 2
+    assert {row["provider"] for row in overview_row["bundles"]} == {"icy-veins", "wowhead"}
+    assert any(row["keys"] == ["builds_talents", "talent_recommendations"] for row in comparison["analysis_surface_tags"]["unique_by_bundle"])
+    build_row = comparison["build_references"]["items"][0]
+    assert build_row["build_code"] == "ABC123"
+    assert build_row["bundle_count"] == 2
+    assert {row["provider"] for row in build_row["bundles"]} == {"method", "wowhead"}

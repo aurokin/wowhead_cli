@@ -7,10 +7,10 @@ This document is the execution checklist for the monorepo migration.
 It translates the planning documents into a controlled sequence with verification gates.
 
 Use alongside:
-- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
-- [Repo Structure And Packaging](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)
-- [Package Layout](/home/auro/code/wowhead_cli/docs/PACKAGE_LAYOUT.md)
-- [Wrapper Provider Contract](/home/auro/code/wowhead_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
+- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
+- [Repo Structure And Packaging](/home/auro/code/warcraft_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)
+- [Package Layout](/home/auro/code/warcraft_cli/docs/PACKAGE_LAYOUT.md)
+- [Wrapper Provider Contract](/home/auro/code/warcraft_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
 
 ## Pre-Migration Gate
 
@@ -137,10 +137,10 @@ During migration, update docs whenever:
 - storage/auth/config rules change
 
 Minimum docs to keep aligned:
-- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
-- [Repo Structure And Packaging](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)
-- [Package Layout](/home/auro/code/wowhead_cli/docs/PACKAGE_LAYOUT.md)
-- [Wrapper Provider Contract](/home/auro/code/wowhead_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
+- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
+- [Repo Structure And Packaging](/home/auro/code/warcraft_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)
+- [Package Layout](/home/auro/code/warcraft_cli/docs/PACKAGE_LAYOUT.md)
+- [Wrapper Provider Contract](/home/auro/code/warcraft_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
 
 ## Risks To Watch During Migration
 

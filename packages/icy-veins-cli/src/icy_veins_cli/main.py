@@ -1,32 +1,34 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 from typing import Any
 
 import httpx
 import typer
-
-from icy_veins_cli.client import IcyVeinsClient, guide_ref_parts, load_icy_veins_cache_settings_from_env
-from icy_veins_cli.page_parser import classify_guide_slug, guide_traversal_scope
-from warcraft_content.article_discovery import (
-    article_candidate,
-    merge_article_linked_entities,
-    sort_article_candidates,
-)
 from warcraft_content.article_bundle import (
     default_article_export_dir,
     load_article_bundle,
     query_article_bundle,
     write_article_bundle,
 )
+from warcraft_content.article_discovery import (
+    article_candidate,
+    merge_article_build_references,
+    merge_article_linked_entities,
+    sort_article_candidates,
+)
 from warcraft_content.article_provider_cli import (
     build_article_resolve_response,
     build_article_search_response,
     fail_with_error,
 )
+from warcraft_content.guide_analysis import extract_guide_analysis_surfaces, merge_guide_analysis_surfaces
 from warcraft_core.output import emit
+
+from icy_veins_cli.client import IcyVeinsClient, guide_ref_parts, load_icy_veins_cache_settings_from_env
+from icy_veins_cli.page_parser import classify_guide_slug, guide_traversal_scope
 
 app = typer.Typer(add_completion=False, help="Icy Veins guide CLI.")
 
@@ -380,6 +382,8 @@ def _build_guide_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
     page_toc = list(page_payload["page_toc"])
     article = dict(page_payload["article"])
     linked_entities = list(page_payload["linked_entities"])
+    build_references = list(page_payload.get("build_references") or [])
+    analysis_surfaces = list(page_payload.get("analysis_surfaces") or [])
     citations = dict(page_payload.get("citations") or {})
     return {
         "guide": guide,
@@ -410,6 +414,18 @@ def _build_guide_summary(page_payload: dict[str, Any]) -> dict[str, Any]:
             "count": len(linked_entities),
             "items": linked_entities[:10],
             "more_available": len(linked_entities) > 10,
+            "fetch_more_command": f"icy-veins guide-full {guide['slug']}",
+        },
+        "build_references": {
+            "count": len(build_references),
+            "items": build_references[:10],
+            "more_available": len(build_references) > 10,
+            "fetch_more_command": f"icy-veins guide-full {guide['slug']}",
+        },
+        "analysis_surfaces": {
+            "count": len(analysis_surfaces),
+            "items": analysis_surfaces[:10],
+            "more_available": len(analysis_surfaces) > 10,
             "fetch_more_command": f"icy-veins guide-full {guide['slug']}",
         },
         "citations": citations,
@@ -464,12 +480,19 @@ def _fetch_guide_pages(client: IcyVeinsClient, guide_ref: str) -> dict[str, Any]
         if page_url in seen:
             continue
         seen.add(page_url)
-        pages.append(client.fetch_guide_page(page_url))
+        page_payload = client.fetch_guide_page(page_url)
+        page_payload["analysis_surfaces"] = extract_guide_analysis_surfaces(page_payload, provider="icy-veins")
+        pages.append(page_payload)
     if initial["guide"]["page_url"] not in seen:
+        initial["analysis_surfaces"] = extract_guide_analysis_surfaces(initial, provider="icy-veins")
         pages.insert(0, initial)
+    elif "analysis_surfaces" not in initial:
+        initial["analysis_surfaces"] = extract_guide_analysis_surfaces(initial, provider="icy-veins")
     guide = dict(initial["guide"])
     guide["page_count"] = len(pages)
     linked_entities = merge_article_linked_entities(pages)
+    build_references = merge_article_build_references(pages)
+    analysis_surfaces = merge_guide_analysis_surfaces(pages)
     return {
         "guide": guide,
         "page": dict(initial["page"]),
@@ -483,12 +506,22 @@ def _fetch_guide_pages(client: IcyVeinsClient, guide_ref: str) -> dict[str, Any]
                 "page": page["page"],
                 "page_toc": page["page_toc"],
                 "article": page["article"],
+                "build_references": page.get("build_references") or [],
+                "analysis_surfaces": page.get("analysis_surfaces") or [],
             }
             for page in pages
         ],
         "linked_entities": {
             "count": len(linked_entities),
             "items": linked_entities,
+        },
+        "build_references": {
+            "count": len(build_references),
+            "items": build_references,
+        },
+        "analysis_surfaces": {
+            "count": len(analysis_surfaces),
+            "items": analysis_surfaces,
         },
         "citations": {
             "page": guide["page_url"],
@@ -624,7 +657,9 @@ def resolve(
 @app.command("guide")
 def guide(ctx: typer.Context, guide_ref: str = typer.Argument(..., help="Guide slug or Icy Veins guide URL.")) -> None:
     with _client(ctx) as client:
-        payload = _build_guide_summary(_fetch_supported_guide_page(ctx, client, guide_ref))
+        page_payload = _fetch_supported_guide_page(ctx, client, guide_ref)
+        page_payload["analysis_surfaces"] = extract_guide_analysis_surfaces(page_payload, provider="icy-veins")
+        payload = _build_guide_summary(page_payload)
     _emit(ctx, payload)
 
 
@@ -680,12 +715,12 @@ def guide_query(
     kind: list[str] | None = typer.Option(
         None,
         "--kind",
-        help="Kinds to search. Repeat for multiple values. Defaults to sections,navigation,linked_entities.",
+        help="Kinds to search. Repeat for multiple values. Defaults to sections,navigation,linked_entities,build_references,analysis_surfaces.",
     ),
     section_title: str | None = typer.Option(None, "--section-title", help="Restrict section matches to a title substring."),
 ) -> None:
-    selected_kinds = set(kind or ["sections", "navigation", "linked_entities"])
-    allowed_kinds = {"sections", "navigation", "linked_entities"}
+    selected_kinds = set(kind or ["sections", "navigation", "linked_entities", "build_references", "analysis_surfaces"])
+    allowed_kinds = {"sections", "navigation", "linked_entities", "build_references", "analysis_surfaces"}
     invalid = sorted(selected_kinds - allowed_kinds)
     if invalid:
         _fail(ctx, "invalid_query_kind", f"Unsupported query kinds: {', '.join(invalid)}")

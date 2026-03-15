@@ -376,6 +376,7 @@ def _write_bundle_fixture(
     title: str,
     expansion: str = "retail",
     sections: list[dict[str, object]] | None = None,
+    analysis_surfaces: list[dict[str, object]] | None = None,
     navigation_links: list[dict[str, object]] | None = None,
     linked_entities: list[dict[str, object]] | None = None,
     gatherer_entities: list[dict[str, object]] | None = None,
@@ -386,6 +387,7 @@ def _write_bundle_fixture(
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     sections = sections or []
+    analysis_surfaces = analysis_surfaces or []
     navigation_links = navigation_links or []
     linked_entities = linked_entities or []
     gatherer_entities = gatherer_entities or []
@@ -393,6 +395,7 @@ def _write_bundle_fixture(
 
     files = {
         "sections_jsonl": "sections.jsonl",
+        "analysis_surfaces_jsonl": "analysis-surfaces.jsonl",
         "navigation_links_jsonl": "navigation-links.jsonl",
         "linked_entities_jsonl": "linked-entities.jsonl",
         "gatherer_entities_jsonl": "gatherer-entities.jsonl",
@@ -400,6 +403,10 @@ def _write_bundle_fixture(
     }
     (bundle_dir / files["sections_jsonl"]).write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in sections),
+        encoding="utf-8",
+    )
+    (bundle_dir / files["analysis_surfaces_jsonl"]).write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in analysis_surfaces),
         encoding="utf-8",
     )
     (bundle_dir / files["navigation_links_jsonl"]).write_text(
@@ -432,6 +439,7 @@ def _write_bundle_fixture(
         },
         "counts": {
             "sections": len(sections),
+            "analysis_surfaces": len(analysis_surfaces),
             "navigation_links": len(navigation_links),
             "linked_entities": len(linked_entities),
             "gatherer_entities": len(gatherer_entities),
@@ -821,6 +829,8 @@ def test_talent_calc_command_decodes_url_and_embedded_builds(monkeypatch) -> Non
     assert payload["tool"]["spec_slug"] == "balance"
     assert payload["tool"]["build_code"] == "ABC123"
     assert payload["tool"]["state_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert payload["build_identity"]["status"] == "inferred"
+    assert payload["build_identity"]["class_spec_identity"]["identity"] == {"actor_class": "druid", "spec": "balance"}
     assert payload["listed_builds"]["count"] == 2
     assert payload["listed_builds"]["items"][0]["name"] == "Leveling"
 
@@ -1458,6 +1468,7 @@ def test_write_guide_export_assets_and_manifest_helpers(tmp_path: Path) -> None:
         "linked_entities": {"items": [{"entity_type": "spell", "id": 49020, "name": "Obliterate"}]},
         "gatherer_entities": {"items": [{"entity_type": "item", "id": 249277, "name": "Bellamy's Final Judgement"}]},
         "comments": {"items": [{"id": 91, "user": "A", "body": "Solid guide"}]},
+        "analysis_surfaces": {"items": [{"surface_tags": ["overview"], "section_title": "Overview"}]},
         "structured_data": {"@type": "Article"},
     }
 
@@ -1488,8 +1499,10 @@ def test_write_guide_export_assets_and_manifest_helpers(tmp_path: Path) -> None:
         linked_items=bundle_parts["linked_items"],
         gatherer_items=bundle_parts["gatherer_items"],
         comment_items=bundle_parts["comment_items"],
+        analysis_surfaces=bundle_parts["analysis_surfaces"],
     )
     assert manifest["counts"]["sections"] == 1
+    assert manifest["counts"]["analysis_surfaces"] == 1
     assert manifest["counts"]["hydrated_entities"] == 1
     assert manifest["hydration"]["source_counts"]["entity_cache"] == 1
 
@@ -1646,6 +1659,8 @@ def test_guide_full_returns_rich_payload(monkeypatch) -> None:
     assert payload["comments"]["all_comments_included"] is True
     assert payload["comments"]["items"][0]["citation_url"].endswith("#comments:id=91")
     assert payload["structured_data"]["headline"] == "Frost Death Knight DPS Guide - Midnight"
+    assert payload["analysis_surfaces"]["count"] >= 1
+    assert payload["analysis_surfaces"]["items"][0]["surface_tags"] == ["overview"]
 
 
 def test_guide_and_guide_full_share_linked_entity_count(monkeypatch) -> None:
@@ -1662,6 +1677,7 @@ def test_guide_and_guide_full_share_linked_entity_count(monkeypatch) -> None:
     guide_payload = json.loads(guide_result.stdout)
     full_payload = json.loads(full_result.stdout)
     assert guide_payload["linked_entities"]["count"] == full_payload["linked_entities"]["count"] == 2
+    assert guide_payload["analysis_surfaces"]["count"] == full_payload["analysis_surfaces"]["count"]
 
 
 def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:
@@ -1678,6 +1694,7 @@ def test_guide_export_writes_local_assets(monkeypatch, tmp_path) -> None:
     assert payload["output_dir"] == str(export_dir)
     assert payload["counts"] == {
         "sections": 2,
+        "analysis_surfaces": 1,
         "navigation_links": 2,
         "linked_entities": 2,
         "gatherer_entities": 1,
@@ -2227,6 +2244,7 @@ def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
 
     payload = json.loads(result.stdout)
     assert payload["counts"]["gatherer_entities"] >= 1
+    assert payload["counts"]["analysis_surfaces"] == 0
     assert payload["matches"]["gatherer_entities"][0]["name"] == "Bellamy's Final Judgement"
     assert payload["top"][0]["kind"] == "linked_entity"
     assert payload["top"][0]["name"] == "Bellamy's Final Judgement"
@@ -2251,6 +2269,12 @@ def test_guide_query_reads_exported_assets(monkeypatch, tmp_path) -> None:
     payload = json.loads(result.stdout)
     assert payload["matches"]["sections"][0]["title"] == "Frost Death Knight Overview"
     assert "Welcome to the guide." in payload["matches"]["sections"][0]["preview"]
+
+    result = runner.invoke(app, ["guide-query", str(export_dir), "overview", "--kind", "analysis_surfaces"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["counts"]["analysis_surfaces"] >= 1
+    assert payload["matches"]["analysis_surfaces"][0]["surface_tags"] == ["overview"]
 
     result = runner.invoke(
         app,
@@ -2711,6 +2735,7 @@ def test_guide_bundle_query_returns_cross_bundle_matches(tmp_path: Path) -> None
     assert payload["count"] == 1
     assert payload["counts"] == {
         "sections": 1,
+        "analysis_surfaces": 0,
         "navigation": 0,
         "linked_entities": 1,
         "gatherer_entities": 0,
@@ -2857,6 +2882,7 @@ def test_guide_bundle_query_uses_filters_and_root_index(monkeypatch, tmp_path: P
     assert payload["filters"]["linked_sources"] == ["multi"]
     assert payload["counts"] == {
         "sections": 0,
+        "analysis_surfaces": 0,
         "navigation": 0,
         "linked_entities": 1,
         "gatherer_entities": 0,

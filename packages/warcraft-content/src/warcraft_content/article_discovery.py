@@ -125,3 +125,30 @@ def merge_article_linked_entities(pages: list[dict[str, Any]], *, page_key: str 
             if page_url not in record["source_urls"]:
                 record["source_urls"].append(page_url)
     return sorted(merged.values(), key=lambda row: (str(row["type"]), str(row["id"])))
+
+
+def merge_article_build_references(pages: list[dict[str, Any]], *, page_key: str = "guide") -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    for page in pages:
+        page_url = page[page_key]["page_url"]
+        for row in page.get("build_references") or []:
+            reference_url = str(row["url"])
+            record = merged.get(reference_url)
+            if record is None:
+                merged[reference_url] = {
+                    "kind": row["kind"],
+                    "reference_type": row["reference_type"],
+                    "url": row["url"],
+                    "label": row.get("label"),
+                    "build_code": row.get("build_code"),
+                    "build_identity": row["build_identity"],
+                    "source_urls": [page_url],
+                }
+                if "source" in row:
+                    merged[reference_url]["source"] = row["source"]
+                continue
+            if not record.get("label") and row.get("label"):
+                record["label"] = row["label"]
+            if page_url not in record["source_urls"]:
+                record["source_urls"].append(page_url)
+    return sorted(merged.values(), key=lambda row: str(row["url"]))

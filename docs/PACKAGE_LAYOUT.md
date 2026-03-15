@@ -5,8 +5,8 @@
 This document defines the intended package layout for the Warcraft monorepo.
 
 It is the concrete companion to:
-- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
-- [Repo Structure And Packaging](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)
+- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
+- [Repo Structure And Packaging](/home/auro/code/warcraft_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)
 
 ## Workspace Model
 

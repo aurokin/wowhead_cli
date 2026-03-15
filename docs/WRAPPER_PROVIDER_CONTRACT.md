@@ -144,6 +144,7 @@ Current likely examples:
 - `method` -> `retail`
 - `icy-veins` -> `retail`
 - `raiderio` -> `retail`
+- `warcraftlogs` -> `retail`
 - `wowprogress` -> `retail`
 
 ### `none`
@@ -170,7 +171,7 @@ The wrapper must not silently widen scope.
 
 Future provider note:
 - some providers may require profile-based routing that is not a clean copy of the current wowhead-centric expansion vocabulary
-- `warcraftlogs` is the current example: planning research shows retail, classic, and fresh site profiles, but wrapper expansion-key mapping for those variants is still intentionally deferred
+- `warcraftlogs` is the current example: the wrapper now supports the retail provider surface, but classic/fresh site-profile mapping is still intentionally deferred
 
 ## Expansion Output Rules
 
@@ -195,7 +196,7 @@ Search result ordering rules:
 - the wrapper may apply a thin, tunable cross-provider ranking layer on top of provider-local scores
 - that wrapper layer should be query-aware and use signals like provider family, result kind, and structured query hints
 - that wrapper layer may also use provider-specific boosts for certain intents, such as preferring `raiderio` for character-profile queries and `wowprogress` for guild-profile queries
-- the wrapper may add synthetic direct-route candidates for narrow query families when a provider has a strong direct command surface but not a native search API for that family
+- the wrapper may add synthetic search candidates for narrow query families when a provider has a strong direct command surface but not a native search API for that family
 - wrapper ranking must stay inspectable in output, not hidden behind opaque ordering
 - the wrapper should not invent a fake universal content model beyond that thin ranking/orchestration layer
 
@@ -211,6 +212,7 @@ Ranking policy location:
 - rank them conservatively
 - preserve source provenance
 - avoid pretending certainty when providers are stubbed or unavailable
+- not upgrade synthetic direct-route hints into verified resolved matches unless the provider actually returned a resolved payload
 
 Resolve selection rules:
 - do not pick the first provider that reports `resolved`
@@ -266,5 +268,5 @@ Current state:
 
 Whenever provider capabilities, provider readiness rules, or wrapper/provider boundaries change:
 - update this document
-- update [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md) if sequencing changes
-- update [Repo Structure And Packaging](/home/auro/code/wowhead_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md) if package or language rules change
+- update [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md) if sequencing changes
+- update [Repo Structure And Packaging](/home/auro/code/warcraft_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md) if package or language rules change

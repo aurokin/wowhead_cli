@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
+import shlex
 import time
 from dataclasses import dataclass
 import re
@@ -16,6 +17,12 @@ from warcraft_core.auth import (
     load_provider_auth_state,
     provider_auth_status,
     save_provider_auth_state,
+)
+from warcraft_core.identity import (
+    ability_identity_payload,
+    class_spec_identity_payload,
+    encounter_identity_payload,
+    report_actor_identity_payload,
 )
 from warcraft_core.output import emit
 from warcraft_core.paths import provider_state_path
@@ -37,6 +44,7 @@ auth_app = typer.Typer(add_completion=False, help="Warcraft Logs authentication 
 app.add_typer(auth_app, name="auth")
 
 FIGHT_ID_OPTION = typer.Option(None, "--fight-id", help="Optional fight ID filter. Repeat as needed.")
+REPORT_CODE_PATTERN = re.compile(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]{8,32}$")
 
 
 @dataclass(slots=True)
@@ -129,6 +137,8 @@ def _doctor_payload() -> dict[str, Any]:
         },
         "capabilities": {
             "doctor": "ready",
+            "search": "ready_explicit_report_only",
+            "resolve": "ready_explicit_report_only",
             "rate_limit": "ready",
             "regions": "ready",
             "expansions": "ready",
@@ -495,6 +505,33 @@ def _report_brief_payload(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _report_discovery_hint(query: str) -> dict[str, Any]:
+    return {
+        "provider": "warcraftlogs",
+        "query": query,
+        "search_query": query,
+        "count": 0,
+        "results": [],
+        "resolved": False,
+        "confidence": "none",
+        "match": None,
+        "next_command": None,
+        "fallback_search_command": None,
+        "message": (
+            "Warcraft Logs discovery is intentionally narrow for now. "
+            "Use an explicit report URL or a bare report code."
+        ),
+        "supported_inputs": [
+            "https://www.warcraftlogs.com/reports/<code>#fight=<id>",
+            "<report_code>",
+        ],
+        "suggested_commands": [
+            "warcraftlogs report <report_code>",
+            "warcraftlogs report-encounter <report_code> --fight-id <id>",
+        ],
+    }
+
+
 def _fight_payload(fight: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": fight.get("id"),
@@ -537,6 +574,95 @@ def _parse_report_reference(reference: str, *, explicit_fight_id: int | None) ->
                 parsed_fight_id = None
     fight_id = explicit_fight_id if explicit_fight_id is not None else parsed_fight_id
     return ReportReference(code=code, fight_id=fight_id, source_url=source_url)
+
+
+def _explicit_report_reference(query: str) -> ReportReference | None:
+    text = query.strip()
+    if not text:
+        return None
+    if " " in text and not text.startswith("http://") and not text.startswith("https://"):
+        return None
+    try:
+        ref = _parse_report_reference(text, explicit_fight_id=None)
+    except ValueError:
+        return None
+    if not REPORT_CODE_PATTERN.fullmatch(ref.code):
+        return None
+    return ref
+
+
+def _report_discovery_candidate(ref: ReportReference) -> dict[str, Any]:
+    quoted_reference = shlex.quote(ref.code)
+    if ref.fight_id is None:
+        kind = "report"
+        next_command = f"warcraftlogs report {quoted_reference}"
+        score = 92
+        reasons = ["explicit_report_reference", "report_code"]
+    else:
+        kind = "report_encounter"
+        next_command = f"warcraftlogs report-encounter {quoted_reference} --fight-id {ref.fight_id}"
+        score = 96
+        reasons = ["explicit_report_reference", "fight_scope_present"]
+    return {
+        "provider": "warcraftlogs",
+        "kind": kind,
+        "id": f"warcraftlogs:{kind}:{ref.code}:{ref.fight_id or ''}",
+        "name": f"Warcraft Logs report {ref.code}",
+        "report_reference": _report_reference_payload(ref),
+        "ranking": {"score": score, "match_reasons": reasons},
+        "follow_up": {
+            "provider": "warcraftlogs",
+            "kind": kind,
+            "surface": kind,
+            "command": next_command,
+        },
+    }
+
+
+def _report_search_payload(query: str, *, ref: ReportReference | None) -> dict[str, Any]:
+    if ref is None:
+        return _report_discovery_hint(query)
+    candidate = _report_discovery_candidate(ref)
+    return {
+        "provider": "warcraftlogs",
+        "query": query,
+        "search_query": query,
+        "count": 1,
+        "results": [candidate],
+        "truncated": False,
+        "discovery_scope": "explicit_report_reference",
+        "message": "Matched an explicit Warcraft Logs report reference.",
+    }
+
+
+def _report_resolve_payload(query: str, *, ref: ReportReference | None) -> dict[str, Any]:
+    if ref is None:
+        hint = _report_discovery_hint(query)
+        return {
+            "provider": "warcraftlogs",
+            "query": query,
+            "search_query": query,
+            "resolved": False,
+            "confidence": "none",
+            "match": None,
+            "next_command": None,
+            "fallback_search_command": None,
+            "message": hint["message"],
+            "supported_inputs": hint["supported_inputs"],
+            "suggested_commands": hint["suggested_commands"],
+        }
+    candidate = _report_discovery_candidate(ref)
+    follow_up = candidate["follow_up"]
+    return {
+        "provider": "warcraftlogs",
+        "query": query,
+        "search_query": query,
+        "resolved": True,
+        "confidence": "high" if ref.fight_id is not None or ref.source_url is not None else "medium",
+        "match": candidate,
+        "next_command": follow_up["command"],
+        "fallback_search_command": None,
+    }
 
 
 def _kill_type_for_fight(fight: dict[str, Any]) -> str:
@@ -585,9 +711,24 @@ def _report_reference_payload(ref: ReportReference) -> dict[str, Any]:
 
 def _encounter_summary_payload(*, ref: ReportReference, report: dict[str, Any], fight: dict[str, Any], encounter: dict[str, Any] | None) -> dict[str, Any]:
     encounter_payload = None
+    encounter_identity = encounter_identity_payload(
+        encounter_id=fight.get("encounterID") if isinstance(fight.get("encounterID"), int) else None,
+        name=fight.get("name") if isinstance(fight.get("name"), str) else None,
+        provider="warcraftlogs",
+        source="report_encounter",
+        notes=["canonical only within explicit encounter metadata returned by Warcraft Logs"],
+    )
     if isinstance(encounter, dict):
         zone = encounter.get("zone") if isinstance(encounter.get("zone"), dict) else {}
         expansion = zone.get("expansion") if isinstance(zone.get("expansion"), dict) else {}
+        encounter_identity = encounter_identity_payload(
+            encounter_id=encounter.get("id") if isinstance(encounter.get("id"), int) else None,
+            journal_id=encounter.get("journalID") if isinstance(encounter.get("journalID"), int) else None,
+            name=encounter.get("name") if isinstance(encounter.get("name"), str) else None,
+            zone_id=zone.get("id") if isinstance(zone.get("id"), int) else None,
+            provider="warcraftlogs",
+            source="report_encounter",
+        )
         encounter_payload = {
             "id": encounter.get("id"),
             "name": encounter.get("name"),
@@ -605,6 +746,7 @@ def _encounter_summary_payload(*, ref: ReportReference, report: dict[str, Any], 
         "report": _report_payload(report),
         "fight": _fight_payload(fight),
         "encounter": encounter_payload,
+        "encounter_identity": encounter_identity,
         "stability": {
             "report_finished": _report_is_finished(report),
             "cache_safe": _report_is_finished(report),
@@ -706,22 +848,79 @@ def _master_data_indexes(report: dict[str, Any]) -> tuple[dict[int, dict[str, An
     return actor_index, ability_index
 
 
-def _named_actor(actor_index: dict[int, dict[str, Any]], actor_id: int | None) -> dict[str, Any] | None:
+def _named_actor(
+    actor_index: dict[int, dict[str, Any]],
+    actor_id: int | None,
+    *,
+    report_code: str | None = None,
+    fight_id: int | None = None,
+    source: str,
+) -> dict[str, Any] | None:
     if actor_id is None:
         return None
     actor = actor_index.get(actor_id)
     if not isinstance(actor, dict):
-        return {"id": actor_id, "name": f"actor:{actor_id}"}
-    return {"id": actor_id, "name": actor.get("name"), "type": actor.get("type"), "sub_type": actor.get("sub_type")}
+        return {
+            "id": actor_id,
+            "name": f"actor:{actor_id}",
+            "identity_contract": report_actor_identity_payload(
+                report_code=report_code,
+                fight_id=fight_id,
+                actor_id=actor_id,
+                name=f"actor:{actor_id}",
+                provider="warcraftlogs",
+                source=source,
+                notes=["actor id was present, but no master-data actor row was available"],
+            ),
+        }
+    actor_name = actor.get("name") if isinstance(actor.get("name"), str) else None
+    actor_sub_type = actor.get("sub_type")
+    return {
+        "id": actor_id,
+        "name": actor_name,
+        "type": actor.get("type"),
+        "sub_type": actor_sub_type,
+        "identity_contract": report_actor_identity_payload(
+            report_code=report_code,
+            fight_id=fight_id,
+            actor_id=actor_id,
+            name=actor_name,
+            actor_class=actor_sub_type if actor.get("type") == "Player" else None,
+            provider="warcraftlogs",
+            source=source,
+        ),
+    }
 
 
-def _named_ability(ability_index: dict[int, dict[str, Any]], ability_id: int | None) -> dict[str, Any] | None:
+def _named_ability(ability_index: dict[int, dict[str, Any]], ability_id: int | None, *, source: str) -> dict[str, Any] | None:
     if ability_id is None:
         return None
     ability = ability_index.get(ability_id)
     if not isinstance(ability, dict):
-        return {"game_id": ability_id, "name": f"ability:{ability_id}"}
-    return {"game_id": ability_id, "name": ability.get("name"), "type": ability.get("type"), "icon": ability.get("icon")}
+        return {
+            "game_id": ability_id,
+            "name": f"ability:{ability_id}",
+            "identity_contract": ability_identity_payload(
+                game_id=ability_id,
+                name=f"ability:{ability_id}",
+                provider="warcraftlogs",
+                source=source,
+                notes=["ability id was present, but no master-data ability row was available"],
+            ),
+        }
+    ability_name = ability.get("name") if isinstance(ability.get("name"), str) else None
+    return {
+        "game_id": ability_id,
+        "name": ability_name,
+        "type": ability.get("type"),
+        "icon": ability.get("icon"),
+        "identity_contract": ability_identity_payload(
+            game_id=ability_id,
+            name=ability_name,
+            provider="warcraftlogs",
+            source=source,
+        ),
+    }
 
 
 def _event_id(value: Any) -> int | None:
@@ -738,12 +937,20 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
     by_source_ability: dict[tuple[int | None, int | None], int] = {}
     preview: list[dict[str, Any]] = []
     fight_start = fight.get("startTime") if isinstance(fight.get("startTime"), (int, float)) else None
+    report_code = report.get("code") if isinstance(report.get("code"), str) else None
+    selected_fight_id = fight.get("id") if isinstance(fight.get("id"), int) else None
 
     for row in cast_rows:
         source_id = _event_id(row.get("sourceID"))
         ability_id = _event_id(row.get("abilityGameID"))
-        source = _named_actor(actor_index, source_id)
-        ability = _named_ability(ability_index, ability_id)
+        source = _named_actor(
+            actor_index,
+            source_id,
+            report_code=report_code,
+            fight_id=selected_fight_id,
+            source="report_encounter_casts",
+        )
+        ability = _named_ability(ability_index, ability_id, source="report_encounter_casts")
         source_key = (source_id, str(source.get("name") if source else None))
         ability_key = (ability_id, str(ability.get("name") if ability else None))
         by_source[source_key] = by_source.get(source_key, 0) + 1
@@ -759,7 +966,13 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
                     "timestamp": timestamp,
                     "relative_time_ms": relative_ms,
                     "source": source,
-                    "target": _named_actor(actor_index, _event_id(row.get("targetID"))),
+                    "target": _named_actor(
+                        actor_index,
+                        _event_id(row.get("targetID")),
+                        report_code=report_code,
+                        fight_id=selected_fight_id,
+                        source="report_encounter_casts",
+                    ),
                     "ability": ability,
                     "type": row.get("type"),
                 }
@@ -770,9 +983,19 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
         for (numeric_id, name), count in sorted(counts.items(), key=lambda item: (-item[1], str(item[0][1] or ""))):
             base = {"count": count}
             if field == "source":
-                base["source"] = _named_actor(actor_index, numeric_id if isinstance(numeric_id, int) else None) or {"id": numeric_id, "name": name}
+                base["source"] = _named_actor(
+                    actor_index,
+                    numeric_id if isinstance(numeric_id, int) else None,
+                    report_code=report_code,
+                    fight_id=selected_fight_id,
+                    source="report_encounter_casts",
+                ) or {"id": numeric_id, "name": name}
             else:
-                base["ability"] = _named_ability(ability_index, numeric_id if isinstance(numeric_id, int) else None) or {"game_id": numeric_id, "name": name}
+                base["ability"] = _named_ability(
+                    ability_index,
+                    numeric_id if isinstance(numeric_id, int) else None,
+                    source="report_encounter_casts",
+                ) or {"game_id": numeric_id, "name": name}
             rows_out.append(base)
         return rows_out
 
@@ -781,8 +1004,14 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
         combo_rows.append(
             {
                 "count": count,
-                "source": _named_actor(actor_index, source_id),
-                "ability": _named_ability(ability_index, ability_id),
+                "source": _named_actor(
+                    actor_index,
+                    source_id,
+                    report_code=report_code,
+                    fight_id=selected_fight_id,
+                    source="report_encounter_casts",
+                ),
+                "ability": _named_ability(ability_index, ability_id, source="report_encounter_casts"),
             }
         )
 
@@ -1247,6 +1476,7 @@ def _report_master_data_payload(report: dict[str, Any]) -> dict[str, Any]:
     master_data = report.get("masterData") if isinstance(report.get("masterData"), dict) else {}
     abilities = master_data.get("abilities") if isinstance(master_data.get("abilities"), list) else []
     actors = master_data.get("actors") if isinstance(master_data.get("actors"), list) else []
+    report_code = report.get("code") if isinstance(report.get("code"), str) else None
     return {
         "report": _report_brief_payload(report),
         "master_data": {
@@ -1261,6 +1491,12 @@ def _report_master_data_payload(report: dict[str, Any]) -> dict[str, Any]:
                     "icon": row.get("icon"),
                     "name": row.get("name"),
                     "type": row.get("type"),
+                    "identity_contract": ability_identity_payload(
+                        game_id=row.get("gameID") if isinstance(row.get("gameID"), int) else None,
+                        name=row.get("name") if isinstance(row.get("name"), str) else None,
+                        provider="warcraftlogs",
+                        source="report_master_data",
+                    ),
                 }
                 for row in abilities
                 if isinstance(row, dict)
@@ -1275,6 +1511,16 @@ def _report_master_data_payload(report: dict[str, Any]) -> dict[str, Any]:
                     "server": row.get("server"),
                     "sub_type": row.get("subType"),
                     "type": row.get("type"),
+                    "identity_contract": report_actor_identity_payload(
+                        report_code=report_code,
+                        fight_id=None,
+                        actor_id=row.get("id") if isinstance(row.get("id"), int) else None,
+                        name=row.get("name") if isinstance(row.get("name"), str) else None,
+                        actor_class=row.get("subType") if row.get("type") == "Player" and isinstance(row.get("subType"), str) else None,
+                        provider="warcraftlogs",
+                        source="report_master_data",
+                        notes=["canonical only when narrowed to a specific fight scope"],
+                    ),
                 }
                 for row in actors
                 if isinstance(row, dict)
@@ -1283,8 +1529,13 @@ def _report_master_data_payload(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _player_detail_actor_payload(actor: dict[str, Any]) -> dict[str, Any]:
+def _player_detail_actor_payload(actor: dict[str, Any], *, report_code: str | None = None, fight_id: int | None = None) -> dict[str, Any]:
     specs = actor.get("specs") if isinstance(actor.get("specs"), list) else []
+    normalized_specs = [
+        {"spec": spec.get("spec"), "count": spec.get("count")}
+        for spec in specs
+        if isinstance(spec, dict)
+    ]
     return {
         "name": actor.get("name"),
         "id": actor.get("id"),
@@ -1293,20 +1544,38 @@ def _player_detail_actor_payload(actor: dict[str, Any]) -> dict[str, Any]:
         "server": actor.get("server"),
         "region": actor.get("region"),
         "icon": actor.get("icon"),
-        "specs": [
-            {"spec": spec.get("spec"), "count": spec.get("count")}
-            for spec in specs
-            if isinstance(spec, dict)
-        ],
+        "specs": normalized_specs,
         "min_item_level": actor.get("minItemLevel"),
         "max_item_level": actor.get("maxItemLevel"),
         "potion_use": actor.get("potionUse"),
         "healthstone_use": actor.get("healthstoneUse"),
         "combatant_info": actor.get("combatantInfo"),
+        "class_spec_identity": class_spec_identity_payload(
+            actor_class=actor.get("type") if isinstance(actor.get("type"), str) else None,
+            spec=normalized_specs[0].get("spec") if len(normalized_specs) == 1 else None,
+            provider="warcraftlogs",
+            source="report_player_details",
+            candidates=(
+                [(actor.get("type") if isinstance(actor.get("type"), str) else None, spec.get("spec")) for spec in normalized_specs]
+                if len(normalized_specs) > 1
+                else None
+            ),
+        ),
+        "identity_contract": report_actor_identity_payload(
+            report_code=report_code,
+            fight_id=fight_id,
+            actor_id=actor.get("id") if isinstance(actor.get("id"), int) else None,
+            name=actor.get("name") if isinstance(actor.get("name"), str) else None,
+            actor_class=actor.get("type") if isinstance(actor.get("type"), str) else None,
+            spec=normalized_specs[0].get("spec") if len(normalized_specs) == 1 else None,
+            provider="warcraftlogs",
+            source="report_player_details",
+            notes=["canonical only when one report and one fight are both explicit"],
+        ),
     }
 
 
-def _report_player_details_payload(report: dict[str, Any]) -> dict[str, Any]:
+def _report_player_details_payload(report: dict[str, Any], *, report_code: str | None = None, fight_id: int | None = None) -> dict[str, Any]:
     details = report.get("playerDetails") if isinstance(report.get("playerDetails"), dict) else {}
     data = details.get("data") if isinstance(details.get("data"), dict) else {}
     role_data = data.get("playerDetails") if isinstance(data.get("playerDetails"), dict) else data
@@ -1314,7 +1583,11 @@ def _report_player_details_payload(report: dict[str, Any]) -> dict[str, Any]:
     counts: dict[str, int] = {}
     for role in ("tanks", "healers", "dps"):
         rows = role_data.get(role) if isinstance(role_data.get(role), list) else []
-        normalized_rows = [_player_detail_actor_payload(row) for row in rows if isinstance(row, dict)]
+        normalized_rows = [
+            _player_detail_actor_payload(row, report_code=report_code, fight_id=fight_id)
+            for row in rows
+            if isinstance(row, dict)
+        ]
         roles[role] = normalized_rows
         counts[role] = len(normalized_rows)
     counts["total"] = counts["tanks"] + counts["healers"] + counts["dps"]
@@ -1423,6 +1696,26 @@ def main(
     pretty: bool = typer.Option(False, "--pretty", help="Pretty-print JSON output."),
 ) -> None:
     ctx.obj = RuntimeConfig(pretty=pretty)
+
+
+@app.command("search")
+def search(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Explicit Warcraft Logs report URL or report code."),
+    limit: int = typer.Option(5, "--limit", min=1, max=50, help="Accepted for wrapper compatibility; explicit report discovery returns at most one result."),
+) -> None:
+    del limit
+    _emit(ctx, _report_search_payload(query, ref=_explicit_report_reference(query)))
+
+
+@app.command("resolve")
+def resolve(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Explicit Warcraft Logs report URL or report code."),
+    limit: int = typer.Option(5, "--limit", min=1, max=50, help="Accepted for wrapper compatibility; explicit report resolution returns at most one match."),
+) -> None:
+    del limit
+    _emit(ctx, _report_resolve_payload(query, ref=_explicit_report_reference(query)))
 
 
 @app.command("doctor")
@@ -1895,6 +2188,14 @@ def encounter(ctx: typer.Context, encounter_id: int) -> None:
                 if zone
                 else None,
             },
+            "encounter_identity": encounter_identity_payload(
+                encounter_id=payload.get("id") if isinstance(payload.get("id"), int) else None,
+                journal_id=payload.get("journalID") if isinstance(payload.get("journalID"), int) else None,
+                name=payload.get("name") if isinstance(payload.get("name"), str) else None,
+                zone_id=zone.get("id") if isinstance(zone.get("id"), int) else None,
+                provider="warcraftlogs",
+                source="encounter",
+            ),
         },
     )
 
@@ -2590,7 +2891,11 @@ def report_encounter_players(
             "provider": "warcraftlogs",
             "kind": "report_encounter_players",
             **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
-            **_report_player_details_payload(payload),
+            **_report_player_details_payload(
+                payload,
+                report_code=ref.code,
+                fight_id=fight.get("id") if isinstance(fight.get("id"), int) else None,
+            ),
         },
     )
 
@@ -3218,7 +3523,11 @@ def report_player_details(
                 "start_time": start_time,
                 "translate": translate,
             },
-            **_report_player_details_payload(payload),
+            **_report_player_details_payload(
+                payload,
+                report_code=code,
+                fight_id=fight_id[0] if fight_id and len(fight_id) == 1 else None,
+            ),
         },
     )
 

@@ -296,6 +296,6 @@ But it should not define the shape of every other service. It should validate sh
 
 ## Source Links
 
-- [Usage](/home/auro/code/wowhead_cli/docs/USAGE.md)
-- [Access Methods](/home/auro/code/wowhead_cli/docs/WOWHEAD_ACCESS_METHODS.md)
-- [Expansion Research](/home/auro/code/wowhead_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md)
+- [Usage](/home/auro/code/warcraft_cli/docs/USAGE.md)
+- [Access Methods](/home/auro/code/warcraft_cli/docs/WOWHEAD_ACCESS_METHODS.md)
+- [Expansion Research](/home/auro/code/warcraft_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md)

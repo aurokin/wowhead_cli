@@ -226,6 +226,8 @@ def test_simc_identify_build_reports_probe_result(monkeypatch) -> None:
     assert payload["kind"] == "identify_build"
     assert payload["identity"]["source"] == "simc_probe"
     assert payload["identity"]["candidates"] == [{"actor_class": "demonhunter", "spec": "devourer"}]
+    assert payload["identity"]["identity_contract"]["kind"] == "build_identity"
+    assert payload["identity"]["identity_contract"]["class_spec_identity"]["status"] == "inferred"
 
 
 def test_simc_decode_build_auto_identifies_missing_class_and_spec(monkeypatch) -> None:

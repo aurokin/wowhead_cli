@@ -18,6 +18,9 @@ Use `warcraft` first when the caller does not already know which provider they n
   - `warcraft --expansion <profile> ...`
 - Trust check:
   - `warcraft doctor`
+- Cross-provider guide evidence:
+  - `warcraft guide-compare <bundle-a> <bundle-b>`
+  - `warcraft guide-compare-query "<guide query>"`
 
 ## Provider Synopsis
 
@@ -38,6 +41,10 @@ Use `warcraft` first when the caller does not already know which provider they n
 - Prefer `search` when you want to inspect candidates across providers.
 - Prefer `warcraft guild ...` when the user wants a guild snapshot and you want normalized input plus explicit source disagreement reporting.
 - Preserve provider provenance. `warcraft` is a router, not a source.
+- Use `warcraft guide-compare` when you already have exported guide bundles and want additive cross-provider evidence instead of a synthesized summary.
+- Use `warcraft guide-compare-query` when you want the wrapper to resolve, export, and compare guide candidates conservatively across supported guide providers.
+- `guide-compare-query` may use a provider search fallback only when the top guide result is clearly decisive; it should not guess across weak or ambiguous guide candidates.
+- `guide-compare-query` should reuse prior orchestrated bundles only through explicit freshness rules like `--max-age-hours` and `--force-refresh`, not through invisible cache-like behavior.
 - When `--expansion` matters, trust only the providers the wrapper says are included.
 - Once the provider is known, switch to the provider CLI or the provider reference below.
 

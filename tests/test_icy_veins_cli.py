@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from typer.testing import CliRunner
-
 from icy_veins_cli.main import _resolve_is_confident, _resolve_search_payload, _score_family_match, app
 from icy_veins_cli.page_parser import classify_guide_slug, parse_guide_page, parse_sitemap_guides
+from typer.testing import CliRunner
 
 runner = CliRunner()
 
@@ -83,6 +82,7 @@ INTRO_HTML = """
         <div class="raider-io-links"><a href="https://raider.io/example">Ignore</a></div>
         <div class="heading_container heading_number_2"><span>1.</span><h2 id="mistweaver-overview">Mistweaver Overview</h2></div>
         <p>Use <a href="https://www.wowhead.com/spell=116670/vivify">Vivify</a> well.</p>
+        <p>Reference build: <a href="https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123">Raid Build</a>.</p>
         <div class="heading_container heading_number_3"><span>2.</span><h3 id="talents">Talents</h3></div>
         <p>See our <a href="/wow/mistweaver-monk-pve-healing-stat-priority">Stat Priority</a> page.</p>
       </div>
@@ -350,6 +350,8 @@ def test_parse_guide_page_extracts_navigation_toc_sections_and_links() -> None:
     linked = {(row["type"], row["id"]) for row in payload["linked_entities"]}
     assert ("spell", 116670) in linked
     assert ("page", "mistweaver-monk-pve-healing-stat-priority") in linked
+    assert payload["build_references"][0]["build_code"] == "ABC123"
+    assert payload["build_references"][0]["build_identity"]["class_spec_identity"]["identity"] == {"actor_class": "monk", "spec": "mistweaver"}
 
 
 def test_classify_guide_slug_distinguishes_supported_families() -> None:
@@ -563,6 +565,8 @@ def test_icy_veins_guide_and_guide_full(monkeypatch) -> None:
     guide_payload = json.loads(guide_result.stdout)
     assert guide_payload["guide"]["slug"] == "mistweaver-monk-pve-healing-guide"
     assert guide_payload["linked_entities"]["count"] == 2
+    assert guide_payload["build_references"]["count"] == 1
+    assert guide_payload["analysis_surfaces"]["count"] == 1
     assert guide_payload["page_toc"]["count"] == 2
 
     full_result = runner.invoke(app, ["guide-full", "mistweaver-monk-pve-healing-guide"])
@@ -570,6 +574,8 @@ def test_icy_veins_guide_and_guide_full(monkeypatch) -> None:
     full_payload = json.loads(full_result.stdout)
     assert full_payload["guide"]["page_count"] == 3
     assert full_payload["linked_entities"]["count"] >= 2
+    assert full_payload["build_references"]["count"] == 1
+    assert full_payload["analysis_surfaces"]["count"] == 3
     assert full_payload["pages"][1]["guide"]["section_slug"] in {
         "mistweaver-monk-leveling-guide",
         "mistweaver-monk-pve-healing-stat-priority",
@@ -604,6 +610,18 @@ def test_icy_veins_guide_export_and_query(monkeypatch, tmp_path: Path) -> None:
     query_payload = json.loads(query_result.stdout)
     assert query_payload["count"] == 1
     assert query_payload["top"][0]["name"] == "Vivify"
+
+    build_query = runner.invoke(app, ["guide-query", str(export_dir), "raid build abc123", "--kind", "build_references"])
+    assert build_query.exit_code == 0
+    build_query_payload = json.loads(build_query.stdout)
+    assert build_query_payload["count"] == 1
+    assert build_query_payload["top"][0]["build_code"] == "ABC123"
+
+    analysis_query = runner.invoke(app, ["guide-query", str(export_dir), "stat priority", "--kind", "analysis_surfaces"])
+    assert analysis_query.exit_code == 0
+    analysis_query_payload = json.loads(analysis_query.stdout)
+    assert analysis_query_payload["count"] >= 1
+    assert "stat_priority" in analysis_query_payload["top"][0]["surface_tags"]
 
     section_query = runner.invoke(
         app,

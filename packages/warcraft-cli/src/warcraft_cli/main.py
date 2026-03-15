@@ -1,20 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import json
+from pathlib import Path
 from typing import Any
 
 import httpx
 import typer
 from icy_veins_cli.main import app as icy_veins_app
+from method_cli.main import app as method_app
 from raiderio_cli.client import RaiderIOClient
 from raiderio_cli.main import app as raiderio_app
 from simc_cli.main import app as simc_app
 from typer.main import get_command
-from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug
-from warcraft_wiki_cli.main import app as warcraft_wiki_app
-from wowprogress_cli.client import WowProgressClient, WowProgressClientError
-from wowprogress_cli.main import app as wowprogress_app
-
-from method_cli.main import app as method_app
+from warcraft_content.article_bundle import compare_article_bundles, load_article_bundle
 from warcraft_core.output import emit
 from warcraft_core.provider_contract import (
     compact_resolve_match,
@@ -26,6 +25,14 @@ from warcraft_core.provider_contract import (
     synthetic_resolve_payloads,
     synthetic_search_candidates,
 )
+from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug
+from warcraft_wiki_cli.main import app as warcraft_wiki_app
+from warcraftlogs_cli.main import app as warcraftlogs_app
+from wowhead_cli.expansion_profiles import resolve_expansion
+from wowhead_cli.main import app as wowhead_app
+from wowprogress_cli.client import WowProgressClient, WowProgressClientError
+from wowprogress_cli.main import app as wowprogress_app
+
 from warcraft_cli.providers import (
     expansion_filtered_providers,
     expansion_support_snapshot,
@@ -34,13 +41,17 @@ from warcraft_cli.providers import (
     list_providers,
     provider_expansion_exclusion_reason,
     provider_expansion_support,
+    provider_invoke,
     provider_resolve,
     provider_search,
 )
-from wowhead_cli.expansion_profiles import resolve_expansion
-from wowhead_cli.main import app as wowhead_app
 
 app = typer.Typer(add_completion=False, help="Warcraft wrapper CLI for routing to service-specific Warcraft CLIs.")
+GUIDE_COMPARE_BUNDLES_ARGUMENT = typer.Argument(
+    ...,
+    help="Two or more exported guide bundle directories from wowhead, method, or icy-veins.",
+)
+GUIDE_COMPARE_QUERY_PROVIDERS = ("wowhead", "method", "icy-veins")
 
 
 def _emit(payload: Any, *, pretty: bool, err: bool = False) -> None:
@@ -138,6 +149,267 @@ def _passthrough_args(ctx: typer.Context, *, provider_name: str) -> list[str]:
             raise typer.Exit(1)
         return ["--expansion", requested_expansion, *args]
     return args
+
+
+def _slugify_path_fragment(value: str) -> str:
+    parts = [
+        part
+        for part in "".join(
+            character.lower() if character.isalnum() else " "
+            for character in value.strip()
+        ).split()
+        if part
+    ]
+    if not parts:
+        return "query"
+    return "-".join(parts[:12])
+
+
+def _default_guide_compare_query_root(query: str) -> Path:
+    return Path.cwd() / "warcraft_guide_compare" / _slugify_path_fragment(query)
+
+
+def _guide_compare_manifest_path(root: Path) -> Path:
+    return root / "manifest.json"
+
+
+def _iso_now_utc() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso8601_utc(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _guide_compare_freshness(exported_at: Any, *, max_age_hours: int) -> dict[str, Any]:
+    parsed = _parse_iso8601_utc(exported_at)
+    if parsed is None:
+        return {"status": "stale", "reason": "missing_exported_at", "age_hours": None, "max_age_hours": max_age_hours}
+    age_hours = round((datetime.now(timezone.utc) - parsed).total_seconds() / 3600, 2)
+    if age_hours > max_age_hours:
+        return {"status": "stale", "reason": "max_age_exceeded", "age_hours": age_hours, "max_age_hours": max_age_hours}
+    return {"status": "fresh", "reason": "within_max_age", "age_hours": age_hours, "max_age_hours": max_age_hours}
+
+
+def _load_guide_compare_manifest(root: Path) -> dict[str, Any] | None:
+    path = _guide_compare_manifest_path(root)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _write_guide_compare_manifest(
+    *,
+    root: Path,
+    query: str,
+    requested_expansion: str | None,
+    max_age_hours: int,
+    provider_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    providers: list[dict[str, Any]] = []
+    for row in provider_results:
+        if row.get("status") not in {"exported", "reused"}:
+            continue
+        candidate = row.get("candidate") if isinstance(row.get("candidate"), dict) else {}
+        freshness = row.get("freshness") if isinstance(row.get("freshness"), dict) else {}
+        providers.append(
+            {
+                "provider": row.get("provider"),
+                "bundle_path": row.get("bundle_path"),
+                "candidate_ref": candidate.get("ref"),
+                "candidate_name": candidate.get("name"),
+                "selection_source": candidate.get("selection_source"),
+                "exported_at": row.get("exported_at"),
+                "freshness": freshness,
+            }
+        )
+    payload = {
+        "kind": "guide_compare_orchestration_manifest",
+        "updated_at": _iso_now_utc(),
+        "query": query,
+        "requested_expansion": requested_expansion,
+        "max_age_hours": max_age_hours,
+        "providers": providers,
+    }
+    root.mkdir(parents=True, exist_ok=True)
+    _guide_compare_manifest_path(root).write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return payload
+
+
+def _load_guide_build_source(source_path: Path) -> tuple[str, list[tuple[Path, dict[str, Any]]], dict[str, Any] | None]:
+    manifest_path = source_path / "manifest.json"
+    if not manifest_path.exists():
+        raise ValueError(f"Missing manifest file under {source_path}.")
+    try:
+        raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid manifest under {source_path}: {exc}") from exc
+    if not isinstance(raw_manifest, dict):
+        raise ValueError(f"Manifest under {source_path} is not a JSON object.")
+    if raw_manifest.get("kind") == "guide_compare_orchestration_manifest":
+        bundle_inputs: list[tuple[Path, dict[str, Any]]] = []
+        providers = raw_manifest.get("providers")
+        if not isinstance(providers, list):
+            raise ValueError(f"Orchestration manifest under {source_path} is missing providers.")
+        for row in providers:
+            if not isinstance(row, dict):
+                continue
+            bundle_path_raw = row.get("bundle_path")
+            if not isinstance(bundle_path_raw, str) or not bundle_path_raw.strip():
+                continue
+            bundle_path = Path(bundle_path_raw).expanduser()
+            bundle_inputs.append((bundle_path, load_article_bundle(bundle_path)))
+        return "orchestration_root", bundle_inputs, raw_manifest
+    return "bundle", [(source_path, load_article_bundle(source_path))], raw_manifest
+
+
+def _collect_build_reference_handoff_rows(
+    bundle_inputs: list[tuple[Path, dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for bundle_path, bundle in bundle_inputs:
+        manifest = bundle.get("manifest") if isinstance(bundle.get("manifest"), dict) else {}
+        provider = manifest.get("provider") if isinstance(manifest.get("provider"), str) else None
+        for row in bundle.get("build_references") or []:
+            if not isinstance(row, dict):
+                continue
+            ref_url = row.get("url")
+            if not isinstance(ref_url, str) or not ref_url.strip():
+                continue
+            record = grouped.get(ref_url)
+            source_entry = {
+                "provider": provider,
+                "bundle_path": str(bundle_path),
+                "label": row.get("label"),
+                "source_urls": list(row.get("source_urls") or []),
+                "build_identity": row.get("build_identity"),
+            }
+            if record is None:
+                grouped[ref_url] = {
+                    "reference": {
+                        "url": ref_url,
+                        "reference_type": row.get("reference_type"),
+                        "build_code": row.get("build_code"),
+                        "label": row.get("label"),
+                        "build_identity": row.get("build_identity"),
+                    },
+                    "sources": [source_entry],
+                }
+                continue
+            record["sources"].append(source_entry)
+    return sorted(grouped.values(), key=lambda row: str(((row.get("reference") or {}).get("url")) or ""))
+
+
+def _normalize_guide_compare_providers(values: list[str]) -> tuple[str, ...]:
+    selected = [value.strip() for raw in values for value in raw.split(",") if value.strip()]
+    if not selected:
+        return GUIDE_COMPARE_QUERY_PROVIDERS
+    invalid = sorted(provider for provider in selected if provider not in GUIDE_COMPARE_QUERY_PROVIDERS)
+    if invalid:
+        supported = ", ".join(GUIDE_COMPARE_QUERY_PROVIDERS)
+        raise ValueError(
+            f"Unsupported guide comparison providers: {', '.join(invalid)}. Supported providers: {supported}."
+        )
+    deduped: list[str] = []
+    for provider in selected:
+        if provider not in deduped:
+            deduped.append(provider)
+    return tuple(deduped)
+
+
+def _resolved_guide_match(provider: str, payload: dict[str, Any] | None) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, "missing_payload"
+    if not payload.get("resolved"):
+        return None, "provider_did_not_resolve_query"
+    match = payload.get("match")
+    if not isinstance(match, dict):
+        return None, "missing_resolved_match"
+    entity_type = match.get("entity_type")
+    if entity_type != "guide":
+        return None, f"resolved_non_guide:{entity_type}"
+    raw_ref = match.get("id")
+    if raw_ref is None:
+        metadata = match.get("metadata")
+        if isinstance(metadata, dict):
+            raw_ref = metadata.get("slug")
+    if raw_ref is None:
+        return None, "resolved_guide_missing_ref"
+    ref = str(raw_ref)
+    return {
+        "provider": provider,
+        "ref": ref,
+        "name": match.get("name"),
+        "url": match.get("url"),
+        "confidence": payload.get("confidence"),
+        "next_command": payload.get("next_command"),
+        "selection_source": "resolve",
+    }, None
+
+
+def _search_fallback_guide_match(
+    provider: str,
+    payload: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, "missing_search_payload"
+    results = payload.get("results")
+    if not isinstance(results, list) or not results:
+        return None, "provider_search_returned_no_results"
+    top = results[0]
+    if not isinstance(top, dict):
+        return None, "invalid_search_top_candidate"
+    if top.get("entity_type") != "guide":
+        return None, f"search_top_non_guide:{top.get('entity_type')}"
+
+    ranking = top.get("ranking")
+    top_score = int(ranking.get("score") or 0) if isinstance(ranking, dict) else 0
+    second_score = 0
+    if len(results) > 1 and isinstance(results[1], dict):
+        second_ranking = results[1].get("ranking")
+        second_score = int(second_ranking.get("score") or 0) if isinstance(second_ranking, dict) else 0
+    if top_score < 30:
+        return None, f"search_top_guide_score_too_low:{top_score}"
+    if top_score < 50 and top_score < second_score + 15:
+        return None, "search_results_not_decisive"
+
+    raw_ref = top.get("id")
+    if raw_ref is None:
+        metadata = top.get("metadata")
+        if isinstance(metadata, dict):
+            raw_ref = metadata.get("slug")
+    if raw_ref is None:
+        return None, "search_guide_missing_ref"
+
+    return {
+        "provider": provider,
+        "ref": str(raw_ref),
+        "name": top.get("name"),
+        "url": top.get("url"),
+        "confidence": "medium",
+        "next_command": (
+            top.get("follow_up", {}).get("recommended_command")
+            if isinstance(top.get("follow_up"), dict)
+            else None
+        ),
+        "selection_source": "search_fallback",
+        "search_ranking": ranking,
+    }, None
 
 
 def _normalized_identity(region: str, realm: str, name: str) -> dict[str, str]:
@@ -570,6 +842,321 @@ def guild_ranks(
     )
 
 
+@app.command("guide-compare")
+def guide_compare(
+    ctx: typer.Context,
+    bundles: list[Path] = GUIDE_COMPARE_BUNDLES_ARGUMENT,
+) -> None:
+    if len(bundles) < 2:
+        _emit(
+            {
+                "ok": False,
+                "error": {
+                    "code": "invalid_argument",
+                    "message": "guide-compare requires at least two exported guide bundles.",
+                },
+            },
+            pretty=_pretty(ctx),
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    bundle_inputs: list[tuple[Path, dict[str, Any]]] = []
+    for bundle_path in bundles:
+        resolved_path = bundle_path.expanduser()
+        if not resolved_path.exists():
+            _emit(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "invalid_bundle",
+                        "message": f"Bundle directory not found: {resolved_path}",
+                    },
+                },
+                pretty=_pretty(ctx),
+                err=True,
+            )
+            raise typer.Exit(1)
+        try:
+            bundle_inputs.append((resolved_path, load_article_bundle(resolved_path)))
+        except (ValueError, OSError) as exc:
+            _emit(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "invalid_bundle",
+                        "message": str(exc),
+                    },
+                    "bundle": str(resolved_path),
+                },
+                pretty=_pretty(ctx),
+                err=True,
+            )
+            raise typer.Exit(1) from exc
+
+    payload = {
+        "provider": "warcraft",
+        **compare_article_bundles(bundle_inputs),
+    }
+    _emit(payload, pretty=_pretty(ctx))
+
+
+@app.command("guide-compare-query")
+def guide_compare_query(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Guide query to resolve across supported guide providers."),
+    provider: list[str] = typer.Option(
+        [],
+        "--provider",
+        help="Restrict orchestration to one or more providers from: wowhead, method, icy-veins.",
+    ),
+    out_root: Path | None = typer.Option(
+        None,
+        "--out-root",
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        resolve_path=True,
+        help="Directory root where orchestrated guide bundles should be written.",
+    ),
+    limit: int = typer.Option(
+        5,
+        "--limit",
+        min=1,
+        max=20,
+        help="Maximum provider-local resolve candidates to request before selecting one guide match.",
+    ),
+    max_age_hours: int = typer.Option(
+        24,
+        "--max-age-hours",
+        min=1,
+        max=24 * 30,
+        help="Reuse existing orchestrated guide bundles only when they are newer than this many hours.",
+    ),
+    force_refresh: bool = typer.Option(
+        False,
+        "--force-refresh/--no-force-refresh",
+        help="Re-export selected guide bundles even when a fresh orchestrated bundle already exists.",
+    ),
+) -> None:
+    requested_expansion = _requested_expansion(ctx)
+    try:
+        selected_providers = _normalize_guide_compare_providers(provider)
+    except ValueError as exc:
+        _emit(
+            {
+                "ok": False,
+                "error": {"code": "invalid_argument", "message": str(exc)},
+            },
+            pretty=_pretty(ctx),
+            err=True,
+        )
+        raise typer.Exit(1) from exc
+
+    orchestration_root = (out_root or _default_guide_compare_query_root(query)).expanduser()
+    orchestration_manifest = _load_guide_compare_manifest(orchestration_root) or {}
+    manifest_rows = orchestration_manifest.get("providers")
+    manifest_by_provider: dict[str, dict[str, Any]] = {}
+    if isinstance(manifest_rows, list):
+        for row in manifest_rows:
+            if not isinstance(row, dict):
+                continue
+            provider_name = row.get("provider")
+            if isinstance(provider_name, str):
+                manifest_by_provider[provider_name] = row
+    provider_rows: list[dict[str, Any]] = []
+    bundle_inputs: list[tuple[Path, dict[str, Any]]] = []
+
+    for provider_name in selected_providers:
+        registration = get_provider(provider_name)
+        exclusion_reason = provider_expansion_exclusion_reason(
+            registration,
+            requested_expansion=requested_expansion,
+        )
+        if exclusion_reason is not None:
+            provider_rows.append(
+                {
+                    "provider": provider_name,
+                    "status": "skipped",
+                    "reason": exclusion_reason,
+                    "expansion_support": provider_expansion_support(
+                        registration,
+                        requested_expansion=requested_expansion,
+                    ),
+                }
+            )
+            continue
+
+        resolved = provider_resolve(
+            provider_name,
+            query,
+            limit=limit,
+            expansion=requested_expansion,
+        )
+        candidate, candidate_reason = _resolved_guide_match(
+            provider_name,
+            resolved.get("payload") if isinstance(resolved, dict) else None,
+        )
+        search_payload: dict[str, Any] | None = None
+        if candidate is None:
+            searched = provider_search(
+                provider_name,
+                query,
+                limit=limit,
+                expansion=requested_expansion,
+            )
+            search_payload = searched.get("payload") if isinstance(searched, dict) else None
+            fallback_candidate, fallback_reason = _search_fallback_guide_match(
+                provider_name,
+                search_payload,
+            )
+            if fallback_candidate is not None:
+                candidate = fallback_candidate
+                candidate_reason = None
+            else:
+                candidate_reason = fallback_reason if fallback_reason is not None else candidate_reason
+        if candidate is None:
+            provider_rows.append(
+                {
+                    "provider": provider_name,
+                    "status": "skipped",
+                    "reason": candidate_reason,
+                    "resolve": resolved.get("payload") if isinstance(resolved, dict) else None,
+                    "search": search_payload,
+                }
+            )
+            continue
+
+        export_dir = orchestration_root / provider_name
+        existing_row = manifest_by_provider.get(provider_name)
+        existing_freshness = (
+            _guide_compare_freshness(existing_row.get("exported_at"), max_age_hours=max_age_hours)
+            if isinstance(existing_row, dict)
+            else {"status": "stale", "reason": "missing_manifest_row", "age_hours": None, "max_age_hours": max_age_hours}
+        )
+        same_candidate = (
+            isinstance(existing_row, dict)
+            and str(existing_row.get("candidate_ref") or "") == str(candidate["ref"])
+            and str(existing_row.get("bundle_path") or "") == str(export_dir)
+        )
+        can_reuse = (
+            not force_refresh
+            and same_candidate
+            and existing_freshness.get("status") == "fresh"
+            and export_dir.exists()
+        )
+        if can_reuse:
+            try:
+                bundle_inputs.append((export_dir, load_article_bundle(export_dir)))
+            except (ValueError, OSError) as exc:
+                provider_rows.append(
+                    {
+                        "provider": provider_name,
+                        "status": "error",
+                        "reason": "invalid_exported_bundle",
+                        "candidate": candidate,
+                        "bundle_path": str(export_dir),
+                        "freshness": existing_freshness,
+                        "error": str(exc),
+                    }
+                )
+                continue
+            provider_rows.append(
+                {
+                    "provider": provider_name,
+                    "status": "reused",
+                    "candidate": candidate,
+                    "bundle_path": str(export_dir),
+                    "freshness": existing_freshness,
+                    "exported_at": existing_row.get("exported_at") if isinstance(existing_row, dict) else None,
+                }
+            )
+            continue
+
+        export_result = provider_invoke(
+            provider_name,
+            ["guide-export", candidate["ref"], "--out", str(export_dir)],
+            expansion=requested_expansion,
+        )
+        if export_result.get("exit_code") != 0:
+            provider_rows.append(
+                {
+                    "provider": provider_name,
+                    "status": "error",
+                    "reason": "guide_export_failed",
+                    "candidate": candidate,
+                    "bundle_path": str(export_dir),
+                    "freshness": existing_freshness,
+                    "export": export_result.get("payload"),
+                }
+            )
+            continue
+        try:
+            bundle_inputs.append((export_dir, load_article_bundle(export_dir)))
+        except (ValueError, OSError) as exc:
+            provider_rows.append(
+                {
+                    "provider": provider_name,
+                    "status": "error",
+                    "reason": "invalid_exported_bundle",
+                    "candidate": candidate,
+                    "bundle_path": str(export_dir),
+                    "freshness": existing_freshness,
+                    "error": str(exc),
+                }
+            )
+            continue
+
+        exported_at = _iso_now_utc()
+        provider_rows.append(
+            {
+                "provider": provider_name,
+                "status": "exported",
+                "candidate": candidate,
+                "bundle_path": str(export_dir),
+                "freshness": _guide_compare_freshness(exported_at, max_age_hours=max_age_hours),
+                "exported_at": exported_at,
+                "export": export_result.get("payload"),
+            }
+        )
+
+    payload: dict[str, Any] = {
+        "provider": "warcraft",
+        "kind": "guide_bundle_comparison_orchestration",
+        "query": query,
+        "requested_expansion": requested_expansion,
+        "selected_providers": list(selected_providers),
+        "output_root": str(orchestration_root),
+        "max_age_hours": max_age_hours,
+        "force_refresh": force_refresh,
+        "provider_results": provider_rows,
+        "exported_bundle_count": len(bundle_inputs),
+        "comparison": None,
+    }
+    payload["manifest"] = _write_guide_compare_manifest(
+        root=orchestration_root,
+        query=query,
+        requested_expansion=requested_expansion,
+        max_age_hours=max_age_hours,
+        provider_results=provider_rows,
+    )
+    if len(bundle_inputs) >= 2:
+        payload["comparison"] = {
+            "provider": "warcraft",
+            **compare_article_bundles(bundle_inputs),
+        }
+        _emit(payload, pretty=_pretty(ctx))
+        return
+
+    payload["ok"] = False
+    payload["error"] = {
+        "code": "insufficient_guides",
+        "message": "Need at least two exported guide bundles to compare.",
+    }
+    _emit(payload, pretty=_pretty(ctx), err=True)
+    raise typer.Exit(1)
+
+
 @app.command(
     "wowhead",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -600,6 +1187,18 @@ def method_passthrough(ctx: typer.Context) -> None:
 )
 def raiderio_passthrough(ctx: typer.Context) -> None:
     _invoke_sub_app(raiderio_app, args=_passthrough_args(ctx, provider_name="raiderio"), prog_name="raiderio")
+
+
+@app.command(
+    "warcraftlogs",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def warcraftlogs_passthrough(ctx: typer.Context) -> None:
+    _invoke_sub_app(
+        warcraftlogs_app,
+        args=_passthrough_args(ctx, provider_name="warcraftlogs"),
+        prog_name="warcraftlogs",
+    )
 
 
 @app.command(

@@ -20,6 +20,8 @@ warcraft resolve "character us illidan Roguecane" --compact --ranking-debug
 warcraft guild us "Mal'Ganis" gn
 warcraft guild-history us "Mal'Ganis" gn
 warcraft guild-ranks us "Mal'Ganis" gn
+warcraft guide-compare ./tmp/method-mistweaver ./tmp/icy-mistweaver
+warcraft guide-compare-query "mistweaver monk guide"
 warcraft --expansion wotlk wowhead search "thunderfury"
 warcraft wowhead search "defias"
 warcraft wowhead guide 3143
@@ -35,6 +37,8 @@ warcraft warcraft-wiki api "CreateFrame"
 warcraft warcraft-wiki event "OnKeyDown"
 warcraft wowprogress guild us illidan Liquid
 warcraft wowprogress leaderboard pve us --limit 10
+warcraft resolve "https://www.warcraftlogs.com/reports/abcd1234#fight=3"
+warcraft warcraftlogs resolve "https://www.warcraftlogs.com/reports/abcd1234#fight=3"
 warcraftlogs doctor
 warcraftlogs auth status
 warcraftlogs auth login --redirect-uri http://127.0.0.1:8787/callback
@@ -64,9 +68,14 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, typed `api` / `event` lookups, article export, and local query.
 - `wowprogress` is now a real rankings provider with structured search, conservative resolve, direct guild/character/PvE leaderboard lookups, and its first sample-backed leaderboard analytics primitives.
 - `warcraftlogs` is now a real phase-1 official API provider with retail-only OAuth client-credentials auth plus typed world metadata, guild, character, and report lookups.
-- `warcraftlogs` is intentionally standalone for now; wrapper integration is deferred until the provider surface and future site-profile routing are broader.
+- `warcraftlogs` is now wired into wrapper `doctor`, passthrough, and conservative wrapper `search` / `resolve`.
+- wrapper discovery for `warcraftlogs` is intentionally narrow for now: only explicit report URLs and bare mixed-alphanumeric report codes resolve through the wrapper.
 - `warcraft guild` is now a first-class merged guild workflow that normalizes region/realm/name input and reports Raider.IO and WowProgress source disagreements explicitly.
 - `warcraft guild-history` and `warcraft guild-ranks` currently use WowProgress as the historical raid source and preserve that provenance in the payload.
+- `warcraft guide-compare` compares exported guide bundles across providers using raw section evidence, additive `analysis_surfaces`, and explicit `build_references`, while preserving provider provenance and source citations instead of flattening the guides into one fake summary
+- `warcraft guide-compare-query` conservatively resolves one guide per supported provider, exports those bundles locally, and then runs the same comparison packet over the exported evidence
+- when `guide-compare-query` cannot get a guide from provider `resolve`, it may fall back to provider `search`, but only when the top guide result is clearly stronger than the alternatives
+- `guide-compare-query` now writes an orchestration manifest under the output root and reuses existing bundles only when the same guide ref is still selected and the recorded export age is within `--max-age-hours`; use `--force-refresh` to bypass reuse
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
@@ -79,14 +88,35 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - use `--ranking-debug` when you want compact ranking summaries for the top wrapper candidates
 - use `--expansion-debug` when you want a compact per-provider expansion eligibility snapshot
 - wrapper ranking policy can be overridden with `~/.config/warcraft/wrapper_ranking.json`
-- the wrapper may synthesize a direct provider route when a provider has a strong direct command but no native search surface for that query family, such as `wowprogress leaderboard pve ...`
+- the wrapper may add synthetic search candidates when a provider has a strong direct command but no native search surface for that query family, such as `wowprogress leaderboard pve ...`
+- wrapper `resolve` does not treat those synthetic direct routes as verified resolutions
 - wrapper expansion filtering is conservative:
   - `wowhead` is currently the only profiled expansion-aware provider
-  - `method`, `icy-veins`, `raiderio`, and `wowprogress` are currently treated as retail-only when wrapper expansion filtering is active
+  - `method`, `icy-veins`, `raiderio`, `wowprogress`, and `warcraftlogs` are currently treated as retail-only when wrapper expansion filtering is active
   - `warcraft-wiki` and `simc` are currently excluded from wrapper expansion-filtered `search` and `resolve`
-  - wrapper `search`, `resolve`, and `doctor` now report included and excluded providers when expansion filtering is active
-  - `--expansion-debug` exposes the full provider eligibility snapshot even in compact mode
-  - direct passthrough commands reject unsupported provider/expansion combinations instead of silently ignoring the expansion request
+- wrapper `search`, `resolve`, and `doctor` now report included and excluded providers when expansion filtering is active
+- `--expansion-debug` exposes the full provider eligibility snapshot even in compact mode
+- direct passthrough commands reject unsupported provider/expansion combinations instead of silently ignoring the expansion request
+- wrapper `doctor` preserves provider registration status, so partial providers stay marked `partial` even when their local doctor command succeeds
+
+## Agent Workflow Direction
+
+- These CLIs are designed as agent-facing building blocks for broad World of Warcraft questions, not just one-off direct lookups.
+- Broad requests like "tell me about this class, quest, item, zone, or spec" should route cleanly to the right provider without hiding source provenance.
+- Cross-provider requests should stay composable:
+  - compare guide providers against each other
+  - compare guide-derived recommendations against local `simc` APL behavior for an exact build
+  - connect reference, ranking, profile, log, and simulation surfaces without hand-normalizing every identifier
+- Deep log-analysis requests should stay scope-safe:
+  - prefer typed `warcraftlogs` report and encounter commands over manual event stitching
+  - preserve exact fight, player, target, ability, and window provenance in the payload
+  - treat sampled analytics as sampled analytics, not global truth
+- Not every high-value workflow is a one-command surface yet.
+- The current implementation direction is to add the smallest trustworthy primitives needed for agents to compute those workflows safely:
+  - shared cross-provider identity and handoff primitives
+  - normalized guide-comparison surfaces
+  - deeper scoped Warcraft Logs analytics
+  - evidence packets with consistent freshness and citation metadata
 
 `warcraft doctor` reports:
 - wrapper health
@@ -201,6 +231,7 @@ Wowhead command behavior:
   - class slug
   - spec slug
   - current build code
+  - shared `build_identity` metadata that can be handed off directly into `simc`
   - listed embedded builds when the page exposes them
 - `profession-tree` decodes profession tree state URLs into:
   - profession slug
@@ -230,10 +261,10 @@ Method guide behavior:
 - `search` and `resolve` work against the Method guide sitemap
 - the currently supported Method surface is supported guide/article content under `/guides/<slug>` and `/guides/<slug>/<section>`
 - currently validated supported families include class guides, profession guides, delve guides, reputation guides, and article guides
-- `guide` returns the requested page summary with navigation and linked-entity preview
+- `guide` returns the requested page summary with navigation, linked-entity preview, explicit embedded `build_references`, and additive `analysis_surfaces` when the page exposes comparison-relevant guide topics
 - `guide-full` walks the guide navigation and returns all discovered guide pages
 - `guide-export` writes a local guide bundle under `./method_exports/` by default
-- `guide-query` searches exported Method bundles across sections, navigation links, and linked entities
+- `guide-query` searches exported Method bundles across sections, navigation links, linked entities, explicit embedded build references, and additive `analysis_surfaces`
 - unsupported Method query families such as `tier list` return a `scope_hint` and no search candidates
 - unsupported Method URLs such as premium or account pages return structured `invalid_guide_ref` errors
 - unsupported index-style roots such as `tier-list` return structured `unsupported_guide_surface` errors
@@ -264,7 +295,7 @@ Icy Veins guide behavior:
   - raid guides
   - expansion guides
   - special-event guides such as Remix and Torghast pages
-- `guide` returns the requested page summary with family metadata, page TOC, and linked-entity preview
+- `guide` returns the requested page summary with family metadata, page TOC, linked-entity preview, explicit embedded `build_references`, and additive `analysis_surfaces` when the page exposes comparison-relevant guide topics
 - `guide-full` is family-aware:
   - class hubs and role guides stay on the current page
   - spec-family pages walk the related family navigation only
@@ -275,7 +306,7 @@ Icy Veins guide behavior:
 - resources, macros/addons, Mythic+ tips, and simulations are now also part of the validated supported family set
 - leveling, builds/talents, rotation, gems/enchants/consumables, and spell-summary pages are now also part of the validated supported family set
 - `guide-export` writes a local guide bundle under `./icy-veins_exports/` by default
-- `guide-query` searches exported Icy Veins bundles across sections, navigation links, and linked entities
+- `guide-query` searches exported Icy Veins bundles across sections, navigation links, linked entities, explicit embedded build references, and additive `analysis_surfaces`
 
 ## Raider.IO Commands
 
@@ -468,7 +499,7 @@ warcraftlogs kill-time-distribution --zone-id 38 --boss-id 3012 --difficulty 5 -
 warcraftlogs boss-spec-usage --zone-id 38 --boss-id 3012 --difficulty 5 --top 10
 ```
 
-Warcraft Logs phase-1 behavior:
+Current Warcraft Logs provider behavior:
 - `warcraftlogs` currently targets the retail/main site profile only
 - auth is the official public OAuth client-credentials flow
 - manual user-auth groundwork is now available for:
@@ -530,7 +561,6 @@ EOF
     - `--window-start-ms`
     - `--window-end-ms`
   - these commands preserve the resolved absolute report timestamps in the payload so the agent does not have to calculate them
-- `boss-kills`, `top-kills`, and `kill-time-distribution` are the first sampled cross-report analytics slice:
 - `boss-kills`, `top-kills`, `kill-time-distribution`, and `boss-spec-usage` are the current sampled cross-report analytics slice:
   - they sample public finished reports for one zone
   - they rank within the sampled cohort, not all possible Warcraft Logs data
@@ -681,7 +711,7 @@ SimulationCraft behavior:
   - `mount` resolves through underlying item pages
   - `battle-pet` resolves through underlying NPC pages
 
-See [WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/wowhead_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md) for the routing and `dataEnv` findings behind this behavior.
+See [WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md) for the routing and `dataEnv` findings behind this behavior.
 
 ## Entity Retrieval
 
@@ -715,6 +745,7 @@ Tooltip cleanup behavior:
 ## Guides And Bundles
 
 - `guide` resolves guide IDs or URLs and returns metadata plus sampled comments.
+- `guide` also exposes additive `analysis_surfaces` derived from trusted guide-body section headings and preserves raw guide detail alongside them.
 - `guide-full` returns the rich embedded guide payload in one response.
 - `guide-export` writes local guide assets for repeated agent exploration.
 
@@ -722,6 +753,7 @@ Tooltip cleanup behavior:
 - `guide.json`
 - `page.html`
 - `sections.jsonl`
+- `analysis-surfaces.jsonl`
 - `linked-entities.jsonl`
 - `comments.jsonl`
 - `manifest.json`
@@ -770,6 +802,7 @@ Bundle discovery and refresh:
 
 `guide-query` searches one exported guide bundle locally across:
 - section content
+- additive analysis surfaces
 - navigation links
 - linked entities
 - gatherer entities
@@ -838,6 +871,6 @@ Cache cleanup and compact inspection:
 
 ## Related Docs
 
-- [ROADMAP.md](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
-- [WOWHEAD_ACCESS_METHODS.md](/home/auro/code/wowhead_cli/docs/WOWHEAD_ACCESS_METHODS.md)
-- [WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/wowhead_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md)
+- [ROADMAP.md](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
+- [WOWHEAD_ACCESS_METHODS.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_ACCESS_METHODS.md)
+- [WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md)

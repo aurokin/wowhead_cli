@@ -844,10 +844,48 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["auth"]["lookup_order"][-1] == "environment"
     assert payload["auth"]["state"]["exists"] is False
     assert payload["capabilities"]["guild"] == "ready"
+    assert payload["capabilities"]["search"] == "ready_explicit_report_only"
+    assert payload["capabilities"]["resolve"] == "ready_explicit_report_only"
     assert payload["capabilities"]["report_fights"] == "ready"
     assert payload["capabilities"]["boss_spec_usage"] == "ready"
     assert payload["capabilities"]["report_encounter_buffs"] == "ready"
     assert payload["capabilities"]["report_encounter_damage_breakdown"] == "ready"
+
+
+def test_warcraftlogs_search_matches_explicit_report_reference() -> None:
+    result = runner.invoke(warcraftlogs_app, ["search", "https://www.warcraftlogs.com/reports/abcd1234#fight=3"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["count"] == 1
+    assert payload["results"][0]["kind"] == "report_encounter"
+    assert payload["results"][0]["report_reference"]["code"] == "abcd1234"
+    assert payload["results"][0]["report_reference"]["fight_id"] == 3
+    assert payload["results"][0]["follow_up"]["command"] == "warcraftlogs report-encounter abcd1234 --fight-id 3"
+
+
+def test_warcraftlogs_resolve_requires_explicit_report_reference() -> None:
+    result = runner.invoke(warcraftlogs_app, ["resolve", "liquid mythic report"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["resolved"] is False
+    assert payload["confidence"] == "none"
+    assert "explicit report URL or a bare report code" in payload["message"]
+
+
+def test_warcraftlogs_resolve_matches_bare_report_code() -> None:
+    result = runner.invoke(warcraftlogs_app, ["resolve", "abcd1234"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "warcraftlogs"
+    assert payload["resolved"] is True
+    assert payload["confidence"] == "medium"
+    assert payload["match"]["kind"] == "report"
+    assert payload["next_command"] == "warcraftlogs report abcd1234"
 
 
 def test_warcraftlogs_auth_status_reports_shared_state_summary(monkeypatch) -> None:
@@ -1087,6 +1125,8 @@ def test_warcraftlogs_rate_limit_and_world_metadata_commands(monkeypatch) -> Non
     assert encounter_result.exit_code == 0
     encounter_payload = json.loads(encounter_result.stdout)
     assert encounter_payload["encounter"]["zone"]["expansion"]["name"] == "Midnight"
+    assert encounter_payload["encounter_identity"]["status"] == "canonical"
+    assert encounter_payload["encounter_identity"]["identity"]["journal_id"] == 9001
 
     zone_result = runner.invoke(warcraftlogs_app, ["zone", "38"])
     assert zone_result.exit_code == 0
@@ -1281,6 +1321,8 @@ def test_warcraftlogs_guild_character_and_report_commands(monkeypatch) -> None:
     master_data_payload = json.loads(master_data_result.stdout)
     assert master_data_payload["master_data"]["log_version"] == 47
     assert master_data_payload["master_data"]["actors"][0]["name"] == "Auropower"
+    assert master_data_payload["master_data"]["actors"][0]["identity_contract"]["status"] == "normalized"
+    assert master_data_payload["master_data"]["abilities"][0]["identity_contract"]["status"] == "canonical"
 
     player_details_result = runner.invoke(
         warcraftlogs_app,
@@ -1304,6 +1346,7 @@ def test_warcraftlogs_guild_character_and_report_commands(monkeypatch) -> None:
     player_details_payload = json.loads(player_details_result.stdout)
     assert player_details_payload["player_details"]["counts"]["total"] == 2
     assert player_details_payload["player_details"]["roles"]["tanks"][0]["name"] == "Sherway"
+    assert player_details_payload["player_details"]["roles"]["tanks"][0]["identity_contract"]["status"] == "normalized"
 
     rankings_result = runner.invoke(
         warcraftlogs_app,
@@ -1487,6 +1530,8 @@ def test_warcraftlogs_report_encounter_accepts_report_url(monkeypatch) -> None:
     assert payload["reference"]["code"] == "abcd1234"
     assert payload["reference"]["fight_id"] == 1
     assert payload["fight"]["encounter_id"] == 3012
+    assert payload["encounter_identity"]["status"] == "canonical"
+    assert payload["encounter_identity"]["identity"]["encounter_id"] == 3012
     assert payload["stability"]["cache_safe"] is True
 
 
@@ -1512,6 +1557,8 @@ def test_warcraftlogs_report_encounter_players_scopes_to_selected_fight(monkeypa
     assert payload["reference"]["fight_id"] == 1
     assert payload["player_details"]["counts"]["total"] == 2
     assert payload["player_details"]["roles"]["dps"][0]["name"] == "Auropower"
+    assert payload["player_details"]["roles"]["dps"][0]["identity_contract"]["status"] == "canonical"
+    assert payload["player_details"]["roles"]["dps"][0]["class_spec_identity"]["identity"]["spec"] == "retribution"
 
 
 def test_warcraftlogs_report_encounter_casts_summarizes_cast_rows(monkeypatch) -> None:
@@ -1528,6 +1575,8 @@ def test_warcraftlogs_report_encounter_casts_summarizes_cast_rows(monkeypatch) -
     assert payload["casts"]["by_source"][0]["source"]["name"] == "Auropower"
     assert payload["casts"]["by_ability"][0]["ability"]["name"] == "Holy Shock"
     assert payload["casts"]["preview"][0]["relative_time_ms"] == 20000.0
+    assert payload["casts"]["preview"][0]["source"]["identity_contract"]["status"] == "canonical"
+    assert payload["casts"]["preview"][0]["ability"]["identity_contract"]["status"] == "canonical"
 
 
 def test_warcraftlogs_report_encounter_casts_supports_windows_and_filters(monkeypatch) -> None:

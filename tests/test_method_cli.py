@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from typer.testing import CliRunner
-
 from method_cli.main import app
 from method_cli.page_parser import classify_guide_family, parse_guide_page, parse_sitemap_guides
+from typer.testing import CliRunner
 
 runner = CliRunner()
 
@@ -37,6 +36,7 @@ INTRO_HTML = """
       <p>Intro copy for Mistweaver Monk.</p>
       <h3>Mistweaver Monk Overview</h3>
       <p>Use <a href="https://www.wowhead.com/spell=116670/vivify">Vivify</a> well.</p>
+      <p>Reference build: <a href="https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123">Raid Build</a>.</p>
     </article>
   </body>
 </html>
@@ -69,6 +69,7 @@ TALENTS_HTML = """
       <p>Talent page copy.</p>
       <h3>Raid Talents</h3>
       <p>Pick <a href="https://www.wowhead.com/spell=388020/tea-of-serenity">Tea of Serenity</a>.</p>
+      <p>Alternative build: <a href="https://www.wowhead.com/talent-calc/monk/mistweaver/DEF456">Mythic Plus Build</a>.</p>
     </article>
   </body>
 </html>
@@ -166,6 +167,8 @@ def test_parse_guide_page_extracts_sections_navigation_and_links() -> None:
     assert payload["article"]["sections"][0]["title"] == "Introduction"
     assert payload["linked_entities"][0]["type"] == "spell"
     assert payload["linked_entities"][0]["id"] == 116670
+    assert payload["build_references"][0]["build_code"] == "ABC123"
+    assert payload["build_references"][0]["build_identity"]["class_spec_identity"]["identity"] == {"actor_class": "monk", "spec": "mistweaver"}
 
 
 def test_parse_guide_page_supports_metadata_and_article_fallback_selectors() -> None:
@@ -262,12 +265,16 @@ def test_method_guide_and_guide_full(monkeypatch) -> None:
     guide_payload = json.loads(guide_result.stdout)
     assert guide_payload["guide"]["slug"] == "mistweaver-monk"
     assert guide_payload["linked_entities"]["count"] == 1
+    assert guide_payload["build_references"]["count"] == 1
+    assert guide_payload["analysis_surfaces"]["count"] == 1
 
     full_result = runner.invoke(app, ["guide-full", "mistweaver-monk"])
     assert full_result.exit_code == 0
     full_payload = json.loads(full_result.stdout)
     assert full_payload["guide"]["page_count"] == 2
     assert full_payload["linked_entities"]["count"] == 2
+    assert full_payload["build_references"]["count"] == 2
+    assert full_payload["analysis_surfaces"]["count"] == 2
     assert full_payload["pages"][1]["guide"]["section_slug"] == "talents"
 
 
@@ -287,6 +294,18 @@ def test_method_guide_export_and_query(monkeypatch, tmp_path: Path) -> None:
     query_payload = json.loads(query_result.stdout)
     assert query_payload["count"] == 1
     assert query_payload["top"][0]["name"] == "Tea of Serenity"
+
+    build_query = runner.invoke(app, ["guide-query", str(export_dir), "abc123", "--kind", "build_references"])
+    assert build_query.exit_code == 0
+    build_query_payload = json.loads(build_query.stdout)
+    assert build_query_payload["count"] == 1
+    assert build_query_payload["top"][0]["build_code"] == "ABC123"
+
+    analysis_query = runner.invoke(app, ["guide-query", str(export_dir), "talent recommendations", "--kind", "analysis_surfaces"])
+    assert analysis_query.exit_code == 0
+    analysis_query_payload = json.loads(analysis_query.stdout)
+    assert analysis_query_payload["count"] == 1
+    assert analysis_query_payload["top"][0]["surface_tags"] == ["builds_talents", "talent_recommendations"]
 
     section_query = runner.invoke(app, ["guide-query", str(export_dir), "mistweaver", "--kind", "sections", "--section-title", "introduction"])
     assert section_query.exit_code == 0

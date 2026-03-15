@@ -25,12 +25,17 @@ Co-Authored-By: OpenAI Codex <noreply@openai.com>
 - Keep `README.md` short.
 - Put detailed command behavior in `docs/USAGE.md`.
 - Keep roadmap work in `docs/ROADMAP.md`.
+- Keep agent-facing product principles aligned with `README.md` and `docs/ROADMAP.md`.
+- Keep shared identity semantics aligned with `docs/IDENTITY_CONTRACT.md` and `packages/warcraft-core/src/warcraft_core/identity.py`.
+- When adding features or docs, follow the agent-product principles and representative workflow direction documented there.
 - Keep docs aligned with actual CLI behavior.
 - Prefer updating docs when command contracts or output shapes change.
 - Root research and planning docs live under `docs/`.
 - Do not bolt on “smart answers” for analytics-heavy questions.
 - Build reliable, sample-backed analytics primitives that agents can trust and compose.
 - Prefer systems like sampling, normalization, aggregation, provenance, and freshness over one-off answer commands.
+- Treat normalization as an additive analysis layer, not a replacement for raw source content.
+- Keep raw guide/article/log content and provenance accessible alongside normalized outputs.
 - Skills are for CLI consumers and workflow usage.
 - Keep repo maintenance, roadmap, packaging, and internal architecture rules out of skill docs.
 - `skills/warcraft/SKILL.md` and `skills/warcraft/references/*.md` are the source of truth for consumer skill content.

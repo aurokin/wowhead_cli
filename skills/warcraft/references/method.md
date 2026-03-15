@@ -18,6 +18,8 @@
 - use Method when an article-style guide is easier to traverse than a Wowhead guide page
 - prefer `guide` before `guide-full`
 - expect explicit support boundaries; unsupported families return structured failures or `scope_hint`
+- explicit embedded Wowhead talent-calc links show up as `build_references`; there is no slug/title-based guide hardlinking
+- additive `analysis_surfaces` highlight comparison-relevant guide topics without replacing raw guide content
 
 ## Validated Families
 

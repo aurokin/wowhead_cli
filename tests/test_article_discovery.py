@@ -5,6 +5,7 @@ from warcraft_content.article_discovery import (
     article_follow_up,
     article_resolve_payload,
     article_search_payload,
+    merge_article_build_references,
     merge_article_linked_entities,
     sort_article_candidates,
 )
@@ -156,3 +157,51 @@ def test_merge_article_linked_entities_supports_custom_page_key() -> None:
     merged = merge_article_linked_entities(pages, page_key="article_meta")
 
     assert merged[0]["source_urls"] == ["https://warcraft.wiki.gg/wiki/World_of_Warcraft_API"]
+
+
+def test_merge_article_build_references_dedupes_and_preserves_source_urls() -> None:
+    pages = [
+        {
+            "guide": {"page_url": "https://example.invalid/intro"},
+            "build_references": [
+                {
+                    "kind": "build_reference",
+                    "reference_type": "wowhead_talent_calc_url",
+                    "url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                    "label": None,
+                    "build_code": "ABC123",
+                    "build_identity": {"kind": "build_identity", "status": "inferred"},
+                },
+            ],
+        },
+        {
+            "guide": {"page_url": "https://example.invalid/talents"},
+            "build_references": [
+                {
+                    "kind": "build_reference",
+                    "reference_type": "wowhead_talent_calc_url",
+                    "url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                    "label": "Raid Build",
+                    "build_code": "ABC123",
+                    "build_identity": {"kind": "build_identity", "status": "inferred"},
+                },
+            ],
+        },
+    ]
+
+    merged = merge_article_build_references(pages)
+
+    assert merged == [
+        {
+            "kind": "build_reference",
+            "reference_type": "wowhead_talent_calc_url",
+            "url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+            "label": "Raid Build",
+            "build_code": "ABC123",
+            "build_identity": {"kind": "build_identity", "status": "inferred"},
+            "source_urls": [
+                "https://example.invalid/intro",
+                "https://example.invalid/talents",
+            ],
+        }
+    ]

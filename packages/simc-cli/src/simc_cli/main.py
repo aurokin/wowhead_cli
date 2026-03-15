@@ -55,6 +55,7 @@ from simc_cli.repo import (
 from simc_cli.run import binary_version, build_repo, repo_git_status, run_profile, sync_repo
 from simc_cli.search import find_action, spec_file_search
 from simc_cli.sim import first_action_hits, run_first_casts, summarize_first_casts
+from warcraft_core.identity import build_identity_payload
 from warcraft_core.output import emit
 
 app = typer.Typer(add_completion=False, help="SimulationCraft local workflow CLI.")
@@ -161,6 +162,14 @@ def _serialize_build_identity(identity: Any) -> dict[str, Any]:
         "candidate_count": identity.candidate_count,
         "candidates": [{"actor_class": actor_class, "spec": spec} for actor_class, spec in identity.candidates],
         "source_notes": identity.source_notes,
+        "identity_contract": build_identity_payload(
+            actor_class=identity.actor_class,
+            spec=identity.spec,
+            confidence=identity.confidence,
+            source=identity.source,
+            candidates=list(identity.candidates),
+            source_notes=identity.source_notes,
+        ),
     }
 
 

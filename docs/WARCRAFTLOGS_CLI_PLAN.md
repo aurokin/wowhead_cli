@@ -73,6 +73,8 @@ Implemented today:
   - `warcraftlogs boss-spec-usage`
 - unit coverage for the current JSON contract
 - live coverage for:
+  - `auth status`
+  - `auth client`
   - `regions`
   - `server`
   - `guild`
@@ -85,6 +87,7 @@ Implemented today:
   - `report`
   - constrained `report-master-data`
   - constrained `report-player-details`
+  - constrained `report-events`
   - constrained `report-table`
   - constrained `report-graph`
   - constrained `report-rankings`
@@ -93,12 +96,13 @@ Implemented today:
   - constrained `report-encounter-damage-breakdown`
   - sampled `boss-kills`
   - sampled `boss-spec-usage`
+  - `auth whoami` when user auth is configured
 
 Current intentional boundary:
 - standalone only for now
 - not yet wired into the `warcraft` wrapper
 - retail/main site profile only
-- public endpoint only
+- public data surface first, with only limited user-endpoint verification via `warcraftlogs auth whoami`
 - typed fields only; no raw GraphQL passthrough
 - no wrapper-level user-auth routing yet
 - no classic/fresh site-profile routing yet
@@ -108,12 +112,12 @@ What changed in the research baseline:
 - we now also have local rendered docs dumps under:
   - `research/warcraftlogs-docs-classic/`
   - `research/warcraftlogs-docs-fresh/`
-- the dump is produced by [dump_warcraftlogs_docs.py](/home/auro/code/wowhead_cli/scripts/dump_warcraftlogs_docs.py)
+- the dump is produced by [dump_warcraftlogs_docs.py](/home/auro/code/warcraft_cli/scripts/dump_warcraftlogs_docs.py)
 - the dump confirms Warcraft Logs has an official OAuth 2.0 + GraphQL integration surface that is broad enough for a full CLI
 
 This means `warcraftlogs` should be planned as an official integration first, with scraping treated only as a fallback for unsupported site workflows.
 
-Shared auth direction for this provider is defined in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/wowhead_cli/docs/AUTH_ARCHITECTURE_PLAN.md). `warcraftlogs` is one of the two providers that should define the shared OAuth-oriented auth architecture.
+Shared auth direction for this provider is defined in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/warcraft_cli/docs/AUTH_ARCHITECTURE_PLAN.md). `warcraftlogs` is one of the two providers that should define the shared OAuth-oriented auth architecture.
 
 ## Immediate Next Steps
 
@@ -121,12 +125,12 @@ Highest-value next implementation slices:
 - make `character-rankings` more reliable across public characters before treating it as fully validated
 - deepen report workflows beyond the current phase-1 slice:
   - safer event pagination patterns once `events(...)` can be validated more broadly
-  - additional report detail surfaces after the current player/ranking slice is proven
-- start the deep encounter analytics slice for report-link-driven questions:
-  - report-link encounter identity is now implemented
-  - fight-scoped player and cast normalization is now implemented
-  - next: typed buff and damage workflows instead of ad hoc event math
-- continue the multi-report analytics slice after the first sampled cohort commands:
+  - additional report detail surfaces after the current player/events/table/graph/ranking slice is proven
+- deepen the encounter analytics slice beyond the current report-link workflows:
+  - current shipped slice covers encounter identity plus typed player/cast/buff/damage summaries
+  - next: wave and phase summaries so agents do not have to derive unstable segments from raw timestamps
+- continue the multi-report analytics slice beyond the current sampled cohort commands:
+  - current shipped slice covers `boss-kills`, `top-kills`, `kill-time-distribution`, and `boss-spec-usage`
   - stronger top-kill discovery semantics beyond sampled fastest kills
   - spec-filtered kill samples
   - kill-time-bounded report cohorts
@@ -1025,10 +1029,10 @@ This provider is still a strong reason not to over-generalize API-first services
 - rendered docs dump: `research/warcraftlogs-docs/`
 - rendered docs dump: `research/warcraftlogs-docs-classic/`
 - rendered docs dump: `research/warcraftlogs-docs-fresh/`
-- dump script: [dump_warcraftlogs_docs.py](/home/auro/code/wowhead_cli/scripts/dump_warcraftlogs_docs.py)
+- dump script: [dump_warcraftlogs_docs.py](/home/auro/code/warcraft_cli/scripts/dump_warcraftlogs_docs.py)
 
 ## Source Links
 
 - `https://www.warcraftlogs.com/api/docs`
 - `https://www.warcraftlogs.com/v2-api-docs/warcraft/`
-- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
+- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)

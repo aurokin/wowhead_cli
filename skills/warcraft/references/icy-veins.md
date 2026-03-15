@@ -18,6 +18,8 @@
 - use Icy Veins when the caller needs structured guide families rather than a single direct page
 - for broad class or role queries, let `resolve` pick the hub first
 - for narrow subpage questions, search terms like `easy mode`, `rotation`, `stat priority`, or `mythic+ tips` work well
+- explicit embedded Wowhead talent-calc links show up as `build_references`; guide slugs and titles are not treated as build evidence by themselves
+- additive `analysis_surfaces` highlight comparison-relevant guide topics without replacing raw guide content
 
 ## Validated Families
 

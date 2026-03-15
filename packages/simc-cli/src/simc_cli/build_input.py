@@ -5,7 +5,8 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urlparse
+
+from warcraft_core.identity import parse_wowhead_talent_calc_ref as parse_shared_wowhead_talent_calc_ref
 
 from simc_cli.repo import RepoPaths
 
@@ -104,32 +105,17 @@ def _normalize_spec_name(value: str | None) -> str | None:
 
 
 def parse_wowhead_talent_calc_ref(ref: str) -> BuildSpec | None:
-    candidate = ref.strip()
-    if not candidate:
-        return None
-    parsed = urlparse(candidate)
-    if parsed.scheme and parsed.netloc:
-        if "wowhead.com" not in parsed.netloc:
-            return None
-        path = parsed.path
-    else:
-        path = candidate
-    parts = [part for part in path.strip("/").split("/") if part]
-    if len(parts) < 3 or parts[0] != "talent-calc":
-        return None
-
-    actor_class = _normalize_actor_class(parts[1])
-    spec = _normalize_spec_name(parts[2])
-    build_code = parts[3] if len(parts) > 3 and parts[3].strip() else None
-    if not actor_class or not spec:
+    parsed = parse_shared_wowhead_talent_calc_ref(ref)
+    if parsed is None:
         return None
 
     source_notes = ["wowhead talent-calc url"]
+    build_code = parsed["build_code"]
     if build_code:
         source_notes.append("wowhead build code")
     return BuildSpec(
-        actor_class=actor_class,
-        spec=spec,
+        actor_class=parsed["actor_class"],
+        spec=parsed["spec"],
         talents=build_code,
         source_kind="wowhead_talent_calc_url",
         source_notes=source_notes,

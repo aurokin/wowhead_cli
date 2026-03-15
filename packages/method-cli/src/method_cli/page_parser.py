@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from html import unescape
 import re
+from html import unescape
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, Tag
+from warcraft_core.identity import build_reference_payload
 
 METHOD_BASE_URL = "https://www.method.gg"
 SUPPORTED_GUIDE_PATH_RE = re.compile(r"^/guides/(?P<slug>[^/]+)(?:/(?P<section>[^/?#]+))?/?$")
@@ -263,6 +264,26 @@ def _extract_linked_entities(article: Tag, *, source_url: str) -> list[dict[str,
     return sorted(items.values(), key=lambda row: (row["type"], row["id"]))
 
 
+def _extract_build_references(article: Tag, *, source_url: str) -> list[dict[str, Any]]:
+    items: dict[str, dict[str, Any]] = {}
+    for anchor in article.find_all("a", href=True):
+        href = anchor.get("href")
+        if not isinstance(href, str):
+            continue
+        payload = build_reference_payload(
+            ref=urljoin(source_url, href),
+            provider="method",
+            source="guide_embedded_link",
+            source_url=source_url,
+            label=clean_text(anchor.get_text(" ", strip=True)),
+            notes=["embedded Method guide link"],
+        )
+        if payload is None:
+            continue
+        items[str(payload["url"])] = payload
+    return sorted(items.values(), key=lambda row: str(row["url"]))
+
+
 def _normalize_author_and_last_updated(author: str | None, last_updated: str | None) -> tuple[str | None, str | None]:
     if isinstance(author, str):
         match = WRITTEN_BY_RE.match(author)
@@ -294,6 +315,7 @@ def parse_guide_page(html: str, *, source_url: str) -> dict[str, Any]:
     headings: list[dict[str, Any]] = []
     sections: list[dict[str, Any]] = []
     linked_entities: list[dict[str, Any]] = []
+    build_references: list[dict[str, Any]] = []
     if article_tag is not None:
         article = _clone_article(article_tag)
         article_html = "".join(str(child) for child in article.contents).strip()
@@ -301,6 +323,7 @@ def parse_guide_page(html: str, *, source_url: str) -> dict[str, Any]:
         headings = _extract_headings(article)
         sections = _extract_sections(article, fallback_title=display_section_title)
         linked_entities = _extract_linked_entities(article, source_url=canonical_url)
+        build_references = _extract_build_references(article, source_url=canonical_url)
     return {
         "page": {
             "title": page_title,
@@ -326,6 +349,7 @@ def parse_guide_page(html: str, *, source_url: str) -> dict[str, Any]:
             "sections": sections,
         },
         "linked_entities": linked_entities,
+        "build_references": build_references,
     }
 
 

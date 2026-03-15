@@ -111,4 +111,4 @@ This is now treated as a rankings/profile service using browser-fingerprint HTTP
 
 - `https://www.wowprogress.com/`
 - `https://www.wowprogress.com/char_level/us`
-- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
+- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)

@@ -13,6 +13,8 @@ from urllib.parse import urljoin, urlparse
 import httpx
 import typer
 
+from warcraft_core.identity import build_identity_payload
+from warcraft_content.guide_analysis import extract_section_chunk_analysis_surfaces
 from wowhead_cli.cache import (
     clear_file_cache,
     clear_redis_cache,
@@ -1501,6 +1503,7 @@ def _truncate_preview(value: str, *, max_chars: int = 220) -> str:
 def _normalize_query_kinds(values: list[str]) -> tuple[str, ...]:
     allowed = {
         "sections",
+        "analysis_surfaces",
         "navigation",
         "linked_entities",
         "gatherer_entities",
@@ -1602,9 +1605,10 @@ def _linked_entity_query_score(row: dict[str, Any], *, query: str) -> int:
 GUIDE_QUERY_KIND_PRIORITY = {
     "linked_entity": 0,
     "section": 1,
-    "navigation": 2,
-    "comment": 3,
-    "gatherer_entity": 4,
+    "analysis_surface": 2,
+    "navigation": 3,
+    "comment": 4,
+    "gatherer_entity": 5,
 }
 
 
@@ -1699,6 +1703,43 @@ def _guide_navigation_matches(*, navigation_links: list[Any], query: str, page_u
             }
         )
     matches.sort(key=lambda row: (-row["score"], row.get("label") or ""))
+    return matches
+
+
+def _guide_analysis_surface_matches(*, analysis_surfaces: list[Any], query: str) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for row in analysis_surfaces:
+        if not isinstance(row, dict):
+            continue
+        score = _score_text_match(
+            query,
+            " ".join(
+                part
+                for part in (
+                    " ".join(str(tag) for tag in row.get("surface_tags") or []),
+                    str(row.get("section_title") or ""),
+                    str(row.get("page_title") or ""),
+                    str(row.get("text_preview") or ""),
+                )
+                if part
+            ),
+        )
+        if score <= 0:
+            continue
+        citation = row.get("citation")
+        matches.append(
+            {
+                "kind": "analysis_surface",
+                "score": score,
+                "surface_tags": row.get("surface_tags") or [],
+                "section_title": row.get("section_title"),
+                "section_ordinal": row.get("section_ordinal"),
+                "page_title": row.get("page_title"),
+                "preview": row.get("text_preview"),
+                "citation_url": citation.get("page_url") if isinstance(citation, dict) else row.get("page_url"),
+            }
+        )
+    matches.sort(key=lambda row: (-row["score"], row.get("section_ordinal") or 0, row.get("section_title") or ""))
     return matches
 
 
@@ -1817,6 +1858,11 @@ def _guide_query_payload(
     )
     for row in section_matches:
         row["citation_url"] = page_url
+    analysis_surface_matches = (
+        _guide_analysis_surface_matches(analysis_surfaces=corpus["analysis_surfaces"], query=query)
+        if _guide_query_kind_enabled(selected_kinds, "analysis_surfaces")
+        else []
+    )
     navigation_matches = (
         _guide_navigation_matches(navigation_links=corpus["navigation_links"], query=query, page_url=page_url)
         if _guide_query_kind_enabled(selected_kinds, "navigation")
@@ -1853,6 +1899,7 @@ def _guide_query_payload(
         },
         "matches": {
             "sections": section_matches[:limit],
+            "analysis_surfaces": analysis_surface_matches[:limit],
             "navigation": navigation_matches[:limit],
             "linked_entities": linked_entity_matches[:limit],
             "gatherer_entities": gatherer_matches[:limit],
@@ -1860,6 +1907,7 @@ def _guide_query_payload(
         },
         "counts": {
             "sections": len(section_matches),
+            "analysis_surfaces": len(analysis_surface_matches),
             "navigation": len(navigation_matches),
             "linked_entities": len(linked_entity_matches),
             "gatherer_entities": len(gatherer_matches),
@@ -1868,6 +1916,7 @@ def _guide_query_payload(
         "top": _guide_query_top_matches(
             match_groups=[
                 section_matches,
+                analysis_surface_matches,
                 navigation_matches,
                 linked_entity_matches,
                 gatherer_matches,
@@ -2400,6 +2449,15 @@ def _build_guide_full_payload(
     except (ValueError, json.JSONDecodeError):
         author_embed = None
 
+    body_sections = extract_guide_sections(guide_body_markup) if isinstance(guide_body_markup, str) else []
+    body_section_chunks = extract_guide_section_chunks(guide_body_markup) if isinstance(guide_body_markup, str) else []
+    analysis_surfaces = extract_section_chunk_analysis_surfaces(
+        provider="wowhead",
+        page_url=canonical_url,
+        page_title=metadata["title"],
+        section_chunks=body_section_chunks,
+    )
+
     payload: dict[str, Any] = {
         "expansion": cfg.expansion.key,
         "guide": {
@@ -2421,10 +2479,8 @@ def _build_guide_full_payload(
         "rating": extract_guide_rating(html),
         "body": {
             "raw_markup": guide_body_markup,
-            "sections": extract_guide_sections(guide_body_markup) if isinstance(guide_body_markup, str) else [],
-            "section_chunks": extract_guide_section_chunks(guide_body_markup)
-            if isinstance(guide_body_markup, str)
-            else [],
+            "sections": body_sections,
+            "section_chunks": body_section_chunks,
             "summary": clean_markup_text(guide_body_markup[:2000]) if isinstance(guide_body_markup, str) else None,
         },
         "navigation": {
@@ -2451,6 +2507,10 @@ def _build_guide_full_payload(
             "include_replies": include_replies,
             "all_comments_included": True,
             "items": comments,
+        },
+        "analysis_surfaces": {
+            "count": len(analysis_surfaces),
+            "items": analysis_surfaces,
         },
         "structured_data": json_ld,
         "citations": {
@@ -2496,6 +2556,7 @@ def _load_guide_export(export_dir: Path) -> dict[str, Any]:
         "linked_entities": load_jsonl_from_manifest("linked_entities_jsonl"),
         "gatherer_entities": load_jsonl_from_manifest("gatherer_entities_jsonl"),
         "comments": load_jsonl_from_manifest("comments_jsonl"),
+        "analysis_surfaces": load_jsonl_from_manifest("analysis_surfaces_jsonl"),
     }
 
 
@@ -3494,6 +3555,7 @@ def _bundle_observed_counts(corpus: dict[str, Any], entities_manifest: dict[str,
                 hydrated_entities = len(items)
     return {
         "sections": len(corpus.get("sections") or []),
+        "analysis_surfaces": len(corpus.get("analysis_surfaces") or []),
         "navigation_links": len(corpus.get("navigation_links") or []),
         "linked_entities": len(corpus.get("linked_entities") or []),
         "gatherer_entities": len(corpus.get("gatherer_entities") or []),
@@ -3704,6 +3766,11 @@ def _write_guide_export_assets(
         "comments.jsonl",
         (payload.get("comments") or {}).get("items") if isinstance(payload.get("comments"), dict) else [],
     )
+    analysis_surface_items = write_jsonl_asset(
+        "analysis_surfaces_jsonl",
+        "analysis-surfaces.jsonl",
+        (payload.get("analysis_surfaces") or {}).get("items") if isinstance(payload.get("analysis_surfaces"), dict) else [],
+    )
 
     structured_data = payload.get("structured_data")
     if structured_data is not None:
@@ -3719,6 +3786,7 @@ def _write_guide_export_assets(
         "linked_items": linked_items,
         "gatherer_items": gatherer_items,
         "comment_items": comment_items,
+        "analysis_surfaces": analysis_surface_items,
     }
 
 
@@ -3864,6 +3932,7 @@ def _guide_export_manifest(
     linked_items: list[Any],
     gatherer_items: list[Any],
     comment_items: list[Any],
+    analysis_surfaces: list[Any],
 ) -> dict[str, Any]:
     exported_at = _iso_now_utc()
     return {
@@ -3886,6 +3955,7 @@ def _guide_export_manifest(
             "gatherer_entities": len(gatherer_items) if isinstance(gatherer_items, list) else 0,
             "hydrated_entities": len(hydrated_summary_items),
             "comments": len(comment_items) if isinstance(comment_items, list) else 0,
+            "analysis_surfaces": len(analysis_surfaces) if isinstance(analysis_surfaces, list) else 0,
         },
         "hydration": {
             "enabled": hydrate_linked_entities,
@@ -3957,6 +4027,7 @@ def _write_guide_export_bundle(
         linked_items=linked_items,
         gatherer_items=bundle_parts["gatherer_items"] if isinstance(bundle_parts["gatherer_items"], list) else [],
         comment_items=bundle_parts["comment_items"] if isinstance(bundle_parts["comment_items"], list) else [],
+        analysis_surfaces=bundle_parts["analysis_surfaces"] if isinstance(bundle_parts["analysis_surfaces"], list) else [],
     )
     manifest_path = export_dir / "manifest.json"
     _write_json_file(manifest_path, manifest)
@@ -4984,6 +5055,14 @@ def talent_calc(
             "page_url": canonical_url or state_url,
             **state,
         },
+        "build_identity": build_identity_payload(
+            actor_class=state.get("class_slug"),
+            spec=state.get("spec_slug"),
+            confidence="high" if state.get("class_slug") and state.get("spec_slug") else "none",
+            source="wowhead_talent_calc_url",
+            candidates=[(state.get("class_slug"), state.get("spec_slug"))] if state.get("class_slug") and state.get("spec_slug") else None,
+            source_notes=["class/spec came from the explicit Wowhead talent-calc URL path"],
+        ),
         "page": {
             "title": metadata.get("title"),
             "description": metadata.get("description"),
@@ -5216,6 +5295,13 @@ def guide(
         "gatherer": len(gatherer_entities),
         "merged": linked_preview["count"],
     }
+    guide_body_markup = extract_markup_by_target(html, target="guide-body")
+    analysis_surfaces = extract_section_chunk_analysis_surfaces(
+        provider="wowhead",
+        page_url=canonical_url,
+        page_title=metadata["title"],
+        section_chunks=extract_guide_section_chunks(guide_body_markup) if isinstance(guide_body_markup, str) else [],
+    )
 
     page_meta_json = parse_page_meta_json(html)
     payload: dict[str, Any] = {
@@ -5240,6 +5326,12 @@ def guide(
             "top": sampled_comments,
         },
         "linked_entities": linked_preview,
+        "analysis_surfaces": {
+            "count": len(analysis_surfaces),
+            "items": analysis_surfaces[:10],
+            "more_available": len(analysis_surfaces) > 10,
+            "fetch_more_command": f"wowhead guide-full {guide_ref}",
+        },
         "citations": {
             "page": canonical_url,
             "comments": f"{canonical_url}#comments",
@@ -5380,7 +5472,7 @@ def guide_query(
     kind: list[str] = typer.Option(
         [],
         "--kind",
-        help="Restrict search kinds. Repeat or pass comma-separated values from: sections, navigation, linked_entities, gatherer_entities, comments.",
+        help="Restrict search kinds. Repeat or pass comma-separated values from: sections, analysis_surfaces, navigation, linked_entities, gatherer_entities, comments.",
     ),
     section_title: str | None = typer.Option(
         None,
@@ -5460,7 +5552,7 @@ def guide_bundle_query(
     kind: list[str] = typer.Option(
         [],
         "--kind",
-        help="Restrict search kinds. Repeat or pass comma-separated values from: sections, navigation, linked_entities, gatherer_entities, comments.",
+        help="Restrict search kinds. Repeat or pass comma-separated values from: sections, analysis_surfaces, navigation, linked_entities, gatherer_entities, comments.",
     ),
     section_title: str | None = typer.Option(
         None,
@@ -5494,6 +5586,7 @@ def guide_bundle_query(
     section_title_filter = section_title.strip().lower() if isinstance(section_title, str) and section_title.strip() else None
     aggregate_counts = {
         "sections": 0,
+        "analysis_surfaces": 0,
         "navigation": 0,
         "linked_entities": 0,
         "gatherer_entities": 0,

@@ -1,4 +1,32 @@
 """Shared Warcraft core utilities."""
 from warcraft_core.env import find_env_file, load_env_file, load_explicit_env_file
+from warcraft_core.identity import (
+    ability_identity_payload,
+    build_identity_payload,
+    build_reference_payload,
+    class_spec_identity_payload,
+    encounter_identity_payload,
+    normalize_actor_class,
+    normalize_ability_name,
+    normalize_encounter_name,
+    normalize_spec_name,
+    parse_wowhead_talent_calc_ref,
+    report_actor_identity_payload,
+)
 
-__all__ = ["find_env_file", "load_env_file", "load_explicit_env_file"]
+__all__ = [
+    "ability_identity_payload",
+    "build_identity_payload",
+    "build_reference_payload",
+    "class_spec_identity_payload",
+    "encounter_identity_payload",
+    "find_env_file",
+    "load_env_file",
+    "load_explicit_env_file",
+    "normalize_actor_class",
+    "normalize_ability_name",
+    "normalize_encounter_name",
+    "normalize_spec_name",
+    "parse_wowhead_talent_calc_ref",
+    "report_actor_identity_payload",
+]

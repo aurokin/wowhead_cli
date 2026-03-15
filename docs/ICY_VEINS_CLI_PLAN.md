@@ -304,4 +304,4 @@ What should stay local to `icy-veins`:
 - `https://www.icy-veins.com/wow/mistweaver-monk-the-war-within-pve-guide`
 - `https://www.icy-veins.com/wow/mistweaver-monk-mists-of-pandaria-remix-guide`
 - `https://www.icy-veins.com/wow/mistweaver-monk-torghast-guide-and-best-anima-powers`
-- [Roadmap](/home/auro/code/wowhead_cli/docs/ROADMAP.md)
+- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)

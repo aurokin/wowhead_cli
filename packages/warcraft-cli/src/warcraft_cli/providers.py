@@ -8,6 +8,7 @@ from icy_veins_cli.main import app as icy_veins_app
 from raiderio_cli.main import app as raiderio_app
 from simc_cli.main import app as simc_app
 from warcraft_wiki_cli.main import app as warcraft_wiki_app
+from warcraftlogs_cli.main import app as warcraftlogs_app
 from wowprogress_cli.main import app as wowprogress_app
 from typer.testing import CliRunner
 
@@ -85,6 +86,19 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         expansion_review_status="reviewed",
         expansion_policy_note="Current provider surface is retail-first profile and leaderboard data; non-retail semantics are not part of the supported contract.",
         app=raiderio_app,
+        doctor_args=("doctor",),
+    ),
+    ProviderRegistration(
+        name="warcraftlogs",
+        command="warcraftlogs",
+        language="python",
+        status="partial",
+        description="Warcraft Logs API provider with explicit report discovery plus guild, character, and report analytics commands.",
+        expansion_mode="fixed",
+        supported_expansions=("retail",),
+        expansion_review_status="reviewed",
+        expansion_policy_note="Current supported Warcraft Logs routing is retail-only and discovery is intentionally limited to explicit report references.",
+        app=warcraftlogs_app,
         doctor_args=("doctor",),
     ),
     ProviderRegistration(
@@ -255,12 +269,26 @@ def provider_resolve(provider: str, query: str, *, limit: int = 5, expansion: st
     }
 
 
+def provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, Any]:
+    registration = get_provider(provider)
+    normalized_args = list(args)
+    if expansion is not None and registration.name == "wowhead":
+        normalized_args = ["--expansion", expansion, *normalized_args]
+    code, payload, stdout = _invoke_provider_app(registration.app, normalized_args)
+    return {
+        "provider": provider,
+        "exit_code": code,
+        "payload": payload,
+        "stdout": stdout,
+    }
+
+
 def provider_doctor(provider: str, *, requested_expansion: str | None = None) -> dict[str, Any]:
     registration = get_provider(provider)
     code, payload, _stdout = _invoke_provider_app(registration.app, list(registration.doctor_args))
     return {
         "provider": registration.name,
-        "status": "ready" if code == 0 else "error",
+        "status": registration.status if code == 0 else "error",
         "command": registration.command,
         "language": registration.language,
         "installed": True,
