@@ -536,8 +536,10 @@ simc verify-clean
 simc inspect
 simc inspect /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 simc spec-files mistweaver
-simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123 --actor-class monk --spec mistweaver
-simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/demonhunter_devourer.simc --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB' --actor-class demonhunter --spec devourer
+simc identify-build --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
+simc identify-build --build-text 'https://www.wowhead.com/talent-calc/demon-hunter/devourer/CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
+simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123
+simc decode-build --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc decode-build --build-text $'demonhunter="probe"\nspec=devourer\ntalents=CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc sim ./profile.simc
 cat ./profile.simc | simc sim -
@@ -575,8 +577,17 @@ SimulationCraft behavior:
 - `verify-clean` reports upstream git cleanliness and the local binary state, with optional binary hashing
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
+- `identify-build` is the safest first step when the user pastes a build string or talent-calc URL; it reports `source_kind`, resolved class/spec, confidence, and any probe candidates before deeper analysis
 - `decode-build` uses the local `simc` binary to decode talent strings into enabled talents and tree-grouped talent rows
-- `decode-build` accepts either a bare WoW talent export string or SimC-native build/profile text and reports the detected `source_kind` plus the normalized generated SimC profile it used for decoding
+- `decode-build` accepts:
+  - a bare WoW talent export string
+  - a Wowhead talent-calc URL
+  - SimC-native build/profile text
+  and reports both the detected `source_kind` and the normalized generated SimC profile it used for decoding
+- if class/spec are not supplied explicitly, `decode-build`, `build-harness`, and the exact-build APL commands now try to identify them automatically:
+  - direct actor/spec lines or APL path inference win first
+  - Wowhead talent-calc URLs contribute class/spec directly from the URL path
+  - bare WoW talent exports fall back to a bounded local SimC probe across supported specs
 - `sim` is the preferred consumer run path:
   - supports profile files, `stdin`, or `--profile-text`
   - uses explicit fixed presets instead of implicit adaptive settings

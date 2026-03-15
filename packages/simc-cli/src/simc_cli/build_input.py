@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 from simc_cli.repo import RepoPaths
 
@@ -63,6 +64,17 @@ class BuildResolution:
     source_notes: list[str]
 
 
+@dataclass(slots=True)
+class BuildIdentity:
+    actor_class: str | None
+    spec: str | None
+    confidence: str
+    source: str
+    candidate_count: int
+    candidates: list[tuple[str, str]] = field(default_factory=list)
+    source_notes: list[str] = field(default_factory=list)
+
+
 def infer_actor_and_spec_from_apl(apl_path: str | Path) -> tuple[str | None, str | None]:
     stem = Path(apl_path).stem
     if "_" not in stem:
@@ -77,10 +89,59 @@ def tokenize_talent_name(name: str) -> str:
     return text.strip("_")
 
 
+def _normalize_actor_class(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = re.sub(r"[^a-z0-9]+", "", value.lower())
+    return normalized or None
+
+
+def _normalize_spec_name(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+    return normalized or None
+
+
+def parse_wowhead_talent_calc_ref(ref: str) -> BuildSpec | None:
+    candidate = ref.strip()
+    if not candidate:
+        return None
+    parsed = urlparse(candidate)
+    if parsed.scheme and parsed.netloc:
+        if "wowhead.com" not in parsed.netloc:
+            return None
+        path = parsed.path
+    else:
+        path = candidate
+    parts = [part for part in path.strip("/").split("/") if part]
+    if len(parts) < 3 or parts[0] != "talent-calc":
+        return None
+
+    actor_class = _normalize_actor_class(parts[1])
+    spec = _normalize_spec_name(parts[2])
+    build_code = parts[3] if len(parts) > 3 and parts[3].strip() else None
+    if not actor_class or not spec:
+        return None
+
+    source_notes = ["wowhead talent-calc url"]
+    if build_code:
+        source_notes.append("wowhead build code")
+    return BuildSpec(
+        actor_class=actor_class,
+        spec=spec,
+        talents=build_code,
+        source_kind="wowhead_talent_calc_url",
+        source_notes=source_notes,
+    )
+
+
 def detect_build_text_source_kind(text: str) -> str | None:
     non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not non_empty_lines:
         return None
+    if len(non_empty_lines) == 1 and parse_wowhead_talent_calc_ref(non_empty_lines[0]) is not None:
+        return "wowhead_talent_calc_url"
     if len(non_empty_lines) == 1 and "=" not in non_empty_lines[0]:
         return "wow_talent_export"
 
@@ -113,6 +174,10 @@ def extract_build_spec_from_text(text: str) -> BuildSpec:
     spec = BuildSpec()
     spec.source_kind = detect_build_text_source_kind(text)
     non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(non_empty_lines) == 1:
+        wowhead_ref = parse_wowhead_talent_calc_ref(non_empty_lines[0])
+        if wowhead_ref is not None:
+            return wowhead_ref
     if len(non_empty_lines) == 1 and "=" not in non_empty_lines[0]:
         spec.talents = non_empty_lines[0]
         spec.source_notes.append("single-line talent export")
@@ -166,6 +231,16 @@ def merge_build_specs(*specs: BuildSpec) -> BuildSpec:
             merged.source_kind = spec.source_kind
         merged.source_notes.extend(spec.source_notes)
     return merged
+
+
+def supported_specs(repo: RepoPaths) -> list[tuple[str, str]]:
+    candidates: list[tuple[str, str]] = []
+    for directory in (repo.apl_default, repo.apl_assisted):
+        for path in sorted(directory.glob("*.simc")):
+            actor_class, spec = infer_actor_and_spec_from_apl(path)
+            if actor_class and spec and (actor_class, spec) not in candidates:
+                candidates.append((actor_class, spec))
+    return candidates
 
 
 def build_profile_text(build_spec: BuildSpec) -> str:
@@ -290,6 +365,97 @@ def load_build_spec(
         from_build_text.source_notes.append("inline build text")
 
     return merge_build_specs(inferred, from_profile, from_build_file, from_build_text, explicit)
+
+
+def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, BuildIdentity]:
+    if build_spec.actor_class and build_spec.spec:
+        source = "direct"
+        confidence = "high"
+        if build_spec.source_kind == "wowhead_talent_calc_url":
+            source = "wowhead_talent_calc_url"
+        elif any(note.startswith("inferred from apl:") for note in build_spec.source_notes):
+            source = "apl_path"
+        return (
+            build_spec,
+            BuildIdentity(
+                actor_class=build_spec.actor_class,
+                spec=build_spec.spec,
+                confidence=confidence,
+                source=source,
+                candidate_count=1,
+                candidates=[(build_spec.actor_class, build_spec.spec)],
+                source_notes=build_spec.source_notes[:],
+            ),
+        )
+
+    # Without talent data there is nothing reliable to probe.
+    if not any([build_spec.talents, build_spec.class_talents, build_spec.spec_talents, build_spec.hero_talents]):
+        return (
+            build_spec,
+            BuildIdentity(
+                actor_class=build_spec.actor_class,
+                spec=build_spec.spec,
+                confidence="none",
+                source="missing_build_data",
+                candidate_count=0,
+                source_notes=build_spec.source_notes[:],
+            ),
+        )
+
+    candidate_specs = supported_specs(repo)
+    if build_spec.actor_class:
+        candidate_specs = [item for item in candidate_specs if item[0] == build_spec.actor_class]
+    if build_spec.spec:
+        candidate_specs = [item for item in candidate_specs if item[1] == build_spec.spec]
+
+    matches: list[tuple[str, str]] = []
+    for actor_class, spec in candidate_specs:
+        probe_spec = BuildSpec(
+            actor_class=actor_class,
+            spec=spec,
+            talents=build_spec.talents,
+            class_talents=build_spec.class_talents,
+            spec_talents=build_spec.spec_talents,
+            hero_talents=build_spec.hero_talents,
+            source_kind=build_spec.source_kind,
+            source_notes=build_spec.source_notes[:],
+        )
+        try:
+            resolution = decode_build(repo, probe_spec)
+        except (FileNotFoundError, RuntimeError, ValueError):
+            continue
+        if resolution.enabled_talents:
+            matches.append((actor_class, spec))
+
+    if len(matches) == 1:
+        actor_class, spec = matches[0]
+        identified = merge_build_specs(build_spec, BuildSpec(actor_class=actor_class, spec=spec))
+        identified.source_notes.append("identified by SimC probe")
+        return (
+            identified,
+            BuildIdentity(
+                actor_class=actor_class,
+                spec=spec,
+                confidence="high",
+                source="simc_probe",
+                candidate_count=len(matches),
+                candidates=matches,
+                source_notes=identified.source_notes[:],
+            ),
+        )
+
+    return (
+        build_spec,
+        BuildIdentity(
+            actor_class=build_spec.actor_class,
+            spec=build_spec.spec,
+            confidence="low" if matches else "none",
+            source="simc_probe",
+            candidate_count=len(matches),
+            candidates=matches,
+            source_notes=build_spec.source_notes[:],
+        ),
+    )
 
 
 def decode_build(repo: RepoPaths, build_spec: BuildSpec) -> BuildResolution:

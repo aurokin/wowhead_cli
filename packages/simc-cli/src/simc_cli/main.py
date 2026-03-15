@@ -22,7 +22,14 @@ from simc_cli.branch import (
     summarize_intent,
     trace_apl,
 )
-from simc_cli.build_input import build_profile_text, decode_build, extract_build_spec_from_text, infer_actor_and_spec_from_apl, load_build_spec
+from simc_cli.build_input import (
+    build_profile_text,
+    decode_build,
+    extract_build_spec_from_text,
+    identify_build,
+    infer_actor_and_spec_from_apl,
+    load_build_spec,
+)
 from simc_cli.compare import (
     build_variant_profile,
     compare_apl_variants,
@@ -144,6 +151,18 @@ def _serialize_build_spec(spec: Any) -> dict[str, Any]:
     }
 
 
+def _serialize_build_identity(identity: Any) -> dict[str, Any]:
+    return {
+        "actor_class": identity.actor_class,
+        "spec": identity.spec,
+        "confidence": identity.confidence,
+        "source": identity.source,
+        "candidate_count": identity.candidate_count,
+        "candidates": [{"actor_class": actor_class, "spec": spec} for actor_class, spec in identity.candidates],
+        "source_notes": identity.source_notes,
+    }
+
+
 def _resolve_path(paths: RepoPaths, value: str) -> Path:
     path = Path(value).expanduser()
     if not path.is_absolute():
@@ -197,7 +216,7 @@ def _build_option_values(
 
 
 def _resolve_prune_context(paths: RepoPaths, apl_path: Path, option_values: dict[str, Any], targets: int) -> tuple[PruneContext, Any]:
-    build_spec = load_build_spec(
+    unresolved_spec = load_build_spec(
         apl_path=apl_path,
         profile_path=option_values["profile_path"],
         build_file=option_values["build_file"],
@@ -209,6 +228,7 @@ def _resolve_prune_context(paths: RepoPaths, apl_path: Path, option_values: dict
         actor_class=option_values["actor_class"],
         spec_name=option_values["spec_name"],
     )
+    build_spec, _identity = identify_build(paths, unresolved_spec)
     resolution = decode_build(paths, build_spec)
     enabled = set(resolution.enabled_talents)
     enabled.update(split_csv_values(option_values["enable"]))
@@ -227,6 +247,35 @@ def _resolve_prune_context(paths: RepoPaths, apl_path: Path, option_values: dict
         talent_sources=talent_sources,
     )
     return context, resolution
+
+
+def _load_identified_build_spec(
+    paths: RepoPaths,
+    *,
+    apl_path: str | Path | None,
+    profile_path: str | None,
+    build_file: str | None,
+    build_text: str | None,
+    talents: str | None,
+    class_talents: str | None,
+    spec_talents: str | None,
+    hero_talents: str | None,
+    actor_class: str | None,
+    spec_name: str | None,
+) -> tuple[Any, Any]:
+    unresolved_spec = load_build_spec(
+        apl_path=apl_path,
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+    )
+    return identify_build(paths, unresolved_spec)
 
 
 def _prune_context_payload(resolution: Any, context: PruneContext) -> dict[str, Any]:
@@ -308,6 +357,7 @@ def doctor(ctx: typer.Context) -> None:
                 "run": "ready",
                 "inspect": "ready",
                 "spec_files": "ready",
+                "identify_build": "ready",
                 "decode_build": "ready",
                 "apl_lists": "ready",
                 "apl_graph": "ready",
@@ -536,7 +586,8 @@ def decode_build_command(
     spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
 ) -> None:
     paths = _repo_paths(ctx)
-    build_spec = load_build_spec(
+    build_spec, identity = _load_identified_build_spec(
+        paths,
         apl_path=apl_path,
         profile_path=profile_path,
         build_file=build_file,
@@ -549,12 +600,17 @@ def decode_build_command(
         spec_name=spec_name,
     )
     if not build_spec.actor_class or not build_spec.spec:
-        _fail(ctx, "invalid_query", "Could not determine actor class and spec for build decoding.")
+        _fail(
+            ctx,
+            "invalid_query",
+            "Could not determine actor class and spec for build decoding.",
+            extra={"build_spec": _serialize_build_spec(build_spec), "identity": _serialize_build_identity(identity)},
+        )
         return
     try:
         resolution = decode_build(paths, build_spec)
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
-        extra = {"build_spec": _serialize_build_spec(build_spec)}
+        extra = {"build_spec": _serialize_build_spec(build_spec), "identity": _serialize_build_identity(identity)}
         if build_spec.actor_class and build_spec.spec and any(
             [build_spec.talents, build_spec.class_talents, build_spec.spec_talents, build_spec.hero_talents]
         ):
@@ -569,6 +625,7 @@ def decode_build_command(
         {
             "provider": "simc",
             "build_spec": _serialize_build_spec(build_spec),
+            "identity": _serialize_build_identity(identity),
             "decoded": {
                 "actor_class": resolution.actor_class,
                 "spec": resolution.spec,
@@ -593,6 +650,45 @@ def decode_build_command(
     )
 
 
+@app.command("identify-build")
+def identify_build_command(
+    ctx: typer.Context,
+    apl_path: str | None = typer.Option(None, "--apl-path", help="Optional APL path used to infer actor class and spec."),
+    profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
+    build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or Wowhead talent-calc URL."),
+    talents: str | None = typer.Option(None, "--talents", help="SimC talents string or talents=... line."),
+    class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
+    spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
+    hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as monk or evoker."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
+) -> None:
+    paths = _repo_paths(ctx)
+    build_spec, identity = _load_identified_build_spec(
+        paths,
+        apl_path=apl_path,
+        profile_path=profile_path,
+        build_file=build_file,
+        build_text=build_text,
+        talents=talents,
+        class_talents=class_talents,
+        spec_talents=spec_talents,
+        hero_talents=hero_talents,
+        actor_class=actor_class,
+        spec_name=spec_name,
+    )
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "kind": "identify_build",
+            "build_spec": _serialize_build_spec(build_spec),
+            "identity": _serialize_build_identity(identity),
+        },
+    )
+
+
 @app.command("build-harness")
 def build_harness_command(
     ctx: typer.Context,
@@ -609,7 +705,9 @@ def build_harness_command(
     spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as demonology."),
     line: list[str] = typer.Option([], "--line", help="Extra profile line. Repeat as needed."),
 ) -> None:
-    build_spec = load_build_spec(
+    paths = _repo_paths(ctx)
+    build_spec, identity = _load_identified_build_spec(
+        paths,
         apl_path=apl_path,
         profile_path=profile_path,
         build_file=build_file,
@@ -622,7 +720,12 @@ def build_harness_command(
         spec_name=spec_name,
     )
     if not build_spec.actor_class or not build_spec.spec:
-        _fail(ctx, "invalid_query", "Could not determine actor class and spec for harness generation.")
+        _fail(
+            ctx,
+            "invalid_query",
+            "Could not determine actor class and spec for harness generation.",
+            extra={"build_spec": _serialize_build_spec(build_spec), "identity": _serialize_build_identity(identity)},
+        )
         return
     try:
         target = write_harness(build_spec, lines=line, out_path=out)
@@ -636,6 +739,7 @@ def build_harness_command(
             "kind": "build_harness",
             "path": str(target),
             "build_spec": _serialize_build_spec(build_spec),
+            "identity": _serialize_build_identity(identity),
             "extra_lines": line,
         },
     )

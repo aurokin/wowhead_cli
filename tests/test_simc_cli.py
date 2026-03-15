@@ -187,6 +187,104 @@ def test_simc_decode_build_outputs_decoded_talents(monkeypatch) -> None:
     assert payload["decoded"]["enabled_talents"] == ["ancient_teachings", "jadefire_stomp"]
 
 
+def test_simc_identify_build_reports_probe_result(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "simc_cli.main._load_identified_build_spec",
+        lambda *args, **kwargs: (
+            type(
+                "BuildSpec",
+                (),
+                {
+                    "actor_class": "demonhunter",
+                    "spec": "devourer",
+                    "talents": "ABC123",
+                    "class_talents": None,
+                    "spec_talents": None,
+                    "hero_talents": None,
+                    "source_kind": "wow_talent_export",
+                    "source_notes": ["single-line talent export", "identified by SimC probe"],
+                },
+            )(),
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": "demonhunter",
+                    "spec": "devourer",
+                    "confidence": "high",
+                    "source": "simc_probe",
+                    "candidate_count": 1,
+                    "candidates": [("demonhunter", "devourer")],
+                    "source_notes": ["single-line talent export", "identified by SimC probe"],
+                },
+            )(),
+        ),
+    )
+    result = runner.invoke(simc_app, ["identify-build", "--build-text", "ABC123"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "identify_build"
+    assert payload["identity"]["source"] == "simc_probe"
+    assert payload["identity"]["candidates"] == [{"actor_class": "demonhunter", "spec": "devourer"}]
+
+
+def test_simc_decode_build_auto_identifies_missing_class_and_spec(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "simc_cli.main._load_identified_build_spec",
+        lambda *args, **kwargs: (
+            type(
+                "BuildSpec",
+                (),
+                {
+                    "actor_class": "demonhunter",
+                    "spec": "devourer",
+                    "talents": "ABC123",
+                    "class_talents": None,
+                    "spec_talents": None,
+                    "hero_talents": None,
+                    "source_kind": "wow_talent_export",
+                    "source_notes": ["single-line talent export", "identified by SimC probe"],
+                },
+            )(),
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": "demonhunter",
+                    "spec": "devourer",
+                    "confidence": "high",
+                    "source": "simc_probe",
+                    "candidate_count": 1,
+                    "candidates": [("demonhunter", "devourer")],
+                    "source_notes": ["single-line talent export", "identified by SimC probe"],
+                },
+            )(),
+        ),
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.decode_build",
+        lambda paths, build_spec: type(
+            "Resolution",
+            (),
+            {
+                "actor_class": "demonhunter",
+                "spec": "devourer",
+                "enabled_talents": {"void_ray"},
+                "source_kind": "wow_talent_export",
+                "generated_profile_text": 'demonhunter="simc_decode"\nlevel=90\nrace=night_elf\nspec=devourer\ntalents=ABC123\n',
+                "talents_by_tree": {"class": [], "spec": [], "hero": [], "selection": []},
+                "source_notes": ["decoded via /tmp/simc"],
+            },
+        )(),
+    )
+    result = runner.invoke(simc_app, ["decode-build", "--build-text", "ABC123"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["actor_class"] == "demonhunter"
+    assert payload["identity"]["source"] == "simc_probe"
+    assert payload["decoded"]["spec"] == "devourer"
+
+
 def test_simc_decode_build_failure_includes_source_metadata(monkeypatch) -> None:
     monkeypatch.setattr(
         "simc_cli.main.load_build_spec",
@@ -229,20 +327,35 @@ def test_simc_build_harness_compare_report_and_verify_clean(monkeypatch, tmp_pat
     harness_path = tmp_path / "demo_harness.simc"
 
     monkeypatch.setattr(
-        "simc_cli.main.load_build_spec",
-        lambda **kwargs: type(
-            "BuildSpec",
-            (),
-            {
-                "actor_class": "warlock",
-                "spec": "demonology",
-                "talents": "ABC123",
-                "class_talents": None,
-                "spec_talents": None,
-                "hero_talents": None,
-                "source_notes": ["command-line build options"],
-            },
-        )(),
+        "simc_cli.main._load_identified_build_spec",
+        lambda *args, **kwargs: (
+            type(
+                "BuildSpec",
+                (),
+                {
+                    "actor_class": "warlock",
+                    "spec": "demonology",
+                    "talents": "ABC123",
+                    "class_talents": None,
+                    "spec_talents": None,
+                    "hero_talents": None,
+                    "source_notes": ["command-line build options"],
+                },
+            )(),
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": "warlock",
+                    "spec": "demonology",
+                    "confidence": "high",
+                    "source": "direct",
+                    "candidate_count": 1,
+                    "candidates": [("warlock", "demonology")],
+                    "source_notes": ["command-line build options"],
+                },
+            )(),
+        ),
     )
     build_result = runner.invoke(
         simc_app,

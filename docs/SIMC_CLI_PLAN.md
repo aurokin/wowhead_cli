@@ -12,6 +12,7 @@ Current commands:
 - `simc sim`
 - `simc inspect`
 - `simc spec-files`
+- `simc identify-build`
 - `simc decode-build`
 - `simc build-harness`
 - `simc validate-apl`
@@ -121,10 +122,16 @@ Recent usability improvement:
 - default presets:
   - `quick` -> `1000` iterations
   - `high-accuracy` -> `5000` iterations
-- `decode-build` now distinguishes between:
+- `identify-build` and `decode-build` now distinguish between:
   - bare WoW talent export strings
+  - Wowhead talent-calc URLs
   - SimC-native build/profile text
-  and reports both `source_kind` and the normalized generated SimC profile used for decode/debug flows
+  and report both `source_kind` and the normalized generated SimC profile used for decode/debug flows
+- exact-build workflows now auto-resolve class/spec when possible:
+  - actor/spec lines and APL paths resolve directly
+  - Wowhead talent-calc URLs provide class/spec directly from the URL path
+  - bare WoW talent exports are identified by bounded local SimC probes against the installed spec set
+- this removes the old agent failure mode where a valid user talent export was rejected just because the consumer did not already know the engine-facing class/spec labels
 
 ### Phase 2: Readonly Source Analysis
 

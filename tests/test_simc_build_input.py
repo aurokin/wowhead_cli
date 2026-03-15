@@ -11,10 +11,13 @@ from simc_cli.build_input import (
     detect_talents_option_source_kind,
     decode_build,
     extract_build_spec_from_text,
+    identify_build,
     infer_actor_and_spec_from_apl,
     merge_build_specs,
     normalize_talents_input,
     parse_debug_talents,
+    parse_wowhead_talent_calc_ref,
+    supported_specs,
     tokenize_talent_name,
 )
 from simc_cli.repo import RepoPaths
@@ -32,6 +35,22 @@ def test_extract_build_spec_from_plain_hash() -> None:
     assert spec.talents == "ABC123"
     assert spec.source_kind == "wow_talent_export"
     assert "single-line talent export" in spec.source_notes
+
+
+def test_extract_build_spec_from_wowhead_talent_calc_url() -> None:
+    spec = extract_build_spec_from_text("https://www.wowhead.com/talent-calc/demon-hunter/devourer/ABC123")
+    assert spec.actor_class == "demonhunter"
+    assert spec.spec == "devourer"
+    assert spec.talents == "ABC123"
+    assert spec.source_kind == "wowhead_talent_calc_url"
+
+
+def test_parse_wowhead_talent_calc_ref_supports_relative_paths() -> None:
+    spec = parse_wowhead_talent_calc_ref("/talent-calc/hunter/beast-mastery/XYZ987")
+    assert spec is not None
+    assert spec.actor_class == "hunter"
+    assert spec.spec == "beast_mastery"
+    assert spec.talents == "XYZ987"
 
 
 def test_extract_build_spec_from_profile_lines() -> None:
@@ -75,6 +94,7 @@ def test_normalize_talents_input() -> None:
 
 def test_detect_build_text_source_kind() -> None:
     assert detect_build_text_source_kind("ABC123") == "wow_talent_export"
+    assert detect_build_text_source_kind("https://www.wowhead.com/talent-calc/demon-hunter/devourer/ABC123") == "wowhead_talent_calc_url"
     assert detect_build_text_source_kind('warlock="probe"\nspec=demonology\ntalents=ABC123\n') == "simc_profile"
     assert detect_build_text_source_kind("class_talents=AAA\nspec_talents=BBB\nhero_talents=CCC\n") == "simc_split_talents"
 
@@ -150,3 +170,68 @@ def test_decode_build_uses_debug_output(tmp_path: Path) -> None:
     assert "voidblade" in result.enabled_talents
     assert "devourers_bite" in result.enabled_talents
     assert any("decoded via" in note for note in result.source_notes)
+
+
+def test_supported_specs_collects_unique_apl_specs(tmp_path: Path) -> None:
+    default_dir = tmp_path / "default"
+    assisted_dir = tmp_path / "assisted"
+    default_dir.mkdir()
+    assisted_dir.mkdir()
+    (default_dir / "demonhunter_devourer.simc").write_text("")
+    (assisted_dir / "demonhunter_devourer.simc").write_text("")
+    (default_dir / "warlock_demonology.simc").write_text("")
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=default_dir,
+        apl_assisted=assisted_dir,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    assert supported_specs(repo) == [("demonhunter", "devourer"), ("warlock", "demonology")]
+
+
+def test_identify_build_uses_direct_metadata_without_probe(tmp_path: Path) -> None:
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    build_spec = BuildSpec(actor_class="demonhunter", spec="devourer", talents="ABC123", source_kind="wowhead_talent_calc_url")
+    identified, identity = identify_build(repo, build_spec)
+    assert identified.actor_class == "demonhunter"
+    assert identified.spec == "devourer"
+    assert identity.source == "wowhead_talent_calc_url"
+    assert identity.confidence == "high"
+
+
+def test_identify_build_probes_supported_specs(tmp_path: Path) -> None:
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    build_spec = BuildSpec(talents="ABC123", source_kind="wow_talent_export")
+
+    with patch("simc_cli.build_input.supported_specs", return_value=[("monk", "mistweaver"), ("demonhunter", "devourer")]):
+        with patch("simc_cli.build_input.decode_build") as mocked_decode:
+            mocked_decode.side_effect = [
+                RuntimeError("failed"),
+                type("Resolution", (), {"enabled_talents": {"void_ray"}})(),
+            ]
+            identified, identity = identify_build(repo, build_spec)
+
+    assert identified.actor_class == "demonhunter"
+    assert identified.spec == "devourer"
+    assert "identified by SimC probe" in identified.source_notes
+    assert identity.source == "simc_probe"
+    assert identity.candidates == [("demonhunter", "devourer")]
