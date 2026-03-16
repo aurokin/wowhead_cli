@@ -104,6 +104,9 @@ Use `warcraft` when the source is unclear. Use `wowhead`, `method`, `icy-veins`,
 Detailed usage lives in [docs/USAGE.md](/home/auro/code/warcraft_cli/docs/USAGE.md).
 
 Other useful docs:
+- [docs/README.md](/home/auro/code/warcraft_cli/docs/README.md)
+- [docs/PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/PRODUCT_PRINCIPLES.md)
+- [docs/SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/SAFE_ANALYTICS_RULES.md)
 - [docs/ROADMAP.md](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
 - [docs/IDENTITY_CONTRACT.md](/home/auro/code/warcraft_cli/docs/IDENTITY_CONTRACT.md)
 - [docs/MIGRATION_CHECKLIST.md](/home/auro/code/warcraft_cli/docs/MIGRATION_CHECKLIST.md)
@@ -112,7 +115,7 @@ Other useful docs:
 - [docs/WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/warcraft_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
 
 The preferred pattern is to keep docs driven by actual code behavior. The README should stay short, while command details and behavior notes live under `docs/`.
-See [docs/ROADMAP.md](/home/auro/code/warcraft_cli/docs/ROADMAP.md) for the longer agent-product principles and representative workflow examples.
+See [docs/PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/PRODUCT_PRINCIPLES.md) for the longer product principles and workflow direction, and [docs/SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/SAFE_ANALYTICS_RULES.md) for repo-wide analytics design rules.
 
 ## Testing
 

@@ -4,6 +4,10 @@
 
 Build `warcraftlogs` as an official API-first provider for Warcraft Logs using the supported OAuth 2.0 and GraphQL APIs, not scraping.
 
+Repo-wide product philosophy lives in [PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/PRODUCT_PRINCIPLES.md).
+Repo-wide analytics and comparison safety rules live in [SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/SAFE_ANALYTICS_RULES.md).
+This file tracks Warcraft Logs-specific implementation state, boundaries, and next steps.
+
 The CLI should become the fastest trustworthy path for:
 - guild progression and ranking lookups
 - character ranking lookups
