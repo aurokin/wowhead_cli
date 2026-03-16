@@ -1637,6 +1637,15 @@ def test_warcraftlogs_ability_usage_summary_returns_sampled_cast_summary(monkeyp
     payload = json.loads(result.stdout)
     assert payload["kind"] == "ability_usage_summary"
     assert payload["query"]["ability_id"] == 20473
+    assert payload["freshness"]["sampled_at"].endswith("Z")
+    assert payload["freshness"]["cache_ttl_seconds"] is None
+    assert payload["citations"]["sample_reports"] == [
+        {
+            "report_code": "abcd1234",
+            "fight_id": 1,
+            "report_url": "https://www.warcraftlogs.com/reports/abcd1234#fight=1",
+        }
+    ]
     assert payload["ability"]["game_id"] == 20473
     assert payload["ability"]["name"] == "Holy Shock"
     assert payload["usage"]["total_casts"] == 2
@@ -1667,6 +1676,9 @@ def test_warcraftlogs_comp_samples_returns_sampled_rosters_and_class_presence(mo
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["kind"] == "comp_samples"
+    assert payload["freshness"]["sampled_at"].endswith("Z")
+    assert payload["freshness"]["cache_ttl_seconds"] is None
+    assert payload["citations"]["sample_reports"][0]["report_url"] == "https://www.warcraftlogs.com/reports/abcd1234#fight=1"
     assert payload["sample"]["filtered_kill_count"] == 1
     assert payload["sample"]["sampled_player_count"] == 2
     assert payload["class_presence"][0]["class_name"] == "Paladin"

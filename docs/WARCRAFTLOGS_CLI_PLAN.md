@@ -136,6 +136,7 @@ Highest-value next implementation slices:
   - next: wave and phase summaries so agents do not have to derive unstable segments from raw timestamps
 - continue the multi-report analytics slice beyond the current sampled cohort commands:
   - current shipped slice covers `boss-kills`, `top-kills`, `kill-time-distribution`, `boss-spec-usage`, `comp-samples`, and `ability-usage-summary`
+  - those sampled commands now also expose freshness and citation metadata for the sampled report cohort
   - stronger top-kill discovery semantics beyond sampled fastest kills
   - spec-filtered kill samples
   - kill-time-bounded report cohorts

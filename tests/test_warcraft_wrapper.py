@@ -729,8 +729,17 @@ def test_warcraft_guide_builds_simc_reads_bundle_build_refs(monkeypatch, tmp_pat
     payload = json.loads(result.stdout)
     assert payload["kind"] == "guide_builds_simc_handoff"
     assert payload["source"]["kind"] == "bundle"
+    assert payload["provenance"]["explicit_build_reference_only"] is True
+    assert payload["freshness"]["status"] == "unknown"
+    assert payload["freshness"]["reason"] == "bundle_manifest_has_no_export_timestamp"
+    assert payload["citations"]["build_reference_urls"] == ["https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]
     assert payload["build_reference_count"] == 1
+    assert payload["summary"]["returned_build_count"] == 1
+    assert payload["summary"]["identify_success_count"] == 1
+    assert payload["summary"]["decode_success_count"] == 1
     assert payload["builds"][0]["reference"]["build_code"] == "ABC123"
+    assert payload["builds"][0]["evidence"]["explicit_build_reference_only"] is True
+    assert payload["builds"][0]["evidence"]["provider_count"] == 1
     assert payload["builds"][0]["simc"]["identify"]["payload"]["kind"] == "identify_build"
     assert payload["builds"][0]["simc"]["decode"]["payload"]["kind"] == "decode_build"
     assert payload["builds"][0]["simc"]["describe"] is None
@@ -772,6 +781,7 @@ def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
             {
                 "kind": "guide_compare_orchestration_manifest",
                 "query": "mistweaver monk guide",
+                "updated_at": "2026-03-15T04:00:00Z",
                 "providers": [
                     {
                         "provider": "method",
@@ -811,9 +821,14 @@ def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
 
     payload = json.loads(result.stdout)
     assert payload["source"]["kind"] == "orchestration_root"
+    assert payload["source"]["query"] == "mistweaver monk guide"
     assert payload["bundle_count"] == 2
     assert payload["build_reference_count"] == 1
+    assert payload["freshness"]["status"] == "known"
+    assert payload["freshness"]["sampled_at"] == "2026-03-15T04:00:00Z"
+    assert payload["citations"]["bundle_paths"] == [str(method_dir), str(wowhead_dir)]
     assert len(payload["builds"][0]["sources"]) == 2
+    assert payload["builds"][0]["evidence"]["provider_count"] == 2
     assert payload["builds"][0]["simc"]["decode"] is None
     assert payload["builds"][0]["simc"]["describe"] is None
     assert invoke_calls == [["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]]
@@ -860,6 +875,7 @@ def test_warcraft_guide_builds_simc_can_include_describe_build_with_apl(
 
     payload = json.loads(result.stdout)
     assert payload["apl_path"] == str(apl_path)
+    assert payload["summary"]["describe_success_count"] == 1
     assert payload["builds"][0]["simc"]["describe"]["payload"]["kind"] == "describe-build"
     assert invoke_calls == [
         ["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"],

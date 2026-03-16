@@ -82,6 +82,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `guide-compare-query --simc-build-handoff` adds an explicit guide-build-to-`simc` evidence block derived only from exported `build_references`; use `--simc-apl-path` when you also want exact-build `simc describe-build` output in the same packet
 - `warcraft guide-builds-simc` reads explicit embedded guide build references from one exported guide bundle or a `guide-compare-query` output root, dedupes them, and hands those exact build refs to `simc identify-build` plus optional `simc decode-build`
 - `warcraft guide-builds-simc --apl-path <apl>` also runs `simc describe-build` for each explicit build ref so the handoff can include exact-build APL-backed detail without inferring claims from guide prose
+- `guide-builds-simc` now also includes explicit provenance, citations, and source freshness metadata for the handoff packet so agents can tell whether the build evidence came from one bundle or a fresher orchestration root
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
@@ -595,7 +596,7 @@ EOF
 - `boss-kills`, `top-kills`, `kill-time-distribution`, `boss-spec-usage`, `comp-samples`, and `ability-usage-summary` are the current sampled cross-report analytics slice:
   - they sample public finished reports for one zone
   - they rank within the sampled cohort, not all possible Warcraft Logs data
-  - they expose sample, exclusion, and truncation metadata so the agent does not have to pretend the sample is global
+  - they expose sample, exclusion, truncation, freshness, and citation metadata so the agent does not have to pretend the sample is global
   - `boss-spec-usage` summarizes spec presence inside the sampled finished-kill cohort after boss/difficulty/spec/time filters have already been applied
   - `comp-samples` returns sampled kill rosters plus additive class-presence and exact class-signature summaries for the sampled cohort
   - `ability-usage-summary` summarizes one explicit `--ability-id` across that same sampled finished-kill cohort and reports cast counts per kill instead of inferring broader gameplay conclusions

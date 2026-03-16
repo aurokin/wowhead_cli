@@ -157,6 +157,7 @@ Best fits:
 - `boss-spec-usage` is also sampled cross-report analytics; it reports spec presence within the filtered finished-kill cohort, not a site-wide meta snapshot
 - `comp-samples` is sampled cross-report analytics too; it returns sampled kill rosters plus additive class-presence and exact class-signature summaries for that filtered cohort
 - `ability-usage-summary` is sampled cross-report analytics too; it reports explicit cast counts for one requested `--ability-id` across the filtered finished-kill cohort
+- these sampled analytics commands now include freshness and citation metadata for the sampled report cohort so agents can preserve trust boundaries when composing follow-up steps
 - those sampled analytics intentionally skip unfinished live reports and surface sample/truncation metadata instead of faking global certainty
 - `warcraftlogs auth status` is the first place to check when auth looks wrong; it shows credential source and whether any persisted auth state exists
 - `warcraftlogs auth login --redirect-uri ...` and `warcraftlogs auth pkce-login --redirect-uri ...` are two-step flows:

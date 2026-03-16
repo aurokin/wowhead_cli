@@ -202,6 +202,31 @@ def _guide_compare_freshness(exported_at: Any, *, max_age_hours: int) -> dict[st
     return {"status": "fresh", "reason": "within_max_age", "age_hours": age_hours, "max_age_hours": max_age_hours}
 
 
+def _guide_build_handoff_freshness(source_kind: str, source_manifest: dict[str, Any] | None) -> dict[str, Any]:
+    updated_at = source_manifest.get("updated_at") if isinstance(source_manifest, dict) else None
+    parsed_updated_at = _parse_iso8601_utc(updated_at)
+    if source_kind == "orchestration_root":
+        if parsed_updated_at is None:
+            return {
+                "status": "unknown",
+                "reason": "missing_orchestration_updated_at",
+                "sampled_at": None,
+                "cache_ttl_seconds": None,
+            }
+        return {
+            "status": "known",
+            "reason": "orchestration_manifest_updated_at",
+            "sampled_at": parsed_updated_at.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "cache_ttl_seconds": None,
+        }
+    return {
+        "status": "unknown",
+        "reason": "bundle_manifest_has_no_export_timestamp",
+        "sampled_at": None,
+        "cache_ttl_seconds": None,
+    }
+
+
 def _load_guide_compare_manifest(root: Path) -> dict[str, Any] | None:
     path = _guide_compare_manifest_path(root)
     if not path.exists():
@@ -315,6 +340,20 @@ def _collect_build_reference_handoff_rows(
     return sorted(grouped.values(), key=lambda row: str(((row.get("reference") or {}).get("url")) or ""))
 
 
+def _unique_non_empty_strings(values: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    rows: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        text = value.strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        rows.append(text)
+    return rows
+
+
 def _guide_builds_simc_payload(
     *,
     source_path: Path,
@@ -329,11 +368,20 @@ def _guide_builds_simc_payload(
     handoff_rows = _collect_build_reference_handoff_rows(bundle_inputs)
     selected_rows = handoff_rows[:limit]
     build_rows: list[dict[str, Any]] = []
+    source_providers = sorted(
+        {
+            provider
+            for _bundle_path, bundle in bundle_inputs
+            for provider in [((bundle.get("manifest") or {}).get("provider") if isinstance(bundle.get("manifest"), dict) else None)]
+            if isinstance(provider, str) and provider
+        }
+    )
     for row in selected_rows:
         reference = row.get("reference") if isinstance(row.get("reference"), dict) else {}
         build_url = reference.get("url")
         if not isinstance(build_url, str) or not build_url.strip():
             continue
+        sources = row.get("sources") if isinstance(row.get("sources"), list) else []
         identify_result = provider_invoke("simc", ["identify-build", "--build-text", build_url], expansion=expansion)
         decode_result = (
             provider_invoke("simc", ["decode-build", "--build-text", build_url], expansion=expansion)
@@ -352,7 +400,43 @@ def _guide_builds_simc_payload(
         build_rows.append(
             {
                 "reference": reference,
-                "sources": row.get("sources") or [],
+                "sources": sources,
+                "evidence": {
+                    "explicit_build_reference_only": True,
+                    "source_count": len([item for item in sources if isinstance(item, dict)]),
+                    "provider_count": len(
+                        {
+                            provider
+                            for provider in (
+                                source_row.get("provider") if isinstance(source_row, dict) else None
+                                for source_row in sources
+                            )
+                            if isinstance(provider, str) and provider
+                        }
+                    ),
+                    "providers": _unique_non_empty_strings(
+                        [
+                            source_row.get("provider")
+                            for source_row in sources
+                            if isinstance(source_row, dict)
+                        ]
+                    ),
+                    "bundle_paths": _unique_non_empty_strings(
+                        [
+                            source_row.get("bundle_path")
+                            for source_row in sources
+                            if isinstance(source_row, dict)
+                        ]
+                    ),
+                    "source_urls": _unique_non_empty_strings(
+                        [
+                            url
+                            for source_row in sources
+                            if isinstance(source_row, dict)
+                            for url in (source_row.get("source_urls") or [])
+                        ]
+                    ),
+                },
                 "simc": {
                     "identify": {
                         "exit_code": identify_result.get("exit_code"),
@@ -378,6 +462,30 @@ def _guide_builds_simc_payload(
             }
         )
 
+    identify_success_count = len(
+        [
+            row
+            for row in build_rows
+            if isinstance(((row.get("simc") or {}).get("identify")), dict)
+            and ((row.get("simc") or {}).get("identify") or {}).get("exit_code") == 0
+        ]
+    )
+    decode_success_count = len(
+        [
+            row
+            for row in build_rows
+            if isinstance(((row.get("simc") or {}).get("decode")), dict)
+            and ((row.get("simc") or {}).get("decode") or {}).get("exit_code") == 0
+        ]
+    )
+    describe_success_count = len(
+        [
+            row
+            for row in build_rows
+            if isinstance(((row.get("simc") or {}).get("describe")), dict)
+            and ((row.get("simc") or {}).get("describe") or {}).get("exit_code") == 0
+        ]
+    )
     return {
         "provider": "warcraft",
         "kind": "guide_builds_simc_handoff",
@@ -385,12 +493,42 @@ def _guide_builds_simc_payload(
             "path": str(source_path),
             "kind": source_kind,
             "manifest_kind": source_manifest.get("kind") if isinstance(source_manifest, dict) else None,
+            "query": source_manifest.get("query") if isinstance(source_manifest, dict) else None,
+        },
+        "provenance": {
+            "explicit_build_reference_only": True,
+            "selection_contract": "embedded_build_references_only",
+            "source_providers": source_providers,
+        },
+        "freshness": _guide_build_handoff_freshness(source_kind, source_manifest),
+        "citations": {
+            "bundle_paths": [str(path) for path, _bundle in bundle_inputs],
+            "build_reference_urls": _unique_non_empty_strings(
+                [((row.get("reference") or {}).get("url")) for row in selected_rows if isinstance(row, dict)]
+            ),
+            "source_urls": _unique_non_empty_strings(
+                [
+                    url
+                    for row in selected_rows
+                    if isinstance(row, dict)
+                    for source_row in (row.get("sources") or [])
+                    if isinstance(source_row, dict)
+                    for url in (source_row.get("source_urls") or [])
+                ]
+            ),
         },
         "bundle_count": len(bundle_inputs),
         "build_reference_count": len(handoff_rows),
         "truncated": len(handoff_rows) > len(selected_rows),
         "decode_enabled": decode,
         "apl_path": apl_path,
+        "summary": {
+            "returned_build_count": len(build_rows),
+            "excluded_build_count": max(0, len(handoff_rows) - len(selected_rows)),
+            "identify_success_count": identify_success_count,
+            "decode_success_count": decode_success_count,
+            "describe_success_count": describe_success_count,
+        },
         "builds": build_rows,
     }
 

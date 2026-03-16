@@ -181,6 +181,10 @@ Add reusable evidence-oriented outputs that agents can pass between steps withou
 
 The direction is to make complex cross-provider questions computable from trustworthy primitives, not to bolt on unsupported answer synthesis.
 
+Current delivered slice in this lane:
+- sampled Warcraft Logs cohort analytics now carry freshness and citation metadata
+- guide-to-`simc` handoff packets now carry explicit provenance, citations, and source-freshness metadata
+
 ## Planning Documents
 
 - [Repo structure and packaging](/home/auro/code/warcraft_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)

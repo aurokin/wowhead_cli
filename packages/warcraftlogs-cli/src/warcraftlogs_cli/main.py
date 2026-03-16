@@ -6,6 +6,7 @@ import secrets
 import shlex
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import re
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -73,6 +74,10 @@ def _emit(ctx: typer.Context, payload: dict[str, Any], *, err: bool = False) -> 
 def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> None:
     _emit(ctx, {"ok": False, "error": {"code": code, "message": message}}, err=True)
     raise typer.Exit(status)
+
+
+def _utc_now_z() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _normalize_graphql_enum(value: str | None) -> str | None:
@@ -509,6 +514,15 @@ def _report_brief_payload(report: dict[str, Any]) -> dict[str, Any]:
         "title": report.get("title"),
         "zone": {"id": zone.get("id"), "name": zone.get("name")} if zone else None,
     }
+
+
+def _report_url(code: str | None, *, fight_id: int | None = None) -> str | None:
+    if not isinstance(code, str) or not code.strip():
+        return None
+    base = f"https://www.warcraftlogs.com/reports/{code}"
+    if isinstance(fight_id, int):
+        return f"{base}#fight={fight_id}"
+    return base
 
 
 def _report_discovery_hint(query: str) -> dict[str, Any]:
@@ -1190,6 +1204,41 @@ def _boss_kill_row(*, report: dict[str, Any], fight: dict[str, Any], matching_pl
     }
 
 
+def _sampled_cross_report_freshness() -> dict[str, Any]:
+    return {
+        "sampled_at": _utc_now_z(),
+        "cache_ttl_seconds": None,
+    }
+
+
+def _sampled_cross_report_citations(rows: list[dict[str, Any]], *, limit: int = 20) -> dict[str, Any]:
+    sample_reports: list[dict[str, Any]] = []
+    seen: set[tuple[str, int | None]] = set()
+    for row in rows:
+        report = row.get("report") if isinstance(row.get("report"), dict) else {}
+        fight = row.get("fight") if isinstance(row.get("fight"), dict) else {}
+        report_code = report.get("code") if isinstance(report.get("code"), str) else None
+        fight_id = fight.get("id") if isinstance(fight.get("id"), int) else None
+        if report_code is None:
+            continue
+        key = (report_code, fight_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        sample_reports.append(
+            {
+                "report_code": report_code,
+                "fight_id": fight_id,
+                "report_url": _report_url(report_code, fight_id=fight_id),
+            }
+        )
+        if len(sample_reports) >= limit:
+            break
+    return {
+        "sample_reports": sample_reports,
+    }
+
+
 def _collect_boss_kill_rows(
     *,
     client: WarcraftLogsClient,
@@ -1306,6 +1355,8 @@ def _boss_kills_payload(
         "kind": kind,
         "ranking_basis": "sampled_fastest_kills",
         "query": query,
+        "freshness": _sampled_cross_report_freshness(),
+        "citations": _sampled_cross_report_citations(rows),
         "sample": {
             **sample,
             "filtered_kill_count": len(rows),
@@ -1330,6 +1381,8 @@ def _kill_time_distribution_payload(*, rows: list[dict[str, Any]], sample: dict[
         "provider": "warcraftlogs",
         "kind": "kill_time_distribution",
         "query": query,
+        "freshness": _sampled_cross_report_freshness(),
+        "citations": _sampled_cross_report_citations(rows),
         "sample": {
             **sample,
             "filtered_kill_count": len(rows),
@@ -1413,6 +1466,8 @@ def _boss_spec_usage_payload(
         "kind": "boss_spec_usage",
         "ranking_basis": "sampled_finished_kill_cohort_spec_presence",
         "query": query,
+        "freshness": _sampled_cross_report_freshness(),
+        "citations": _sampled_cross_report_citations(rows),
         "sample": {
             **sample,
             "filtered_kill_count": len(rows),
@@ -1608,6 +1663,8 @@ def _comp_samples_payload(
         "kind": "comp_samples",
         "ranking_basis": "sampled_fastest_kills",
         "query": query,
+        "freshness": _sampled_cross_report_freshness(),
+        "citations": _sampled_cross_report_citations(rows),
         "sample": {
             **sample,
             "filtered_kill_count": len(rows),
@@ -1770,6 +1827,8 @@ def _ability_usage_summary_payload(
             "event_limit": event_limit,
             "preview_limit": preview_limit,
         },
+        "freshness": _sampled_cross_report_freshness(),
+        "citations": _sampled_cross_report_citations(rows),
         "sample": {
             **sample,
             "filtered_kill_count": len(rows),
