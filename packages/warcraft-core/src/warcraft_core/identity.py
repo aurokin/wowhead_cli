@@ -154,7 +154,11 @@ def encounter_identity_payload(
     notes: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     normalized_name = normalize_encounter_name(name)
-    status: IdentityStatus = "canonical" if encounter_id is not None or journal_id is not None else ("normalized" if normalized_name else "unknown")
+    status: IdentityStatus = (
+        "canonical"
+        if encounter_id is not None or journal_id is not None
+        else ("normalized" if normalized_name else "unknown")
+    )
     payload: dict[str, object] = {
         "kind": "encounter_identity",
         "status": status,
@@ -181,7 +185,11 @@ def ability_identity_payload(
     notes: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     normalized_name = normalize_ability_name(name)
-    status: IdentityStatus = "canonical" if spell_id is not None or game_id is not None else ("normalized" if normalized_name else "unknown")
+    status: IdentityStatus = (
+        "canonical"
+        if spell_id is not None or game_id is not None
+        else ("normalized" if normalized_name else "unknown")
+    )
     payload: dict[str, object] = {
         "kind": "ability_identity",
         "status": status,

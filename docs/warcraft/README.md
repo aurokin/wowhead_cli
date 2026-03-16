@@ -15,12 +15,14 @@ It is not the place where service-specific logic should live. Its job is to help
 - `warcraft resolve`: conservatively pick the best service and next command
 - `warcraft <service> ...`: proxy through to `wowhead`, `method`, `raiderio`, `simc`, `raidbots`, or `warcraftlogs`
 - expose shared inspection commands only when the concept is truly shared across services
+- when it exposes a merged shared workflow, keep provider-native payloads accessible and layer wrapper comparisons on top instead of replacing the sources
 
 ## What The Wrapper Should Not Do
 
 - it should not hide source provenance
 - it should not impose one universal data model across article sites, APIs, and local tools
 - it should not become the place where parsers, API schemas, or SimC execution logic live
+- it should not route through stubbed wrapper surfaces as if they were production-ready search or resolve providers
 
 ## Recommended First Contract
 
@@ -45,6 +47,7 @@ The packaging and language boundaries for the wrapper are defined in [REPO_STRUC
 - shared output shaping and field projection
 - shared cache/environment inspection
 - shared search and resolve interfaces
+- provider-facing orchestration helpers when a workflow genuinely spans providers
 
 ## Shared Code It Should Not Own
 

@@ -73,11 +73,11 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `warcraftlogs` is now a real phase-1 official API provider with retail-only OAuth client-credentials auth plus typed world metadata, guild, character, and report lookups.
 - `warcraftlogs` is now wired into wrapper `doctor`, passthrough, and conservative wrapper `search` / `resolve`.
 - wrapper discovery for `warcraftlogs` is intentionally narrow for now: only explicit report URLs and bare mixed-alphanumeric report codes resolve through the wrapper.
-- `warcraft guild` is now a first-class merged guild workflow that normalizes region/realm/name input and reports Raider.IO and WowProgress source disagreements explicitly.
-- `warcraft guild-history` and `warcraft guild-ranks` currently use WowProgress as the historical raid source and preserve that provenance in the payload.
+- `warcraft guild` is now a first-class merged guild workflow that normalizes region/realm/name input, preserves the provider-native Raider.IO and WowProgress payloads under each source, and reports explicit source disagreements as an additive wrapper layer.
+- `warcraft guild-history` and `warcraft guild-ranks` currently route through the WowProgress provider surface and preserve the wrapped provider payload alongside the wrapper summary.
 - `warcraft guide-compare` compares exported guide bundles across providers using raw section evidence, additive `analysis_surfaces`, and explicit `build_references`, while preserving provider provenance and source citations instead of flattening the guides into one fake summary
 - `warcraft guide-compare-query` conservatively resolves one guide per supported provider, exports those bundles locally, and then runs the same comparison packet over the exported evidence
-- when `guide-compare-query` cannot get a guide from provider `resolve`, it may fall back to provider `search`, but only when the top guide result is clearly stronger than the alternatives
+- when `guide-compare-query` cannot get a guide from provider `resolve`, it may fall back to provider `search`, but only when the top guide result has a strong enough score and a clearly decisive lead over the alternatives; weak or ambiguous guide search results are skipped instead of exported
 - `guide-compare-query` now writes an orchestration manifest under the output root and reuses existing bundles only when the same guide ref is still selected and the recorded export age is within `--max-age-hours`; use `--force-refresh` to bypass reuse
 - `guide-compare-query --simc-build-handoff` adds an explicit guide-build-to-`simc` evidence block derived only from exported `build_references`; use `--simc-apl-path` when you also want exact-build `simc describe-build` output in the same packet
 - `warcraft guide-builds-simc` reads explicit embedded guide build references from one exported guide bundle or a `guide-compare-query` output root, dedupes them, and hands those exact build refs to `simc identify-build` plus optional `simc decode-build`
@@ -88,6 +88,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
 - `simc` now includes comparison, packet, first-cast, and log-actions commands built on the same conservative reasoning layer.
 - `simc` search and resolve currently return structured `coming_soon` payloads in phase 1.
+- wrapper `search` and `resolve` now fan out only to providers whose wrapper routing surfaces are currently ready; stubbed surfaces such as `simc` remain visible in `warcraft doctor` and excluded-provider metadata instead of appearing as active wrapper candidates
 - the flattened `warcraft search` result list is globally sorted by a tunable wrapper ranking layer that combines provider score, query intent, provider family, and result kind
 - flattened wrapper results now include `wrapper_ranking` so agents can inspect why a provider/result surfaced first
 - `warcraft resolve` uses the same wrapper ranking layer on top of provider confidence instead of trusting provider registration order
@@ -102,6 +103,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
   - `method`, `icy-veins`, `raiderio`, `wowprogress`, and `warcraftlogs` are currently treated as retail-only when wrapper expansion filtering is active
   - `warcraft-wiki` and `simc` are currently excluded from wrapper expansion-filtered `search` and `resolve`
 - wrapper `search`, `resolve`, and `doctor` now report included and excluded providers when expansion filtering is active
+- wrapper `doctor` now also reports wrapper-surface readiness plus provider auth/install metadata, so agents can distinguish a registered provider from a wrapper-ready routing surface
 - `--expansion-debug` exposes the full provider eligibility snapshot even in compact mode
 - direct passthrough commands reject unsupported provider/expansion combinations instead of silently ignoring the expansion request
 - wrapper `doctor` preserves provider registration status, so partial providers stay marked `partial` even when their local doctor command succeeds

@@ -1,4 +1,5 @@
 """Shared Warcraft core utilities."""
+
 from warcraft_core.env import find_env_file, load_env_file, load_explicit_env_file
 from warcraft_core.identity import (
     ability_identity_payload,
@@ -6,8 +7,8 @@ from warcraft_core.identity import (
     build_reference_payload,
     class_spec_identity_payload,
     encounter_identity_payload,
-    normalize_actor_class,
     normalize_ability_name,
+    normalize_actor_class,
     normalize_encounter_name,
     normalize_spec_name,
     parse_wowhead_talent_calc_ref,

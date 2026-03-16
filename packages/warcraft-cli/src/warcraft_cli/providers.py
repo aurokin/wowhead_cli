@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from icy_veins_cli.main import app as icy_veins_app
+from method_cli.main import app as method_app
 from raiderio_cli.main import app as raiderio_app
 from simc_cli.main import app as simc_app
+from typer.testing import CliRunner
+from warcraft_content.paths import cache_root, config_root, data_root
 from warcraft_wiki_cli.main import app as warcraft_wiki_app
 from warcraftlogs_cli.main import app as warcraftlogs_app
-from wowprogress_cli.main import app as wowprogress_app
-from typer.testing import CliRunner
-
-from method_cli.main import app as method_app
-from warcraft_content.paths import cache_root, config_root, data_root
 from wowhead_cli.expansion_profiles import list_profiles
 from wowhead_cli.main import app as wowhead_app
+from wowprogress_cli.main import app as wowprogress_app
 
 runner = CliRunner()
 
@@ -27,10 +26,12 @@ class ProviderRegistration:
     language: str
     status: str
     description: str
+    auth_required: bool
     expansion_mode: str
     supported_expansions: tuple[str, ...]
     expansion_review_status: str
     expansion_policy_note: str
+    wrapper_capabilities: dict[str, str]
     app: Any
     doctor_args: tuple[str, ...]
 
@@ -42,10 +43,16 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="ready",
         description="Structured Wowhead provider with live search, resolve, and retrieval commands.",
+        auth_required=False,
         expansion_mode="profiled",
         supported_expansions=tuple(profile.key for profile in list_profiles()),
         expansion_review_status="reviewed",
         expansion_policy_note="Provider has first-class expansion profiles and real version-specific routing.",
+        wrapper_capabilities={
+            "doctor": "ready",
+            "search": "ready",
+            "resolve": "ready",
+        },
         app=wowhead_app,
         doctor_args=("cache-inspect", "--summary", "--hide-zero"),
     ),
@@ -55,10 +62,16 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="ready",
         description="Method.gg article provider with sitemap-backed search and guide bundle export/query.",
+        auth_required=False,
         expansion_mode="fixed",
         supported_expansions=("retail",),
         expansion_review_status="reviewed",
         expansion_policy_note="Current supported live guide/article families are retail-focused and do not expose reliable non-retail routing.",
+        wrapper_capabilities={
+            "doctor": "ready",
+            "search": "ready",
+            "resolve": "ready",
+        },
         app=method_app,
         doctor_args=("doctor",),
     ),
@@ -68,10 +81,16 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="ready",
         description="Icy Veins article provider with sitemap-backed search, resolve, and guide bundle export/query.",
+        auth_required=False,
         expansion_mode="fixed",
         supported_expansions=("retail",),
         expansion_review_status="reviewed",
         expansion_policy_note="Current supported guide families are retail-focused and do not provide a reliable wrapper-level non-retail split.",
+        wrapper_capabilities={
+            "doctor": "ready",
+            "search": "ready",
+            "resolve": "ready",
+        },
         app=icy_veins_app,
         doctor_args=("doctor",),
     ),
@@ -81,10 +100,16 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="partial",
         description="Raider.IO API provider with search, resolve, character, guild, and mythic-plus runs lookups.",
+        auth_required=False,
         expansion_mode="fixed",
         supported_expansions=("retail",),
         expansion_review_status="reviewed",
         expansion_policy_note="Current provider surface is retail-first profile and leaderboard data; non-retail semantics are not part of the supported contract.",
+        wrapper_capabilities={
+            "doctor": "ready",
+            "search": "ready",
+            "resolve": "ready",
+        },
         app=raiderio_app,
         doctor_args=("doctor",),
     ),
@@ -94,10 +119,16 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="partial",
         description="Warcraft Logs API provider with explicit report discovery plus guild, character, and report analytics commands.",
+        auth_required=True,
         expansion_mode="fixed",
         supported_expansions=("retail",),
         expansion_review_status="reviewed",
         expansion_policy_note="Current supported Warcraft Logs routing is retail-only and discovery is intentionally limited to explicit report references.",
+        wrapper_capabilities={
+            "doctor": "ready",
+            "search": "ready_explicit_report_only",
+            "resolve": "ready_explicit_report_only",
+        },
         app=warcraftlogs_app,
         doctor_args=("doctor",),
     ),
@@ -107,10 +138,16 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="ready",
         description="Warcraft Wiki reference provider with MediaWiki-backed search, resolve, article export, and local query.",
+        auth_required=False,
         expansion_mode="none",
         supported_expansions=(),
         expansion_review_status="deferred",
         expansion_policy_note="Mixed historical and reference content needs a separate policy review before wrapper expansion filtering can include it.",
+        wrapper_capabilities={
+            "doctor": "ready",
+            "search": "ready",
+            "resolve": "ready",
+        },
         app=warcraft_wiki_app,
         doctor_args=("doctor",),
     ),
@@ -120,10 +157,16 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="partial",
         description="WowProgress rankings provider with structured search, conservative resolve, guild, character, and PvE leaderboard lookups.",
+        auth_required=False,
         expansion_mode="fixed",
         supported_expansions=("retail",),
         expansion_review_status="reviewed",
         expansion_policy_note="Current supported guild, character, and PvE leaderboard surfaces are retail-focused and should stay fixed to retail for now.",
+        wrapper_capabilities={
+            "doctor": "ready",
+            "search": "ready",
+            "resolve": "ready",
+        },
         app=wowprogress_app,
         doctor_args=("doctor",),
     ),
@@ -133,10 +176,16 @@ PROVIDERS: tuple[ProviderRegistration, ...] = (
         language="python",
         status="partial",
         description="SimulationCraft local provider with repo inspection, build decoding, and local run workflows.",
+        auth_required=False,
         expansion_mode="none",
         supported_expansions=(),
         expansion_review_status="deferred",
         expansion_policy_note="Local repo analysis is versioned differently from wrapper content providers and should not join expansion fanout yet.",
+        wrapper_capabilities={
+            "doctor": "ready",
+            "search": "coming_soon",
+            "resolve": "coming_soon",
+        },
         app=simc_app,
         doctor_args=("doctor",),
     ),
@@ -232,15 +281,61 @@ def expansion_support_snapshot(*, requested_expansion: str | None) -> list[dict[
 def _invoke_provider_app(app: Any, args: list[str]) -> tuple[int, dict[str, Any] | None, str]:
     result = runner.invoke(app, args)
     payload: dict[str, Any] | None = None
-    stdout = result.stdout.strip()
-    if stdout:
+    for raw in (result.stdout.strip(), getattr(result, "stderr", "").strip(), result.output.strip()):
+        if not raw:
+            continue
         try:
-            maybe_payload = json.loads(stdout)
+            maybe_payload = json.loads(raw)
         except json.JSONDecodeError:
             maybe_payload = None
         if isinstance(maybe_payload, dict):
             payload = maybe_payload
-    return result.exit_code, payload, result.stdout
+            break
+    return result.exit_code, payload, result.output
+
+
+def provider_surface_status(registration: ProviderRegistration, surface: str) -> str:
+    return registration.wrapper_capabilities.get(surface, "unsupported")
+
+
+def provider_supports_surface(registration: ProviderRegistration, surface: str) -> bool:
+    return provider_surface_status(registration, surface).startswith("ready")
+
+
+def provider_surface_support(registration: ProviderRegistration, surface: str) -> dict[str, Any]:
+    status = provider_surface_status(registration, surface)
+    return {
+        "surface": surface,
+        "status": status,
+        "ready": provider_supports_surface(registration, surface),
+    }
+
+
+def surface_filtered_providers(
+    registrations: list[ProviderRegistration],
+    *,
+    surface: str,
+    requested_expansion: str | None,
+) -> tuple[list[ProviderRegistration], list[dict[str, Any]]]:
+    included: list[ProviderRegistration] = []
+    excluded: list[dict[str, Any]] = []
+    for registration in registrations:
+        if provider_supports_surface(registration, surface):
+            included.append(registration)
+            continue
+        excluded.append(
+            {
+                "provider": registration.name,
+                "command": registration.command,
+                "reason": "provider_surface_not_ready",
+                "surface_support": provider_surface_support(registration, surface),
+                "expansion_support": provider_expansion_support(
+                    registration,
+                    requested_expansion=requested_expansion,
+                ),
+            }
+        )
+    return included, excluded
 
 
 def provider_search(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, Any]:
@@ -286,13 +381,25 @@ def provider_invoke(provider: str, args: list[str], *, expansion: str | None = N
 def provider_doctor(provider: str, *, requested_expansion: str | None = None) -> dict[str, Any]:
     registration = get_provider(provider)
     code, payload, _stdout = _invoke_provider_app(registration.app, list(registration.doctor_args))
+    installed = payload is not None or code == 0
+    auth_details = payload.get("auth") if isinstance(payload, dict) and isinstance(payload.get("auth"), dict) else None
     return {
         "provider": registration.name,
         "status": registration.status if code == 0 else "error",
         "command": registration.command,
         "language": registration.language,
-        "installed": True,
+        "installed": installed,
+        "invocation_mode": "python_entrypoint",
+        "auth": auth_details
+        or {
+            "required": registration.auth_required,
+            "configured": None,
+        },
         "expansion_support": provider_expansion_support(registration, requested_expansion=requested_expansion),
+        "wrapper_surfaces": {
+            surface: provider_surface_support(registration, surface)
+            for surface in ("doctor", "search", "resolve")
+        },
         "details": payload,
     }
 

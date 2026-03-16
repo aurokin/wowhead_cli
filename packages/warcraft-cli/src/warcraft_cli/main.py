@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import httpx
 import typer
 from icy_veins_cli.main import app as icy_veins_app
 from method_cli.main import app as method_app
-from raiderio_cli.client import RaiderIOClient
 from raiderio_cli.main import app as raiderio_app
 from simc_cli.main import app as simc_app
 from typer.main import get_command
@@ -30,7 +28,6 @@ from warcraft_wiki_cli.main import app as warcraft_wiki_app
 from warcraftlogs_cli.main import app as warcraftlogs_app
 from wowhead_cli.expansion_profiles import resolve_expansion
 from wowhead_cli.main import app as wowhead_app
-from wowprogress_cli.client import WowProgressClient, WowProgressClientError
 from wowprogress_cli.main import app as wowprogress_app
 
 from warcraft_cli.providers import (
@@ -44,6 +41,7 @@ from warcraft_cli.providers import (
     provider_invoke,
     provider_resolve,
     provider_search,
+    surface_filtered_providers,
 )
 
 app = typer.Typer(add_completion=False, help="Warcraft wrapper CLI for routing to service-specific Warcraft CLIs.")
@@ -174,7 +172,7 @@ def _guide_compare_manifest_path(root: Path) -> Path:
 
 
 def _iso_now_utc() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _parse_iso8601_utc(value: Any) -> datetime | None:
@@ -188,15 +186,15 @@ def _parse_iso8601_utc(value: Any) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _guide_compare_freshness(exported_at: Any, *, max_age_hours: int) -> dict[str, Any]:
     parsed = _parse_iso8601_utc(exported_at)
     if parsed is None:
         return {"status": "stale", "reason": "missing_exported_at", "age_hours": None, "max_age_hours": max_age_hours}
-    age_hours = round((datetime.now(timezone.utc) - parsed).total_seconds() / 3600, 2)
+    age_hours = round((datetime.now(UTC) - parsed).total_seconds() / 3600, 2)
     if age_hours > max_age_hours:
         return {"status": "stale", "reason": "max_age_exceeded", "age_hours": age_hours, "max_age_hours": max_age_hours}
     return {"status": "fresh", "reason": "within_max_age", "age_hours": age_hours, "max_age_hours": max_age_hours}
@@ -274,6 +272,92 @@ def _write_guide_compare_manifest(
     root.mkdir(parents=True, exist_ok=True)
     _guide_compare_manifest_path(root).write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return payload
+
+
+def _provider_error_payload(provider: str, result: dict[str, Any]) -> dict[str, Any]:
+    payload = result.get("payload")
+    if isinstance(payload, dict) and isinstance(payload.get("error"), dict):
+        return dict(payload["error"])
+    return {
+        "code": "provider_command_failed",
+        "message": f"{provider} command failed.",
+        "exit_code": result.get("exit_code"),
+    }
+
+
+def _provider_payload_result(
+    provider: str,
+    args: list[str],
+    *,
+    expansion: str | None,
+) -> dict[str, Any]:
+    result = provider_invoke(provider, args, expansion=expansion)
+    payload = result.get("payload") if isinstance(result.get("payload"), dict) else None
+    if result.get("exit_code") != 0 or (isinstance(payload, dict) and payload.get("ok") is False):
+        return {
+            "provider": provider,
+            "status": "error",
+            "error": _provider_error_payload(provider, result),
+            "payload": payload,
+            "exit_code": result.get("exit_code"),
+        }
+    return {
+        "provider": provider,
+        "status": "ok",
+        "payload": payload,
+        "exit_code": result.get("exit_code"),
+    }
+
+
+def _first_dict(items: Any) -> dict[str, Any] | None:
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if isinstance(item, dict):
+            return item
+    return None
+
+
+def _raiderio_guild_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    guild = payload.get("guild") if isinstance(payload.get("guild"), dict) else {}
+    raiding = payload.get("raiding") if isinstance(payload.get("raiding"), dict) else {}
+    active_raid = _first_dict(raiding.get("progression"))
+    active_rankings = _first_dict(raiding.get("rankings"))
+    return {
+        "guild": guild,
+        "active_raid": {
+            "key": active_raid.get("raid_slug") if isinstance(active_raid, dict) else None,
+            "name": active_raid.get("raid_slug") if isinstance(active_raid, dict) else None,
+            "summary": active_raid.get("summary") if isinstance(active_raid, dict) else None,
+            "boss_count": active_raid.get("total_bosses") if isinstance(active_raid, dict) else None,
+            "rankings": active_rankings,
+        },
+        "roster": {
+            "member_count": guild.get("member_count"),
+            "preview": payload.get("roster_preview"),
+        },
+        "citations": payload.get("citations"),
+    }
+
+
+def _wowprogress_guild_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    guild = payload.get("guild") if isinstance(payload.get("guild"), dict) else {}
+    progress = payload.get("progress") if isinstance(payload.get("progress"), dict) else {}
+    encounters = payload.get("encounters") if isinstance(payload.get("encounters"), dict) else {}
+    encounter_items = encounters.get("items") if isinstance(encounters.get("items"), list) else []
+    return {
+        "guild": guild,
+        "active_raid": {
+            "key": progress.get("tier_key"),
+            "name": progress.get("raid"),
+            "summary": progress.get("summary"),
+            "boss_count": encounters.get("count") if encounters.get("count") is not None else len(encounter_items),
+            "rankings": progress.get("ranks"),
+        },
+        "item_level": payload.get("item_level"),
+        "encounters": encounters,
+        "citations": payload.get("citations"),
+    }
 
 
 def _load_guide_build_source(source_path: Path) -> tuple[str, list[tuple[Path, dict[str, Any]]], dict[str, Any] | None]:
@@ -598,13 +682,17 @@ def _search_fallback_guide_match(
     ranking = top.get("ranking")
     top_score = int(ranking.get("score") or 0) if isinstance(ranking, dict) else 0
     second_score = 0
+    has_second = False
     if len(results) > 1 and isinstance(results[1], dict):
         second_ranking = results[1].get("ranking")
         second_score = int(second_ranking.get("score") or 0) if isinstance(second_ranking, dict) else 0
-    if top_score < 30:
+        has_second = True
+    if top_score < 50:
         return None, f"search_top_guide_score_too_low:{top_score}"
-    if top_score < 50 and top_score < second_score + 15:
+    if has_second and top_score < second_score + 25:
         return None, "search_results_not_decisive"
+    if not has_second and top_score < 70:
+        return None, "search_single_result_not_strong_enough"
 
     raw_ref = top.get("id")
     if raw_ref is None:
@@ -627,6 +715,14 @@ def _search_fallback_guide_match(
         ),
         "selection_source": "search_fallback",
         "search_ranking": ranking,
+        "selection_contract": {
+            "rule": "top_guide_result_with_strong_score_and_clear_margin",
+            "top_score": top_score,
+            "second_score": second_score if has_second else None,
+            "minimum_top_score": 50,
+            "minimum_margin_over_runner_up": 25 if has_second else None,
+            "single_result_minimum_score": None if has_second else 70,
+        },
     }, None
 
 
@@ -638,95 +734,33 @@ def _normalized_identity(region: str, realm: str, name: str) -> dict[str, str]:
     }
 
 
-def _raiderio_source(identity: dict[str, str]) -> dict[str, Any]:
-    try:
-        with RaiderIOClient() as client:
-            payload = client.guild_profile_variants(**identity)
-    except httpx.HTTPStatusError as exc:
-        status_code = exc.response.status_code
-        return {
-            "provider": "raiderio",
-            "status": "error",
-            "error": {
-                "code": "not_found" if status_code == 404 else "upstream_error",
-                "message": f"Raider.IO request failed with HTTP {status_code}.",
-            },
-        }
-    progression = payload.get("raid_progression") if isinstance(payload.get("raid_progression"), dict) else {}
-    rankings = payload.get("raid_rankings") if isinstance(payload.get("raid_rankings"), dict) else {}
-    active_key = next(iter(progression), None)
-    active_progress = progression.get(active_key) if isinstance(active_key, str) else None
-    active_rankings = rankings.get(active_key) if isinstance(active_key, str) else None
-    members = payload.get("members") if isinstance(payload.get("members"), list) else []
-    roster_preview = [
-        {
-            "name": ((row.get("character") or {}).get("name") if isinstance(row, dict) else None),
-            "class_name": ((row.get("character") or {}).get("class") if isinstance(row, dict) else None),
-            "spec_name": ((row.get("character") or {}).get("active_spec_name") if isinstance(row, dict) else None),
-            "role": ((row.get("character") or {}).get("active_spec_role") if isinstance(row, dict) else None),
-            "profile_url": ((row.get("character") or {}).get("profile_url") if isinstance(row, dict) else None),
-        }
-        for row in members[:10]
-        if isinstance(row, dict) and isinstance(row.get("character"), dict)
-    ]
+def _raiderio_source(identity: dict[str, str], *, expansion: str | None) -> dict[str, Any]:
+    result = _provider_payload_result(
+        "raiderio",
+        ["guild", identity["region"], identity["realm"], identity["name"]],
+        expansion=expansion,
+    )
+    payload = result.get("payload")
+    if result.get("status") != "ok" or not isinstance(payload, dict):
+        return result
     return {
-        "provider": "raiderio",
-        "status": "ok",
-        "guild": {
-            "name": payload.get("name"),
-            "region": payload.get("region"),
-            "realm": payload.get("realm"),
-            "faction": payload.get("faction"),
-            "profile_url": payload.get("profile_url"),
-        },
-        "active_raid": {
-            "key": active_key,
-            "summary": active_progress.get("summary") if isinstance(active_progress, dict) else None,
-            "boss_count": active_progress.get("total_bosses") if isinstance(active_progress, dict) else None,
-            "rankings": active_rankings,
-        },
-        "roster": {
-            "member_count": len(members),
-            "preview": roster_preview,
-        },
-        "citations": {
-            "profile_url": payload.get("profile_url"),
-        },
+        **result,
+        "summary": _raiderio_guild_summary(payload),
     }
 
 
-def _wowprogress_source(identity: dict[str, str]) -> dict[str, Any]:
-    try:
-        with WowProgressClient() as client:
-            payload = client.fetch_guild_page_variants(**identity)
-    except WowProgressClientError as exc:
-        return {
-            "provider": "wowprogress",
-            "status": "error",
-            "error": {"code": exc.code, "message": exc.message},
-        }
-    progress = payload.get("progress") if isinstance(payload.get("progress"), dict) else {}
-    item_level = payload.get("item_level") if isinstance(payload.get("item_level"), dict) else {}
-    encounters = payload.get("encounters") if isinstance(payload.get("encounters"), dict) else {}
-    items = encounters.get("items") if isinstance(encounters.get("items"), list) else []
-    guild = payload.get("guild") if isinstance(payload.get("guild"), dict) else {}
+def _wowprogress_source(identity: dict[str, str], *, expansion: str | None) -> dict[str, Any]:
+    result = _provider_payload_result(
+        "wowprogress",
+        ["guild", identity["region"], identity["realm"], identity["name"]],
+        expansion=expansion,
+    )
+    payload = result.get("payload")
+    if result.get("status") != "ok" or not isinstance(payload, dict):
+        return result
     return {
-        "provider": "wowprogress",
-        "status": "ok",
-        "guild": guild,
-        "active_raid": {
-            "name": progress.get("raid"),
-            "tier_key": progress.get("tier_key"),
-            "summary": progress.get("summary"),
-            "boss_count": len(items),
-            "rankings": progress.get("ranks"),
-        },
-        "item_level": item_level,
-        "encounters": {
-            "count": encounters.get("count"),
-            "preview": items[:10],
-        },
-        "citations": payload.get("citations"),
+        **result,
+        "summary": _wowprogress_guild_summary(payload),
     }
 
 
@@ -734,10 +768,14 @@ def _guild_conflicts(raiderio: dict[str, Any] | None, wowprogress: dict[str, Any
     reasons: list[str] = []
     different_window = False
     if raiderio and wowprogress:
-        ri_bosses = ((raiderio.get("active_raid") or {}).get("boss_count") if isinstance(raiderio.get("active_raid"), dict) else None)
-        wp_bosses = ((wowprogress.get("active_raid") or {}).get("boss_count") if isinstance(wowprogress.get("active_raid"), dict) else None)
-        ri_summary = str(((raiderio.get("active_raid") or {}).get("summary")) or "")
-        wp_summary = str(((wowprogress.get("active_raid") or {}).get("summary")) or "")
+        ri_summary_payload = raiderio.get("summary") if isinstance(raiderio.get("summary"), dict) else {}
+        wp_summary_payload = wowprogress.get("summary") if isinstance(wowprogress.get("summary"), dict) else {}
+        ri_active = ri_summary_payload.get("active_raid") if isinstance(ri_summary_payload.get("active_raid"), dict) else {}
+        wp_active = wp_summary_payload.get("active_raid") if isinstance(wp_summary_payload.get("active_raid"), dict) else {}
+        ri_bosses = ri_active.get("boss_count")
+        wp_bosses = wp_active.get("boss_count")
+        ri_summary = str(ri_active.get("summary") or "")
+        wp_summary = str(wp_active.get("summary") or "")
         if ri_bosses != wp_bosses or (ri_summary and wp_summary and ri_summary != wp_summary):
             different_window = True
             reasons.append("providers_report_different_active_raid_windows")
@@ -763,7 +801,11 @@ def _guild_merge_payload(identity: dict[str, str], *, raiderio: dict[str, Any], 
                 "wowprogress": wowprogress,
             },
         }
-    preferred_guild = (wowprogress.get("guild") if wp_ok else None) or (raiderio.get("guild") if ri_ok else None) or {}
+    preferred_guild = (
+        ((wowprogress.get("summary") or {}).get("guild") if wp_ok else None)
+        or ((raiderio.get("summary") or {}).get("guild") if ri_ok else None)
+        or {}
+    )
     return {
         "ok": True,
         "provider": "warcraft",
@@ -805,7 +847,13 @@ def search(
     ),
 ) -> None:
     requested_expansion = _requested_expansion(ctx)
-    included_registrations, excluded_providers = expansion_filtered_providers(requested_expansion=requested_expansion)
+    expansion_included, excluded_providers = expansion_filtered_providers(requested_expansion=requested_expansion)
+    included_registrations, surface_excluded = surface_filtered_providers(
+        expansion_included,
+        surface="search",
+        requested_expansion=requested_expansion,
+    )
+    excluded_providers = [*excluded_providers, *surface_excluded]
     providers: list[dict[str, Any]] = []
     flattened: list[dict[str, Any]] = []
     for registration in included_registrations:
@@ -894,7 +942,13 @@ def resolve(
     ),
 ) -> None:
     requested_expansion = _requested_expansion(ctx)
-    included_registrations, excluded_providers = expansion_filtered_providers(requested_expansion=requested_expansion)
+    expansion_included, excluded_providers = expansion_filtered_providers(requested_expansion=requested_expansion)
+    included_registrations, surface_excluded = surface_filtered_providers(
+        expansion_included,
+        surface="resolve",
+        requested_expansion=requested_expansion,
+    )
+    excluded_providers = [*excluded_providers, *surface_excluded]
     providers: list[dict[str, Any]] = []
     resolved_candidates: list[tuple[str, dict[str, Any]]] = []
     for registration in included_registrations:
@@ -956,10 +1010,11 @@ def guild(
     name: str = typer.Argument(..., help="Guild name."),
 ) -> None:
     identity = _normalized_identity(region, realm, name)
+    requested_expansion = _requested_expansion(ctx)
     payload = _guild_merge_payload(
         identity,
-        raiderio=_raiderio_source(identity),
-        wowprogress=_wowprogress_source(identity),
+        raiderio=_raiderio_source(identity, expansion=requested_expansion),
+        wowprogress=_wowprogress_source(identity, expansion=requested_expansion),
     )
     _emit(payload, pretty=_pretty(ctx), err=not payload.get("ok"))
     if not payload.get("ok"):
@@ -974,22 +1029,27 @@ def guild_history(
     name: str = typer.Argument(..., help="Guild name."),
 ) -> None:
     identity = _normalized_identity(region, realm, name)
-    try:
-        with WowProgressClient() as client:
-            payload = client.fetch_guild_history(**identity)
-    except WowProgressClientError as exc:
+    requested_expansion = _requested_expansion(ctx)
+    source_result = _provider_payload_result(
+        "wowprogress",
+        ["guild-history", identity["region"], identity["realm"], identity["name"]],
+        expansion=requested_expansion,
+    )
+    payload = source_result.get("payload") if isinstance(source_result.get("payload"), dict) else {}
+    history = payload.get("tiers") if isinstance(payload.get("tiers"), list) else []
+    if source_result.get("status") != "ok":
         _emit(
             {
                 "ok": False,
-                "error": {"code": exc.code, "message": exc.message},
+                "error": source_result.get("error"),
                 "query": identity,
                 "source": "wowprogress",
+                "provider_payload": payload,
             },
             pretty=_pretty(ctx),
             err=True,
         )
         raise typer.Exit(1)
-    history = payload.get("history") if isinstance(payload.get("history"), list) else []
     _emit(
         {
             "ok": True,
@@ -1001,6 +1061,7 @@ def guild_history(
             "count": len(history),
             "tiers": history,
             "citations": payload.get("citations"),
+            "provider_payload": payload,
         },
         pretty=_pretty(ctx),
     )
@@ -1014,22 +1075,27 @@ def guild_ranks(
     name: str = typer.Argument(..., help="Guild name."),
 ) -> None:
     identity = _normalized_identity(region, realm, name)
-    try:
-        with WowProgressClient() as client:
-            payload = client.fetch_guild_history(**identity)
-    except WowProgressClientError as exc:
+    requested_expansion = _requested_expansion(ctx)
+    source_result = _provider_payload_result(
+        "wowprogress",
+        ["guild-ranks", identity["region"], identity["realm"], identity["name"]],
+        expansion=requested_expansion,
+    )
+    payload = source_result.get("payload") if isinstance(source_result.get("payload"), dict) else {}
+    history = payload.get("tiers") if isinstance(payload.get("tiers"), list) else []
+    if source_result.get("status") != "ok":
         _emit(
             {
                 "ok": False,
-                "error": {"code": exc.code, "message": exc.message},
+                "error": source_result.get("error"),
                 "query": identity,
                 "source": "wowprogress",
+                "provider_payload": payload,
             },
             pretty=_pretty(ctx),
             err=True,
         )
         raise typer.Exit(1)
-    history = payload.get("history") if isinstance(payload.get("history"), list) else []
     _emit(
         {
             "ok": True,
@@ -1039,22 +1105,9 @@ def guild_ranks(
             "source": "wowprogress",
             "guild": payload.get("guild"),
             "count": len(history),
-            "tiers": [
-                {
-                    "tier_key": row.get("tier_key"),
-                    "raid": row.get("raid"),
-                    "current": row.get("current"),
-                    "progress": row.get("progress"),
-                    "progress_ranks": row.get("progress_ranks"),
-                    "item_level_average": row.get("item_level_average"),
-                    "item_level_ranks": row.get("item_level_ranks"),
-                    "last_kill_at": row.get("last_kill_at"),
-                    "page_url": row.get("page_url"),
-                }
-                for row in history
-                if isinstance(row, dict)
-            ],
+            "tiers": history,
             "citations": payload.get("citations"),
+            "provider_payload": payload,
         },
         pretty=_pretty(ctx),
     )

@@ -99,11 +99,13 @@ The wrapper should know for each provider:
 - implementation language
 - whether it is installed
 - whether auth is configured
+- whether auth is required for the provider at all
 - expansion support mode
 - supported expansions when known
 - expansion review status
 - a short policy note explaining the current expansion classification
 - whether `search`, `resolve`, and `doctor` are supported or stubbed
+- whether each wrapper surface is actually ready to participate in wrapper fanout
 
 This registry should drive wrapper behavior instead of hardcoded special cases spread throughout the codebase.
 
@@ -190,6 +192,7 @@ This metadata is required so agents can trust why a result was or was not consid
 - all installed authenticated providers when auth is configured
 
 Providers that are not ready should still report through `doctor`.
+Providers whose wrapper `search` surface is stubbed or otherwise not ready should be excluded from wrapper fanout and surfaced in exclusion metadata instead of being treated like live routing candidates.
 
 Search result ordering rules:
 - provider-local ranking stays provider-specific
@@ -214,6 +217,8 @@ Ranking policy location:
 - avoid pretending certainty when providers are stubbed or unavailable
 - not upgrade synthetic direct-route hints into verified resolved matches unless the provider actually returned a resolved payload
 
+Providers whose wrapper `resolve` surface is stubbed or otherwise not ready should be excluded from wrapper fanout and surfaced in exclusion metadata instead of being queried like live routing candidates.
+
 Resolve selection rules:
 - do not pick the first provider that reports `resolved`
 - prefer higher provider-reported confidence first
@@ -232,6 +237,7 @@ Debuggability rules:
 - installed providers
 - provider readiness
 - auth availability where relevant
+- wrapper-surface readiness for `doctor`, `search`, and `resolve`
 - runtime availability for non-Python services
 - storage/config root status
 

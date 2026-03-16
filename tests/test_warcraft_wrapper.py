@@ -129,6 +129,9 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert providers["warcraft-wiki"]["details"]["capabilities"]["article"] == "ready"
     assert providers["wowprogress"]["details"]["capabilities"]["leaderboard"] == "ready"
     assert providers["simc"]["details"]["capabilities"]["decode_build"] == "ready"
+    assert providers["warcraftlogs"]["auth"]["required"] is True
+    assert providers["simc"]["wrapper_surfaces"]["search"]["ready"] is False
+    assert providers["simc"]["wrapper_surfaces"]["search"]["status"] == "coming_soon"
 
 
 def test_warcraft_doctor_reports_expansion_filtering_state() -> None:
@@ -204,7 +207,10 @@ def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
     assert providers["warcraft-wiki"]["payload"]["count"] == 0
     assert providers["wowprogress"]["payload"]["count"] == 0
     assert "structured queries" in providers["wowprogress"]["payload"]["message"]
-    assert providers["simc"]["payload"]["coming_soon"] is True
+    assert "simc" not in providers
+    excluded = {row["provider"]: row for row in payload["excluded_providers"]}
+    assert excluded["simc"]["reason"] == "provider_surface_not_ready"
+    assert excluded["simc"]["surface_support"]["status"] == "coming_soon"
     assert providers["wowhead"]["payload"]["results"][0]["name"] == "Thunderfury"
 
 
@@ -372,7 +378,7 @@ def test_warcraft_guide_compare_query_uses_conservative_search_fallback(
                             "name": "Icy Veins Mistweaver Monk Guide",
                             "entity_type": "guide",
                             "url": "https://example.test/icy-veins/mistweaver-monk-pve-healing-guide",
-                            "ranking": {"score": 44},
+                            "ranking": {"score": 72},
                             "follow_up": {
                                 "recommended_command": "icy-veins guide mistweaver-monk-pve-healing-guide",
                             },
@@ -382,7 +388,7 @@ def test_warcraft_guide_compare_query_uses_conservative_search_fallback(
                             "name": "Icy Veins Mistweaver Monk PvP Guide",
                             "entity_type": "guide",
                             "url": "https://example.test/icy-veins/mistweaver-monk-pvp-guide",
-                            "ranking": {"score": 20},
+                            "ranking": {"score": 41},
                         },
                     ]
                 },
@@ -430,6 +436,110 @@ def test_warcraft_guide_compare_query_uses_conservative_search_fallback(
     assert payload["comparison"]["compared_bundle_count"] == 2
     icy_row = next(row for row in payload["provider_results"] if row["provider"] == "icy-veins")
     assert icy_row["candidate"]["selection_source"] == "search_fallback"
+    assert icy_row["candidate"]["selection_contract"]["minimum_top_score"] == 50
+    assert icy_row["candidate"]["selection_contract"]["minimum_margin_over_runner_up"] == 25
+
+
+def test_warcraft_guide_compare_query_skips_weak_search_fallback(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_provider_resolve(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, object]:
+        if provider == "method":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "resolved": True,
+                    "confidence": "high",
+                    "match": {
+                        "id": "mistweaver-monk",
+                        "name": "Method Mistweaver Monk Guide",
+                        "entity_type": "guide",
+                        "url": "https://example.test/method/mistweaver-monk",
+                    },
+                    "next_command": "method guide mistweaver-monk",
+                },
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "resolved": False,
+                "confidence": "none",
+                "match": None,
+                "next_command": None,
+            },
+        }
+
+    def fake_provider_search(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, object]:
+        if provider == "icy-veins":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "results": [
+                        {
+                            "id": "mistweaver-monk-pve-healing-guide",
+                            "name": "Icy Veins Mistweaver Monk Guide",
+                            "entity_type": "guide",
+                            "url": "https://example.test/icy-veins/mistweaver-monk-pve-healing-guide",
+                            "ranking": {"score": 58},
+                        },
+                        {
+                            "id": "mistweaver-monk-pvp-guide",
+                            "name": "Icy Veins Mistweaver Monk PvP Guide",
+                            "entity_type": "guide",
+                            "url": "https://example.test/icy-veins/mistweaver-monk-pvp-guide",
+                            "ranking": {"score": 42},
+                        },
+                    ]
+                },
+            }
+        return {"provider": provider, "exit_code": 0, "payload": {"results": []}}
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        export_dir = Path(args[3])
+        payload = _comparison_payload(
+            provider=provider,
+            slug=args[1],
+            page_url=f"https://example.test/{provider}/{args[1]}",
+            page_title=f"{provider} guide",
+            analysis_tags=["builds_talents", "talent_recommendations"],
+            build_code="ABC123",
+        )
+        write_article_bundle(payload, provider=provider, export_dir=export_dir)
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {"output_dir": str(export_dir), "guide": payload["guide"]},
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_resolve", fake_provider_resolve)
+    monkeypatch.setattr("warcraft_cli.main.provider_search", fake_provider_search)
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        [
+            "guide-compare-query",
+            "mistweaver monk guide",
+            "--provider",
+            "method",
+            "--provider",
+            "icy-veins",
+            "--out-root",
+            str(tmp_path / "orchestrated"),
+        ],
+    )
+    assert result.exit_code == 1
+
+    payload = json.loads(result.stderr or result.output)
+    icy_row = next(row for row in payload["provider_results"] if row["provider"] == "icy-veins")
+    assert icy_row["status"] == "skipped"
+    assert icy_row["reason"] == "search_results_not_decisive"
+    assert payload["error"]["code"] == "insufficient_guides"
 
 
 def test_warcraft_guide_compare_query_reuses_fresh_orchestrated_bundles(
@@ -1844,35 +1954,65 @@ def test_warcraft_passthrough_to_warcraftlogs() -> None:
 
 
 def test_warcraft_guild_merges_sources_and_normalizes_query(monkeypatch) -> None:
-    def fake_ri(self, *, region: str, realm: str, name: str):  # noqa: ANN001
-        assert region == "us"
-        assert realm == "mal-ganis"
-        assert name == "gn"
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert args[1:] == ["us", "mal-ganis", "gn"]
+        if provider == "raiderio":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "guild": {
+                        "name": "gn",
+                        "region": "us",
+                        "realm": "Mal'Ganis",
+                        "faction": "horde",
+                        "profile_url": "https://raider.io/guilds/us/malganis/gn",
+                        "member_count": 1,
+                    },
+                    "raiding": {
+                        "progression": [{"raid_slug": "tier-mn-1", "summary": "0/9 N", "total_bosses": 9}],
+                        "rankings": [{"raid_slug": "tier-mn-1", "normal": {"world": 0, "region": 0, "realm": 0}}],
+                    },
+                    "roster_preview": [
+                        {
+                            "name": "Fharg",
+                            "class_name": "Shaman",
+                            "active_spec_name": "Enhancement",
+                            "profile_url": "https://raider.io/characters/us/malganis/Fharg",
+                        }
+                    ],
+                    "citations": {"profile": "https://raider.io/guilds/us/malganis/gn"},
+                },
+                "stdout": "",
+            }
         return {
-            "name": "gn",
-            "region": "us",
-            "realm": "Mal'Ganis",
-            "faction": "horde",
-            "profile_url": "https://raider.io/guilds/us/malganis/gn",
-            "raid_progression": {"tier-mn-1": {"summary": "0/9 N", "total_bosses": 9}},
-            "raid_rankings": {"tier-mn-1": {"normal": {"world": 0, "region": 0, "realm": 0}}},
-            "members": [{"rank": 1, "character": {"name": "Fharg", "class": "Shaman", "active_spec_name": "Enhancement", "active_spec_role": "DPS", "profile_url": "https://raider.io/characters/us/malganis/Fharg"}}],
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "guild": {
+                    "name": "gn",
+                    "region": "us",
+                    "realm": "Mal'Ganis",
+                    "faction": "Horde",
+                    "page_url": "https://www.wowprogress.com/guild/us/mal-ganis/gn",
+                },
+                "progress": {
+                    "raid": "Liberation of Undermine",
+                    "tier_key": "tier34",
+                    "summary": "8/8 (M)",
+                    "ranks": {"world": "19", "region": "6", "realm": "2"},
+                },
+                "item_level": {
+                    "average": 732.1,
+                    "ranks": {"world": "1", "region": "1", "realm": "1"},
+                },
+                "encounters": {"count": 8, "items": [{"encounter": "Chrome King Gallywix"}]},
+                "citations": {"page": "https://www.wowprogress.com/guild/us/mal-ganis/gn"},
+            },
+            "stdout": "",
         }
 
-    def fake_wp(self, *, region: str, realm: str, name: str):  # noqa: ANN001
-        assert region == "us"
-        assert realm == "mal-ganis"
-        assert name == "gn"
-        return {
-            "guild": {"name": "gn", "region": "us", "realm": "Mal'Ganis", "faction": "Horde", "page_url": "https://www.wowprogress.com/guild/us/mal-ganis/gn"},
-            "progress": {"raid": "Liberation of Undermine", "tier_key": "tier34", "summary": "8/8 (M)", "ranks": {"world": "19", "region": "6", "realm": "2"}},
-            "item_level": {"average": 732.1, "ranks": {"world": "1", "region": "1", "realm": "1"}},
-            "encounters": {"count": 8, "items": [{"encounter": "Chrome King Gallywix"}]},
-            "citations": {"page": "https://www.wowprogress.com/guild/us/mal-ganis/gn"},
-        }
-
-    monkeypatch.setattr("warcraft_cli.main.RaiderIOClient.guild_profile_variants", fake_ri)
-    monkeypatch.setattr("warcraft_cli.main.WowProgressClient.fetch_guild_page_variants", fake_wp)
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
 
     result = runner.invoke(warcraft_app, ["guild", "na", "Mal'Ganis", "gn"])
     assert result.exit_code == 0
@@ -1883,6 +2023,11 @@ def test_warcraft_guild_merges_sources_and_normalizes_query(monkeypatch) -> None
     assert payload["guild"]["name"] == "gn"
     assert payload["sources"]["raiderio"]["status"] == "ok"
     assert payload["sources"]["wowprogress"]["status"] == "ok"
+    assert (
+        payload["sources"]["raiderio"]["payload"]["guild"]["profile_url"]
+        == "https://raider.io/guilds/us/malganis/gn"
+    )
+    assert payload["sources"]["wowprogress"]["payload"]["progress"]["summary"] == "8/8 (M)"
     assert payload["conflicts"]["different_tier_window_detected"] is True
 
 
@@ -1891,7 +2036,8 @@ def test_warcraft_guild_history_and_ranks_use_wowprogress(monkeypatch) -> None:
         "provider": "wowprogress",
         "kind": "guild_history",
         "guild": {"name": "gn", "region": "us", "realm": "Mal'Ganis"},
-        "history": [
+        "count": 1,
+        "tiers": [
             {
                 "tier_key": "tier34",
                 "raid": "Liberation of Undermine",
@@ -1907,7 +2053,22 @@ def test_warcraft_guild_history_and_ranks_use_wowprogress(monkeypatch) -> None:
         "citations": {"page": "https://www.wowprogress.com/guild/us/mal-ganis/gn"},
     }
 
-    monkeypatch.setattr("warcraft_cli.main.WowProgressClient.fetch_guild_history", lambda self, **kwargs: history_payload)
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowprogress"
+        assert args[1:] == ["us", "mal-ganis", "gn"]
+        payload = (
+            history_payload
+            if args[0] == "guild-history"
+            else {**history_payload, "kind": "guild_ranks"}
+        )
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": payload,
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
 
     history_result = runner.invoke(warcraft_app, ["guild-history", "us", "Mal'Ganis", "gn"])
     assert history_result.exit_code == 0
@@ -1915,9 +2076,11 @@ def test_warcraft_guild_history_and_ranks_use_wowprogress(monkeypatch) -> None:
     assert history["ok"] is True
     assert history["source"] == "wowprogress"
     assert history["tiers"][0]["raid"] == "Liberation of Undermine"
+    assert history["provider_payload"]["kind"] == "guild_history"
 
     ranks_result = runner.invoke(warcraft_app, ["guild-ranks", "us", "Mal'Ganis", "gn"])
     assert ranks_result.exit_code == 0
     ranks = json.loads(ranks_result.stdout)
     assert ranks["ok"] is True
     assert ranks["tiers"][0]["progress_ranks"]["world"] == "19"
+    assert ranks["provider_payload"]["kind"] == "guild_ranks"
