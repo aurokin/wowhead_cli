@@ -69,7 +69,7 @@ Completed:
 - working `raiderio` provider with direct lookup, search/resolve, and first analytics primitives
 - working `warcraft-wiki` provider with typed programming/reference surfaces and broad family coverage
 - working `wowprogress` provider with direct lookup, search/resolve, and first analytics primitives
-- working `warcraftlogs` provider with retail-only public OAuth + GraphQL metadata, guild/character lookups, guild rankings, first report-list/report-detail workflows, first deep encounter report-link workflows with typed cast/buff/damage slices, and the first sampled cross-report analytics slice including cohort spec summaries
+- working `warcraftlogs` provider with retail-only public OAuth by default plus limited saved user-token verification, typed guild/character/report lookups, guild rankings, first deep encounter report-link workflows with typed cast/buff/damage slices, and the first sampled cross-report analytics slice including cohort spec summaries
 - working `simc` provider with readonly source analysis, runtime helpers, and managed checkout flow
 - root `warcraft` skill
 
@@ -145,11 +145,10 @@ The goal is not one fake universal entity model. The goal is shared cross-provid
 
 Add explicit comparison-ready outputs for cross-provider workflows instead of expecting the agent to diff large provider-native payloads manually:
 
-- normalized guide summaries for:
-  - rotation priorities
-  - cooldown notes
-  - talent/build recommendations
-  - stat/build context
+- additive guide comparison surfaces that preserve raw evidence and citations instead of replacing guide content:
+  - exact section-title evidence
+  - analysis-surface tags
+  - explicit embedded build references
 - exact-build handoff from user talent exports or guide build references into `simc`
 - guide-vs-guide and guide-vs-`simc` comparison packets grounded in source evidence
 
@@ -236,7 +235,7 @@ Current delivered slice in this lane:
 | CurseForge | Addon/mod discovery pages plus file and release metadata | Build as a read-first addon metadata CLI for search, project, file, changelog, and compatibility lookups | [Plan](/home/auro/code/warcraft_cli/docs/CURSEFORGE_CLI_PLAN.md) |
 | SimulationCraft | Local Git repo, readonly source inspection, local builds, local command execution | Build as a local-tool CLI with readonly source analysis, sync/build/run workflows, build decoding, and agent-facing APL reasoning helpers | [Plan](/home/auro/code/warcraft_cli/docs/SIMC_CLI_PLAN.md) |
 | Raidbots | Web workflow built around SimulationCraft input and result pages | Start with result/report parsing and workflow helpers, then evaluate deeper automation carefully | [Plan](/home/auro/code/warcraft_cli/docs/RAIDBOTS_CLI_PLAN.md) |
-| Warcraft Logs | Official OAuth 2.0 + GraphQL API with public and user-auth endpoints | Build as an API-first CLI with typed guild, character, report, rankings, world-data, and auth workflows over the official API; current implementation is retail-only public OAuth + GraphQL | [Plan](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI_PLAN.md) |
+| Warcraft Logs | Official OAuth 2.0 + GraphQL API with public and user-auth endpoints | Build as an API-first CLI with typed guild, character, report, rankings, world-data, and auth workflows over the official API; current implementation is retail-only with public OAuth by default plus limited saved user-token verification | [Plan](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI_PLAN.md) |
 
 ## What The Research Suggests
 

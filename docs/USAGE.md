@@ -514,10 +514,11 @@ warcraftlogs ability-usage-summary --zone-id 38 --boss-id 3012 --difficulty 5 --
 
 Current Warcraft Logs provider behavior:
 - `warcraftlogs` currently targets the retail/main site profile only
-- auth is the official public OAuth client-credentials flow
+- public OAuth client credentials are the default auth mode
 - manual user-auth groundwork is now available for:
   - authorization code
   - PKCE
+  - saved user-token verification via `warcraftlogs auth whoami`
 - credentials are loaded in this priority order:
   - repo-local `.env.local`
   - XDG config: `~/.config/warcraft/providers/warcraftlogs.env`

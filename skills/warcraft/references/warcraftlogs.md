@@ -64,7 +64,7 @@ Best fits:
 
 - current support is retail/main site only
 - public OAuth client credentials are the default auth mode
-- manual user-auth groundwork now exists for authorization-code and PKCE exchange
+- manual user-auth groundwork now exists for authorization-code and PKCE exchange, plus saved user-token verification via `warcraftlogs auth whoami`
 - current surface works both standalone and through the root `warcraft` wrapper, but wrapper discovery is still intentionally narrow
 - current commands use typed payloads, not raw GraphQL passthrough
 
