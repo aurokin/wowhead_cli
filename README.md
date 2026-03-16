@@ -16,19 +16,6 @@ Warcraft data CLI monorepo.
 - Normalization is an additive analysis layer. It should improve routing and comparison without replacing raw source detail.
 - Do not bolt on fake universal "smart answers" where the underlying source contract is narrower than the question.
 
-Current state:
-- `warcraft` as the root wrapper
-- `wowhead` as the working provider CLI
-- `method` as a working guide provider
-- `icy-veins` as a working guide provider
-- `raiderio` as a working phase-1 API provider
-- `warcraft-wiki` as a working reference/article provider
-- `wowprogress` as a working phase-1 rankings/profile provider
-- `warcraftlogs` as a working phase-1 official log provider
-- `simc` as a working phase-1 local SimulationCraft provider
-  - phase-2 readonly analysis commands are now in place
-  - phase-3 reasoning and runtime helpers are now in place
-
 ## Install
 
 ```bash
@@ -58,68 +45,38 @@ make dev-deploy-no-link
 This project uses editable install mode (`pip install -e`), so code changes are immediately reflected without rebuilding.
 If `wowhead` is not found, add `~/.local/bin` to your `PATH`.
 
+## Supported Providers
+
+- [`warcraft`](docs/warcraft/README.md): root wrapper and orchestration CLI
+- [`wowhead`](docs/wowhead/README.md): entity, guide, comments, and bundle workflows
+- [`method`](docs/method/README.md): guide extraction and local guide workflows
+- [`icy-veins`](docs/icy-veins/README.md): guide extraction and local guide workflows
+- [`raiderio`](docs/raiderio/README.md): API-backed profile and leaderboard workflows
+- [`warcraft-wiki`](docs/warcraft-wiki/README.md): reference, lore, and API/article workflows
+- [`wowprogress`](docs/wowprogress/README.md): rankings and profile workflows
+- [`warcraftlogs`](docs/warcraftlogs/README.md): official log/report workflows
+- [`simc`](docs/simc/README.md): local SimulationCraft inspection and analysis workflows
+
 ## Quick Start
 
 ```bash
 warcraft doctor
 warcraft search "defias"
-warcraft resolve "fairbreeze favors"
-warcraft guide-compare ./tmp/method-mistweaver ./tmp/icy-mistweaver
 warcraft guide-compare-query "mistweaver monk guide"
-warcraft guide-compare-query "mistweaver monk guide" --simc-build-handoff --simc-apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
-warcraft guide-builds-simc ./tmp/method-mistweaver
-warcraft guide-builds-simc ./tmp/method-mistweaver --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
-warcraft wowhead guide 3143
-warcraft method search "mistweaver monk"
-warcraft icy-veins search "mistweaver monk guide"
-warcraft raiderio character us illidan Roguecane
-warcraft raiderio search "Roguecane"
-warcraft warcraft-wiki article "World of Warcraft API"
-warcraft wowprogress search "guild us illidan Liquid"
-warcraft wowprogress guild us illidan Liquid
 warcraft warcraftlogs resolve "https://www.warcraftlogs.com/reports/abcd1234#fight=3"
-warcraft simc doctor
-method guide mistweaver-monk
-icy-veins guide mistweaver-monk-pve-healing-guide
-raiderio guild us illidan Liquid
-warcraft-wiki search "world of warcraft api"
-wowprogress leaderboard pve us --limit 10
 warcraftlogs report-encounter abcd1234 --fight-id 3
-simc version
-simc repo
-simc spec-files mistweaver
-simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
-simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 simc analysis-packet /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
-simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker.simc tiger_palm --seeds 1 --max-time 20
-method guide-export mistweaver-monk --out ./tmp/method-mistweaver
-wowhead search "defias"
-wowhead guide 3143
 ```
 
 Use `warcraft` when the source is unclear. Use `wowhead`, `method`, `icy-veins`, `raiderio`, `warcraft-wiki`, `wowprogress`, `warcraftlogs`, or `simc` directly once you know the provider you need.
 
 ## Docs
 
-Detailed usage lives in [docs/USAGE.md](/home/auro/code/warcraft_cli/docs/USAGE.md).
-
-Other useful docs:
 - [docs/README.md](/home/auro/code/warcraft_cli/docs/README.md)
+- [docs/USAGE.md](/home/auro/code/warcraft_cli/docs/USAGE.md)
+- [docs/ROADMAP.md](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
 - [docs/foundation/PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/foundation/PRODUCT_PRINCIPLES.md)
 - [docs/foundation/SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/foundation/SAFE_ANALYTICS_RULES.md)
-- [docs/ROADMAP.md](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
-- [docs/foundation/IDENTITY_CONTRACT.md](/home/auro/code/warcraft_cli/docs/foundation/IDENTITY_CONTRACT.md)
-- [docs/architecture/MIGRATION_CHECKLIST.md](/home/auro/code/warcraft_cli/docs/architecture/MIGRATION_CHECKLIST.md)
-- [docs/warcraft/README.md](/home/auro/code/warcraft_cli/docs/warcraft/README.md)
-- [docs/wowhead/README.md](/home/auro/code/warcraft_cli/docs/wowhead/README.md)
-- [docs/warcraftlogs/README.md](/home/auro/code/warcraft_cli/docs/warcraftlogs/README.md)
-- [docs/simc/README.md](/home/auro/code/warcraft_cli/docs/simc/README.md)
-- [docs/wowhead/ACCESS_METHODS.md](/home/auro/code/warcraft_cli/docs/wowhead/ACCESS_METHODS.md)
-- [docs/wowhead/EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/wowhead/EXPANSION_RESEARCH.md)
-- [docs/foundation/WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/warcraft_cli/docs/foundation/WRAPPER_PROVIDER_CONTRACT.md)
-
-The preferred pattern is to keep docs driven by actual code behavior. The README should stay short, while command details and behavior notes live under `docs/`.
-See [docs/foundation/PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/foundation/PRODUCT_PRINCIPLES.md) for the longer product principles and workflow direction, and [docs/foundation/SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/foundation/SAFE_ANALYTICS_RULES.md) for repo-wide analytics design rules.
 
 ## Testing
 
