@@ -1,4 +1,4 @@
-# WowProgress CLI Plan
+# WowProgress CLI
 
 ## Status
 

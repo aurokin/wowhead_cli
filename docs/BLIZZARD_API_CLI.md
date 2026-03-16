@@ -1,4 +1,4 @@
-# Blizzard API CLI Plan
+# Blizzard API CLI
 
 ## Why Add It
 

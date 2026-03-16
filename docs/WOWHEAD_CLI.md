@@ -1,4 +1,4 @@
-# Wowhead CLI Plan
+# Wowhead CLI
 
 ## Role In The Monorepo
 

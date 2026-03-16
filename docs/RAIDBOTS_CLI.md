@@ -1,4 +1,4 @@
-# Raidbots CLI Plan
+# Raidbots CLI
 
 ## Why Raidbots Should Be Staged Carefully
 

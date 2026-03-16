@@ -1,4 +1,4 @@
-# Icy Veins CLI Plan
+# Icy Veins CLI
 
 ## Goal
 
@@ -218,7 +218,7 @@ Status: started.
 ### Phase 4: Documentation And Polish
 
 - update `docs/USAGE.md` with explicit supported families
-- update this plan with the validated support boundary
+- update this document with the validated support boundary
 - update the root `warcraft` skill guidance so agents know when to choose Icy Veins
 - make sure wrapper discovery/ranking works correctly for Icy Veins family types
 

@@ -1,4 +1,4 @@
-# Method.gg CLI Plan
+# Method.gg CLI
 
 ## Status
 

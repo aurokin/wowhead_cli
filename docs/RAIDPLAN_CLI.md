@@ -1,4 +1,4 @@
-# RaidPlan CLI Plan
+# RaidPlan CLI
 
 ## Why Add It
 

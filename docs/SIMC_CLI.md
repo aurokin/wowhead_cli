@@ -1,4 +1,4 @@
-# SimulationCraft CLI Plan
+# SimulationCraft CLI
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Warcraft CLI Plan
+# Warcraft CLI
 
 ## Purpose
 

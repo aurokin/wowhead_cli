@@ -1,4 +1,4 @@
-# Raider.IO CLI Plan
+# Raider.IO CLI
 
 ## Status
 

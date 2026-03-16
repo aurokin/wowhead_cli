@@ -1,4 +1,4 @@
-# Warcraft Wiki CLI Plan
+# Warcraft Wiki CLI
 
 ## Status
 
@@ -248,7 +248,7 @@ After the support families are explicit:
 
 ## Documentation Rule
 
-This plan should be kept explicit about:
+This document should be kept explicit about:
 - what programming surfaces are intentionally supported
 - what non-programming families are intentionally supported
 - what is still generic article support rather than family-aware support

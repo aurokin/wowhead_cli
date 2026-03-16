@@ -214,5 +214,5 @@ Service-specific root skills can be added later if they prove useful. For now, t
 - [Package Layout](/home/auro/code/warcraft_cli/docs/PACKAGE_LAYOUT.md)
 - [Migration Checklist](/home/auro/code/warcraft_cli/docs/MIGRATION_CHECKLIST.md)
 - [Wrapper Provider Contract](/home/auro/code/warcraft_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
-- [Warcraft wrapper plan](/home/auro/code/warcraft_cli/docs/WARCRAFT_CLI_PLAN.md)
-- [Warcraft Logs CLI plan](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI_PLAN.md)
+- [Warcraft wrapper CLI doc](/home/auro/code/warcraft_cli/docs/WARCRAFT_CLI.md)
+- [Warcraft Logs CLI doc](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI.md)

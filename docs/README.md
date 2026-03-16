@@ -34,22 +34,22 @@ Documentation ownership:
 - [MIGRATION_CHECKLIST.md](/home/auro/code/warcraft_cli/docs/MIGRATION_CHECKLIST.md)
 - [LINTING_AND_COMPLEXITY_PLAN.md](/home/auro/code/warcraft_cli/docs/LINTING_AND_COMPLEXITY_PLAN.md)
 
-## Provider Plans
+## Provider CLI Docs
 
-- [WARCRAFT_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/WARCRAFT_CLI_PLAN.md)
-- [WOWHEAD_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_CLI_PLAN.md)
-- [METHOD_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/METHOD_CLI_PLAN.md)
-- [ICY_VEINS_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/ICY_VEINS_CLI_PLAN.md)
-- [RAIDERIO_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/RAIDERIO_CLI_PLAN.md)
-- [WOWPROGRESS_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/WOWPROGRESS_CLI_PLAN.md)
-- [WARCRAFT_WIKI_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/WARCRAFT_WIKI_CLI_PLAN.md)
-- [WARCRAFTLOGS_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI_PLAN.md)
-- [SIMC_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/SIMC_CLI_PLAN.md)
-- [BLIZZARD_API_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/BLIZZARD_API_CLI_PLAN.md)
-- [UNDERMINE_EXCHANGE_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/UNDERMINE_EXCHANGE_CLI_PLAN.md)
-- [RAIDPLAN_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/RAIDPLAN_CLI_PLAN.md)
-- [CURSEFORGE_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/CURSEFORGE_CLI_PLAN.md)
-- [RAIDBOTS_CLI_PLAN.md](/home/auro/code/warcraft_cli/docs/RAIDBOTS_CLI_PLAN.md)
+- [WARCRAFT_CLI.md](/home/auro/code/warcraft_cli/docs/WARCRAFT_CLI.md)
+- [WOWHEAD_CLI.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_CLI.md)
+- [METHOD_CLI.md](/home/auro/code/warcraft_cli/docs/METHOD_CLI.md)
+- [ICY_VEINS_CLI.md](/home/auro/code/warcraft_cli/docs/ICY_VEINS_CLI.md)
+- [RAIDERIO_CLI.md](/home/auro/code/warcraft_cli/docs/RAIDERIO_CLI.md)
+- [WOWPROGRESS_CLI.md](/home/auro/code/warcraft_cli/docs/WOWPROGRESS_CLI.md)
+- [WARCRAFT_WIKI_CLI.md](/home/auro/code/warcraft_cli/docs/WARCRAFT_WIKI_CLI.md)
+- [WARCRAFTLOGS_CLI.md](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI.md)
+- [SIMC_CLI.md](/home/auro/code/warcraft_cli/docs/SIMC_CLI.md)
+- [BLIZZARD_API_CLI.md](/home/auro/code/warcraft_cli/docs/BLIZZARD_API_CLI.md)
+- [UNDERMINE_EXCHANGE_CLI.md](/home/auro/code/warcraft_cli/docs/UNDERMINE_EXCHANGE_CLI.md)
+- [RAIDPLAN_CLI.md](/home/auro/code/warcraft_cli/docs/RAIDPLAN_CLI.md)
+- [CURSEFORGE_CLI.md](/home/auro/code/warcraft_cli/docs/CURSEFORGE_CLI.md)
+- [RAIDBOTS_CLI.md](/home/auro/code/warcraft_cli/docs/RAIDBOTS_CLI.md)
 
 ## Usage And Research
 

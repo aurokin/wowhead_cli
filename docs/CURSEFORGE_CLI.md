@@ -1,4 +1,4 @@
-# CurseForge CLI Plan
+# CurseForge CLI
 
 ## Why It Matters
 

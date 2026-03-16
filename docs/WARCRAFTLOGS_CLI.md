@@ -1,4 +1,4 @@
-# Warcraft Logs CLI Plan
+# Warcraft Logs CLI
 
 ## Goal
 
@@ -6,7 +6,7 @@ Build `warcraftlogs` as an official API-first provider for Warcraft Logs using t
 
 Repo-wide product philosophy lives in [PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/PRODUCT_PRINCIPLES.md).
 Repo-wide analytics and comparison safety rules live in [SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/SAFE_ANALYTICS_RULES.md).
-This file tracks Warcraft Logs-specific implementation state, boundaries, and next steps.
+This file tracks Warcraft Logs-specific implementation state, boundaries, and current gaps.
 
 The CLI should become the fastest trustworthy path for:
 - guild progression and ranking lookups
@@ -128,7 +128,7 @@ This means `warcraftlogs` should be planned as an official integration first, wi
 
 Shared auth direction for this provider is defined in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/warcraft_cli/docs/AUTH_ARCHITECTURE_PLAN.md). `warcraftlogs` is one of the two providers that should define the shared OAuth-oriented auth architecture.
 
-## Immediate Next Steps
+## Known Gaps And Deferred Coverage
 
 Highest-value next implementation slices:
 - make `character-rankings` more reliable across public characters before treating it as fully validated

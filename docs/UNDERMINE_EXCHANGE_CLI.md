@@ -1,4 +1,4 @@
-# Undermine Exchange CLI Plan
+# Undermine Exchange CLI
 
 ## Why Add It
 
