@@ -161,6 +161,7 @@ def _doctor_payload() -> dict[str, Any]:
             "report_encounter_casts": "ready",
             "report_encounter_buffs": "ready",
             "report_encounter_aura_summary": "ready",
+            "report_encounter_aura_compare": "ready",
             "report_encounter_damage_breakdown": "ready",
             "character": "ready",
             "character_rankings": "ready",
@@ -834,6 +835,11 @@ def _encounter_filter_options(
         "end_time": end_time,
     }
     return options, query
+
+
+def _require_explicit_window(ctx: typer.Context, *, name: str, start_ms: float | None, end_ms: float | None) -> None:
+    if start_ms is None or end_ms is None:
+        _fail(ctx, "invalid_query", f"{name} requires both a start and end window offset in milliseconds.")
 
 
 def _master_data_indexes(report: dict[str, Any]) -> tuple[dict[int, dict[str, Any]], dict[int, dict[str, Any]]]:
@@ -2076,6 +2082,62 @@ def _report_encounter_aura_summary_payload(
             "rows": rows_out,
         },
     }
+
+
+def _aura_compare_rows(
+    *,
+    left_rows: list[dict[str, Any]],
+    right_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    def _row_key(row: dict[str, Any]) -> tuple[int | None, str]:
+        source = row.get("source") if isinstance(row.get("source"), dict) else {}
+        source_id = source.get("id") if isinstance(source.get("id"), int) else None
+        source_name = str(source.get("name") or "")
+        return source_id, source_name
+
+    left_index = {_row_key(row): row for row in left_rows if isinstance(row, dict)}
+    right_index = {_row_key(row): row for row in right_rows if isinstance(row, dict)}
+    combined_keys = sorted(set(left_index) | set(right_index), key=lambda item: (str(item[1]).lower(), item[0] or 0))
+    compared: list[dict[str, Any]] = []
+    for key in combined_keys:
+        left = left_index.get(key)
+        right = right_index.get(key)
+        left_total = left.get("reported_total") if isinstance(left, dict) else None
+        right_total = right.get("reported_total") if isinstance(right, dict) else None
+        left_active = left.get("reported_active_time") if isinstance(left, dict) else None
+        right_active = right.get("reported_active_time") if isinstance(right, dict) else None
+        compared.append(
+            {
+                "source": (
+                    left.get("source")
+                    if isinstance(left, dict) and isinstance(left.get("source"), dict)
+                    else (right.get("source") if isinstance(right, dict) and isinstance(right.get("source"), dict) else {"id": key[0], "name": key[1]})
+                ),
+                "left_reported_total": left_total,
+                "right_reported_total": right_total,
+                "reported_total_delta": (
+                    round(float(right_total) - float(left_total), 2)
+                    if isinstance(left_total, (int, float)) and isinstance(right_total, (int, float))
+                    else None
+                ),
+                "left_reported_active_time": left_active,
+                "right_reported_active_time": right_active,
+                "reported_active_time_delta": (
+                    int(right_active) - int(left_active)
+                    if isinstance(left_active, (int, float)) and isinstance(right_active, (int, float))
+                    else None
+                ),
+                "left_row": left,
+                "right_row": right,
+            }
+        )
+    compared.sort(
+        key=lambda row: (
+            -abs(float(row["reported_total_delta"])) if isinstance(row.get("reported_total_delta"), (int, float)) else -1.0,
+            str(((row.get("source") or {}).get("name") or "")),
+        )
+    )
+    return compared
 
 
 def _character_rankings_payload(character: dict[str, Any], *, top: int) -> dict[str, Any]:
@@ -3706,6 +3768,128 @@ def report_encounter_aura_summary(
                 master_report=master_report,
                 ability_id=ability_id,
             ),
+        },
+    )
+
+
+@app.command("report-encounter-aura-compare")
+def report_encounter_aura_compare(
+    ctx: typer.Context,
+    reference: str,
+    ability_id: int = typer.Option(..., "--ability-id", help="Required aura ability game ID."),
+    fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
+    left_window_start_ms: float | None = typer.Option(None, "--left-window-start-ms", help="Encounter-relative start offset for the left comparison window."),
+    left_window_end_ms: float | None = typer.Option(None, "--left-window-end-ms", help="Encounter-relative end offset for the left comparison window."),
+    right_window_start_ms: float | None = typer.Option(None, "--right-window-start-ms", help="Encounter-relative start offset for the right comparison window."),
+    right_window_end_ms: float | None = typer.Option(None, "--right-window-end-ms", help="Encounter-relative end offset for the right comparison window."),
+    left_label: str = typer.Option("left", "--left-label", help="Label for the left comparison window."),
+    right_label: str = typer.Option("right", "--right-label", help="Label for the right comparison window."),
+    source_id: int | None = typer.Option(None, "--source-id", help="Optional source actor filter applied to both windows."),
+    target_id: int | None = typer.Option(None, "--target-id", help="Optional target actor filter applied to both windows."),
+    hostility_type: str | None = typer.Option(None, "--hostility-type", help="Optional hostility filter applied to both windows."),
+    wipe_cutoff: int | None = typer.Option(None, "--wipe-cutoff", help="Optional wipe cutoff applied to both windows."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    _require_explicit_window(ctx, name="--left-window", start_ms=left_window_start_ms, end_ms=left_window_end_ms)
+    _require_explicit_window(ctx, name="--right-window", start_ms=right_window_start_ms, end_ms=right_window_end_ms)
+    client = _client(ctx)
+    try:
+        ref, report, fight, encounter = _resolve_encounter_scope(
+            ctx,
+            client=client,
+            reference=reference,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+        )
+        normalized_hostility_type = _normalize_graphql_enum(hostility_type)
+        left_options, left_query = _encounter_filter_options(
+            ctx,
+            fight=fight,
+            ability_id=float(ability_id),
+            data_type="Buffs",
+            source_id=source_id,
+            target_id=target_id,
+            hostility_type=normalized_hostility_type,
+            translate=translate,
+            view_by="Source",
+            wipe_cutoff=wipe_cutoff,
+            window_start_ms=left_window_start_ms,
+            window_end_ms=left_window_end_ms,
+        )
+        right_options, right_query = _encounter_filter_options(
+            ctx,
+            fight=fight,
+            ability_id=float(ability_id),
+            data_type="Buffs",
+            source_id=source_id,
+            target_id=target_id,
+            hostility_type=normalized_hostility_type,
+            translate=translate,
+            view_by="Source",
+            wipe_cutoff=wipe_cutoff,
+            window_start_ms=right_window_start_ms,
+            window_end_ms=right_window_end_ms,
+        )
+        left_table = client.report_table(code=ref.code, allow_unlisted=allow_unlisted, options=left_options)
+        right_table = client.report_table(code=ref.code, allow_unlisted=allow_unlisted, options=right_options)
+        master_report = client.report_master_data(code=ref.code, allow_unlisted=allow_unlisted, actor_type="Player")
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+
+    left_payload = _report_encounter_aura_summary_payload(
+        report=report,
+        fight=fight,
+        table_report=left_table,
+        master_report=master_report,
+        ability_id=ability_id,
+    )
+    right_payload = _report_encounter_aura_summary_payload(
+        report=report,
+        fight=fight,
+        table_report=right_table,
+        master_report=master_report,
+        ability_id=ability_id,
+    )
+
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "kind": "report_encounter_aura_compare",
+            "query": {
+                "ability_id": float(ability_id),
+                "source_id": source_id,
+                "target_id": target_id,
+                "hostility_type": normalized_hostility_type,
+                "translate": translate,
+                "wipe_cutoff": wipe_cutoff,
+            },
+            **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
+            "aura": left_payload.get("aura"),
+            "windows": [
+                {
+                    "label": left_label,
+                    "query": left_query,
+                    "aura_summary": left_payload.get("aura_summary"),
+                },
+                {
+                    "label": right_label,
+                    "query": right_query,
+                    "aura_summary": right_payload.get("aura_summary"),
+                },
+            ],
+            "comparison": {
+                "matching_rule": "same_report_same_fight_same_ability_explicit_windows",
+                "rows": _aura_compare_rows(
+                    left_rows=(left_payload.get("aura_summary") or {}).get("rows") if isinstance(left_payload.get("aura_summary"), dict) else [],
+                    right_rows=(right_payload.get("aura_summary") or {}).get("rows") if isinstance(right_payload.get("aura_summary"), dict) else [],
+                ),
+            },
         },
     )
 

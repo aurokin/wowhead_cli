@@ -499,6 +499,7 @@ warcraftlogs report-encounter-players 'https://www.warcraftlogs.com/reports/abcd
 warcraftlogs report-encounter-casts 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --preview-limit 20
 warcraftlogs report-encounter-buffs 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --view-by source
 warcraftlogs report-encounter-aura-summary 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --ability-id 20473 --window-start-ms 30000 --window-end-ms 90000
+warcraftlogs report-encounter-aura-compare 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --ability-id 20473 --left-window-start-ms 30000 --left-window-end-ms 90000 --right-window-start-ms 90000 --right-window-end-ms 150000
 warcraftlogs report-encounter-damage-breakdown 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --window-start-ms 30000 --window-end-ms 90000
 warcraftlogs boss-kills --zone-id 38 --boss-id 3012 --difficulty 5 --top 10
 warcraftlogs top-kills --zone-id 38 --boss-name 'Dimensius' --difficulty 5 --top 5
@@ -575,6 +576,12 @@ EOF
   - it requires one explicit `--ability-id`
   - it stays on one selected encounter plus optional encounter-relative windowing
   - it returns typed source rows with preserved reported buff-table fields instead of asking agents to infer aura windows from raw events
+- `report-encounter-aura-compare` is the strict comparison layer on top of that:
+  - same report
+  - same fight
+  - same explicit aura
+  - two fully explicit encounter-relative windows
+  - typed per-source deltas instead of inferred pull-to-pull comparisons
 - `boss-kills`, `top-kills`, `kill-time-distribution`, `boss-spec-usage`, `comp-samples`, and `ability-usage-summary` are the current sampled cross-report analytics slice:
   - they sample public finished reports for one zone
   - they rank within the sampled cohort, not all possible Warcraft Logs data
