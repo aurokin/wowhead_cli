@@ -71,6 +71,7 @@ Implemented today:
   - `warcraftlogs top-kills`
   - `warcraftlogs kill-time-distribution`
   - `warcraftlogs boss-spec-usage`
+  - `warcraftlogs ability-usage-summary`
 - unit coverage for the current JSON contract
 - live coverage for:
   - `auth status`
@@ -99,8 +100,7 @@ Implemented today:
   - `auth whoami` when user auth is configured
 
 Current intentional boundary:
-- standalone only for now
-- not yet wired into the `warcraft` wrapper
+- wrapped plus standalone, but wrapper discovery is still intentionally narrow
 - retail/main site profile only
 - public data surface first, with only limited user-endpoint verification via `warcraftlogs auth whoami`
 - typed fields only; no raw GraphQL passthrough
@@ -130,11 +130,11 @@ Highest-value next implementation slices:
   - current shipped slice covers encounter identity plus typed player/cast/buff/damage summaries
   - next: wave and phase summaries so agents do not have to derive unstable segments from raw timestamps
 - continue the multi-report analytics slice beyond the current sampled cohort commands:
-  - current shipped slice covers `boss-kills`, `top-kills`, `kill-time-distribution`, and `boss-spec-usage`
+  - current shipped slice covers `boss-kills`, `top-kills`, `kill-time-distribution`, `boss-spec-usage`, and `ability-usage-summary`
   - stronger top-kill discovery semantics beyond sampled fastest kills
   - spec-filtered kill samples
   - kill-time-bounded report cohorts
-  - cross-report composition and ability summaries
+  - cross-report composition summaries
 
 After that:
 - user-auth plumbing

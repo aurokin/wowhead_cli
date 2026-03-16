@@ -642,6 +642,25 @@ class _FakeWarcraftLogsClient:
         assert code == "abcd1234"
         assert allow_unlisted is False
         assert options.data_type == "Casts"
+        if options.ability_id is not None:
+            assert options.ability_id == 20473.0
+            assert options.encounter_id == 3012
+            assert options.fight_ids == [1]
+            assert options.kill_type == "Kills"
+            assert options.limit == 200
+            rows = [
+                {"type": "cast", "timestamp": 120000, "sourceID": 9, "targetID": 501, "abilityGameID": 20473},
+                {"type": "cast", "timestamp": 145000, "sourceID": 9, "targetID": 501, "abilityGameID": 20473},
+            ]
+            return {
+                "code": "abcd1234",
+                "title": "Manaforge Omega - Liquid",
+                "zone": {"id": 38, "name": "Manaforge Omega"},
+                "events": {
+                    "data": rows,
+                    "nextPageTimestamp": 999.0,
+                },
+            }
         assert options.encounter_id == 3012
         if options.fight_ids == [1, 2]:
             assert options.difficulty == 5
@@ -848,6 +867,7 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["capabilities"]["resolve"] == "ready_explicit_report_only"
     assert payload["capabilities"]["report_fights"] == "ready"
     assert payload["capabilities"]["boss_spec_usage"] == "ready"
+    assert payload["capabilities"]["ability_usage_summary"] == "ready"
     assert payload["capabilities"]["report_encounter_buffs"] == "ready"
     assert payload["capabilities"]["report_encounter_damage_breakdown"] == "ready"
 
@@ -1503,6 +1523,39 @@ def test_warcraftlogs_boss_spec_usage_returns_sorted_spec_rows(monkeypatch) -> N
     assert payload["spec_usage"][0]["role"] == "tanks"
     assert payload["spec_usage"][0]["kill_presence_count"] == 1
     assert payload["spec_usage"][0]["percent_of_kills"] == 100.0
+
+
+def test_warcraftlogs_ability_usage_summary_returns_sampled_cast_summary(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "ability-usage-summary",
+            "--zone-id",
+            "38",
+            "--boss-id",
+            "3012",
+            "--difficulty",
+            "5",
+            "--ability-id",
+            "20473",
+            "--preview-limit",
+            "5",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "ability_usage_summary"
+    assert payload["query"]["ability_id"] == 20473
+    assert payload["ability"]["game_id"] == 20473
+    assert payload["ability"]["name"] == "Holy Shock"
+    assert payload["usage"]["total_casts"] == 2
+    assert payload["usage"]["kills_with_any_usage_count"] == 1
+    assert payload["usage"]["kills_with_any_usage_percent"] == 100.0
+    assert payload["kills_preview"][0]["casts"]["count"] == 2
+    assert payload["kills_preview"][0]["casts"]["sources"][0]["count"] == 2
+    assert payload["kills_preview"][0]["casts"]["sources"][0]["source"]["name"] == "Auropower"
 
 
 def test_warcraftlogs_cross_report_commands_require_boss_scope(monkeypatch) -> None:

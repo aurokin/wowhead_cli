@@ -53,13 +53,14 @@ Best fits:
   - `warcraftlogs top-kills --zone-id ... --boss-id ... --difficulty ...`
   - `warcraftlogs kill-time-distribution --zone-id ... --boss-id ... --difficulty ...`
   - `warcraftlogs boss-spec-usage --zone-id ... --boss-id ... --difficulty ...`
+  - `warcraftlogs ability-usage-summary --zone-id ... --boss-id ... --difficulty ... --ability-id ...`
 
 ## Current Boundaries
 
 - current support is retail/main site only
 - public OAuth client credentials are the default auth mode
 - manual user-auth groundwork now exists for authorization-code and PKCE exchange
-- current surface is standalone; wrapper integration is deferred
+- current surface works both standalone and through the root `warcraft` wrapper, but wrapper discovery is still intentionally narrow
 - current commands use typed payloads, not raw GraphQL passthrough
 
 ## Inputs
@@ -116,6 +117,7 @@ Best fits:
   - `warcraftlogs top-kills --zone-id 38 --boss-name Dimensius --difficulty 5 --top 5`
   - `warcraftlogs kill-time-distribution --zone-id 38 --boss-id 3012 --difficulty 5 --bucket-seconds 30`
   - `warcraftlogs boss-spec-usage --zone-id 38 --boss-id 3012 --difficulty 5 --top 10`
+  - `warcraftlogs ability-usage-summary --zone-id 38 --boss-id 3012 --difficulty 5 --ability-id 20473 --preview-limit 5`
 
 ## Notes
 
@@ -138,6 +140,7 @@ Best fits:
 - `report-rankings` can legitimately return zero rows for a valid public report slice
 - `boss-kills`, `top-kills`, and `kill-time-distribution` are sampled cross-report analytics, not a promise that the CLI searched every possible public report
 - `boss-spec-usage` is also sampled cross-report analytics; it reports spec presence within the filtered finished-kill cohort, not a site-wide meta snapshot
+- `ability-usage-summary` is sampled cross-report analytics too; it reports explicit cast counts for one requested `--ability-id` across the filtered finished-kill cohort
 - those sampled analytics intentionally skip unfinished live reports and surface sample/truncation metadata instead of faking global certainty
 - `warcraftlogs auth status` is the first place to check when auth looks wrong; it shows credential source and whether any persisted auth state exists
 - `warcraftlogs auth login --redirect-uri ...` and `warcraftlogs auth pkce-login --redirect-uri ...` are two-step flows:

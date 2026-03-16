@@ -154,6 +154,7 @@ def _doctor_payload() -> dict[str, Any]:
             "top_kills": "ready",
             "kill_time_distribution": "ready",
             "boss_spec_usage": "ready",
+            "ability_usage_summary": "ready",
             "report_encounter": "ready",
             "report_encounter_players": "ready",
             "report_encounter_casts": "ready",
@@ -1375,6 +1376,171 @@ def _boss_spec_usage_payload(
         },
         "count": len(returned),
         "spec_usage": returned,
+    }
+
+
+def _collect_ability_usage_rows(
+    *,
+    client: WarcraftLogsClient,
+    zone_id: int,
+    boss_id: int | None,
+    boss_name: str | None,
+    difficulty: int | None,
+    spec_name: str | None,
+    kill_time_min: float | None,
+    kill_time_max: float | None,
+    report_pages: int,
+    reports_per_page: int,
+    start_time: float | None,
+    end_time: float | None,
+    guild_region: str | None,
+    guild_realm: str | None,
+    guild_name: str | None,
+    ability_id: int,
+    event_limit: int,
+) -> dict[str, Any]:
+    analytics = _collect_boss_kill_rows(
+        client=client,
+        zone_id=zone_id,
+        boss_id=boss_id,
+        boss_name=boss_name,
+        difficulty=difficulty,
+        spec_name=spec_name,
+        kill_time_min=kill_time_min,
+        kill_time_max=kill_time_max,
+        report_pages=report_pages,
+        reports_per_page=reports_per_page,
+        start_time=start_time,
+        end_time=end_time,
+        guild_region=guild_region,
+        guild_realm=guild_realm,
+        guild_name=guild_name,
+    )
+    master_cache: dict[str, dict[str, Any]] = {}
+    usage_rows: list[dict[str, Any]] = []
+    resolved_ability: dict[str, Any] | None = None
+
+    for row in analytics["rows"]:
+        report_payload = row.get("report") if isinstance(row.get("report"), dict) else {}
+        fight_payload = row.get("fight") if isinstance(row.get("fight"), dict) else {}
+        report_code = report_payload.get("code")
+        fight_id = fight_payload.get("id")
+        encounter_id = fight_payload.get("encounter_id")
+        if not isinstance(report_code, str) or not isinstance(fight_id, int):
+            continue
+        master_report = master_cache.get(report_code)
+        if master_report is None:
+            master_report = client.report_master_data(code=report_code, allow_unlisted=False, actor_type="Player")
+            master_cache[report_code] = master_report
+        actor_index, ability_index = _master_data_indexes(master_report)
+        if resolved_ability is None:
+            resolved_ability = _named_ability(ability_index, ability_id, source="ability_usage_summary")
+        events_report = client.report_events(
+            code=report_code,
+            allow_unlisted=False,
+            options=ReportFilterOptions(
+                ability_id=float(ability_id),
+                data_type="Casts",
+                encounter_id=int(encounter_id) if isinstance(encounter_id, int) else None,
+                fight_ids=[fight_id],
+                kill_type="Kills",
+                limit=event_limit,
+            ),
+        )
+        paginator = events_report.get("events") if isinstance(events_report.get("events"), dict) else {}
+        event_rows = paginator.get("data") if isinstance(paginator.get("data"), list) else []
+        source_counts: dict[int, int] = {}
+        for event in event_rows:
+            if not isinstance(event, dict):
+                continue
+            source_id = _event_id(event.get("sourceID"))
+            if isinstance(source_id, int):
+                source_counts[source_id] = source_counts.get(source_id, 0) + 1
+        usage_rows.append(
+            {
+                **row,
+                "casts": {
+                    "count": len([event for event in event_rows if isinstance(event, dict)]),
+                    "next_page_timestamp": paginator.get("nextPageTimestamp"),
+                    "sources": [
+                        {
+                            "count": count,
+                            "source": _named_actor(
+                                actor_index,
+                                source_id,
+                                report_code=report_code,
+                                fight_id=fight_id,
+                                source="ability_usage_summary",
+                            ),
+                        }
+                        for source_id, count in sorted(source_counts.items(), key=lambda item: (-item[1], item[0]))
+                    ],
+                },
+            }
+        )
+
+    if resolved_ability is None:
+        resolved_ability = {
+            "game_id": ability_id,
+            "name": f"ability:{ability_id}",
+            "identity_contract": ability_identity_payload(
+                game_id=ability_id,
+                name=f"ability:{ability_id}",
+                provider="warcraftlogs",
+                source="ability_usage_summary",
+                notes=["ability id was filtered explicitly but was not present in sampled master data"],
+            ),
+        }
+    return {
+        "rows": usage_rows,
+        "sample": analytics["sample"],
+        "ability": resolved_ability,
+    }
+
+
+def _ability_usage_summary_payload(
+    *,
+    rows: list[dict[str, Any]],
+    sample: dict[str, Any],
+    query: dict[str, Any],
+    ability: dict[str, Any],
+    preview_limit: int,
+    event_limit: int,
+) -> dict[str, Any]:
+    cast_counts = [
+        int(casts.get("count"))
+        for casts in (row.get("casts") for row in rows)
+        if isinstance(casts, dict) and isinstance(casts.get("count"), int)
+    ]
+    used_counts = [count for count in cast_counts if count > 0]
+    preview = rows[:preview_limit]
+    return {
+        "ok": True,
+        "provider": "warcraftlogs",
+        "kind": "ability_usage_summary",
+        "ranking_basis": "sampled_fastest_kills",
+        "query": {
+            **query,
+            "event_limit": event_limit,
+            "preview_limit": preview_limit,
+        },
+        "sample": {
+            **sample,
+            "filtered_kill_count": len(rows),
+            "preview_kill_count": len(preview),
+            "excluded_preview_kill_count": max(0, len(rows) - len(preview)),
+            "preview_truncated": len(rows) > preview_limit,
+            "stable_source_only": True,
+        },
+        "ability": ability,
+        "usage": {
+            "total_casts": sum(cast_counts),
+            "kills_with_any_usage_count": len(used_counts),
+            "kills_with_any_usage_percent": round((len(used_counts) / len(rows)) * 100, 2) if rows else 0.0,
+            "casts_per_kill": numeric_summary([float(count) for count in cast_counts]),
+            "casts_per_used_kill": numeric_summary([float(count) for count in used_counts]),
+        },
+        "kills_preview": preview,
     }
 
 
@@ -2810,6 +2976,83 @@ def boss_spec_usage(
                 guild_name=guild_name,
             ),
             top=top,
+        ),
+    )
+
+
+@app.command("ability-usage-summary")
+def ability_usage_summary(
+    ctx: typer.Context,
+    zone_id: int = typer.Option(..., "--zone-id", help="Warcraft Logs zone ID to sample reports from."),
+    ability_id: int = typer.Option(..., "--ability-id", help="Ability game ID to summarize across the sampled kill cohort."),
+    boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
+    boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants before aggregation."),
+    kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
+    kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
+    preview_limit: int = typer.Option(10, "--preview-limit", min=1, max=100, help="Maximum sampled kill rows to include in the preview payload."),
+    event_limit: int = typer.Option(200, "--event-limit", min=1, max=5000, help="Maximum cast events to request per sampled kill."),
+    report_pages: int = typer.Option(1, "--report-pages", min=1, max=10, help="How many report-list pages to sample."),
+    reports_per_page: int = typer.Option(25, "--reports-per-page", min=1, max=100, help="Reports to fetch per sampled page."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional report-range start time in milliseconds."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional report-range end time in milliseconds."),
+    guild_region: str | None = typer.Option(None, "--guild-region", help="Optional guild-region scope for report discovery."),
+    guild_realm: str | None = typer.Option(None, "--guild-realm", help="Optional guild-realm scope for report discovery."),
+    guild_name: str | None = typer.Option(None, "--guild-name", help="Optional guild-name scope for report discovery."),
+) -> None:
+    _require_boss_scope(ctx, boss_id=boss_id, boss_name=boss_name)
+    client = _client(ctx)
+    try:
+        analytics = _collect_ability_usage_rows(
+            client=client,
+            zone_id=zone_id,
+            boss_id=boss_id,
+            boss_name=boss_name,
+            difficulty=difficulty,
+            spec_name=spec_name,
+            kill_time_min=kill_time_min,
+            kill_time_max=kill_time_max,
+            report_pages=report_pages,
+            reports_per_page=reports_per_page,
+            start_time=start_time,
+            end_time=end_time,
+            guild_region=guild_region,
+            guild_realm=guild_realm,
+            guild_name=guild_name,
+            ability_id=ability_id,
+            event_limit=event_limit,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        _ability_usage_summary_payload(
+            rows=analytics["rows"],
+            sample=analytics["sample"],
+            query={
+                "zone_id": zone_id,
+                "ability_id": ability_id,
+                "boss_id": boss_id,
+                "boss_name": boss_name,
+                "difficulty": difficulty,
+                "spec_name": spec_name,
+                "kill_time_min": kill_time_min,
+                "kill_time_max": kill_time_max,
+                "report_pages": report_pages,
+                "reports_per_page": reports_per_page,
+                "start_time": start_time,
+                "end_time": end_time,
+                "guild_region": guild_region,
+                "guild_realm": guild_realm,
+                "guild_name": guild_name,
+            },
+            ability=analytics["ability"],
+            preview_limit=preview_limit,
+            event_limit=event_limit,
         ),
     )
 
