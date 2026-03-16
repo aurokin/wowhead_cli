@@ -695,9 +695,9 @@ class _FakeWarcraftLogsClient:
         if options.encounter_id == 3012:
             assert allow_unlisted is False
             assert options.fight_ids == [1]
-            assert options.view_by == "Source"
             assert options.kill_type == "Kills"
             if options.data_type == "Buffs" and options.ability_id is not None:
+                assert options.view_by == "Source"
                 assert options.ability_id == 20473.0
                 if options.start_time == 150000.0 and options.end_time == 190000.0:
                     entries = [
@@ -749,6 +749,18 @@ class _FakeWarcraftLogsClient:
                     "table": {"entries": entries},
                 }
             if options.data_type == "DamageDone":
+                assert options.view_by in {"Source", "Target"}
+                if options.view_by == "Target":
+                    entries = [
+                        {"id": 501, "name": "Dimensius, the All-Devouring", "total": 210000},
+                        {"id": 777, "name": "Unstable Voidling", "total": 13456},
+                    ]
+                    return {
+                        "code": "abcd1234",
+                        "title": "Manaforge Omega - Liquid",
+                        "zone": {"id": 38, "name": "Manaforge Omega"},
+                        "table": {"entries": entries},
+                    }
                 entries = [
                     {"id": 9, "name": "Auropower", "total": 123456},
                     {"id": 1, "name": "Sherway", "total": 100000},
@@ -798,7 +810,7 @@ class _FakeWarcraftLogsClient:
     ) -> dict[str, object]:
         assert code == "abcd1234"
         assert allow_unlisted is False
-        assert actor_type == "Player"
+        assert actor_type in {None, "Player"}
         if actor_sub_type is not None:
             assert translate is False
             assert actor_sub_type == "Paladin"
@@ -945,6 +957,7 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["capabilities"]["report_encounter_aura_summary"] == "ready"
     assert payload["capabilities"]["report_encounter_aura_compare"] == "ready"
     assert payload["capabilities"]["report_encounter_damage_source_summary"] == "ready"
+    assert payload["capabilities"]["report_encounter_damage_target_summary"] == "ready"
     assert payload["capabilities"]["report_encounter_damage_breakdown"] == "ready"
 
 
@@ -1912,6 +1925,23 @@ def test_warcraftlogs_report_encounter_damage_source_summary_returns_typed_rows(
     assert payload["damage_summary"]["rows"][0]["source"]["name"] == "Auropower"
     assert payload["damage_summary"]["rows"][0]["reported_total"] == 123456
     assert payload["damage_summary"]["rows"][0]["source"]["identity_contract"]["status"] == "canonical"
+
+
+def test_warcraftlogs_report_encounter_damage_target_summary_returns_typed_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-encounter-damage-target-summary", "abcd1234", "--fight-id", "1"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "report_encounter_damage_target_summary"
+    assert payload["query"]["view_by"] == "Target"
+    assert payload["damage_summary"]["entry_count"] == 2
+    assert payload["damage_summary"]["rows"][0]["target"]["name"] == "Dimensius, the All-Devouring"
+    assert payload["damage_summary"]["rows"][0]["reported_total"] == 210000
+    assert payload["damage_summary"]["rows"][0]["target"]["identity_contract"]["status"] == "canonical"
 
 
 def test_warcraftlogs_report_events_requires_scope(monkeypatch) -> None:
