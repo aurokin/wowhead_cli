@@ -162,6 +162,7 @@ def _doctor_payload() -> dict[str, Any]:
             "report_encounter_buffs": "ready",
             "report_encounter_aura_summary": "ready",
             "report_encounter_aura_compare": "ready",
+            "report_encounter_damage_source_summary": "ready",
             "report_encounter_damage_breakdown": "ready",
             "character": "ready",
             "character_rankings": "ready",
@@ -2084,6 +2085,45 @@ def _report_encounter_aura_summary_payload(
     }
 
 
+def _report_encounter_damage_source_summary_payload(
+    *,
+    report: dict[str, Any],
+    fight: dict[str, Any],
+    table_report: dict[str, Any],
+    master_report: dict[str, Any],
+) -> dict[str, Any]:
+    actor_index, _ability_index = _master_data_indexes(master_report)
+    rows_out: list[dict[str, Any]] = []
+    for entry in _report_table_entries(table_report):
+        source_id = entry.get("id") if isinstance(entry.get("id"), int) else None
+        rows_out.append(
+            {
+                "source": _named_actor(
+                    actor_index,
+                    source_id,
+                    report_code=report.get("code") if isinstance(report.get("code"), str) else None,
+                    fight_id=fight.get("id") if isinstance(fight.get("id"), int) else None,
+                    source="report_encounter_damage_source_summary",
+                ) if source_id is not None else {"id": None, "name": entry.get("name")},
+                "reported_total": entry.get("total"),
+                "raw_entry": entry,
+            }
+        )
+    rows_out.sort(
+        key=lambda row: (
+            -(float(row["reported_total"]) if isinstance(row.get("reported_total"), (int, float)) else float("-inf")),
+            str(((row.get("source") or {}).get("name") or "")),
+        )
+    )
+    return {
+        "report": _report_brief_payload(table_report),
+        "damage_summary": {
+            "entry_count": len(rows_out),
+            "rows": rows_out,
+        },
+    }
+
+
 def _aura_compare_rows(
     *,
     left_rows: list[dict[str, Any]],
@@ -3890,6 +3930,70 @@ def report_encounter_aura_compare(
                     right_rows=(right_payload.get("aura_summary") or {}).get("rows") if isinstance(right_payload.get("aura_summary"), dict) else [],
                 ),
             },
+        },
+    )
+
+
+@app.command("report-encounter-damage-source-summary")
+def report_encounter_damage_source_summary(
+    ctx: typer.Context,
+    reference: str,
+    fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
+    source_id: int | None = typer.Option(None, "--source-id", help="Optional source actor filter."),
+    target_id: int | None = typer.Option(None, "--target-id", help="Optional target actor filter."),
+    ability_id: float | None = typer.Option(None, "--ability-id", help="Optional ability game ID filter."),
+    hostility_type: str | None = typer.Option(None, "--hostility-type", help="Optional hostility filter."),
+    wipe_cutoff: int | None = typer.Option(None, "--wipe-cutoff", help="Optional wipe cutoff."),
+    window_start_ms: float | None = typer.Option(None, "--window-start-ms", help="Optional encounter-relative start offset in milliseconds."),
+    window_end_ms: float | None = typer.Option(None, "--window-end-ms", help="Optional encounter-relative end offset in milliseconds."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    client = _client(ctx)
+    try:
+        ref, report, fight, encounter = _resolve_encounter_scope(
+            ctx,
+            client=client,
+            reference=reference,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+        )
+        normalized_hostility_type = _normalize_graphql_enum(hostility_type)
+        options, query = _encounter_filter_options(
+            ctx,
+            fight=fight,
+            ability_id=ability_id,
+            data_type="DamageDone",
+            source_id=source_id,
+            target_id=target_id,
+            hostility_type=normalized_hostility_type,
+            translate=translate,
+            view_by="Source",
+            wipe_cutoff=wipe_cutoff,
+            window_start_ms=window_start_ms,
+            window_end_ms=window_end_ms,
+        )
+        table_payload = client.report_table(code=ref.code, allow_unlisted=allow_unlisted, options=options)
+        master_report = client.report_master_data(code=ref.code, allow_unlisted=allow_unlisted, actor_type="Player")
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "kind": "report_encounter_damage_source_summary",
+            "query": query,
+            **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
+            **_report_encounter_damage_source_summary_payload(
+                report=report,
+                fight=fight,
+                table_report=table_payload,
+                master_report=master_report,
+            ),
         },
     )
 

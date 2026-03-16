@@ -748,6 +748,17 @@ class _FakeWarcraftLogsClient:
                     "zone": {"id": 38, "name": "Manaforge Omega"},
                     "table": {"entries": entries},
                 }
+            if options.data_type == "DamageDone":
+                entries = [
+                    {"id": 9, "name": "Auropower", "total": 123456},
+                    {"id": 1, "name": "Sherway", "total": 100000},
+                ]
+                return {
+                    "code": "abcd1234",
+                    "title": "Manaforge Omega - Liquid",
+                    "zone": {"id": 38, "name": "Manaforge Omega"},
+                    "table": {"entries": entries},
+                }
             if options.start_time is not None or options.end_time is not None:
                 assert options.start_time == 110000.0
                 assert options.end_time == 150000.0
@@ -933,6 +944,7 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["capabilities"]["report_encounter_buffs"] == "ready"
     assert payload["capabilities"]["report_encounter_aura_summary"] == "ready"
     assert payload["capabilities"]["report_encounter_aura_compare"] == "ready"
+    assert payload["capabilities"]["report_encounter_damage_source_summary"] == "ready"
     assert payload["capabilities"]["report_encounter_damage_breakdown"] == "ready"
 
 
@@ -1883,6 +1895,23 @@ def test_warcraftlogs_report_encounter_damage_breakdown_scopes_table_query(monke
     assert payload["query"]["data_type"] == "DamageDone"
     assert payload["query"]["fight_ids"] == [1]
     assert payload["table"]["entries"][0]["name"] == "Auropower"
+
+
+def test_warcraftlogs_report_encounter_damage_source_summary_returns_typed_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-encounter-damage-source-summary", "abcd1234", "--fight-id", "1"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "report_encounter_damage_source_summary"
+    assert payload["query"]["view_by"] == "Source"
+    assert payload["damage_summary"]["entry_count"] == 2
+    assert payload["damage_summary"]["rows"][0]["source"]["name"] == "Auropower"
+    assert payload["damage_summary"]["rows"][0]["reported_total"] == 123456
+    assert payload["damage_summary"]["rows"][0]["source"]["identity_contract"]["status"] == "canonical"
 
 
 def test_warcraftlogs_report_events_requires_scope(monkeypatch) -> None:
