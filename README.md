@@ -66,6 +66,7 @@ warcraft search "defias"
 warcraft resolve "fairbreeze favors"
 warcraft guide-compare ./tmp/method-mistweaver ./tmp/icy-mistweaver
 warcraft guide-compare-query "mistweaver monk guide"
+warcraft guide-compare-query "mistweaver monk guide" --simc-build-handoff --simc-apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 warcraft guide-builds-simc ./tmp/method-mistweaver
 warcraft guide-builds-simc ./tmp/method-mistweaver --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 warcraft wowhead guide 3143

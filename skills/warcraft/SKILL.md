@@ -21,6 +21,7 @@ Use `warcraft` first when the caller does not already know which provider they n
 - Cross-provider guide evidence:
   - `warcraft guide-compare <bundle-a> <bundle-b>`
   - `warcraft guide-compare-query "<guide query>"`
+  - `warcraft guide-compare-query "<guide query>" --simc-build-handoff --simc-apl-path <apl>`
   - `warcraft guide-builds-simc <bundle-or-orchestration-root>`
   - `warcraft guide-builds-simc <bundle-or-orchestration-root> --apl-path <apl>`
 
@@ -47,6 +48,7 @@ Use `warcraft` first when the caller does not already know which provider they n
 - Use `warcraft guide-compare-query` when you want the wrapper to resolve, export, and compare guide candidates conservatively across supported guide providers.
 - `guide-compare-query` may use a provider search fallback only when the top guide result is clearly decisive; it should not guess across weak or ambiguous guide candidates.
 - `guide-compare-query` should reuse prior orchestrated bundles only through explicit freshness rules like `--max-age-hours` and `--force-refresh`, not through invisible cache-like behavior.
+- Add `--simc-build-handoff` when you want the orchestration packet to include explicit guide build refs handed into `simc`; add `--simc-apl-path` when you also want exact-build `describe-build` output.
 - Use `warcraft guide-builds-simc` when you want explicit guide build refs handed into `simc` without inferring claims from guide prose.
 - Add `--apl-path` when you want the wrapper to include exact-build `simc describe-build` output for those same explicit guide build refs.
 - When `--expansion` matters, trust only the providers the wrapper says are included.

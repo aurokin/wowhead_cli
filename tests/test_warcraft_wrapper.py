@@ -586,6 +586,112 @@ def test_warcraft_guide_compare_query_refreshes_stale_orchestrated_bundles(
     assert len(invoke_calls) == 4
 
 
+def test_warcraft_guide_compare_query_can_include_simc_build_handoff(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    invoke_calls: list[tuple[str, list[str]]] = []
+    apl_path = tmp_path / "monk_mistweaver.simc"
+    apl_path.write_text("actions=spinning_crane_kick\n", encoding="utf-8")
+
+    def fake_provider_resolve(provider: str, query: str, *, limit: int = 5, expansion: str | None = None) -> dict[str, object]:
+        refs = {
+            "method": ("mistweaver-monk", "Method Mistweaver Monk Guide"),
+            "wowhead": ("mistweaver-monk", "Wowhead Mistweaver Monk Guide"),
+        }
+        ref, name = refs[provider]
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "resolved": True,
+                "confidence": "high",
+                "match": {
+                    "id": ref,
+                    "name": name,
+                    "entity_type": "guide",
+                    "url": f"https://example.test/{provider}/{ref}",
+                },
+                "next_command": f"{provider} guide {ref}",
+            },
+        }
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        invoke_calls.append((provider, args))
+        if provider in {"method", "wowhead"}:
+            export_dir = Path(args[3])
+            payload = _comparison_payload(
+                provider=provider,
+                slug=args[1],
+                page_url=f"https://example.test/{provider}/{args[1]}",
+                page_title=f"{provider} guide",
+                analysis_tags=["overview"] if provider == "wowhead" else ["builds_talents", "talent_recommendations"],
+                build_code="ABC123",
+            )
+            write_article_bundle(payload, provider=provider, export_dir=export_dir)
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {"output_dir": str(export_dir), "guide": payload["guide"]},
+                "stdout": "",
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {"provider": "simc", "kind": args[0]},
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_resolve", fake_provider_resolve)
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        [
+            "guide-compare-query",
+            "mistweaver monk guide",
+            "--provider",
+            "method",
+            "--provider",
+            "wowhead",
+            "--out-root",
+            str(tmp_path / "orchestrated"),
+            "--simc-build-handoff",
+            "--simc-apl-path",
+            str(apl_path),
+        ],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    handoff = payload["simc_build_handoff"]
+    assert handoff["kind"] == "guide_builds_simc_handoff"
+    assert handoff["source"]["kind"] == "orchestration_root"
+    assert handoff["bundle_count"] == 2
+    assert handoff["build_reference_count"] == 1
+    assert handoff["apl_path"] == str(apl_path)
+    assert len(handoff["builds"][0]["sources"]) == 2
+    assert handoff["builds"][0]["simc"]["identify"]["payload"]["kind"] == "identify-build"
+    assert handoff["builds"][0]["simc"]["decode"]["payload"]["kind"] == "decode-build"
+    assert handoff["builds"][0]["simc"]["describe"]["payload"]["kind"] == "describe-build"
+    assert invoke_calls == [
+        ("method", ["guide-export", "mistweaver-monk", "--out", str(tmp_path / "orchestrated" / "method")]),
+        ("wowhead", ["guide-export", "mistweaver-monk", "--out", str(tmp_path / "orchestrated" / "wowhead")]),
+        ("simc", ["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]),
+        ("simc", ["decode-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]),
+        (
+            "simc",
+            [
+                "describe-build",
+                "--apl-path",
+                str(apl_path),
+                "--build-text",
+                "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123",
+            ],
+        ),
+    ]
+
+
 def test_warcraft_guide_builds_simc_reads_bundle_build_refs(monkeypatch, tmp_path: Path) -> None:
     bundle_dir = tmp_path / "method-guide"
     write_article_bundle(

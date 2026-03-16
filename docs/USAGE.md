@@ -22,6 +22,7 @@ warcraft guild-history us "Mal'Ganis" gn
 warcraft guild-ranks us "Mal'Ganis" gn
 warcraft guide-compare ./tmp/method-mistweaver ./tmp/icy-mistweaver
 warcraft guide-compare-query "mistweaver monk guide"
+warcraft guide-compare-query "mistweaver monk guide" --simc-build-handoff --simc-apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 warcraft guide-builds-simc ./tmp/method-mistweaver
 warcraft guide-builds-simc ./tmp/method-mistweaver --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
 warcraft --expansion wotlk wowhead search "thunderfury"
@@ -78,6 +79,7 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - `warcraft guide-compare-query` conservatively resolves one guide per supported provider, exports those bundles locally, and then runs the same comparison packet over the exported evidence
 - when `guide-compare-query` cannot get a guide from provider `resolve`, it may fall back to provider `search`, but only when the top guide result is clearly stronger than the alternatives
 - `guide-compare-query` now writes an orchestration manifest under the output root and reuses existing bundles only when the same guide ref is still selected and the recorded export age is within `--max-age-hours`; use `--force-refresh` to bypass reuse
+- `guide-compare-query --simc-build-handoff` adds an explicit guide-build-to-`simc` evidence block derived only from exported `build_references`; use `--simc-apl-path` when you also want exact-build `simc describe-build` output in the same packet
 - `warcraft guide-builds-simc` reads explicit embedded guide build references from one exported guide bundle or a `guide-compare-query` output root, dedupes them, and hands those exact build refs to `simc identify-build` plus optional `simc decode-build`
 - `warcraft guide-builds-simc --apl-path <apl>` also runs `simc describe-build` for each explicit build ref so the handoff can include exact-build APL-backed detail without inferring claims from guide prose
 - `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
