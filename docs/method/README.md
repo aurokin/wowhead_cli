@@ -45,9 +45,11 @@ Current practical access model:
 - section pages are reachable from on-page guide navigation
 - premium/login are not needed for the supported guide content
 
-## Likely CLI Shape
+## CLI Commands
 
+- `method doctor`
 - `method search "<query>"`
+- `method resolve "<query>"`
 - `method guide <slug-or-url>`
 - `method guide-full <slug-or-url>`
 - `method guide-export <slug-or-url>`
@@ -96,8 +98,8 @@ Out of scope until there is a clear data reason:
 - search and resolve interfaces
 
 Validated after milestone 2:
-- article bundle export/load/query helpers are now shared in [warcraft_content.article_bundle](/home/auro/code/warcraft_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py)
-- article discovery payload helpers are now shared in [warcraft_content.article_discovery](/home/auro/code/warcraft_cli/packages/warcraft-content/src/warcraft_content/article_discovery.py)
+- article bundle export/load/query helpers are now shared in [warcraft_content.article_bundle](../../packages/warcraft-content/src/warcraft_content/article_bundle.py)
+- article discovery payload helpers are now shared in [warcraft_content.article_discovery](../../packages/warcraft-content/src/warcraft_content/article_discovery.py)
 
 ## What Should Only Be Shared After `method`
 
@@ -272,4 +274,4 @@ Keep four layers of coverage:
 ## Source Links
 
 - `https://www.method.gg/guides/mistweaver-monk`
-- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
+- [Roadmap](../ROADMAP.md)

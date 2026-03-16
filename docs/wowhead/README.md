@@ -1,8 +1,8 @@
 # Wowhead CLI
 
 Companion docs in this folder:
-- [ACCESS_METHODS.md](/home/auro/code/warcraft_cli/docs/wowhead/ACCESS_METHODS.md)
-- [EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/wowhead/EXPANSION_RESEARCH.md)
+- [ACCESS_METHODS.md](ACCESS_METHODS.md)
+- [EXPANSION_RESEARCH.md](EXPANSION_RESEARCH.md)
 
 ## Role In The Monorepo
 
@@ -300,6 +300,6 @@ But it should not define the shape of every other service. It should validate sh
 
 ## Source Links
 
-- [Usage](/home/auro/code/warcraft_cli/docs/USAGE.md)
-- [Access Methods](/home/auro/code/warcraft_cli/docs/wowhead/ACCESS_METHODS.md)
-- [Expansion Research](/home/auro/code/warcraft_cli/docs/wowhead/EXPANSION_RESEARCH.md)
+- [Usage](../USAGE.md)
+- [Access Methods](ACCESS_METHODS.md)
+- [Expansion Research](EXPANSION_RESEARCH.md)

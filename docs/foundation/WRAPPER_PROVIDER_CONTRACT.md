@@ -269,10 +269,11 @@ Current state:
 - `warcraft-wiki` is ready
 - `wowprogress` is ready for structured search, conservative resolve, and direct phase-1 retrieval
 - `simc` is ready for direct local repo workflows plus readonly APL inspection, conservative reasoning, comparison, analysis packets, and runtime timing helpers, with `search` and `resolve` intentionally returning structured `coming_soon` payloads
+- `warcraftlogs` is ready for explicit report-scoped wrapper routing with retail-only OAuth client-credentials auth, typed world metadata, guild, character, and report commands, plus conservative wrapper `search` and `resolve` limited to explicit report references
 
 ## Documentation Rule
 
 Whenever provider capabilities, provider readiness rules, or wrapper/provider boundaries change:
 - update this document
-- update [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md) if sequencing changes
-- update [Repo Structure And Packaging](/home/auro/code/warcraft_cli/docs/architecture/REPO_STRUCTURE_AND_PACKAGING.md) if package or language rules change
+- update [Roadmap](../ROADMAP.md) if sequencing changes
+- update [Repo Structure And Packaging](../architecture/REPO_STRUCTURE_AND_PACKAGING.md) if package or language rules change

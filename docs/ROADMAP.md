@@ -3,11 +3,11 @@
 This file is the sequencing document for the repo.
 
 Use other docs for stable reference material:
-- product philosophy: [PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/foundation/PRODUCT_PRINCIPLES.md)
-- analytics and comparison safety rules: [SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/foundation/SAFE_ANALYTICS_RULES.md)
-- shared identity semantics: [IDENTITY_CONTRACT.md](/home/auro/code/warcraft_cli/docs/foundation/IDENTITY_CONTRACT.md)
-- wrapper boundary: [WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/warcraft_cli/docs/foundation/WRAPPER_PROVIDER_CONTRACT.md)
-- provider-specific behavior and boundaries: `docs/*_CLI.md`
+- product philosophy: [PRODUCT_PRINCIPLES.md](foundation/PRODUCT_PRINCIPLES.md)
+- analytics and comparison safety rules: [SAFE_ANALYTICS_RULES.md](foundation/SAFE_ANALYTICS_RULES.md)
+- shared identity semantics: [IDENTITY_CONTRACT.md](foundation/IDENTITY_CONTRACT.md)
+- wrapper boundary: [WRAPPER_PROVIDER_CONTRACT.md](foundation/WRAPPER_PROVIDER_CONTRACT.md)
+- provider-specific behavior and boundaries: `docs/<cli>/README.md`
 
 ## Goal
 
@@ -74,7 +74,7 @@ Deferred:
 - classic/fresh site-profile routing
 - wrapper-level user-auth routing
 
-See [WARCRAFTLOGS_CLI.md](/home/auro/code/warcraft_cli/docs/warcraftlogs/README.md).
+See [warcraftlogs/README.md](warcraftlogs/README.md).
 
 ### Blizzard API
 
@@ -85,7 +85,7 @@ Focus:
 - OAuth architecture validation alongside `warcraftlogs`
 - region and namespace-aware API patterns
 
-See [BLIZZARD_API_CLI.md](/home/auro/code/warcraft_cli/docs/blizzard-api/README.md).
+See [blizzard-api/README.md](blizzard-api/README.md).
 
 ### Raider.IO
 
@@ -94,7 +94,7 @@ Continue:
 - clearer season-aware leaderboard workflows
 - richer normalized run/profile snapshots where the source supports them
 
-See [RAIDERIO_CLI.md](/home/auro/code/warcraft_cli/docs/raiderio/README.md).
+See [raiderio/README.md](raiderio/README.md).
 
 ### WowProgress
 
@@ -103,7 +103,7 @@ Continue:
 - easier guild snapshot/history/rank workflows
 - reliability and normalization improvements around ranking/profile slices
 
-See [WOWPROGRESS_CLI.md](/home/auro/code/warcraft_cli/docs/wowprogress/README.md).
+See [wowprogress/README.md](wowprogress/README.md).
 
 ### Wowhead
 
@@ -111,13 +111,13 @@ Maintain the current boundary:
 - continue only on straightforward structured extraction
 - do not push `dressing-room` or `profiler` into reverse-engineering work without an explicit product decision
 
-See [WOWHEAD_CLI.md](/home/auro/code/warcraft_cli/docs/wowhead/README.md).
+See [wowhead/README.md](wowhead/README.md).
 
 ### Raidbots
 
 Keep in the picture as a workflow-oriented companion to `simc`, not as the driver of shared auth or canonical gameplay truth.
 
-See [RAIDBOTS_CLI.md](/home/auro/code/warcraft_cli/docs/raidbots/README.md).
+See [raidbots/README.md](raidbots/README.md).
 
 ## Later
 

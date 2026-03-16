@@ -22,9 +22,9 @@ warcraft guild-history us "Mal'Ganis" gn
 warcraft guild-ranks us "Mal'Ganis" gn
 warcraft guide-compare ./tmp/method-mistweaver ./tmp/icy-mistweaver
 warcraft guide-compare-query "mistweaver monk guide"
-warcraft guide-compare-query "mistweaver monk guide" --simc-build-handoff --simc-apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+warcraft guide-compare-query "mistweaver monk guide" --simc-build-handoff --simc-apl-path <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc
 warcraft guide-builds-simc ./tmp/method-mistweaver
-warcraft guide-builds-simc ./tmp/method-mistweaver --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+warcraft guide-builds-simc ./tmp/method-mistweaver --apl-path <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc
 warcraft --expansion wotlk wowhead search "thunderfury"
 warcraft wowhead search "defias"
 warcraft wowhead guide 3143
@@ -51,10 +51,10 @@ warcraftlogs guild us illidan Liquid
 warcraft simc doctor
 warcraft simc version
 warcraft simc spec-files mistweaver
-warcraft simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
-warcraft simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
-warcraft simc analysis-packet /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
-warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker.simc tiger_palm --seeds 1 --max-time 20
+warcraft simc apl-lists <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc
+warcraft simc apl-intent <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+warcraft simc analysis-packet <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tiger_palm --seeds 1 --max-time 20
 ```
 
 ## Wrapper Conventions
@@ -64,33 +64,33 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
 - Use `warcraft search` when you want to inspect candidates across providers.
 - Use `warcraft <provider> ...` when you already know which service you need.
 - Use `warcraft --expansion <profile>` when the game version matters and you do not want silent cross-version mixing.
-- `method` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
-- `icy-veins` is now a real guide provider with sitemap-backed search, resolve, export, and local query.
-- `raiderio` is now a real phase-1 API provider for direct character, guild, and Mythic+ runs lookups.
-- `raiderio` now includes real search and conservative resolve on top of the live site search surface.
-- `warcraft-wiki` is now a real reference provider with MediaWiki-backed search, resolve, typed `api` / `event` lookups, article export, and local query.
-- `wowprogress` is now a real rankings provider with structured search, conservative resolve, direct guild/character/PvE leaderboard lookups, and its first sample-backed leaderboard analytics primitives.
-- `warcraftlogs` is now a real phase-1 official API provider with retail-only OAuth client-credentials auth plus typed world metadata, guild, character, and report lookups.
-- `warcraftlogs` is now wired into wrapper `doctor`, passthrough, and conservative wrapper `search` / `resolve`.
-- wrapper discovery for `warcraftlogs` is intentionally narrow for now: only explicit report URLs and bare mixed-alphanumeric report codes resolve through the wrapper.
-- `warcraft guild` is now a first-class merged guild workflow that normalizes region/realm/name input, preserves the provider-native Raider.IO and WowProgress payloads under each source, and reports explicit source disagreements as an additive wrapper layer.
+- `method` is a guide provider with sitemap-backed search, resolve, export, and local query.
+- `icy-veins` is a guide provider with sitemap-backed search, resolve, export, and local query.
+- `raiderio` is a phase-1 API provider for direct character, guild, and Mythic+ runs lookups.
+- `raiderio` includes real search and conservative resolve on top of the live site search surface.
+- `warcraft-wiki` is a reference provider with MediaWiki-backed search, resolve, typed `api` / `event` lookups, article export, and local query.
+- `wowprogress` is a rankings provider with structured search, conservative resolve, direct guild/character/PvE leaderboard lookups, and sample-backed leaderboard analytics primitives.
+- `warcraftlogs` is a phase-1 official API provider with retail-only OAuth client-credentials auth plus typed world metadata, guild, character, and report lookups.
+- `warcraftlogs` is wired into wrapper `doctor`, passthrough, and conservative wrapper `search` / `resolve`.
+- wrapper discovery for `warcraftlogs` is intentionally narrow: only explicit report URLs and bare mixed-alphanumeric report codes resolve through the wrapper.
+- `warcraft guild` is a first-class merged guild workflow that normalizes region/realm/name input, preserves the provider-native Raider.IO and WowProgress payloads under each source, and reports explicit source disagreements as an additive wrapper layer.
 - `warcraft guild-history` and `warcraft guild-ranks` currently route through the WowProgress provider surface and preserve the wrapped provider payload alongside the wrapper summary.
 - `warcraft guide-compare` compares exported guide bundles across providers using raw section evidence, additive `analysis_surfaces`, and explicit `build_references`, while preserving provider provenance and source citations instead of flattening the guides into one fake summary
 - `warcraft guide-compare-query` conservatively resolves one guide per supported provider, exports those bundles locally, and then runs the same comparison packet over the exported evidence
 - when `guide-compare-query` cannot get a guide from provider `resolve`, it may fall back to provider `search`, but only when the top guide result has a strong enough score and a clearly decisive lead over the alternatives; weak or ambiguous guide search results are skipped instead of exported
-- `guide-compare-query` now writes an orchestration manifest under the output root and reuses existing bundles only when the same guide ref is still selected and the recorded export age is within `--max-age-hours`; use `--force-refresh` to bypass reuse
+- `guide-compare-query` writes an orchestration manifest under the output root and reuses existing bundles only when the same guide ref is still selected and the recorded export age is within `--max-age-hours`; use `--force-refresh` to bypass reuse
 - `guide-compare-query --simc-build-handoff` adds an explicit guide-build-to-`simc` evidence block derived only from exported `build_references`; use `--simc-apl-path` when you also want exact-build `simc describe-build` output in the same packet
 - `warcraft guide-builds-simc` reads explicit embedded guide build references from one exported guide bundle or a `guide-compare-query` output root, dedupes them, and hands those exact build refs to `simc identify-build` plus optional `simc decode-build`
 - `warcraft guide-builds-simc --apl-path <apl>` also runs `simc describe-build` for each explicit build ref so the handoff can include exact-build APL-backed detail without inferring claims from guide prose
-- `guide-builds-simc` now also includes explicit provenance, citations, and source freshness metadata for the handoff packet so agents can tell whether the build evidence came from one bundle or a fresher orchestration root
-- `simc` is now a real phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
-- `simc` now also includes its first readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
-- `simc` now includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
-- `simc` now includes comparison, packet, first-cast, and log-actions commands built on the same conservative reasoning layer.
+- `guide-builds-simc` also includes explicit provenance, citations, and source freshness metadata for the handoff packet so agents can tell whether the build evidence came from one bundle or a fresher orchestration root
+- `simc` is a phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
+- `simc` includes readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
+- `simc` includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
+- `simc` includes comparison, packet, first-cast, and log-actions commands built on the same conservative reasoning layer.
 - `simc` search and resolve currently return structured `coming_soon` payloads in phase 1.
-- wrapper `search` and `resolve` now fan out only to providers whose wrapper routing surfaces are currently ready; stubbed surfaces such as `simc` remain visible in `warcraft doctor` and excluded-provider metadata instead of appearing as active wrapper candidates
+- wrapper `search` and `resolve` fan out only to providers whose wrapper routing surfaces are currently ready; stubbed surfaces such as `simc` remain visible in `warcraft doctor` and excluded-provider metadata instead of appearing as active wrapper candidates
 - the flattened `warcraft search` result list is globally sorted by a tunable wrapper ranking layer that combines provider score, query intent, provider family, and result kind
-- flattened wrapper results now include `wrapper_ranking` so agents can inspect why a provider/result surfaced first
+- flattened wrapper results include `wrapper_ranking` so agents can inspect why a provider/result surfaced first
 - `warcraft resolve` uses the same wrapper ranking layer on top of provider confidence instead of trusting provider registration order
 - use `--compact` on `warcraft search` or `warcraft resolve` when you want the wrapper decision without the full per-provider payloads
 - use `--ranking-debug` when you want compact ranking summaries for the top wrapper candidates
@@ -102,8 +102,8 @@ warcraft simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker
   - `wowhead` is currently the only profiled expansion-aware provider
   - `method`, `icy-veins`, `raiderio`, `wowprogress`, and `warcraftlogs` are currently treated as retail-only when wrapper expansion filtering is active
   - `warcraft-wiki` and `simc` are currently excluded from wrapper expansion-filtered `search` and `resolve`
-- wrapper `search`, `resolve`, and `doctor` now report included and excluded providers when expansion filtering is active
-- wrapper `doctor` now also reports wrapper-surface readiness plus provider auth/install metadata, so agents can distinguish a registered provider from a wrapper-ready routing surface
+- wrapper `search`, `resolve`, and `doctor` report included and excluded providers when expansion filtering is active
+- wrapper `doctor` also reports wrapper-surface readiness plus provider auth/install metadata, so agents can distinguish a registered provider from a wrapper-ready routing surface
 - `--expansion-debug` exposes the full provider eligibility snapshot even in compact mode
 - direct passthrough commands reject unsupported provider/expansion combinations instead of silently ignoring the expansion request
 - wrapper `doctor` preserves provider registration status, so partial providers stay marked `partial` even when their local doctor command succeeds
@@ -235,7 +235,7 @@ Wowhead command behavior:
   - `--patch-max`
   - `--sort relevance|updated|published|rating`
   - result `facets` so agents can quickly see which authors and category-path buckets are in the filtered guide set
-- Wowhead entity-type handling is now driven by a shared internal registry, so search suggestion types, parser support, resolve filters, and hydrate support stop drifting independently
+- Wowhead entity-type handling is driven by a shared internal registry, so search suggestion types, parser support, resolve filters, and hydrate support stop drifting independently
 - `talent-calc` decodes calculator state URLs into:
   - class slug
   - spec slug
@@ -292,8 +292,8 @@ icy-veins guide-query ./tmp/icy-mistweaver "vivify"
 
 Icy Veins guide behavior:
 - `search` and `resolve` work against the Icy Veins WoW sitemap for supported guide families
-- broad class and role queries now prefer the corresponding class hub or role guide, while specialized queries like easy mode or leveling penalize those broad hubs
-- supported families now include:
+- broad class and role queries prefer the corresponding class hub or role guide, while specialized queries like easy mode or leveling penalize those broad hubs
+- supported families include:
   - class hubs
   - role guides
   - spec guides
@@ -309,11 +309,11 @@ Icy Veins guide behavior:
   - class hubs and role guides stay on the current page
   - spec-family pages walk the related family navigation only
 - unsupported or bad WoW refs fail with a structured `invalid_guide_ref`
-- unsupported Icy Veins query families such as `patch notes` or `latest class changes` now return a `scope_hint` and no search candidates
-- representative real-page fixtures now cover supported and intentionally unsupported Icy Veins WoW page shapes
-- PvP and stat-priority pages are now part of the validated supported family set
-- resources, macros/addons, Mythic+ tips, and simulations are now also part of the validated supported family set
-- leveling, builds/talents, rotation, gems/enchants/consumables, and spell-summary pages are now also part of the validated supported family set
+- unsupported Icy Veins query families such as `patch notes` or `latest class changes` return a `scope_hint` and no search candidates
+- representative real-page fixtures cover supported and intentionally unsupported Icy Veins WoW page shapes
+- PvP and stat-priority pages are part of the validated supported family set
+- resources, macros/addons, Mythic+ tips, and simulations are also part of the validated supported family set
+- leveling, builds/talents, rotation, gems/enchants/consumables, and spell-summary pages are also part of the validated supported family set
 - `guide-export` writes a local guide bundle under `./icy-veins_exports/` by default
 - `guide-query` searches exported Icy Veins bundles across sections, navigation links, linked entities, explicit embedded build references, and additive `analysis_surfaces`
 
@@ -339,7 +339,7 @@ raiderio threshold mythic-plus-runs --metric score --value 560 --pages 2 --limit
 Raider.IO phase-1 behavior:
 - `doctor` reports cache config and phase-1 capability state
 - `search` returns ranked character and guild matches with follow-up commands
-- structured queries like `guild us illidan Liquid` or `character us illidan Roguecane` now probe the direct profile surfaces before falling back to the weaker site search route
+- structured queries like `guild us illidan Liquid` or `character us illidan Roguecane` probe the direct profile surfaces before falling back to the weaker site search route
 - `resolve` picks a next command conservatively and falls back to `search` when the match set is ambiguous
 - `character` returns a compact profile summary with guild, Mythic+, and raid progression context
 - `guild` returns a compact guild profile with raid progression, raid rankings, and roster preview
@@ -399,17 +399,17 @@ warcraft-wiki article-query ./tmp/wiki-api "framexml"
 
 Warcraft Wiki behavior:
 - `search` and `resolve` use the MediaWiki search API
-- `search` and `resolve` now apply family-aware ranking for programming pages like `API_CreateFrame`, `UIHANDLER_OnKeyDown`, and framework/system reference pages like `World of Warcraft API`, `Expansion`, and `Renown`
-- `search` and `resolve` now also clean out low-value leading family hint terms like `faction`, `lore`, `guide`, `zone`, `profession`, `class`, and `expansion` when there is a stronger article target underneath, and report the cleanup in `excluded_terms`
+- `search` and `resolve` apply family-aware ranking for programming pages like `API_CreateFrame`, `UIHANDLER_OnKeyDown`, and framework/system reference pages like `World of Warcraft API`, `Expansion`, and `Renown`
+- `search` and `resolve` also clean out low-value leading family hint terms like `faction`, `lore`, `guide`, `zone`, `profession`, `class`, and `expansion` when there is a stronger article target underneath, and report the cleanup in `excluded_terms`
 - `api` and `api-full` are the preferred typed programming surfaces for API functions, framework pages, XML schema pages, console-variable reference pages, and API-change pages
 - `event` and `event-full` are the preferred typed programming surfaces for UI handler pages and event/framework pages
 - `article` returns a compact article summary with section navigation, linked wiki-article preview, and extracted `reference` metadata
 - `article-full` returns the parsed article payload used for local export, including top-level and per-page `reference` metadata
 - `article-export` writes a local article bundle under `./warcraft-wiki_exports/` by default
 - `article-query` searches exported wiki bundles across sections, navigation links, and linked entities
-- programming pages now strip low-value wiki chrome more aggressively and filter edit-action links from linked-entity output
-- `reference` metadata is now useful beyond API pages: programming howtos, API-change pages, class pages, profession pages, faction pages, zone pages, expansion pages, systems pages, guide pages, and lore pages all expose at least a family-aware summary, and some pages also expose `patch_changes`, `see_also`, and `references`
-- redirect-backed article lookups now follow MediaWiki redirects, so short refs like `Legion` resolve to canonical pages like `World of Warcraft: Legion`
+- programming pages strip low-value wiki chrome more aggressively and filter edit-action links from linked-entity output
+- `reference` metadata is useful beyond API pages: programming howtos, API-change pages, class pages, profession pages, faction pages, zone pages, expansion pages, systems pages, guide pages, and lore pages all expose at least a family-aware summary, and some pages also expose `patch_changes`, `see_also`, and `references`
+- redirect-backed article lookups follow MediaWiki redirects, so short refs like `Legion` resolve to canonical pages like `World of Warcraft: Legion`
 
 ## WowProgress Commands
 
@@ -447,11 +447,11 @@ WowProgress phase-1 behavior:
 - `character` returns a compact character profile with item-level, SimDPS, and PvE raid-history context
 - `leaderboard pve` returns the current PvE progression leaderboard for a region, optionally narrowed to a realm
 - `sample pve-leaderboard` returns a top-slice leaderboard sample with explicit sampling metadata for the requested row cap and returned entry count
-- `sample pve-guild-profiles` enriches the sampled leaderboard slice with direct guild-page data and now reports:
+- `sample pve-guild-profiles` enriches the sampled leaderboard slice with direct guild-page data and reports:
   - source leaderboard entry count
   - returned guild profile count
   - skipped rows without profile URLs
-- guild-profile analytics now support explicit post-sample filters for:
+- guild-profile analytics support explicit post-sample filters for:
   - faction
   - difficulty
   - world rank range
@@ -517,7 +517,7 @@ warcraftlogs ability-usage-summary --zone-id 38 --boss-id 3012 --difficulty 5 --
 Current Warcraft Logs provider behavior:
 - `warcraftlogs` currently targets the retail/main site profile only
 - public OAuth client credentials are the default auth mode
-- manual user-auth groundwork is now available for:
+- manual user-auth groundwork is available for:
   - authorization code
   - PKCE
   - saved user-token verification via `warcraftlogs auth whoami`
@@ -543,7 +543,7 @@ EOF
 - `auth client` reports the configured client metadata and endpoint URLs without exposing the secret
 - `auth token` reports persisted token metadata without printing raw tokens
 - `auth whoami` uses the saved user token against the private `/api/v2/user` endpoint and is the clearest direct verification that saved user auth is actually usable
-- `auth login --redirect-uri ...` now supports a manual two-step authorization-code flow:
+- `auth login --redirect-uri ...` supports a manual two-step authorization-code flow:
   - run it once to get the authorize URL
   - complete the browser consent flow
   - run it again with `--code` and `--state` from the callback URL
@@ -562,12 +562,12 @@ EOF
   - guild rank
   - server
   - guild memberships
-- `character-rankings` is available now, but Warcraft Logs may return per-character permission errors or server-side errors for some characters; the CLI now surfaces provider permission errors explicitly in the payload when they are available
+- `character-rankings` is available, but Warcraft Logs may return per-character permission errors or server-side errors for some characters; the CLI surfaces provider permission errors explicitly in the payload when they are available
 - `reports`, `report`, and `report-fights` are the first typed report-inspection slice
 - `report-fights` stays on the stable broad fight-list contract for now; deeper fight-filter and phase workflows are still deferred
 - `report-player-details` exposes role buckets and participant summaries for a report or fight slice
 - `report-master-data` exposes report actor and ability catalogs, which is often the most useful companion surface for deeper report analysis
-- `report-table` and `report-graph` now accept friendly enum-like filters such as `damage-done` and normalize them to the official GraphQL enum values
+- `report-table` and `report-graph` accept friendly enum-like filters such as `damage-done` and normalize them to the official GraphQL enum values
 - `report-rankings` exposes the official report rankings JSON with typed query metadata
 - `report-encounter`, `report-encounter-players`, `report-encounter-casts`, `report-encounter-buffs`, and `report-encounter-damage-breakdown` are the first deep encounter-analysis slice:
   - they accept either a report code plus `--fight-id`
@@ -577,7 +577,7 @@ EOF
     - `--window-start-ms`
     - `--window-end-ms`
   - these commands preserve the resolved absolute report timestamps in the payload so the agent does not have to calculate them
-  - `report-encounter-casts` now includes additive `by_target` and `by_source_target` summaries so agents can compare spell usage across encounter targets without dropping to raw events
+  - `report-encounter-casts` includes additive `by_target` and `by_source_target` summaries so agents can compare spell usage across encounter targets without dropping to raw events
 - `report-encounter-aura-summary` is the narrower aura lane:
   - it requires one explicit `--ability-id`
   - it stays on one selected encounter plus optional encounter-relative windowing
@@ -620,17 +620,17 @@ EOF
 ```bash
 simc doctor
 simc repo
-simc repo --set-root /home/auro/code/simc
+simc repo --set-root <simc-root>
 simc checkout
 simc version
 simc verify-clean
 simc inspect
-simc inspect /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+simc inspect <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc
 simc spec-files mistweaver
 simc identify-build --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc identify-build --build-text 'https://www.wowhead.com/talent-calc/demon-hunter/devourer/CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc describe-build --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
-simc decode-build --apl-path /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123
+simc decode-build --apl-path <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123
 simc decode-build --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc decode-build --build-text $'demonhunter="probe"\nspec=devourer\ntalents=CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc sim ./profile.simc
@@ -640,21 +640,21 @@ simc build-harness --actor-class warlock --spec demonology --talents ABC123 --li
 simc validate-apl ./demonology_harness.simc ./warlock_demonology.simc --label base
 simc compare-apls ./demonology_harness.simc --base-apl ./warlock_demonology.simc --variant wowhead=./wowhead_variant.simc --variant icyveins=./icy_variant.simc --report-out ./compare.json
 simc variant-report ./compare.json
-simc apl-lists /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
-simc apl-graph /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
-simc apl-talents /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc
+simc apl-lists <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc
+simc apl-graph <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc
+simc apl-talents <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc
 simc find-action rising_sun_kick --class monk
-simc trace-action /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc rising_sun_kick --class monk
-simc apl-prune /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
-simc apl-branch-trace /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
-simc apl-intent /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
-simc apl-intent-explain /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
-simc priority /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 5 --talents ABC123
-simc inactive-actions /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 5 --talents ABC123
-simc opener /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 5 --talents ABC123
-simc apl-branch-compare /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --left-targets 3 --right-targets 1
-simc analysis-packet /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
-simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker.simc tiger_palm --seeds 1 --max-time 20
+simc trace-action <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc rising_sun_kick --class monk
+simc apl-prune <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc apl-branch-trace <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc apl-intent <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc apl-intent-explain <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc priority <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 5 --talents ABC123
+simc inactive-actions <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 5 --talents ABC123
+simc opener <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 5 --talents ABC123
+simc apl-branch-compare <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --left-targets 3 --right-targets 1
+simc analysis-packet <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tiger_palm --seeds 1 --max-time 20
 simc log-actions /tmp/simc-cli-example/seed_1.log tiger_palm rising_sun_kick
 simc compare-builds --base 'TALENT_STRING_A' --other 'TALENT_STRING_B' --actor-class druid --spec balance
 simc compare-builds --base 'TALENT_STRING_A' --other 'TALENT_STRING_B' --other 'TALENT_STRING_C' --tree class
@@ -674,7 +674,7 @@ SimulationCraft behavior:
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
 - `identify-build` is the safest first step when the user pastes a build string or talent-calc URL; it reports `source_kind`, resolved class/spec, confidence, and any probe candidates before deeper analysis
-- `--talents` now accepts the same common consumer inputs as `--build-text` for exact-build commands:
+- `--talents` accepts the same common consumer inputs as `--build-text` for exact-build commands:
   - bare WoW talent export strings
   - Wowhead talent-calc URLs
   - SimC `talents=...` lines
@@ -692,7 +692,7 @@ SimulationCraft behavior:
   - SimC-native build/profile text
   and reports both the detected `source_kind` and the normalized generated SimC profile it used for decoding
 - `decode-build` only treats talents with positive ranks as enabled; `0/1` rows like a skipped capstone stay in the `skipped` side of `describe-build`
-- if class/spec are not supplied explicitly, `decode-build`, `build-harness`, and the exact-build APL commands now try to identify them automatically:
+- if class/spec are not supplied explicitly, `decode-build`, `build-harness`, and the exact-build APL commands try to identify them automatically:
   - direct actor/spec lines or APL path inference win first
   - Wowhead talent-calc URLs contribute class/spec directly from the URL path
   - bare WoW talent exports fall back to a bounded local SimC probe across supported specs
@@ -760,7 +760,7 @@ SimulationCraft behavior:
   - `mount` resolves through underlying item pages
   - `battle-pet` resolves through underlying NPC pages
 
-See [WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/wowhead/EXPANSION_RESEARCH.md) for the routing and `dataEnv` findings behind this behavior.
+See [WOWHEAD_EXPANSION_RESEARCH.md](wowhead/EXPANSION_RESEARCH.md) for the routing and `dataEnv` findings behind this behavior.
 
 ## Entity Retrieval
 
@@ -820,15 +820,15 @@ Hydration behavior:
 
 Search and resolve:
 - use `search` when you want to browse candidates or the query is likely ambiguous
-- `search` results now include `ranking` plus `follow_up`, so each candidate carries a suggested next command such as `entity`, `entity-page`, `guide`, `guide-full`, or `comments`
+- `search` results include `ranking` plus `follow_up`, so each candidate carries a suggested next command such as `entity`, `entity-page`, `guide`, `guide-full`, or `comments`
 - when the query contains follow-up words like `comments`, `links`, or `full`, the CLI strips those from the upstream Wowhead lookup and exposes the actual request text as `search_query`
 - use `resolve` when you want the CLI to choose the best next command conservatively
 - `resolve` reuses the same follow-up guidance, but only emits `next_command` when confidence is high
 - `resolve --entity-type guide` or similar can safely narrow ambiguous queries when the caller already knows the target class of thing
 
 Bundle discovery and refresh:
-- bundle freshness summaries now include reason fields such as `bundle_reasons` and `hydration_reasons`, so stale bundles can be triaged without opening the manifest
-- `guide-bundle-list`, `guide-bundle-search`, and `guide-bundle-query` now expose root-level `stale_reason_counts` rollups
+- bundle freshness summaries include reason fields such as `bundle_reasons` and `hydration_reasons`, so stale bundles can be triaged without opening the manifest
+- `guide-bundle-list`, `guide-bundle-search`, and `guide-bundle-query` expose root-level `stale_reason_counts` rollups
 - `guide-bundle-inspect --summary` returns a compact trust-check payload focused on freshness and issues
 - `guide-bundle-list` discovers bundles under `./wowhead_exports/` or another root
 - `guide-bundle-search` searches indexed bundle metadata across a root
@@ -842,7 +842,7 @@ Bundle discovery and refresh:
 - `guide-bundle-refresh` refreshes an existing bundle in place
 - `cache-inspect` shows current cache config plus namespace-level stats for the active file or Redis backend
 - `cache-clear` clears cache entries across all namespaces or selected namespaces, with `--expired-only` support for file-backed caches
-- `search` now reranks upstream suggestions locally and includes lightweight `ranking.score` plus `ranking.match_reasons` per result
+- `search` reranks upstream suggestions locally and includes lightweight `ranking.score` plus `ranking.match_reasons` per result
 - `resolve` is the conservative one-shot discovery path: it picks a best match and returns a runnable `next_command` only when confidence is high, otherwise it falls back to `search`
 - if `--max-age-hours` is omitted on refresh, the default freshness window is `24`
 - refresh selectively rehydrates stale hydrated entity payloads unless `--force` is used
@@ -914,12 +914,12 @@ Redis visibility:
 Cache cleanup and compact inspection:
 - `cache-inspect --summary` returns a compact top-namespace view instead of the full namespace listing
 - `cache-inspect --hide-zero` removes zero-valued count fields from cache stats
-- summary-mode file cache inspection now includes `age_summary` with oldest/newest entry timestamps and ages
+- summary-mode file cache inspection includes `age_summary` with oldest/newest entry timestamps and ages
 - `cache-repair` reports legacy unscoped file-cache entries; `cache-repair --apply` prunes them
 - `cache-repair --expired-only` limits that repair to expired legacy entries
 
 ## Related Docs
 
-- [ROADMAP.md](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
-- [WOWHEAD_ACCESS_METHODS.md](/home/auro/code/warcraft_cli/docs/wowhead/ACCESS_METHODS.md)
-- [WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/wowhead/EXPANSION_RESEARCH.md)
+- [ROADMAP.md](ROADMAP.md)
+- [WOWHEAD_ACCESS_METHODS.md](wowhead/ACCESS_METHODS.md)
+- [WOWHEAD_EXPANSION_RESEARCH.md](wowhead/EXPANSION_RESEARCH.md)

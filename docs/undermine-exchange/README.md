@@ -70,4 +70,4 @@ The first useful slice should stay narrower:
 ## Source Links
 
 - `https://undermine.exchange/`
-- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
+- [Roadmap](../ROADMAP.md)

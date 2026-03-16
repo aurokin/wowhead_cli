@@ -4,8 +4,8 @@
 
 Build `warcraftlogs` as an official API-first provider for Warcraft Logs using the supported OAuth 2.0 and GraphQL APIs, not scraping.
 
-Repo-wide product philosophy lives in [PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/foundation/PRODUCT_PRINCIPLES.md).
-Repo-wide analytics and comparison safety rules live in [SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/foundation/SAFE_ANALYTICS_RULES.md).
+Repo-wide product philosophy lives in [PRODUCT_PRINCIPLES.md](../foundation/PRODUCT_PRINCIPLES.md).
+Repo-wide analytics and comparison safety rules live in [SAFE_ANALYTICS_RULES.md](../foundation/SAFE_ANALYTICS_RULES.md).
 This file tracks Warcraft Logs-specific implementation state, boundaries, and current gaps.
 
 The CLI should become the fastest trustworthy path for:
@@ -121,12 +121,12 @@ What changed in the research baseline:
 - we now also have local rendered docs dumps under:
   - `research/warcraftlogs-docs-classic/`
   - `research/warcraftlogs-docs-fresh/`
-- the dump is produced by [dump_warcraftlogs_docs.py](/home/auro/code/warcraft_cli/scripts/dump_warcraftlogs_docs.py)
+- the dump is produced by [dump_warcraftlogs_docs.py](../../scripts/dump_warcraftlogs_docs.py)
 - the dump confirms Warcraft Logs has an official OAuth 2.0 + GraphQL integration surface that is broad enough for a full CLI
 
 This means `warcraftlogs` should be planned as an official integration first, with scraping treated only as a fallback for unsupported site workflows.
 
-Shared auth direction for this provider is defined in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/warcraft_cli/docs/architecture/AUTH_ARCHITECTURE_PLAN.md). `warcraftlogs` is one of the two providers that should define the shared OAuth-oriented auth architecture.
+Shared auth direction for this provider is defined in [AUTH_ARCHITECTURE_PLAN.md](../architecture/AUTH_ARCHITECTURE_PLAN.md). `warcraftlogs` is one of the two providers that should define the shared OAuth-oriented auth architecture.
 
 ## Known Gaps And Deferred Coverage
 
@@ -1039,10 +1039,10 @@ This provider is still a strong reason not to over-generalize API-first services
 - rendered docs dump: `research/warcraftlogs-docs/`
 - rendered docs dump: `research/warcraftlogs-docs-classic/`
 - rendered docs dump: `research/warcraftlogs-docs-fresh/`
-- dump script: [dump_warcraftlogs_docs.py](/home/auro/code/warcraft_cli/scripts/dump_warcraftlogs_docs.py)
+- dump script: [dump_warcraftlogs_docs.py](../../scripts/dump_warcraftlogs_docs.py)
 
 ## Source Links
 
 - `https://www.warcraftlogs.com/api/docs`
 - `https://www.warcraftlogs.com/v2-api-docs/warcraft/`
-- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
+- [Roadmap](../ROADMAP.md)

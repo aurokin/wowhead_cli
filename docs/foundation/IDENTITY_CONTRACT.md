@@ -104,7 +104,7 @@ Do not create build references from guide slugs, page titles, or other indirect 
 
 ## Shared Code Ownership
 
-Shared identity helpers live in [packages/warcraft-core/src/warcraft_core/identity.py](/home/auro/code/warcraft_cli/packages/warcraft-core/src/warcraft_core/identity.py).
+Shared identity helpers live in [packages/warcraft-core/src/warcraft_core/identity.py](../../packages/warcraft-core/src/warcraft_core/identity.py).
 
 Provider rules:
 - provider CLIs may adapt their payloads into this contract

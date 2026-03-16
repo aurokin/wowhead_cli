@@ -65,18 +65,18 @@ warcraft search "defias"
 warcraft guide-compare-query "mistweaver monk guide"
 warcraft warcraftlogs resolve "https://www.warcraftlogs.com/reports/abcd1234#fight=3"
 warcraftlogs report-encounter abcd1234 --fight-id 3
-simc analysis-packet /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
+simc analysis-packet <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 ```
 
 Use `warcraft` when the source is unclear. Use `wowhead`, `method`, `icy-veins`, `raiderio`, `warcraft-wiki`, `wowprogress`, `warcraftlogs`, or `simc` directly once you know the provider you need.
 
 ## Docs
 
-- [docs/README.md](/home/auro/code/warcraft_cli/docs/README.md)
-- [docs/USAGE.md](/home/auro/code/warcraft_cli/docs/USAGE.md)
-- [docs/ROADMAP.md](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
-- [docs/foundation/PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/foundation/PRODUCT_PRINCIPLES.md)
-- [docs/foundation/SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/foundation/SAFE_ANALYTICS_RULES.md)
+- [docs/README.md](docs/README.md)
+- [docs/USAGE.md](docs/USAGE.md)
+- [docs/ROADMAP.md](docs/ROADMAP.md)
+- [docs/foundation/PRODUCT_PRINCIPLES.md](docs/foundation/PRODUCT_PRINCIPLES.md)
+- [docs/foundation/SAFE_ANALYTICS_RULES.md](docs/foundation/SAFE_ANALYTICS_RULES.md)
 
 ## Testing
 

@@ -3,9 +3,9 @@
 This is the canonical home for repo-wide product philosophy and representative workflow direction.
 
 Documentation ownership:
-- Put sequencing and current priority in [ROADMAP.md](/home/auro/code/warcraft_cli/docs/ROADMAP.md).
+- Put sequencing and current priority in [ROADMAP.md](../ROADMAP.md).
 - Put provider-specific behavior, boundaries, and current gaps in `docs/<cli>/README.md`.
-- Put analytics/comparison safety rules in [SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/foundation/SAFE_ANALYTICS_RULES.md).
+- Put analytics/comparison safety rules in [SAFE_ANALYTICS_RULES.md](SAFE_ANALYTICS_RULES.md).
 
 ## Product Principles
 

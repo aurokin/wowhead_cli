@@ -1,8 +1,8 @@
 # SimulationCraft CLI
 
 Companion docs in this folder:
-- [IMPLEMENTATION.md](/home/auro/code/warcraft_cli/docs/simc/IMPLEMENTATION.md)
-- [MIGRATION_INVENTORY.md](/home/auro/code/warcraft_cli/docs/simc/MIGRATION_INVENTORY.md)
+- [IMPLEMENTATION.md](IMPLEMENTATION.md)
+- [MIGRATION_INVENTORY.md](MIGRATION_INVENTORY.md)
 
 ## Status
 
@@ -47,9 +47,9 @@ Current commands:
 - `simc run`
 - `simc search` and `simc resolve` as structured `coming_soon` stubs for wrapper stability
 
-The design for later phases is still informed by the existing exploration work in `/home/auro/code/simc_exp`.
+The design for later phases was informed by the original `simc_exp` exploration project, which has been migrated into `packages/simc-cli/`.
 
-That matters because `simc_exp` already proves a substantial second-layer command family on top of a local SimulationCraft checkout:
+That exploration proved a substantial second-layer command family on top of a local SimulationCraft checkout:
 - repo and binary health checks
 - build-input decoding
 - APL parsing and graphing
@@ -299,7 +299,6 @@ That is a strong use case for the monorepo because it is a different kind of pro
 ## Source Links
 
 - `https://github.com/simulationcraft/simc`
-- `/home/auro/code/simc_exp`
-- [SimulationCraft migration inventory](/home/auro/code/warcraft_cli/docs/simc/MIGRATION_INVENTORY.md)
-- [SimulationCraft implementation plan](/home/auro/code/warcraft_cli/docs/simc/IMPLEMENTATION.md)
-- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
+- [SimulationCraft migration inventory](MIGRATION_INVENTORY.md)
+- [SimulationCraft implementation plan](IMPLEMENTATION.md)
+- [Roadmap](../ROADMAP.md)

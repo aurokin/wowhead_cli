@@ -1,8 +1,10 @@
 # SimulationCraft Migration Inventory
 
+> **Status: Completed.** All phases have been migrated into `packages/simc-cli/`. This document is preserved for rationale and migration history.
+
 ## Purpose
 
-This document translates the existing `/home/auro/code/simc_exp` project into a concrete migration inventory for the future `simc` provider.
+This document translates the original `simc_exp` exploration project into a concrete migration inventory for the `simc` provider.
 
 It answers:
 - what should move directly into `simc`
@@ -10,26 +12,25 @@ It answers:
 - what should stay out of phase 1
 
 Use alongside:
-- [SimulationCraft CLI doc](/home/auro/code/warcraft_cli/docs/simc/README.md)
-- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
-- [Package layout](/home/auro/code/warcraft_cli/docs/architecture/PACKAGE_LAYOUT.md)
+- [SimulationCraft CLI doc](README.md)
+- [Roadmap](../ROADMAP.md)
+- [Package layout](../architecture/PACKAGE_LAYOUT.md)
 
-## Source Of Truth
+## Original Source
 
-Current exploration code:
-- `/home/auro/code/simc_exp`
+The original exploration code lived in a separate `simc_exp` project. All migrated code is in `packages/simc-cli/`.
 
-Important source modules:
-- `/home/auro/code/simc_exp/simc_exp/repo.py`
-- `/home/auro/code/simc_exp/simc_exp/build_input.py`
-- `/home/auro/code/simc_exp/simc_exp/apl.py`
-- `/home/auro/code/simc_exp/simc_exp/search.py`
-- `/home/auro/code/simc_exp/simc_exp/prune.py`
-- `/home/auro/code/simc_exp/simc_exp/branch.py`
-- `/home/auro/code/simc_exp/simc_exp/sim.py`
-- `/home/auro/code/simc_exp/simc_exp/packet.py`
-- `/home/auro/code/simc_exp/simc_exp/cli_support.py`
-- `/home/auro/code/simc_exp/simc_exp/cli.py`
+Original source modules (for historical reference):
+- `simc_exp/repo.py`
+- `simc_exp/build_input.py`
+- `simc_exp/apl.py`
+- `simc_exp/search.py`
+- `simc_exp/prune.py`
+- `simc_exp/branch.py`
+- `simc_exp/sim.py`
+- `simc_exp/packet.py`
+- `simc_exp/cli_support.py`
+- `simc_exp/cli.py`
 
 ## Key Conclusion
 
@@ -49,7 +50,7 @@ These look structurally sound and map cleanly into `simc` with mostly packaging 
 ### Repo discovery and validation
 
 Source:
-- `/home/auro/code/simc_exp/simc_exp/repo.py`
+- `simc_exp/repo.py`
 
 Use for:
 - `simc doctor`
@@ -63,7 +64,7 @@ Expected changes:
 ### APL parsing and grouping
 
 Source:
-- `/home/auro/code/simc_exp/simc_exp/apl.py`
+- `simc_exp/apl.py`
 
 Use for:
 - `simc apl-lists`
@@ -77,7 +78,7 @@ Expected changes:
 ### Search helpers for local source
 
 Source:
-- `/home/auro/code/simc_exp/simc_exp/search.py`
+- `simc_exp/search.py`
 
 Use for:
 - `simc spec-files`
@@ -91,7 +92,7 @@ Expected changes:
 ### Sim execution helpers
 
 Source:
-- `/home/auro/code/simc_exp/simc_exp/sim.py`
+- `simc_exp/sim.py`
 
 Use for:
 - `simc first-cast`
@@ -109,7 +110,7 @@ These should migrate, but the command surface or internal boundaries should be c
 ### Build input decoding
 
 Source:
-- `/home/auro/code/simc_exp/simc_exp/build_input.py`
+- `simc_exp/build_input.py`
 
 Why it should move:
 - central to build-aware APL analysis
@@ -130,8 +131,8 @@ Target shape:
 ### Prune and branch reasoning
 
 Source:
-- `/home/auro/code/simc_exp/simc_exp/prune.py`
-- `/home/auro/code/simc_exp/simc_exp/branch.py`
+- `simc_exp/prune.py`
+- `simc_exp/branch.py`
 
 Why it should move:
 - this is the core of the readonly analysis value
@@ -154,7 +155,7 @@ Target shape:
 ### Analysis packet generation
 
 Source:
-- `/home/auro/code/simc_exp/simc_exp/packet.py`
+- `simc_exp/packet.py`
 
 Why it should move:
 - it is one of the clearest agent-facing outputs in `simc_exp`
@@ -170,8 +171,8 @@ Target shape:
 ### CLI support and argument composition
 
 Source:
-- `/home/auro/code/simc_exp/simc_exp/cli_support.py`
-- `/home/auro/code/simc_exp/simc_exp/cli.py`
+- `simc_exp/cli_support.py`
+- `simc_exp/cli.py`
 
 Why it should not move directly:
 - this is mostly argparse-era command glue
@@ -285,11 +286,11 @@ These are shared within `simc`, not across the monorepo.
 ## Testing Signal From `simc_exp`
 
 Existing tests give strong confidence in the migration direction:
-- `/home/auro/code/simc_exp/tests/test_build_input.py`
-- `/home/auro/code/simc_exp/tests/test_cli_support.py`
-- `/home/auro/code/simc_exp/tests/test_packet.py`
-- `/home/auro/code/simc_exp/tests/test_prune.py`
-- `/home/auro/code/simc_exp/tests/test_simc_integration.py`
+- `simc_exp/tests/test_build_input.py`
+- `simc_exp/tests/test_cli_support.py`
+- `simc_exp/tests/test_packet.py`
+- `simc_exp/tests/test_prune.py`
+- `simc_exp/tests/test_simc_integration.py`
 
 That means the migration should preserve:
 - build decoding coverage

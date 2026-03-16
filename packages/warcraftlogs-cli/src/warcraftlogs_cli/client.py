@@ -1020,7 +1020,7 @@ def load_warcraftlogs_auth_config(*, start_dir: str | None = None) -> WarcraftLo
     )
 
 
-def load_warcraftlogs_cache_settings_from_env() -> tuple[CacheSettings, int, int, int]:
+def load_warcraftlogs_cache_settings_from_env() -> tuple[CacheSettings, int, int, int, int]:
     settings = load_prefixed_cache_settings_from_env(
         env_prefix="WARCRAFTLOGS",
         default_cache_dir=DEFAULT_CACHE_DIR,
@@ -1029,7 +1029,7 @@ def load_warcraftlogs_cache_settings_from_env() -> tuple[CacheSettings, int, int
             search_suggestions=900,
             entity_page_html=300,
             guide_page_html=21600,
-            page_html=300,
+            page_html=60,
         ),
         ttl_env_overrides={
             "search_suggestions": "WARCRAFTLOGS_METADATA_CACHE_TTL_SECONDS",
@@ -1043,6 +1043,7 @@ def load_warcraftlogs_cache_settings_from_env() -> tuple[CacheSettings, int, int
         settings.ttls.search_suggestions,
         settings.ttls.entity_page_html,
         settings.ttls.guide_page_html,
+        settings.ttls.page_html,
     )
 
 
@@ -1069,12 +1070,13 @@ class WarcraftLogsClient:
         self._client_secret = auth.client_secret or ""
         self._access_token: str | None = None
         self._token_expires_at = 0.0
-        settings, metadata_ttl, guild_ttl, static_ttl = load_warcraftlogs_cache_settings_from_env()
+        settings, metadata_ttl, guild_ttl, static_ttl, report_ttl = load_warcraftlogs_cache_settings_from_env()
         self._cache_settings = settings
         self._cache_store = build_cache_store(settings) if settings.enabled else None
         self._metadata_ttl = metadata_ttl
         self._guild_ttl = guild_ttl
         self._static_ttl = static_ttl
+        self._report_ttl = report_ttl
 
     def close(self) -> None:
         if self._http_client is not None:
@@ -1365,13 +1367,14 @@ class WarcraftLogsClient:
         code: str,
         allow_unlisted: bool,
         variables: dict[str, Any],
+        ttl_override: int | None = None,
     ) -> dict[str, Any]:
         data = self._graphql(
             operation_name=operation_name,
             query=query,
             variables=variables,
             namespace=namespace,
-            ttl_seconds=self._guild_ttl,
+            ttl_seconds=ttl_override if ttl_override is not None else self._report_ttl,
         )
         report_data = data.get("reportData")
         report = report_data.get("report") if isinstance(report_data, dict) else None
@@ -1643,7 +1646,7 @@ class WarcraftLogsClient:
             query=REPORT_QUERY,
             variables={"code": code.strip(), "allowUnlisted": allow_unlisted},
             namespace="report",
-            ttl_seconds=self._guild_ttl,
+            ttl_seconds=self._report_ttl,
         )
         report_data = data.get("reportData")
         report = report_data.get("report") if isinstance(report_data, dict) else None
@@ -1679,7 +1682,7 @@ class WarcraftLogsClient:
                 "gameZoneID": game_zone_id,
             },
             namespace="reports",
-            ttl_seconds=self._guild_ttl,
+            ttl_seconds=self._report_ttl,
         )
         report_data = data.get("reportData")
         reports = report_data.get("reports") if isinstance(report_data, dict) else None
@@ -1687,7 +1690,9 @@ class WarcraftLogsClient:
             raise WarcraftLogsClientError("not_found", "Warcraft Logs report listing data was not available.")
         return reports
 
-    def report_fights(self, *, code: str, difficulty: int | None = None, allow_unlisted: bool = False) -> dict[str, Any]:
+    def report_fights(
+        self, *, code: str, difficulty: int | None = None, allow_unlisted: bool = False, ttl_override: int | None = None,
+    ) -> dict[str, Any]:
         return self._report_lookup(
             operation_name="ReportFights",
             query=REPORT_FIGHTS_QUERY,
@@ -1695,6 +1700,7 @@ class WarcraftLogsClient:
             code=code,
             allow_unlisted=allow_unlisted,
             variables={"code": code.strip(), "difficulty": difficulty, "allowUnlisted": allow_unlisted},
+            ttl_override=ttl_override,
         )
 
     def report_events(self, *, code: str, allow_unlisted: bool = False, options: ReportFilterOptions) -> dict[str, Any]:
@@ -1757,6 +1763,7 @@ class WarcraftLogsClient:
         code: str,
         allow_unlisted: bool = False,
         options: ReportPlayerDetailsOptions,
+        ttl_override: int | None = None,
     ) -> dict[str, Any]:
         return self._report_lookup(
             operation_name="ReportPlayerDetails",
@@ -1765,6 +1772,7 @@ class WarcraftLogsClient:
             code=code,
             allow_unlisted=allow_unlisted,
             variables=self._report_player_details_variables(code=code, allow_unlisted=allow_unlisted, options=options),
+            ttl_override=ttl_override,
         )
 
     def report_rankings(

@@ -210,9 +210,9 @@ Service-specific root skills can be added later if they prove useful. For now, t
 
 ## Linked Planning Docs
 
-- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
-- [Package Layout](/home/auro/code/warcraft_cli/docs/architecture/PACKAGE_LAYOUT.md)
-- [Migration Checklist](/home/auro/code/warcraft_cli/docs/architecture/MIGRATION_CHECKLIST.md)
-- [Wrapper Provider Contract](/home/auro/code/warcraft_cli/docs/foundation/WRAPPER_PROVIDER_CONTRACT.md)
-- [Warcraft wrapper CLI doc](/home/auro/code/warcraft_cli/docs/warcraft/README.md)
-- [Warcraft Logs CLI doc](/home/auro/code/warcraft_cli/docs/warcraftlogs/README.md)
+- [Roadmap](../ROADMAP.md)
+- [Package Layout](PACKAGE_LAYOUT.md)
+- [Migration Checklist](MIGRATION_CHECKLIST.md)
+- [Wrapper Provider Contract](../foundation/WRAPPER_PROVIDER_CONTRACT.md)
+- [Warcraft wrapper CLI doc](../warcraft/README.md)
+- [Warcraft Logs CLI doc](../warcraftlogs/README.md)

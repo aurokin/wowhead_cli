@@ -13,6 +13,7 @@ runner = CliRunner()
 class _FakeWarcraftLogsClient:
     def __init__(self) -> None:
         self.closed = False
+        self._guild_ttl = 300
 
     def close(self) -> None:
         self.closed = True
@@ -584,7 +585,7 @@ class _FakeWarcraftLogsClient:
             "has_more_pages": False,
         }
 
-    def report_fights(self, *, code: str, difficulty: int | None = None, allow_unlisted: bool = False) -> dict[str, object]:
+    def report_fights(self, *, code: str, difficulty: int | None = None, allow_unlisted: bool = False, ttl_override: int | None = None) -> dict[str, object]:
         assert code == "abcd1234"
         assert difficulty in {None, 5}
         assert allow_unlisted is False
@@ -871,7 +872,7 @@ class _FakeWarcraftLogsClient:
             },
         }
 
-    def report_player_details(self, *, code: str, allow_unlisted: bool = False, options) -> dict[str, object]:  # noqa: ANN001
+    def report_player_details(self, *, code: str, allow_unlisted: bool = False, options, ttl_override: int | None = None) -> dict[str, object]:  # noqa: ANN001
         assert code == "abcd1234"
         assert allow_unlisted is False
         assert options.encounter_id == 3012

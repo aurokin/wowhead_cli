@@ -1283,7 +1283,7 @@ def _collect_boss_kill_rows(
     matched_boss_kill_count = 0
 
     for report in finished_reports:
-        fights_payload = client.report_fights(code=str(report.get("code") or ""), difficulty=difficulty, allow_unlisted=False)
+        fights_payload = client.report_fights(code=str(report.get("code") or ""), difficulty=difficulty, allow_unlisted=False, ttl_override=client._guild_ttl)
         fights = fights_payload.get("fights") if isinstance(fights_payload.get("fights"), list) else []
         for fight in fights:
             if not isinstance(fight, dict):
@@ -1314,6 +1314,7 @@ def _collect_boss_kill_rows(
                         include_combatant_info=True,
                         kill_type="Kills",
                     ),
+                    ttl_override=client._guild_ttl,
                 )
                 matching_players = _matching_spec_players(details_report, spec_name=spec_name)
                 if not matching_players:
@@ -1354,6 +1355,7 @@ def _boss_kills_payload(
         "provider": "warcraftlogs",
         "kind": kind,
         "ranking_basis": "sampled_fastest_kills",
+        "matching_rule": "sampled_zone_reports_filtered_by_optional_boss_difficulty_spec_and_kill_time",
         "query": query,
         "freshness": _sampled_cross_report_freshness(),
         "citations": _sampled_cross_report_citations(rows),
@@ -1380,6 +1382,7 @@ def _kill_time_distribution_payload(*, rows: list[dict[str, Any]], sample: dict[
         "ok": True,
         "provider": "warcraftlogs",
         "kind": "kill_time_distribution",
+        "matching_rule": "sampled_zone_reports_filtered_by_optional_boss_difficulty_spec_and_kill_time",
         "query": query,
         "freshness": _sampled_cross_report_freshness(),
         "citations": _sampled_cross_report_citations(rows),
@@ -1465,6 +1468,7 @@ def _boss_spec_usage_payload(
         "provider": "warcraftlogs",
         "kind": "boss_spec_usage",
         "ranking_basis": "sampled_finished_kill_cohort_spec_presence",
+        "matching_rule": "spec_presence_across_sampled_finished_kills_with_player_details",
         "query": query,
         "freshness": _sampled_cross_report_freshness(),
         "citations": _sampled_cross_report_citations(rows),
@@ -1578,6 +1582,7 @@ def _collect_comp_sample_rows(
                 include_combatant_info=True,
                 kill_type="Kills",
             ),
+            ttl_override=client._guild_ttl,
         )
         composed_rows.append(_composition_sample_row(row, details_report=details_report))
     return {
@@ -1662,6 +1667,7 @@ def _comp_samples_payload(
         "provider": "warcraftlogs",
         "kind": "comp_samples",
         "ranking_basis": "sampled_fastest_kills",
+        "matching_rule": "class_roster_composition_across_sampled_finished_kills_with_player_details",
         "query": query,
         "freshness": _sampled_cross_report_freshness(),
         "citations": _sampled_cross_report_citations(rows),
@@ -1822,6 +1828,7 @@ def _ability_usage_summary_payload(
         "provider": "warcraftlogs",
         "kind": "ability_usage_summary",
         "ranking_basis": "sampled_fastest_kills",
+        "matching_rule": "ability_casts_across_sampled_finished_kills_with_event_limit",
         "query": {
             **query,
             "event_limit": event_limit,
@@ -3446,6 +3453,7 @@ def boss_spec_usage(
                     include_combatant_info=True,
                     kill_type="Kills",
                 ),
+                ttl_override=client._guild_ttl,
             )
             enriched_rows.append({**row, "player_details": _all_player_detail_rows(detail_report)})
     except WarcraftLogsClientError as exc:

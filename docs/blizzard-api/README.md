@@ -24,7 +24,7 @@ This should be treated as an official authenticated API service:
 - model region and namespace explicitly
 - cache within policy and respect the official access model
 
-Shared auth direction for this provider is defined in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/warcraft_cli/docs/architecture/AUTH_ARCHITECTURE_PLAN.md). `blizzard-api` should be the second validation point for the shared OAuth-oriented auth architecture after `warcraftlogs`.
+Shared auth direction for this provider is defined in [AUTH_ARCHITECTURE_PLAN.md](../architecture/AUTH_ARCHITECTURE_PLAN.md). `blizzard-api` should be the second validation point for the shared OAuth-oriented auth architecture after `warcraftlogs`.
 
 ## Likely CLI Shape
 
@@ -81,4 +81,4 @@ Recommended auth posture:
 - `https://develop.battle.net/`
 - `https://github.com/Blizzard/api-wow-docs`
 - `https://worldofwarcraft.blizzard.com/en-us/news/15336025`
-- [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
+- [Roadmap](../ROADMAP.md)

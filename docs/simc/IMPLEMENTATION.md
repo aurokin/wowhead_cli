@@ -1,12 +1,14 @@
 # SimulationCraft Implementation Plan
 
+> **Status: Completed.** All phases have been implemented in `packages/simc-cli/`. This document is preserved for package shape rationale and migration history.
+
 ## Purpose
 
 This document is the file-level implementation plan for the `simc` provider.
 
 It is the bridge between:
-- the high-level [SimulationCraft CLI doc](/home/auro/code/warcraft_cli/docs/simc/README.md)
-- the module inventory in [SIMC_MIGRATION_INVENTORY.md](/home/auro/code/warcraft_cli/docs/simc/MIGRATION_INVENTORY.md)
+- the high-level [SimulationCraft CLI doc](README.md)
+- the module inventory in [MIGRATION_INVENTORY.md](MIGRATION_INVENTORY.md)
 - actual code creation under `packages/simc-cli/`
 
 This is intentionally more concrete than the roadmap.
@@ -75,7 +77,7 @@ Wrapper integration:
 ### `repo.py`
 
 Primary source:
-- `/home/auro/code/simc_exp/simc_exp/repo.py`
+- `simc_exp/repo.py`
 
 Responsibilities:
 - discover local SimulationCraft checkout
@@ -93,7 +95,7 @@ Needed changes:
 ### `build_input.py`
 
 Primary source:
-- `/home/auro/code/simc_exp/simc_exp/build_input.py`
+- `simc_exp/build_input.py`
 
 Phase-1 responsibilities:
 - infer actor/spec from APL path when useful
@@ -110,7 +112,7 @@ Needed changes:
 ### `search.py`
 
 Primary source:
-- `/home/auro/code/simc_exp/simc_exp/search.py`
+- `simc_exp/search.py`
 
 Phase-1 responsibilities:
 - `spec-files`
@@ -124,7 +126,7 @@ Move `find-action` / `trace-action` behavior later unless phase 1 stays small en
 ### `run.py`
 
 Primary source:
-- selected logic from `/home/auro/code/simc_exp/simc_exp/sim.py`
+- selected logic from `simc_exp/sim.py`
 
 Phase-1 responsibilities:
 - `version`
@@ -141,7 +143,7 @@ Needed changes:
 New Typer CLI surface.
 
 Do not port:
-- old argparse code from `/home/auro/code/simc_exp/simc_exp/cli.py`
+- old argparse code from `simc_exp/cli.py`
 
 Do:
 - rebuild the command surface in the current monorepo style
@@ -158,8 +160,8 @@ Implemented on top of the phase-1 base:
 - `apl-talents`
 
 Primary source modules:
-- `/home/auro/code/simc_exp/simc_exp/apl.py`
-- `/home/auro/code/simc_exp/simc_exp/search.py`
+- `simc_exp/apl.py`
+- `simc_exp/search.py`
 
 Implemented package layout change:
 - added `apl.py`
@@ -172,10 +174,10 @@ Shipped after the base provider was trusted:
 - `simc log-actions`
 
 Primary source modules:
-- `/home/auro/code/simc_exp/simc_exp/prune.py`
-- `/home/auro/code/simc_exp/simc_exp/branch.py`
-- `/home/auro/code/simc_exp/simc_exp/packet.py`
-- `/home/auro/code/simc_exp/simc_exp/sim.py`
+- `simc_exp/prune.py`
+- `simc_exp/branch.py`
+- `simc_exp/packet.py`
+- `simc_exp/sim.py`
 
 Suggested package layout change:
 - add `prune.py`
@@ -209,7 +211,7 @@ Created in phase 1:
 - `tests/test_simc_cli.py`
 
 Port or adapt from:
-- `/home/auro/code/simc_exp/tests/test_build_input.py`
+- `simc_exp/tests/test_build_input.py`
 
 Add provider-specific coverage for:
 - missing repo
@@ -237,9 +239,9 @@ Create:
 - `tests/test_simc_runtime.py`
 
 Port or adapt from:
-- `/home/auro/code/simc_exp/tests/test_prune.py`
-- `/home/auro/code/simc_exp/tests/test_packet.py`
-- `/home/auro/code/simc_exp/tests/test_simc_integration.py`
+- `simc_exp/tests/test_prune.py`
+- `simc_exp/tests/test_packet.py`
+- `simc_exp/tests/test_simc_integration.py`
 
 ## Live Or Local Verification Expectations
 
