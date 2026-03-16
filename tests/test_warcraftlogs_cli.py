@@ -677,7 +677,7 @@ class _FakeWarcraftLogsClient:
             rows = [
                 {"type": "cast", "timestamp": 120000, "sourceID": 9, "targetID": 501, "abilityGameID": 20473},
                 {"type": "cast", "timestamp": 145000, "sourceID": 9, "targetID": 501, "abilityGameID": 20473},
-                {"type": "cast", "timestamp": 160000, "sourceID": 1, "targetID": 501, "abilityGameID": 57795},
+                {"type": "cast", "timestamp": 160000, "sourceID": 1, "targetID": 777, "abilityGameID": 57795},
             ]
         return {
             "code": "abcd1234",
@@ -781,6 +781,16 @@ class _FakeWarcraftLogsClient:
                         "petOwner": None,
                         "server": None,
                         "subType": "Boss",
+                        "type": "NPC",
+                    },
+                    {
+                        "gameID": 0,
+                        "icon": "inv_misc_questionmark",
+                        "id": 777,
+                        "name": "Unstable Voidling",
+                        "petOwner": None,
+                        "server": None,
+                        "subType": "Add",
                         "type": "NPC",
                     },
                 ],
@@ -1626,7 +1636,10 @@ def test_warcraftlogs_report_encounter_casts_summarizes_cast_rows(monkeypatch) -
     assert payload["kind"] == "report_encounter_casts"
     assert payload["casts"]["event_count"] == 3
     assert payload["casts"]["by_source"][0]["source"]["name"] == "Auropower"
+    assert payload["casts"]["by_target"][0]["target"]["name"] == "Dimensius, the All-Devouring"
     assert payload["casts"]["by_ability"][0]["ability"]["name"] == "Holy Shock"
+    assert payload["casts"]["by_source_target"][0]["target"]["name"] == "Dimensius, the All-Devouring"
+    assert payload["casts"]["by_source_target"][1]["target"]["name"] == "Unstable Voidling"
     assert payload["casts"]["preview"][0]["relative_time_ms"] == 20000.0
     assert payload["casts"]["preview"][0]["source"]["identity_contract"]["status"] == "canonical"
     assert payload["casts"]["preview"][0]["ability"]["identity_contract"]["status"] == "canonical"

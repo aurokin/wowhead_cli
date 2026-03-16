@@ -934,8 +934,10 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
     rows = paginator.get("data") if isinstance(paginator.get("data"), list) else []
     cast_rows = [row for row in rows if isinstance(row, dict)]
     by_source: dict[tuple[int | None, str | None], int] = {}
+    by_target: dict[tuple[int | None, str | None], int] = {}
     by_ability: dict[tuple[int | None, str | None], int] = {}
     by_source_ability: dict[tuple[int | None, int | None], int] = {}
+    by_source_target: dict[tuple[int | None, int | None], int] = {}
     preview: list[dict[str, Any]] = []
     fight_start = fight.get("startTime") if isinstance(fight.get("startTime"), (int, float)) else None
     report_code = report.get("code") if isinstance(report.get("code"), str) else None
@@ -943,6 +945,7 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
 
     for row in cast_rows:
         source_id = _event_id(row.get("sourceID"))
+        target_id = _event_id(row.get("targetID"))
         ability_id = _event_id(row.get("abilityGameID"))
         source = _named_actor(
             actor_index,
@@ -951,12 +954,22 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
             fight_id=selected_fight_id,
             source="report_encounter_casts",
         )
+        target = _named_actor(
+            actor_index,
+            target_id,
+            report_code=report_code,
+            fight_id=selected_fight_id,
+            source="report_encounter_casts",
+        )
         ability = _named_ability(ability_index, ability_id, source="report_encounter_casts")
         source_key = (source_id, str(source.get("name") if source else None))
+        target_key = (target_id, str(target.get("name") if target else None))
         ability_key = (ability_id, str(ability.get("name") if ability else None))
         by_source[source_key] = by_source.get(source_key, 0) + 1
+        by_target[target_key] = by_target.get(target_key, 0) + 1
         by_ability[ability_key] = by_ability.get(ability_key, 0) + 1
         by_source_ability[(source_id, ability_id)] = by_source_ability.get((source_id, ability_id), 0) + 1
+        by_source_target[(source_id, target_id)] = by_source_target.get((source_id, target_id), 0) + 1
         if len(preview) < preview_limit:
             timestamp = row.get("timestamp")
             relative_ms = None
@@ -967,13 +980,7 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
                     "timestamp": timestamp,
                     "relative_time_ms": relative_ms,
                     "source": source,
-                    "target": _named_actor(
-                        actor_index,
-                        _event_id(row.get("targetID")),
-                        report_code=report_code,
-                        fight_id=selected_fight_id,
-                        source="report_encounter_casts",
-                    ),
+                    "target": target,
                     "ability": ability,
                     "type": row.get("type"),
                 }
@@ -985,6 +992,14 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
             base = {"count": count}
             if field == "source":
                 base["source"] = _named_actor(
+                    actor_index,
+                    numeric_id if isinstance(numeric_id, int) else None,
+                    report_code=report_code,
+                    fight_id=selected_fight_id,
+                    source="report_encounter_casts",
+                ) or {"id": numeric_id, "name": name}
+            elif field == "target":
+                base["target"] = _named_actor(
                     actor_index,
                     numeric_id if isinstance(numeric_id, int) else None,
                     report_code=report_code,
@@ -1016,6 +1031,28 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
             }
         )
 
+    source_target_rows = []
+    for (source_id, target_id), count in sorted(by_source_target.items(), key=lambda item: (-item[1], item[0])):
+        source_target_rows.append(
+            {
+                "count": count,
+                "source": _named_actor(
+                    actor_index,
+                    source_id,
+                    report_code=report_code,
+                    fight_id=selected_fight_id,
+                    source="report_encounter_casts",
+                ),
+                "target": _named_actor(
+                    actor_index,
+                    target_id,
+                    report_code=report_code,
+                    fight_id=selected_fight_id,
+                    source="report_encounter_casts",
+                ),
+            }
+        )
+
     return {
         "report": _report_brief_payload(report),
         "fight": _fight_payload(fight),
@@ -1023,8 +1060,10 @@ def _encounter_cast_rows_payload(*, report: dict[str, Any], fight: dict[str, Any
             "event_count": len(cast_rows),
             "next_page_timestamp": paginator.get("nextPageTimestamp"),
             "by_source": _sorted_rows(by_source, field="source"),
+            "by_target": _sorted_rows(by_target, field="target"),
             "by_ability": _sorted_rows(by_ability, field="ability"),
             "by_source_ability": combo_rows,
+            "by_source_target": source_target_rows,
             "preview": preview,
         },
     }
