@@ -1,395 +1,153 @@
 # Roadmap
 
+This file is the sequencing document for the repo.
+
+Use other docs for stable reference material:
+- product philosophy: [PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/PRODUCT_PRINCIPLES.md)
+- analytics and comparison safety rules: [SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/SAFE_ANALYTICS_RULES.md)
+- shared identity semantics: [IDENTITY_CONTRACT.md](/home/auro/code/warcraft_cli/docs/IDENTITY_CONTRACT.md)
+- wrapper boundary: [WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/warcraft_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
+- provider-specific behavior and boundaries: `docs/*_CLI.md`
+
 ## Goal
 
-Evolve this repo from a single-service `wowhead` CLI into a Warcraft data monorepo with:
-- separate service CLIs for distinct data sources
-- shared core libraries where the behavior is genuinely common
-- root-level skills that are not tied to one CLI package
-- a top-level `warcraft` CLI that can route agents to the right service when they are unsure
+Grow the repo as a Warcraft data monorepo with:
+- individually runnable provider CLIs
+- shared libraries only where the behavior is genuinely shared
+- a root `warcraft` wrapper for routing and orchestration
+- agent-friendly outputs that preserve source identity and trust boundaries
 
-The first new service after this restructure should be `method`.
+## Current State
 
-The structural rules for packaging, language choice, installation, storage, auth, and wrapper boundaries are defined in [REPO_STRUCTURE_AND_PACKAGING.md](/home/auro/code/warcraft_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md).
-The concrete package tree is defined in [PACKAGE_LAYOUT.md](/home/auro/code/warcraft_cli/docs/PACKAGE_LAYOUT.md).
-The execution order is controlled by [MIGRATION_CHECKLIST.md](/home/auro/code/warcraft_cli/docs/MIGRATION_CHECKLIST.md).
-The wrapper/provider boundary is defined in [WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/warcraft_cli/docs/WRAPPER_PROVIDER_CONTRACT.md).
-Shared auth planning is defined in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/warcraft_cli/docs/AUTH_ARCHITECTURE_PLAN.md).
-Shared identity semantics are defined in [IDENTITY_CONTRACT.md](/home/auro/code/warcraft_cli/docs/IDENTITY_CONTRACT.md).
-Repo-wide product philosophy lives in [PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/PRODUCT_PRINCIPLES.md).
-Repo-wide analytics and comparison safety rules live in [SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/SAFE_ANALYTICS_RULES.md).
-This file tracks sequencing, current status, and near-term priorities.
-
-## Current Status
-
-Completed:
-- shared package split into `warcraft-core`, `warcraft-api`, and `warcraft-content`
-- working `warcraft` wrapper
-- working `wowhead` provider in package form with:
-  - entity, guide, comments, compare, and bundle workflows
-  - guide-category discovery with filtering and sorting
-  - timeline-native `news` / `blue-tracker` with detail fetches
-  - maintainable tool-state coverage for `talent-calc`, `profession-tree`, `dressing-room`, and `profiler`
-- working `method` provider with explicit supported-family boundaries and live/fixture coverage
-- working `icy-veins` provider with explicit supported-family boundaries and live/fixture coverage
-- working `raiderio` provider with direct lookup, search/resolve, and first analytics primitives
-- working `warcraft-wiki` provider with typed programming/reference surfaces and broad family coverage
-- working `wowprogress` provider with direct lookup, search/resolve, and first analytics primitives
-- working `warcraftlogs` provider with retail-only public OAuth by default plus limited saved user-token verification, typed guild/character/report lookups, guild rankings, first deep encounter report-link workflows with typed cast/buff/damage slices, and the first sampled cross-report analytics slice including cohort spec summaries
-- working `simc` provider with readonly source analysis, runtime helpers, and managed checkout flow
+Working now:
+- shared packages: `warcraft-core`, `warcraft-api`, `warcraft-content`
+- root wrapper: `warcraft`
+- provider CLIs: `wowhead`, `method`, `icy-veins`, `raiderio`, `warcraft-wiki`, `wowprogress`, `warcraftlogs`, `simc`
 - root `warcraft` skill
 
-Validated shared so far:
-- output/error shaping
+Validated shared systems:
+- output and error shaping
 - cache and HTTP infrastructure
-- bundle/index/query scaffolding
-- wrapper routing
-- article bundle export/load/query
-- article search/resolve payload shaping and follow-up contracts
-- article linked-entity merge across multi-page guides
-- article/reference bundle export/query outside class guides
-- article-provider CLI support helpers
-- article-provider test scaffolding
-- wrapper expansion filtering and provider expansion metadata
-- wrapper ranking policy with tunable provider-family and intent weighting
-- shared path/XDG helpers
+- bundle export/load/query scaffolding
+- wrapper routing and provider passthrough
+- article bundle and guide-comparison primitives
+- wrapper expansion filtering and provider metadata
+- ranking policy for wrapper discovery
 - sample-backed analytics direction for profile and leaderboard providers
 
-Active next step:
-- continue improving existing providers and wrapper discovery quality
-- build reusable analytics systems for profile and leaderboard providers instead of one-off answer commands
-- add static quality tooling from [LINTING_AND_COMPLEXITY_PLAN.md](/home/auro/code/warcraft_cli/docs/LINTING_AND_COMPLEXITY_PLAN.md) so refactor targets are easier to identify and prioritize
-- focus on features, refactors, testing, code shareability, reliability, and performance before starting more auth-heavy providers
-- expand `warcraftlogs` from the current retail public slice toward the planned full official feature set:
-  - more world/static metadata
-  - deeper guild and character ranking surfaces, especially better public `character-rankings` reliability
-  - broader report workflows, especially stronger event pagination and additional detail surfaces
-  - deep encounter analytics beyond the current typed player/cast/buff/damage report-link slice, especially wave and phase commands so agents do not have to hand-calculate unstable event answers
-  - cross-report analytics beyond the current boss/spec/top-kill/cohort commands, with stronger discovery and filtering semantics plus explicit sample boundaries
-  - cache finished reports and derived analytics aggressively, but do not treat live logs as cacheable stable data
-  - user auth after the public contract is tighter
-- use `warcraftlogs` and `blizzard-api` to drive the shared OAuth-oriented auth architecture in [AUTH_ARCHITECTURE_PLAN.md](/home/auro/code/warcraft_cli/docs/AUTH_ARCHITECTURE_PLAN.md)
-- keep `raidbots` in the auth picture as a likely future session/workflow consumer, not as a driver of the shared OAuth abstraction
-- roadmap cleanup after the recent provider quality passes
-- for `raiderio`, prioritize:
-  - deeper sample-backed analytics
-  - clearer season-aware leaderboard workflows
-  - richer normalized run/profile snapshots where the source supports them
-- for `wowprogress`, prioritize:
-  - deeper sample-backed analytics
-  - guild snapshot, history, and rank workflows that are easier than manual site navigation
-  - guild/profile aggregation that is faster and clearer than browser workflows
-  - reliability and normalization improvements around rankings/profile slices
-- keep `wowhead` at the maintainability boundary now documented in [WOWHEAD_CLI.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_CLI.md):
-  - continue only on straightforward structured extraction
-  - do not push `dressing-room` / `profiler` into reverse-engineering work without an explicit product decision
+## Now
 
-## Near-Term Roadmap
+Highest-value work:
+1. Continue tightening the root wrapper.
+   - improve `warcraftlogs` routing beyond explicit report references
+   - keep wrapper `doctor`, search, resolve, passthrough, and ranking policy aligned with actual provider capability
+   - preserve provider registration status instead of overstating readiness
+2. Continue shared identity and cross-provider handoff work.
+   - class/spec/build identity
+   - encounter identity
+   - ability identity
+   - report-actor identity
+   - guide/build/log crosswalks only where the source contract allows them
+3. Continue comparison and evidence surfaces.
+   - additive guide comparison
+   - exact-build handoff into `simc`
+   - consistent freshness, citations, and scope metadata for sampled, merged, cached, and derived outputs
+4. Continue safe Warcraft Logs growth.
+   - explicit-scope encounter primitives
+   - sampled cohort analytics
+   - deeper report/detail coverage where the public contract is stable
+   - user-auth expansion only after the public/report contract is tighter
 
-These are the highest-value gaps between the current codebase and the agent-product principles.
+## Provider Priorities
 
-### 1. Wrapper Parity And Routing
+### Warcraft Logs
 
-- expand the newly added `warcraftlogs` wrapper integration beyond explicit report references into richer structured report/log routing
-- keep wrapper passthrough, doctor reporting, ranking-policy coverage, and conservative resolve/search support aligned as Warcraft Logs grows
-- keep provider registration status visible in wrapper `doctor` instead of drifting back toward inflated ready-state summaries
-- keep future `blizzard-api` work aligned with the same wrapper-first orchestration model once the provider exists
+Near-term:
+- better wrapper routing
+- stronger public `character-rankings` reliability
+- broader report-detail coverage where the API contract is stable
+- deeper explicit-scope analytics before any broader segmentation work
+- finished-report caching and derived-output trust metadata
 
-### 2. Shared Identity And Crosswalk Primitives
-
-Add shared Warcraft identity helpers so agents do not have to hand-normalize the same concepts across providers:
-
-- class/spec/hero-talent/build identity
-- boss/encounter identity
-- ability identity
-- report actor identity
-- guide/build/log crosswalks where the source contracts allow them
-
-The goal is not one fake universal entity model. The goal is shared cross-provider handoff primitives for the workflows we already know agents need.
-
-### 3. Comparison Surfaces
-
-Add explicit comparison-ready outputs for cross-provider workflows instead of expecting the agent to diff large provider-native payloads manually:
-
-- additive guide comparison surfaces that preserve raw evidence and citations instead of replacing guide content:
-  - exact section-title evidence
-  - analysis-surface tags
-  - explicit embedded build references
-- exact-build handoff from user talent exports or guide build references into `simc`
-- guide-vs-guide and guide-vs-`simc` comparison packets grounded in source evidence
-
-### 4. Deeper Scoped Warcraft Logs Analytics
-
-Continue pushing Warcraft Logs toward stable building blocks for complex fight-analysis questions:
-
+Deferred:
 - wave and phase segmentation
-- stronger scoped add/target windows
-- aura-window comparisons
-- per-ability usage summaries inside exact fight windows
-- explicit comparison helpers that preserve fight/window/player/target provenance
+- classic/fresh site-profile routing
+- wrapper-level user-auth routing
 
-These should stay typed and scope-safe. The CLI should not push agents back toward manual event math.
+See [WARCRAFTLOGS_CLI.md](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI.md).
 
-### 5. Evidence Packets And Consistent Trust Metadata
+### Blizzard API
 
-Add reusable evidence-oriented outputs that agents can pass between steps without re-deriving context:
+Next major provider when auth-heavy official data is the priority.
 
-- structured investigation packets with:
-  - normalized inputs
-  - provider/source citations
-  - freshness
-  - scope metadata
-  - compared slices
-  - unresolved gaps or caveats
-- consistent freshness/citation metadata for cached, merged, sampled, and derived outputs across providers
-- stronger explicit query metadata whenever a command returns sampled, truncated, filtered, or merged results
+Focus:
+- canonical game-data and profile workflows
+- OAuth architecture validation alongside `warcraftlogs`
+- region and namespace-aware API patterns
 
-The direction is to make complex cross-provider questions computable from trustworthy primitives, not to bolt on unsupported answer synthesis.
+See [BLIZZARD_API_CLI.md](/home/auro/code/warcraft_cli/docs/BLIZZARD_API_CLI.md).
 
-Current delivered slice in this lane:
-- sampled Warcraft Logs cohort analytics now carry freshness and citation metadata
-- guide-to-`simc` handoff packets now carry explicit provenance, citations, and source-freshness metadata
+### Raider.IO
 
-## Reference Documents
+Continue:
+- deeper sample-backed analytics
+- clearer season-aware leaderboard workflows
+- richer normalized run/profile snapshots where the source supports them
 
-- [Documentation map](/home/auro/code/warcraft_cli/docs/README.md)
-- [Product principles](/home/auro/code/warcraft_cli/docs/PRODUCT_PRINCIPLES.md)
-- [Safe analytics rules](/home/auro/code/warcraft_cli/docs/SAFE_ANALYTICS_RULES.md)
-- [Repo structure and packaging](/home/auro/code/warcraft_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md)
-- [Identity contract](/home/auro/code/warcraft_cli/docs/IDENTITY_CONTRACT.md)
-- [Package layout](/home/auro/code/warcraft_cli/docs/PACKAGE_LAYOUT.md)
-- [Migration checklist](/home/auro/code/warcraft_cli/docs/MIGRATION_CHECKLIST.md)
-- [Wrapper provider contract](/home/auro/code/warcraft_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
-- [Expansion filtering plan](/home/auro/code/warcraft_cli/docs/EXPANSION_FILTERING_PLAN.md)
-- [Linting and complexity plan](/home/auro/code/warcraft_cli/docs/LINTING_AND_COMPLEXITY_PLAN.md)
-- [Auth architecture plan](/home/auro/code/warcraft_cli/docs/AUTH_ARCHITECTURE_PLAN.md)
-- [Warcraft wrapper CLI doc](/home/auro/code/warcraft_cli/docs/WARCRAFT_CLI.md)
-- [Wowhead CLI doc](/home/auro/code/warcraft_cli/docs/WOWHEAD_CLI.md)
-- [Method.gg CLI doc](/home/auro/code/warcraft_cli/docs/METHOD_CLI.md)
-- [Icy Veins CLI doc](/home/auro/code/warcraft_cli/docs/ICY_VEINS_CLI.md)
-- [Raider.IO CLI doc](/home/auro/code/warcraft_cli/docs/RAIDERIO_CLI.md)
-- [WowProgress CLI doc](/home/auro/code/warcraft_cli/docs/WOWPROGRESS_CLI.md)
-- [Warcraft Wiki CLI doc](/home/auro/code/warcraft_cli/docs/WARCRAFT_WIKI_CLI.md)
-- [Blizzard API CLI doc](/home/auro/code/warcraft_cli/docs/BLIZZARD_API_CLI.md)
-- [Undermine Exchange CLI doc](/home/auro/code/warcraft_cli/docs/UNDERMINE_EXCHANGE_CLI.md)
-- [RaidPlan CLI doc](/home/auro/code/warcraft_cli/docs/RAIDPLAN_CLI.md)
-- [CurseForge CLI doc](/home/auro/code/warcraft_cli/docs/CURSEFORGE_CLI.md)
-- [SimulationCraft CLI doc](/home/auro/code/warcraft_cli/docs/SIMC_CLI.md)
-- [SimulationCraft migration inventory](/home/auro/code/warcraft_cli/docs/SIMC_MIGRATION_INVENTORY.md)
-- [SimulationCraft implementation plan](/home/auro/code/warcraft_cli/docs/SIMC_IMPLEMENTATION_PLAN.md)
-- [Raidbots CLI doc](/home/auro/code/warcraft_cli/docs/RAIDBOTS_CLI.md)
-- [Warcraft Logs CLI doc](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI.md)
+See [RAIDERIO_CLI.md](/home/auro/code/warcraft_cli/docs/RAIDERIO_CLI.md).
 
-## Structural Principles
+### WowProgress
 
-- Keep service boundaries explicit. Do not hide very different access models behind one giant code path.
-- Share infrastructure, not site-specific assumptions.
-- Prefer a thin `warcraft` wrapper over a monolithic all-in-one implementation.
-- Keep skills at the repo root so agents can discover the right workflow before they know the exact backend.
-- Treat API-first, article-first, and local-tool integrations as different families.
+Continue:
+- deeper sample-backed analytics
+- easier guild snapshot/history/rank workflows
+- reliability and normalization improvements around ranking/profile slices
 
-## Service Landscape
+See [WOWPROGRESS_CLI.md](/home/auro/code/warcraft_cli/docs/WOWPROGRESS_CLI.md).
 
-| Service | Access model | High-level implementation direction | Notes |
-| --- | --- | --- | --- |
-| Wowhead | HTML pages plus embedded page data | Keep as a page-extraction and bundle-oriented CLI | [Plan](/home/auro/code/warcraft_cli/docs/WOWHEAD_CLI.md) |
-| Method.gg | Server-rendered article/guide pages with visible section nav and metadata | Build as an article extraction CLI with guide bundles and section query | [Plan](/home/auro/code/warcraft_cli/docs/METHOD_CLI.md) |
-| Icy Veins | Server-rendered article pages with guide metadata and nav links | Build as an article extraction CLI with search/resolve and section query | [Plan](/home/auro/code/warcraft_cli/docs/ICY_VEINS_CLI.md) |
-| Raider.IO | Public API with documented schema and rate limits | Build as an API-first CLI with typed endpoints and cached profile/leaderboard lookups | [Plan](/home/auro/code/warcraft_cli/docs/RAIDERIO_CLI.md) |
-| WowProgress | Server-rendered rankings and profile pages | Build as a rankings/profile CLI with guild, character, and progress lookups plus cached leaderboard slices | [Plan](/home/auro/code/warcraft_cli/docs/WOWPROGRESS_CLI.md) |
-| Warcraft Wiki | Server-rendered MediaWiki pages plus wiki metadata | Build as a reference CLI for lore, systems, and addon/API documentation with article export/query | [Plan](/home/auro/code/warcraft_cli/docs/WARCRAFT_WIKI_CLI.md) |
-| Blizzard API | Official authenticated game-data and profile APIs | Build as an API-first CLI for canonical game data, profile data, and auth-aware official lookups | [Plan](/home/auro/code/warcraft_cli/docs/BLIZZARD_API_CLI.md) |
-| Undermine Exchange | Market-data web workflows and auction-oriented views | Build as a market-data CLI for item, commodity, and price-history lookups once the public surface is stable | [Plan](/home/auro/code/warcraft_cli/docs/UNDERMINE_EXCHANGE_CLI.md) |
-| RaidPlan | Planning/editor workflow with shareable encounter plans | Build as a read-first planning CLI for public plan fetch, export, and query before attempting editing flows | [Plan](/home/auro/code/warcraft_cli/docs/RAIDPLAN_CLI.md) |
-| CurseForge | Addon/mod discovery pages plus file and release metadata | Build as a read-first addon metadata CLI for search, project, file, changelog, and compatibility lookups | [Plan](/home/auro/code/warcraft_cli/docs/CURSEFORGE_CLI.md) |
-| SimulationCraft | Local Git repo, readonly source inspection, local builds, local command execution | Build as a local-tool CLI with readonly source analysis, sync/build/run workflows, build decoding, and agent-facing APL reasoning helpers | [Plan](/home/auro/code/warcraft_cli/docs/SIMC_CLI.md) |
-| Raidbots | Web workflow built around SimulationCraft input and result pages | Start with result/report parsing and workflow helpers, then evaluate deeper automation carefully | [Plan](/home/auro/code/warcraft_cli/docs/RAIDBOTS_CLI.md) |
-| Warcraft Logs | Official OAuth 2.0 + GraphQL API with public and user-auth endpoints | Build as an API-first CLI with typed guild, character, report, rankings, world-data, and auth workflows over the official API; current implementation is retail-only with public OAuth by default plus limited saved user-token verification | [Plan](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI.md) |
+### Wowhead
 
-## What The Research Suggests
+Maintain the current boundary:
+- continue only on straightforward structured extraction
+- do not push `dressing-room` or `profiler` into reverse-engineering work without an explicit product decision
 
-- `Method.gg` and `Icy Veins` are article-first sources. They look much closer to guide extraction and local bundles than to entity APIs.
-- `Raider.IO` is API-first. Its developer API is documented via Swagger/OpenAPI and publishes rate-limit expectations.
-- profile and leaderboard providers should grow through reusable analytics systems:
-  - sampling
-  - normalization
-  - aggregation
-  - provenance
-  - freshness
-- `Blizzard API` should be treated as the canonical official source for supported game-data and profile surfaces, with OAuth, region, and namespace rules treated as first-class concerns.
-- `Warcraft Logs` should be treated as API-first and auth-heavy rather than a scraping target.
-- `SimulationCraft` is fundamentally a local-repo integration, not a site integration, and the existing `simc_exp` work shows that readonly source-tree analysis is already a real use case.
-- `Raidbots` should be approached as a workflow layer around SimulationCraft inputs and simulation results, not as the primary source of character truth.
+See [WOWHEAD_CLI.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_CLI.md).
 
-Read the service-specific detail in:
-- [Method.gg CLI doc](/home/auro/code/warcraft_cli/docs/METHOD_CLI.md)
-- [Icy Veins CLI doc](/home/auro/code/warcraft_cli/docs/ICY_VEINS_CLI.md)
-- [Raider.IO CLI doc](/home/auro/code/warcraft_cli/docs/RAIDERIO_CLI.md)
-- [Blizzard API CLI doc](/home/auro/code/warcraft_cli/docs/BLIZZARD_API_CLI.md)
-- [SimulationCraft CLI doc](/home/auro/code/warcraft_cli/docs/SIMC_CLI.md)
-- [Raidbots CLI doc](/home/auro/code/warcraft_cli/docs/RAIDBOTS_CLI.md)
-- [Warcraft Logs CLI doc](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI.md)
+### Raidbots
 
-## Target Repo Shape
+Keep in the picture as a workflow-oriented companion to `simc`, not as the driver of shared auth or canonical gameplay truth.
 
-A good end state is:
+See [RAIDBOTS_CLI.md](/home/auro/code/warcraft_cli/docs/RAIDBOTS_CLI.md).
 
-- `packages/warcraft-core`
-- `packages/warcraft-content`
-- `packages/warcraft-api`
-- `packages/warcraft-cli`
-- `packages/wowhead-cli`
-- `packages/method-cli`
-- `packages/icy-veins-cli`
-- `packages/raiderio-cli`
-- `packages/wowprogress-cli`
-- `packages/warcraft-wiki-cli`
-- `packages/blizzard-api-cli`
-- `packages/undermine-exchange-cli`
-- `packages/raidplan-cli`
-- `packages/curseforge-cli`
-- `packages/simc-cli`
-- `packages/raidbots-cli`
-- `packages/warcraftlogs-cli`
-- `skills/warcraft/`
-- optional generated provider subskills under `.generated-skills/`
+## Later
 
-The important split is conceptual, not naming. Shared code should live in explicit libraries, and each service CLI should remain individually runnable.
+Lower-priority provider candidates:
+- `undermine-exchange`
+- `raidplan`
+- `curseforge`
 
-The wrapper-specific behavior is described in [WARCRAFT_CLI.md](/home/auro/code/warcraft_cli/docs/WARCRAFT_CLI.md).
-The package and language rules for that shape are defined in [REPO_STRUCTURE_AND_PACKAGING.md](/home/auro/code/warcraft_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md).
+Revisit only when the current wrapper, official API, and evidence-oriented analytics work is in a stronger place.
 
-## Shared Now
+## Sequencing Rules
 
-- output shaping, field projection, and pretty-print behavior
-- structured error contracts
-- cache backends, TTL policy, and cache inspection/repair
-- HTTP client primitives, retries, throttling hooks, and headers
-- local bundle/index storage, freshness tracking, and query scaffolding
-- root command routing for the `warcraft` wrapper
-- shared config and environment handling
+- Keep roadmap items here.
+- Keep repo-wide rules out of this file unless they directly affect sequencing.
+- Keep provider behavior, current boundaries, and command-specific detail in the provider CLI docs.
+- Only extract shared code after a second provider proves the abstraction is real.
+- Prefer feature delivery, reliability, and trust metadata over broadening auth-heavy surfaces too early.
 
-These should move first because the current `wowhead` CLI already proves them and multiple future services will need them quickly.
+## Risks
 
-## Shared After `method`
-
-- article and content primitives that survive a second article-style service
-- shared search/resolve provider interfaces
-- ranking explanation shapes for discovery commands
-- follow-up command suggestion shapes
-- auth/session persistence for API-first services
-
-These should move only after `method` exists and validates that the abstractions are real instead of Wowhead-specific.
-
-Current validated subset:
-- article bundle export/load/query is proven shared across `method` and `icy-veins` and now lives in [warcraft_content.article_bundle](/home/auro/code/warcraft_cli/packages/warcraft-content/src/warcraft_content/article_bundle.py)
-- article search/resolve payload shaping, follow-up guidance, and multi-page linked-entity merge are proven shared across `method` and `icy-veins` and now live in [warcraft_content.article_discovery](/home/auro/code/warcraft_cli/packages/warcraft-content/src/warcraft_content/article_discovery.py)
-- article parsing and navigation extraction are still provider-specific
-- provider-local ranking remains provider-specific
-
-## Service-Specific
-
-- HTML parsing rules and page-model extraction
-- API schemas, query builders, and endpoint contracts
-- service-specific entity models and identifiers
-- service-specific ranking heuristics
-- SimulationCraft build/run logic
-- service-specific auth flows and operational constraints
-
-## Do Not Generalize Yet
-
-- one universal entity model across all services
-- one universal article or guide parser
-- one universal search ranking algorithm
-- one universal command grammar beyond wrapper routing
-- one universal response model for API, article, and local-tool services
-
-## Root Skill Strategy
-
-Add repo-level skills that mirror the service layout rather than nesting the guidance inside one CLI package.
-
-Recommended direction:
-- `skills/warcraft/SKILL.md`: orchestration skill for deciding which service or wrapper command to use
-- keep the root `warcraft` skill progressive-disclosure-first for now
-- add service-specific root skills later only if they prove useful
-
-Agents should prefer `warcraft` when the service is unclear, then drop to `wowhead`, `method`, `warcraftlogs`, and so on once the source is known.
-
-See the dedicated wrapper CLI doc in [WARCRAFT_CLI.md](/home/auro/code/warcraft_cli/docs/WARCRAFT_CLI.md).
-
-## `warcraft` Wrapper Strategy
-
-The wrapper should be a router and orchestration layer, not the only place business logic lives.
-
-High-level responsibilities:
-- `warcraft search`: search across service-specific search providers when available
-- `warcraft resolve`: pick the best service and next command conservatively
-- `warcraft <service> ...`: pass through to the service CLI when the caller already knows what they need
-- shared discovery commands for local bundles, cache inspection, and environment checks when those concepts become cross-service
-
-The wrapper should not erase source identity. Agents still need to know whether the answer came from Wowhead, Method.gg, Warcraft Logs, or another backend.
-
-## Recommended Migration Order
-
-Completed:
-1. Extract `warcraft-core` from the current `wowhead` package without changing the `wowhead` command surface.
-2. Extract `warcraft-api` for shared HTTP transport, retry, throttling hooks, and config handling.
-3. Extract `warcraft-content` for bundle/index/freshness/query primitives.
-4. Introduce a minimal `warcraft` wrapper that can proxy `wowhead` and expose shared discovery later.
-5. Move the current root skill layout to service-agnostic root-level skills.
-6. Add `method` as the first article-style service on top of the shared content/bundle pieces. See [METHOD_CLI.md](/home/auro/code/warcraft_cli/docs/METHOD_CLI.md).
-7. Validate those article abstractions against `icy-veins`.
-8. Add `raiderio` as the first clearly API-first service on top of shared HTTP/cache/auth layers, with auth deferred and search/resolve stubbed in phase 1. See [RAIDERIO_CLI.md](/home/auro/code/warcraft_cli/docs/RAIDERIO_CLI.md).
-9. Add `warcraft-wiki` as a working reference/documentation provider and validate the shared article layer outside class guides. See [WARCRAFT_WIKI_CLI.md](/home/auro/code/warcraft_cli/docs/WARCRAFT_WIKI_CLI.md).
-10. Add `wowprogress` as a working rankings/profile provider adjacent to `raiderio`, while keeping its HTML parsing and discovery constraints provider-specific. See [WOWPROGRESS_CLI.md](/home/auro/code/warcraft_cli/docs/WOWPROGRESS_CLI.md).
-
-Next:
-11. Add `simc` as the first local-tool integration and use it to validate readonly source analysis plus non-network execution abstractions. See [SIMC_CLI.md](/home/auro/code/warcraft_cli/docs/SIMC_CLI.md).
-12. Add `raidbots` after `simc`, likely as a workflow-oriented companion. See [RAIDBOTS_CLI.md](/home/auro/code/warcraft_cli/docs/RAIDBOTS_CLI.md).
-13. Add `blizzard-api` as the canonical official data provider for supported game-data and profile lookups once we are ready to tackle auth. Use it to validate OAuth, region handling, and namespace-aware API patterns. See [BLIZZARD_API_CLI.md](/home/auro/code/warcraft_cli/docs/BLIZZARD_API_CLI.md).
-14. Deepen `warcraftlogs` from the current public retail slice toward fuller official report, auth, and site-profile coverage. See [WARCRAFTLOGS_CLI.md](/home/auro/code/warcraft_cli/docs/WARCRAFTLOGS_CLI.md).
-15. Add `undermine-exchange` once the public market-data surface is stable enough to plan against. See [UNDERMINE_EXCHANGE_CLI.md](/home/auro/code/warcraft_cli/docs/UNDERMINE_EXCHANGE_CLI.md).
-16. Add `raidplan` as a planning/workflow provider once we decide to tackle read-first public plan extraction. See [RAIDPLAN_CLI.md](/home/auro/code/warcraft_cli/docs/RAIDPLAN_CLI.md).
-17. Add `curseforge` as a read-first addon metadata provider once we want addon/project/file compatibility workflows. See [CURSEFORGE_CLI.md](/home/auro/code/warcraft_cli/docs/CURSEFORGE_CLI.md).
-
-## Research Anchors
-
-These are the high-level sources used to shape the plan:
-- Raider.IO developer API and OpenAPI surface: `https://raider.io/api` and `https://raider.io/openapi.json`
-- Method.gg guide pages such as `https://www.method.gg/guides/mistweaver-monk`
-- Icy Veins guide pages such as `https://www.icy-veins.com/wow/warrior-guide`
-- SimulationCraft repo: `https://github.com/simulationcraft/simc`
-- Raidbots support guidance around the SimulationCraft addon: `https://support.raidbots.com/article/54-installing-and-using-the-simulationcraft-addon`
-- Warcraft Logs official API docs entry points: `https://www.warcraftlogs.com/api/docs` and `https://classic.warcraftlogs.com/v2-api-docs/warcraft`
-
-## Immediate Planning Priorities
-
- - add `simc` as the next non-auth provider using the readonly-analysis lessons already proven in `simc_exp`
- - add `blizzard-api` as the official canonical data source for supported game-data and profile lookups once auth work is in scope
-- keep package boundaries and wrapper/provider contracts aligned with real code as the monorepo grows
-- continue extracting only genuinely shared infrastructure as new providers prove the abstraction
-
-## Lower-Priority Candidates
-
-- `archon`
- - likely overlaps heavily with `warcraftlogs` and should be revisited after that ecosystem is in place
-- `mythictrap`
-  - strong raid-guide source, but less broad than `method` or `icy-veins`
-- `dataforazeroth`
-  - potentially useful for collections and achievement completion, but the site appears heavily app-driven and is lower priority than current sources
-
-## Risks To Watch
-
-- over-generalizing too early and building abstractions around one site’s quirks
-- pushing article sites and API services through the same data model when they should stay distinct
-- putting too much real logic in the `warcraft` wrapper instead of in shared libraries or service packages
-- making root skills too vague to be useful
-- letting the monorepo shape block delivery of the first new service
+- over-generalizing too early
+- hiding source differences behind fake shared schemas
+- pushing too much logic into the root wrapper
+- adding broad analytics semantics before the source contract is strong enough
+- letting documentation drift away from the actual CLI surfaces
 
 ## Success Criteria
 
-- agents can start from a root-level Warcraft skill and be routed to the right service
-- each service remains independently testable and independently runnable
-- shared code is real shared infrastructure, not accidental coupling
-- adding `method` does not require copying large parts of `wowhead`
-- the `warcraft` wrapper improves discovery without hiding source provenance
+- agents can start from the root skill and reach the right provider quickly
+- each provider remains independently runnable and testable
+- shared code stays genuinely shared
+- the wrapper improves discovery without erasing provenance
+- roadmap work stays here, while stable rules and provider behavior stay in their own docs
