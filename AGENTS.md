@@ -24,12 +24,12 @@ Co-Authored-By: OpenAI Codex <noreply@openai.com>
 - Put global flags before the subcommand.
 - Keep `README.md` short.
 - Keep the docs index in `docs/README.md`.
-- Keep repo-wide product philosophy and representative workflows in `docs/PRODUCT_PRINCIPLES.md`.
-- Keep repo-wide analytics and comparison safety rules in `docs/SAFE_ANALYTICS_RULES.md`.
+- Keep repo-wide product philosophy and representative workflows in `docs/foundation/PRODUCT_PRINCIPLES.md`.
+- Keep repo-wide analytics and comparison safety rules in `docs/foundation/SAFE_ANALYTICS_RULES.md`.
 - Put detailed command behavior in `docs/USAGE.md`.
 - Keep roadmap sequencing and current priority in `docs/ROADMAP.md`.
-- Keep provider-specific implementation state and next steps in `docs/*_PLAN.md`.
-- Keep shared identity semantics aligned with `docs/IDENTITY_CONTRACT.md` and `packages/warcraft-core/src/warcraft_core/identity.py`.
+- Keep provider-specific docs in `docs/<cli>/README.md`.
+- Keep shared identity semantics aligned with `docs/foundation/IDENTITY_CONTRACT.md` and `packages/warcraft-core/src/warcraft_core/identity.py`.
 - When adding features or docs, follow the agent-product principles and representative workflow direction documented there.
 - Keep docs aligned with actual CLI behavior.
 - Prefer updating docs when command contracts or output shapes change.
@@ -39,7 +39,7 @@ Co-Authored-By: OpenAI Codex <noreply@openai.com>
 - Prefer systems like sampling, normalization, aggregation, provenance, and freshness over one-off answer commands.
 - Treat normalization as an additive analysis layer, not a replacement for raw source content.
 - Keep raw guide/article/log content and provenance accessible alongside normalized outputs.
-- Follow `docs/SAFE_ANALYTICS_RULES.md` when adding sampled, compared, or derived analytics surfaces.
+- Follow `docs/foundation/SAFE_ANALYTICS_RULES.md` when adding sampled, compared, or derived analytics surfaces.
 - Skills are for CLI consumers and workflow usage.
 - Keep repo maintenance, roadmap, packaging, and internal architecture rules out of skill docs.
 - `skills/warcraft/SKILL.md` and `skills/warcraft/references/*.md` are the source of truth for consumer skill content.

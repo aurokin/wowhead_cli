@@ -1,5 +1,9 @@
 # SimulationCraft CLI
 
+Companion docs in this folder:
+- [IMPLEMENTATION.md](/home/auro/code/warcraft_cli/docs/simc/IMPLEMENTATION.md)
+- [MIGRATION_INVENTORY.md](/home/auro/code/warcraft_cli/docs/simc/MIGRATION_INVENTORY.md)
+
 ## Status
 
 `simc` phase 1 is implemented.
@@ -287,6 +291,6 @@ That is a strong use case for the monorepo because it is a different kind of pro
 
 - `https://github.com/simulationcraft/simc`
 - `/home/auro/code/simc_exp`
-- [SimulationCraft migration inventory](/home/auro/code/warcraft_cli/docs/SIMC_MIGRATION_INVENTORY.md)
-- [SimulationCraft implementation plan](/home/auro/code/warcraft_cli/docs/SIMC_IMPLEMENTATION_PLAN.md)
+- [SimulationCraft migration inventory](/home/auro/code/warcraft_cli/docs/simc/MIGRATION_INVENTORY.md)
+- [SimulationCraft implementation plan](/home/auro/code/warcraft_cli/docs/simc/IMPLEMENTATION.md)
 - [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)

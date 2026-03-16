@@ -269,4 +269,4 @@ Current state:
 Whenever provider capabilities, provider readiness rules, or wrapper/provider boundaries change:
 - update this document
 - update [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md) if sequencing changes
-- update [Repo Structure And Packaging](/home/auro/code/warcraft_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md) if package or language rules change
+- update [Repo Structure And Packaging](/home/auro/code/warcraft_cli/docs/architecture/REPO_STRUCTURE_AND_PACKAGING.md) if package or language rules change

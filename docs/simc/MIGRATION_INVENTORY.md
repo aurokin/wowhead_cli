@@ -10,9 +10,9 @@ It answers:
 - what should stay out of phase 1
 
 Use alongside:
-- [SimulationCraft CLI doc](/home/auro/code/warcraft_cli/docs/SIMC_CLI.md)
+- [SimulationCraft CLI doc](/home/auro/code/warcraft_cli/docs/simc/README.md)
 - [Roadmap](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
-- [Package layout](/home/auro/code/warcraft_cli/docs/PACKAGE_LAYOUT.md)
+- [Package layout](/home/auro/code/warcraft_cli/docs/architecture/PACKAGE_LAYOUT.md)
 
 ## Source Of Truth
 

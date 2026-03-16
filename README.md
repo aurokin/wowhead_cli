@@ -105,17 +105,21 @@ Detailed usage lives in [docs/USAGE.md](/home/auro/code/warcraft_cli/docs/USAGE.
 
 Other useful docs:
 - [docs/README.md](/home/auro/code/warcraft_cli/docs/README.md)
-- [docs/PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/PRODUCT_PRINCIPLES.md)
-- [docs/SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/SAFE_ANALYTICS_RULES.md)
+- [docs/foundation/PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/foundation/PRODUCT_PRINCIPLES.md)
+- [docs/foundation/SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/foundation/SAFE_ANALYTICS_RULES.md)
 - [docs/ROADMAP.md](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
-- [docs/IDENTITY_CONTRACT.md](/home/auro/code/warcraft_cli/docs/IDENTITY_CONTRACT.md)
-- [docs/MIGRATION_CHECKLIST.md](/home/auro/code/warcraft_cli/docs/MIGRATION_CHECKLIST.md)
-- [docs/WOWHEAD_ACCESS_METHODS.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_ACCESS_METHODS.md)
-- [docs/WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md)
-- [docs/WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/warcraft_cli/docs/WRAPPER_PROVIDER_CONTRACT.md)
+- [docs/foundation/IDENTITY_CONTRACT.md](/home/auro/code/warcraft_cli/docs/foundation/IDENTITY_CONTRACT.md)
+- [docs/architecture/MIGRATION_CHECKLIST.md](/home/auro/code/warcraft_cli/docs/architecture/MIGRATION_CHECKLIST.md)
+- [docs/warcraft/README.md](/home/auro/code/warcraft_cli/docs/warcraft/README.md)
+- [docs/wowhead/README.md](/home/auro/code/warcraft_cli/docs/wowhead/README.md)
+- [docs/warcraftlogs/README.md](/home/auro/code/warcraft_cli/docs/warcraftlogs/README.md)
+- [docs/simc/README.md](/home/auro/code/warcraft_cli/docs/simc/README.md)
+- [docs/wowhead/ACCESS_METHODS.md](/home/auro/code/warcraft_cli/docs/wowhead/ACCESS_METHODS.md)
+- [docs/wowhead/EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/wowhead/EXPANSION_RESEARCH.md)
+- [docs/foundation/WRAPPER_PROVIDER_CONTRACT.md](/home/auro/code/warcraft_cli/docs/foundation/WRAPPER_PROVIDER_CONTRACT.md)
 
 The preferred pattern is to keep docs driven by actual code behavior. The README should stay short, while command details and behavior notes live under `docs/`.
-See [docs/PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/PRODUCT_PRINCIPLES.md) for the longer product principles and workflow direction, and [docs/SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/SAFE_ANALYTICS_RULES.md) for repo-wide analytics design rules.
+See [docs/foundation/PRODUCT_PRINCIPLES.md](/home/auro/code/warcraft_cli/docs/foundation/PRODUCT_PRINCIPLES.md) for the longer product principles and workflow direction, and [docs/foundation/SAFE_ANALYTICS_RULES.md](/home/auro/code/warcraft_cli/docs/foundation/SAFE_ANALYTICS_RULES.md) for repo-wide analytics design rules.
 
 ## Testing
 

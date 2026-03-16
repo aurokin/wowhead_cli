@@ -1,5 +1,9 @@
 # Wowhead CLI
 
+Companion docs in this folder:
+- [ACCESS_METHODS.md](/home/auro/code/warcraft_cli/docs/wowhead/ACCESS_METHODS.md)
+- [EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/wowhead/EXPANSION_RESEARCH.md)
+
 ## Role In The Monorepo
 
 `wowhead` remains the most mature service CLI and should become the first consumer of shared monorepo libraries.
@@ -297,5 +301,5 @@ But it should not define the shape of every other service. It should validate sh
 ## Source Links
 
 - [Usage](/home/auro/code/warcraft_cli/docs/USAGE.md)
-- [Access Methods](/home/auro/code/warcraft_cli/docs/WOWHEAD_ACCESS_METHODS.md)
-- [Expansion Research](/home/auro/code/warcraft_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md)
+- [Access Methods](/home/auro/code/warcraft_cli/docs/wowhead/ACCESS_METHODS.md)
+- [Expansion Research](/home/auro/code/warcraft_cli/docs/wowhead/EXPANSION_RESEARCH.md)

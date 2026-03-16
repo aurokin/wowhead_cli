@@ -5,8 +5,8 @@
 This document is the file-level implementation plan for the `simc` provider.
 
 It is the bridge between:
-- the high-level [SimulationCraft CLI doc](/home/auro/code/warcraft_cli/docs/SIMC_CLI.md)
-- the module inventory in [SIMC_MIGRATION_INVENTORY.md](/home/auro/code/warcraft_cli/docs/SIMC_MIGRATION_INVENTORY.md)
+- the high-level [SimulationCraft CLI doc](/home/auro/code/warcraft_cli/docs/simc/README.md)
+- the module inventory in [SIMC_MIGRATION_INVENTORY.md](/home/auro/code/warcraft_cli/docs/simc/MIGRATION_INVENTORY.md)
 - actual code creation under `packages/simc-cli/`
 
 This is intentionally more concrete than the roadmap.

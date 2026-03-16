@@ -37,7 +37,7 @@ That is enough to validate:
 - agent-facing ergonomics
 - shared environment inspection
 
-The packaging and language boundaries for the wrapper are defined in [REPO_STRUCTURE_AND_PACKAGING.md](/home/auro/code/warcraft_cli/docs/REPO_STRUCTURE_AND_PACKAGING.md).
+The packaging and language boundaries for the wrapper are defined in [REPO_STRUCTURE_AND_PACKAGING.md](/home/auro/code/warcraft_cli/docs/architecture/REPO_STRUCTURE_AND_PACKAGING.md).
 
 ## Shared Code It Should Reuse
 

@@ -746,7 +746,7 @@ SimulationCraft behavior:
   - `mount` resolves through underlying item pages
   - `battle-pet` resolves through underlying NPC pages
 
-See [WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md) for the routing and `dataEnv` findings behind this behavior.
+See [WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/wowhead/EXPANSION_RESEARCH.md) for the routing and `dataEnv` findings behind this behavior.
 
 ## Entity Retrieval
 
@@ -907,5 +907,5 @@ Cache cleanup and compact inspection:
 ## Related Docs
 
 - [ROADMAP.md](/home/auro/code/warcraft_cli/docs/ROADMAP.md)
-- [WOWHEAD_ACCESS_METHODS.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_ACCESS_METHODS.md)
-- [WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/WOWHEAD_EXPANSION_RESEARCH.md)
+- [WOWHEAD_ACCESS_METHODS.md](/home/auro/code/warcraft_cli/docs/wowhead/ACCESS_METHODS.md)
+- [WOWHEAD_EXPANSION_RESEARCH.md](/home/auro/code/warcraft_cli/docs/wowhead/EXPANSION_RESEARCH.md)
