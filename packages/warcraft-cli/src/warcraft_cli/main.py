@@ -1174,6 +1174,11 @@ def guide_builds_simc(
         "--decode/--no-decode",
         help="Also run simc decode-build for each unique explicit build reference.",
     ),
+    apl_path: str | None = typer.Option(
+        None,
+        "--apl-path",
+        help="Optional SimC APL path used to add exact-build describe-build output for each explicit guide build ref.",
+    ),
     limit: int = typer.Option(
         20,
         "--limit",
@@ -1210,6 +1215,11 @@ def guide_builds_simc(
             if decode
             else None
         )
+        describe_result = (
+            provider_invoke("simc", ["describe-build", "--apl-path", apl_path, "--build-text", build_url])
+            if isinstance(apl_path, str) and apl_path.strip()
+            else None
+        )
         build_rows.append(
             {
                 "reference": reference,
@@ -1225,6 +1235,14 @@ def guide_builds_simc(
                             "payload": decode_result.get("payload"),
                         }
                         if isinstance(decode_result, dict)
+                        else None
+                    ),
+                    "describe": (
+                        {
+                            "exit_code": describe_result.get("exit_code"),
+                            "payload": describe_result.get("payload"),
+                        }
+                        if isinstance(describe_result, dict)
                         else None
                     ),
                 },
@@ -1243,6 +1261,7 @@ def guide_builds_simc(
         "build_reference_count": len(handoff_rows),
         "truncated": len(handoff_rows) > len(selected_rows),
         "decode_enabled": decode,
+        "apl_path": apl_path,
         "builds": build_rows,
     }
     _emit(payload, pretty=_pretty(ctx))

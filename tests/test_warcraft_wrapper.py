@@ -627,6 +627,7 @@ def test_warcraft_guide_builds_simc_reads_bundle_build_refs(monkeypatch, tmp_pat
     assert payload["builds"][0]["reference"]["build_code"] == "ABC123"
     assert payload["builds"][0]["simc"]["identify"]["payload"]["kind"] == "identify_build"
     assert payload["builds"][0]["simc"]["decode"]["payload"]["kind"] == "decode_build"
+    assert payload["builds"][0]["simc"]["describe"] is None
 
 
 def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
@@ -708,7 +709,63 @@ def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
     assert payload["build_reference_count"] == 1
     assert len(payload["builds"][0]["sources"]) == 2
     assert payload["builds"][0]["simc"]["decode"] is None
+    assert payload["builds"][0]["simc"]["describe"] is None
     assert invoke_calls == [["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]]
+
+
+def test_warcraft_guide_builds_simc_can_include_describe_build_with_apl(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    bundle_dir = tmp_path / "method-guide"
+    apl_path = tmp_path / "monk_mistweaver.simc"
+    apl_path.write_text("actions=spinning_crane_kick\n", encoding="utf-8")
+    write_article_bundle(
+        _comparison_payload(
+            provider="method",
+            slug="mistweaver-monk",
+            page_url="https://www.method.gg/guides/mistweaver-monk/talents",
+            page_title="Method Talents",
+            analysis_tags=["builds_talents", "talent_recommendations"],
+            build_code="ABC123",
+        ),
+        provider="method",
+        export_dir=bundle_dir,
+    )
+
+    invoke_calls: list[list[str]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        invoke_calls.append(args)
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {"provider": "simc", "kind": args[0]},
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["guide-builds-simc", str(bundle_dir), "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["apl_path"] == str(apl_path)
+    assert payload["builds"][0]["simc"]["describe"]["payload"]["kind"] == "describe-build"
+    assert invoke_calls == [
+        ["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"],
+        ["decode-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"],
+        [
+            "describe-build",
+            "--apl-path",
+            str(apl_path),
+            "--build-text",
+            "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123",
+        ],
+    ]
 
 
 def test_warcraft_guide_compare_query_fails_when_too_few_guides_export(
