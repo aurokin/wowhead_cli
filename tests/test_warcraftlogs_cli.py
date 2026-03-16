@@ -697,6 +697,32 @@ class _FakeWarcraftLogsClient:
             assert options.fight_ids == [1]
             assert options.view_by == "Source"
             assert options.kill_type == "Kills"
+            if options.data_type == "Buffs" and options.ability_id is not None:
+                assert options.ability_id == 20473.0
+                entries = [
+                    {
+                        "id": 9,
+                        "name": "Auropower",
+                        "total": 98.7,
+                        "activeTime": 74000,
+                        "totalTime": 75000,
+                        "bands": [{"startTime": 110000, "endTime": 150000}],
+                    },
+                    {
+                        "id": 1,
+                        "name": "Sherway",
+                        "total": 45.2,
+                        "activeTime": 33900,
+                        "totalTime": 75000,
+                        "bands": [{"startTime": 118000, "endTime": 140000}],
+                    },
+                ]
+                return {
+                    "code": "abcd1234",
+                    "title": "Manaforge Omega - Liquid",
+                    "zone": {"id": 38, "name": "Manaforge Omega"},
+                    "table": {"entries": entries},
+                }
             if options.start_time is not None or options.end_time is not None:
                 assert options.start_time == 110000.0
                 assert options.end_time == 150000.0
@@ -880,6 +906,7 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["capabilities"]["comp_samples"] == "ready"
     assert payload["capabilities"]["ability_usage_summary"] == "ready"
     assert payload["capabilities"]["report_encounter_buffs"] == "ready"
+    assert payload["capabilities"]["report_encounter_aura_summary"] == "ready"
     assert payload["capabilities"]["report_encounter_damage_breakdown"] == "ready"
 
 
@@ -1748,6 +1775,39 @@ def test_warcraftlogs_report_encounter_buffs_scopes_table_query(monkeypatch) -> 
     assert payload["query"]["start_time"] == 110000.0
     assert payload["query"]["end_time"] == 150000.0
     assert payload["table"]["entries"][0]["total"] == 98.7
+
+
+def test_warcraftlogs_report_encounter_aura_summary_returns_typed_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "report-encounter-aura-summary",
+            "abcd1234",
+            "--fight-id",
+            "1",
+            "--ability-id",
+            "20473",
+            "--window-start-ms",
+            "10000",
+            "--window-end-ms",
+            "50000",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "report_encounter_aura_summary"
+    assert payload["query"]["ability_id"] == 20473.0
+    assert payload["query"]["view_by"] == "Source"
+    assert payload["query"]["start_time"] == 110000.0
+    assert payload["query"]["end_time"] == 150000.0
+    assert payload["aura"]["name"] == "Holy Shock"
+    assert payload["aura_summary"]["entry_count"] == 2
+    assert payload["aura_summary"]["rows"][0]["source"]["name"] == "Auropower"
+    assert payload["aura_summary"]["rows"][0]["reported_total"] == 98.7
+    assert payload["aura_summary"]["rows"][0]["reported_active_time"] == 74000
+    assert payload["aura_summary"]["rows"][0]["source"]["identity_contract"]["status"] == "canonical"
 
 
 def test_warcraftlogs_report_encounter_damage_breakdown_scopes_table_query(monkeypatch) -> None:

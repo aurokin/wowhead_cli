@@ -498,6 +498,7 @@ warcraftlogs report-encounter 'https://www.warcraftlogs.com/reports/abcdefgh#fig
 warcraftlogs report-encounter-players 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47'
 warcraftlogs report-encounter-casts 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --preview-limit 20
 warcraftlogs report-encounter-buffs 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --view-by source
+warcraftlogs report-encounter-aura-summary 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --ability-id 20473 --window-start-ms 30000 --window-end-ms 90000
 warcraftlogs report-encounter-damage-breakdown 'https://www.warcraftlogs.com/reports/abcdefgh#fight=47' --window-start-ms 30000 --window-end-ms 90000
 warcraftlogs boss-kills --zone-id 38 --boss-id 3012 --difficulty 5 --top 10
 warcraftlogs top-kills --zone-id 38 --boss-name 'Dimensius' --difficulty 5 --top 5
@@ -570,6 +571,10 @@ EOF
     - `--window-end-ms`
   - these commands preserve the resolved absolute report timestamps in the payload so the agent does not have to calculate them
   - `report-encounter-casts` now includes additive `by_target` and `by_source_target` summaries so agents can compare spell usage across encounter targets without dropping to raw events
+- `report-encounter-aura-summary` is the narrower aura lane:
+  - it requires one explicit `--ability-id`
+  - it stays on one selected encounter plus optional encounter-relative windowing
+  - it returns typed source rows with preserved reported buff-table fields instead of asking agents to infer aura windows from raw events
 - `boss-kills`, `top-kills`, `kill-time-distribution`, `boss-spec-usage`, `comp-samples`, and `ability-usage-summary` are the current sampled cross-report analytics slice:
   - they sample public finished reports for one zone
   - they rank within the sampled cohort, not all possible Warcraft Logs data

@@ -66,6 +66,7 @@ Implemented today:
   - `warcraftlogs report-encounter-players`
   - `warcraftlogs report-encounter-casts`
   - `warcraftlogs report-encounter-buffs`
+  - `warcraftlogs report-encounter-aura-summary`
   - `warcraftlogs report-encounter-damage-breakdown`
   - `warcraftlogs boss-kills`
   - `warcraftlogs top-kills`
@@ -128,7 +129,7 @@ Highest-value next implementation slices:
   - safer event pagination patterns once `events(...)` can be validated more broadly
   - additional report detail surfaces after the current player/events/table/graph/ranking slice is proven
 - deepen the encounter analytics slice beyond the current report-link workflows:
-  - current shipped slice covers encounter identity plus typed player/cast/buff/damage summaries
+  - current shipped slice covers encounter identity plus typed player/cast/buff/aura/damage summaries
   - next: wave and phase summaries so agents do not have to derive unstable segments from raw timestamps
 - continue the multi-report analytics slice beyond the current sampled cohort commands:
   - current shipped slice covers `boss-kills`, `top-kills`, `kill-time-distribution`, `boss-spec-usage`, `comp-samples`, and `ability-usage-summary`

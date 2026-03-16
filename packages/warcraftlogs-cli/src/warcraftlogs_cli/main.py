@@ -160,6 +160,7 @@ def _doctor_payload() -> dict[str, Any]:
             "report_encounter_players": "ready",
             "report_encounter_casts": "ready",
             "report_encounter_buffs": "ready",
+            "report_encounter_aura_summary": "ready",
             "report_encounter_damage_breakdown": "ready",
             "character": "ready",
             "character_rankings": "ready",
@@ -1875,6 +1876,12 @@ def _report_json_payload(report: dict[str, Any], *, field: str) -> dict[str, Any
     }
 
 
+def _report_table_entries(report: dict[str, Any]) -> list[dict[str, Any]]:
+    table = report.get("table") if isinstance(report.get("table"), dict) else {}
+    entries = table.get("entries") if isinstance(table.get("entries"), list) else []
+    return [row for row in entries if isinstance(row, dict)]
+
+
 def _report_master_data_payload(report: dict[str, Any]) -> dict[str, Any]:
     master_data = report.get("masterData") if isinstance(report.get("masterData"), dict) else {}
     abilities = master_data.get("abilities") if isinstance(master_data.get("abilities"), list) else []
@@ -2012,6 +2019,61 @@ def _report_rankings_payload(report: dict[str, Any]) -> dict[str, Any]:
         "rankings": {
             "count": len(normalized_rows),
             "rows": normalized_rows,
+        },
+    }
+
+
+def _report_encounter_aura_summary_payload(
+    *,
+    report: dict[str, Any],
+    fight: dict[str, Any],
+    table_report: dict[str, Any],
+    master_report: dict[str, Any],
+    ability_id: int,
+) -> dict[str, Any]:
+    actor_index, ability_index = _master_data_indexes(master_report)
+    rows_out: list[dict[str, Any]] = []
+    for entry in _report_table_entries(table_report):
+        source_id = entry.get("id") if isinstance(entry.get("id"), int) else None
+        rows_out.append(
+            {
+                "source": _named_actor(
+                    actor_index,
+                    source_id,
+                    report_code=report.get("code") if isinstance(report.get("code"), str) else None,
+                    fight_id=fight.get("id") if isinstance(fight.get("id"), int) else None,
+                    source="report_encounter_aura_summary",
+                ) if source_id is not None else {"id": None, "name": entry.get("name")},
+                "reported_total": entry.get("total"),
+                "reported_active_time": entry.get("activeTime"),
+                "reported_total_time": entry.get("totalTime"),
+                "reported_bands": entry.get("bands"),
+                "raw_entry": entry,
+            }
+        )
+    rows_out.sort(
+        key=lambda row: (
+            -(float(row["reported_total"]) if isinstance(row.get("reported_total"), (int, float)) else float("-inf")),
+            str(((row.get("source") or {}).get("name") or "")),
+        )
+    )
+    return {
+        "report": _report_brief_payload(table_report),
+        "aura": _named_ability(ability_index, ability_id, source="report_encounter_aura_summary")
+        or {
+            "game_id": ability_id,
+            "name": f"ability:{ability_id}",
+            "identity_contract": ability_identity_payload(
+                game_id=ability_id,
+                name=f"ability:{ability_id}",
+                provider="warcraftlogs",
+                source="report_encounter_aura_summary",
+                notes=["ability id was requested explicitly but no matching master-data ability row was found"],
+            ),
+        },
+        "aura_summary": {
+            "entry_count": len(rows_out),
+            "rows": rows_out,
         },
     }
 
@@ -3579,6 +3641,71 @@ def report_encounter_buffs(
             "query": query,
             **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
             **_report_json_payload(payload, field="table"),
+        },
+    )
+
+
+@app.command("report-encounter-aura-summary")
+def report_encounter_aura_summary(
+    ctx: typer.Context,
+    reference: str,
+    ability_id: int = typer.Option(..., "--ability-id", help="Required aura ability game ID."),
+    fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
+    source_id: int | None = typer.Option(None, "--source-id", help="Optional source actor filter."),
+    target_id: int | None = typer.Option(None, "--target-id", help="Optional target actor filter."),
+    hostility_type: str | None = typer.Option(None, "--hostility-type", help="Optional hostility filter."),
+    wipe_cutoff: int | None = typer.Option(None, "--wipe-cutoff", help="Optional wipe cutoff."),
+    window_start_ms: float | None = typer.Option(None, "--window-start-ms", help="Optional encounter-relative start offset in milliseconds."),
+    window_end_ms: float | None = typer.Option(None, "--window-end-ms", help="Optional encounter-relative end offset in milliseconds."),
+    translate: bool | None = typer.Option(None, "--translate/--no-translate", help="Optional translation toggle."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    client = _client(ctx)
+    try:
+        ref, report, fight, encounter = _resolve_encounter_scope(
+            ctx,
+            client=client,
+            reference=reference,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+        )
+        normalized_hostility_type = _normalize_graphql_enum(hostility_type)
+        options, query = _encounter_filter_options(
+            ctx,
+            fight=fight,
+            ability_id=float(ability_id),
+            data_type="Buffs",
+            source_id=source_id,
+            target_id=target_id,
+            hostility_type=normalized_hostility_type,
+            translate=translate,
+            view_by="Source",
+            wipe_cutoff=wipe_cutoff,
+            window_start_ms=window_start_ms,
+            window_end_ms=window_end_ms,
+        )
+        table_payload = client.report_table(code=ref.code, allow_unlisted=allow_unlisted, options=options)
+        master_report = client.report_master_data(code=ref.code, allow_unlisted=allow_unlisted, actor_type="Player")
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "kind": "report_encounter_aura_summary",
+            "query": query,
+            **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
+            **_report_encounter_aura_summary_payload(
+                report=report,
+                fight=fight,
+                table_report=table_payload,
+                master_report=master_report,
+                ability_id=ability_id,
+            ),
         },
     )
 

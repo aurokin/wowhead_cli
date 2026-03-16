@@ -48,6 +48,7 @@ Best fits:
   - `warcraftlogs report-encounter-players <report-url-or-code>`
   - `warcraftlogs report-encounter-casts <report-url-or-code>`
   - `warcraftlogs report-encounter-buffs <report-url-or-code>`
+  - `warcraftlogs report-encounter-aura-summary <report-url-or-code> --ability-id ...`
   - `warcraftlogs report-encounter-damage-breakdown <report-url-or-code>`
   - `warcraftlogs boss-kills --zone-id ... --boss-id ... --difficulty ...`
   - `warcraftlogs top-kills --zone-id ... --boss-id ... --difficulty ...`
@@ -106,6 +107,7 @@ Best fits:
   - `warcraftlogs report-encounter-players 'https://www.warcraftlogs.com/reports/<code>#fight=47'`
   - `warcraftlogs report-encounter-casts 'https://www.warcraftlogs.com/reports/<code>#fight=47' --preview-limit 20`
   - `warcraftlogs report-encounter-buffs 'https://www.warcraftlogs.com/reports/<code>#fight=47' --view-by source`
+  - `warcraftlogs report-encounter-aura-summary 'https://www.warcraftlogs.com/reports/<code>#fight=47' --ability-id 20473 --window-start-ms 30000 --window-end-ms 90000`
   - `warcraftlogs report-encounter-damage-breakdown 'https://www.warcraftlogs.com/reports/<code>#fight=47' --window-start-ms 30000 --window-end-ms 90000`
   - `warcraftlogs report-player-details <code> --fight-id 47`
   - `warcraftlogs report-master-data <code> --actor-type Player`
@@ -134,6 +136,7 @@ Best fits:
   - `--window-start-ms`
   - `--window-end-ms`
 - `report-encounter-casts` also includes additive `by_target` and `by_source_target` summaries for target-scoped cast analysis inside the selected fight/window
+- `report-encounter-aura-summary` is the narrower aura workflow: it requires one explicit `--ability-id` and returns typed source rows with preserved reported buff-table fields for that selected fight/window
 - those encounter-scoped commands surface the resolved absolute `start_time` and `end_time` in the payload so the agent does not have to derive report timestamps manually
 - `report-player-details` is the easiest way to inspect the participants in a report slice before deeper event/table work
 - `report-fights` is still the stable broad fight-list surface; use it to get fight IDs first, then move to `report-player-details`, `report-events`, `report-table`, or `report-graph` for deeper filtered analysis
