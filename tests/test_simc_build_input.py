@@ -4,12 +4,17 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from simc_cli.build_input import (
     BuildSpec,
+    DecodedTalent,
     build_profile_text,
+    decode_build,
     detect_build_text_source_kind,
     detect_talents_option_source_kind,
-    decode_build,
+    diff_talent_trees,
+    encode_build,
     extract_build_spec_from_text,
     identify_build,
     infer_actor_and_spec_from_apl,
@@ -20,6 +25,7 @@ from simc_cli.build_input import (
     parse_wowhead_talent_calc_ref,
     supported_specs,
     tokenize_talent_name,
+    tree_entries_string,
 )
 from simc_cli.repo import RepoPaths
 
@@ -315,3 +321,146 @@ def test_identify_build_reports_ambiguous_probe_matches(tmp_path: Path) -> None:
     assert identified.spec is None
     assert identity.confidence == "low"
     assert identity.candidates == [("monk", "mistweaver"), ("demonhunter", "devourer")]
+
+
+# --- tree_entries_string ---
+
+
+def test_tree_entries_string_formats_entry_rank_pairs() -> None:
+    talents = [
+        DecodedTalent(tree="class", name="Thick Hide", token="thick_hide", rank=1, max_rank=1, entry=103306),
+        DecodedTalent(tree="class", name="Nurturing Instinct", token="nurturing_instinct", rank=2, max_rank=2, entry=103292),
+    ]
+    assert tree_entries_string(talents) == "103306:1/103292:2"
+
+
+def test_tree_entries_string_skips_zero_rank_and_zero_entry() -> None:
+    talents = [
+        DecodedTalent(tree="spec", name="Active", token="active", rank=1, max_rank=1, entry=100),
+        DecodedTalent(tree="spec", name="Skipped", token="skipped", rank=0, max_rank=1, entry=200),
+        DecodedTalent(tree="spec", name="NoEntry", token="no_entry", rank=1, max_rank=1, entry=0),
+    ]
+    assert tree_entries_string(talents) == "100:1"
+
+
+def test_tree_entries_string_empty_list() -> None:
+    assert tree_entries_string([]) == ""
+
+
+# --- diff_talent_trees ---
+
+
+def _talent(name: str, entry: int, rank: int = 1, max_rank: int = 1) -> DecodedTalent:
+    return DecodedTalent(
+        tree="class", name=name, token=name.lower().replace(" ", "_"),
+        rank=rank, max_rank=max_rank, entry=entry,
+    )
+
+
+def test_diff_talent_trees_detects_added_and_removed() -> None:
+    base = [_talent("Thick Hide", 100), _talent("Innervate", 200)]
+    other = [_talent("Thick Hide", 100), _talent("Forestwalk", 300, rank=2, max_rank=2)]
+    diff = diff_talent_trees(base, other)
+    assert [t.name for t in diff.added] == ["Forestwalk"]
+    assert [t.name for t in diff.removed] == ["Innervate"]
+    assert diff.changed == []
+
+
+def test_diff_talent_trees_detects_rank_changes() -> None:
+    base = [_talent("Nurturing Instinct", 100, rank=1, max_rank=2)]
+    other = [_talent("Nurturing Instinct", 100, rank=2, max_rank=2)]
+    diff = diff_talent_trees(base, other)
+    assert diff.added == []
+    assert diff.removed == []
+    assert len(diff.changed) == 1
+    assert diff.changed[0][0].rank == 1
+    assert diff.changed[0][1].rank == 2
+
+
+def test_diff_talent_trees_identical_returns_empty() -> None:
+    talents = [_talent("Thick Hide", 100), _talent("Innervate", 200)]
+    diff = diff_talent_trees(talents, talents)
+    assert diff.added == []
+    assert diff.removed == []
+    assert diff.changed == []
+
+
+def test_diff_talent_trees_skips_zero_rank_entries() -> None:
+    base = [
+        _talent("Active", 100),
+        DecodedTalent(tree="class", name="Zero", token="zero", rank=0, max_rank=1, entry=200),
+    ]
+    other = [_talent("Active", 100)]
+    diff = diff_talent_trees(base, other)
+    assert diff.added == []
+    assert diff.removed == []
+    assert diff.changed == []
+
+
+# --- encode_build ---
+
+
+def test_encode_build_extracts_talents_from_save_output(tmp_path: Path) -> None:
+    binary = tmp_path / "simc"
+    binary.write_text("")
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=binary,
+    )
+
+    def fake_run(cmd, **kwargs):  # noqa: ANN001, ANN003
+        # SimC writes a save file; simulate that by writing to the save= path.
+        for arg in cmd:
+            arg_str = str(arg)
+            if "encode.simc" in arg_str:
+                # Read the profile to find the save= path.
+                profile_text = Path(arg_str).read_text()
+                for line in profile_text.splitlines():
+                    if line.startswith("save="):
+                        save_path = line.split("=", 1)[1]
+                        Path(save_path).write_text("talents=ENCODED_RESULT_123\n")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    spec = BuildSpec(actor_class="druid", spec="balance", talents="ORIGINAL")
+    with patch("simc_cli.build_input.subprocess.run", side_effect=fake_run):
+        result = encode_build(repo, spec)
+
+    assert result == "ENCODED_RESULT_123"
+
+
+def test_encode_build_raises_when_save_file_missing(tmp_path: Path) -> None:
+    binary = tmp_path / "simc"
+    binary.write_text("")
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=binary,
+    )
+
+    with patch("simc_cli.build_input.subprocess.run") as mocked_run:
+        mocked_run.return_value = subprocess.CompletedProcess([], 1, stdout="", stderr="error msg")
+        with pytest.raises(RuntimeError, match="error msg"):
+            encode_build(repo, BuildSpec(actor_class="druid", spec="balance", talents="ABC"))
+
+
+def test_encode_build_raises_without_class_or_spec(tmp_path: Path) -> None:
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    with pytest.raises(ValueError, match="actor class and spec"):
+        encode_build(repo, BuildSpec(talents="ABC"))

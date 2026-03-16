@@ -52,6 +52,7 @@ class DecodedTalent:
     token: str
     rank: int
     max_rank: int
+    entry: int = 0
 
 
 @dataclass(slots=True)
@@ -268,6 +269,7 @@ def parse_debug_talents(output: str) -> dict[str, list[DecodedTalent]]:
                 token=tokenize_talent_name(name),
                 rank=int(match.group("rank")),
                 max_rank=int(match.group("max_rank")),
+                entry=int(match.group("entry")),
             )
         )
     return talents_by_tree
@@ -511,3 +513,71 @@ def decode_build(repo: RepoPaths, build_spec: BuildSpec) -> BuildResolution:
         generated_profile_text=profile_text,
         source_notes=notes,
     )
+
+
+def tree_entries_string(talents: list[DecodedTalent]) -> str:
+    """Serialize decoded talents into SimC ``entry:rank/...`` format."""
+    parts = []
+    for talent in talents:
+        if talent.rank > 0 and talent.entry:
+            parts.append(f"{talent.entry}:{talent.rank}")
+    return "/".join(parts)
+
+
+@dataclass(slots=True)
+class TreeDiff:
+    added: list[DecodedTalent]
+    removed: list[DecodedTalent]
+    changed: list[tuple[DecodedTalent, DecodedTalent]]
+
+
+def diff_talent_trees(
+    base_talents: list[DecodedTalent],
+    other_talents: list[DecodedTalent],
+) -> TreeDiff:
+    """Diff two talent lists from the same tree by entry ID."""
+    base_by_entry = {t.entry: t for t in base_talents if t.rank > 0 and t.entry}
+    other_by_entry = {t.entry: t for t in other_talents if t.rank > 0 and t.entry}
+    added = [other_by_entry[e] for e in sorted(other_by_entry.keys() - base_by_entry.keys())]
+    removed = [base_by_entry[e] for e in sorted(base_by_entry.keys() - other_by_entry.keys())]
+    changed = []
+    for entry in sorted(base_by_entry.keys() & other_by_entry.keys()):
+        if base_by_entry[entry].rank != other_by_entry[entry].rank:
+            changed.append((base_by_entry[entry], other_by_entry[entry]))
+    return TreeDiff(added=added, removed=removed, changed=changed)
+
+
+def encode_build(repo: RepoPaths, build_spec: BuildSpec) -> str:
+    """Run SimC to encode a BuildSpec and return the combined ``talents=`` export string."""
+    if not build_spec.actor_class or not build_spec.spec:
+        raise ValueError("Need both actor class and spec to encode talents.")
+    if not repo.build_simc.exists():
+        raise FileNotFoundError(f"SimC binary not found: {repo.build_simc}")
+
+    profile_text = build_profile_text(build_spec)
+    temp_dir = Path(tempfile.mkdtemp(prefix="simc-cli-encode-"))
+    profile_path = temp_dir / "encode.simc"
+    save_path = temp_dir / "encoded.simc"
+    profile_text += f"save={save_path}\n"
+    profile_path.write_text(profile_text)
+
+    cmd = [
+        str(repo.build_simc),
+        str(profile_path),
+        "iterations=1",
+        "max_time=1",
+        "vary_combat_length=0",
+        "desired_targets=1",
+        "fight_style=Patchwerk",
+        "allow_experimental_specializations=1",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if not save_path.exists():
+        output = proc.stdout + proc.stderr
+        raise RuntimeError(output.strip() or "SimC did not produce a saved profile.")
+
+    for line in save_path.read_text().splitlines():
+        if line.startswith("talents="):
+            return line.split("=", 1)[1].strip()
+
+    raise RuntimeError("Saved SimC profile did not contain a talents= line.")

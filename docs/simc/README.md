@@ -40,6 +40,8 @@ Current commands:
 - `simc analysis-packet`
 - `simc first-cast`
 - `simc log-actions`
+- `simc compare-builds`
+- `simc modify-build`
 - `simc sync`
 - `simc build`
 - `simc run`
@@ -184,6 +186,13 @@ The next important `simc` layer is now implemented as a local comparison workflo
 - `simc verify-clean`
 
 This is the correct answer to conversations where the user wants to draft guide-shaped APL variants, compare them objectively, and keep the upstream SimulationCraft repo untouched.
+
+### Talent Comparison and Modification
+
+- `simc compare-builds`
+- `simc modify-build`
+
+This layer enables talent-level diffing and mutation workflows. `compare-builds` diffs talent selections between builds by tree. `modify-build` produces a new WoW talent export string after tree swaps or individual talent adds/removes, using SimC's own encoder.
 
 Consumer guidance boundary:
 - default to `1000` iterations for most consumer-facing work

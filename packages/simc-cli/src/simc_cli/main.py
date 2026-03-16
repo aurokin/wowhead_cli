@@ -24,12 +24,17 @@ from simc_cli.branch import (
     trace_apl,
 )
 from simc_cli.build_input import (
+    BuildSpec,
+    TreeDiff,
     build_profile_text,
     decode_build,
+    diff_talent_trees,
+    encode_build,
     extract_build_spec_from_text,
     identify_build,
     infer_actor_and_spec_from_apl,
     load_build_spec,
+    tree_entries_string,
 )
 from simc_cli.compare import (
     build_variant_profile,
@@ -469,6 +474,8 @@ def doctor(ctx: typer.Context) -> None:
                 "analysis_packet": "ready",
                 "first_cast": "ready",
                 "log_actions": "ready",
+                "compare_builds": "ready",
+                "modify_build": "ready",
             },
             "repo_resolution": {
                 "source": resolution.source,
@@ -2300,6 +2307,294 @@ def sim_command(
     _emit(ctx, payload)
     for path in cleanup_paths:
         path.unlink(missing_ok=True)
+
+
+def _tree_diff_payload(diff: TreeDiff) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "added": [
+            {"name": t.name, "token": t.token, "rank": t.rank, "max_rank": t.max_rank, "entry": t.entry}
+            for t in diff.added
+        ],
+        "removed": [
+            {"name": t.name, "token": t.token, "rank": t.rank, "max_rank": t.max_rank, "entry": t.entry}
+            for t in diff.removed
+        ],
+        "changed": [
+            {
+                "name": base.name,
+                "token": base.token,
+                "entry": base.entry,
+                "base_rank": base.rank,
+                "other_rank": other.rank,
+                "max_rank": base.max_rank,
+            }
+            for base, other in diff.changed
+        ],
+    }
+    payload["has_differences"] = bool(payload["added"] or payload["removed"] or payload["changed"])
+    return payload
+
+
+@app.command("compare-builds")
+def compare_builds_command(
+    ctx: typer.Context,
+    base: str = typer.Option(..., "--base", help="Base build: WoW export, Wowhead talent-calc URL, or talents=... line."),
+    other: list[str] = typer.Option(..., "--other", help="Build to compare against base. Repeat for multiple builds."),
+    tree: list[str] = typer.Option([], "--tree", help="Limit diff to specific trees (class, spec, hero). Omit for all."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as druid."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as balance."),
+) -> None:
+    paths = _repo_paths(ctx)
+    trees = [t for t in tree] or ["class", "spec", "hero"]
+
+    base_spec, base_identity = _load_identified_build_spec(
+        paths, apl_path=None, profile_path=None, build_file=None, build_text=None,
+        talents=base, class_talents=None, spec_talents=None, hero_talents=None,
+        actor_class=actor_class, spec_name=spec_name,
+    )
+    if not base_spec.actor_class or not base_spec.spec:
+        _fail(ctx, "invalid_query", "Could not identify actor class and spec for base build.",
+              extra={"build_spec": _serialize_build_spec(base_spec), "identity": _serialize_build_identity(base_identity)})
+        return
+    try:
+        base_resolution = decode_build(paths, base_spec)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "decode_failed", f"Failed to decode base build: {exc}")
+        return
+
+    comparisons: list[dict[str, Any]] = []
+    for other_talents in other:
+        other_spec = load_build_spec(
+            apl_path=None, profile_path=None, build_file=None, build_text=None,
+            talents=other_talents, class_talents=None, spec_talents=None, hero_talents=None,
+            actor_class=base_spec.actor_class, spec_name=base_spec.spec,
+        )
+        try:
+            other_resolution = decode_build(paths, other_spec)
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            comparisons.append({"input": other_talents, "error": str(exc)})
+            continue
+        tree_diffs: dict[str, Any] = {}
+        for t in trees:
+            diff = diff_talent_trees(
+                base_resolution.talents_by_tree.get(t, []),
+                other_resolution.talents_by_tree.get(t, []),
+            )
+            tree_diffs[t] = _tree_diff_payload(diff)
+        has_any = any(tree_diffs[t]["has_differences"] for t in trees)
+        comparisons.append({
+            "input": other_talents,
+            "trees": tree_diffs,
+            "has_differences": has_any,
+        })
+
+    _emit(ctx, {
+        "provider": "simc",
+        "kind": "compare_builds",
+        "base": {
+            "input": base,
+            "actor_class": base_resolution.actor_class,
+            "spec": base_resolution.spec,
+            "enabled_talents": sorted(base_resolution.enabled_talents),
+        },
+        "trees_compared": trees,
+        "comparisons": comparisons,
+    })
+
+
+@app.command("modify-build")
+def modify_build_command(
+    ctx: typer.Context,
+    talents: str = typer.Option(..., "--talents", help="Base build: WoW export, Wowhead talent-calc URL, or talents=... line."),
+    swap_class_tree_from: str | None = typer.Option(
+        None, "--swap-class-tree-from", help="Replace class tree from this build.",
+    ),
+    swap_spec_tree_from: str | None = typer.Option(
+        None, "--swap-spec-tree-from", help="Replace spec tree from this build.",
+    ),
+    swap_hero_tree_from: str | None = typer.Option(
+        None, "--swap-hero-tree-from", help="Replace hero tree from this build.",
+    ),
+    add: list[str] = typer.Option([], "--add", help="Add or set talent: 'name:rank' or 'entry_id:rank'. Repeat as needed."),
+    remove: list[str] = typer.Option([], "--remove", help="Remove talent by name or entry_id. Repeat as needed."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as druid."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as balance."),
+) -> None:
+    paths = _repo_paths(ctx)
+
+    base_spec, base_identity = _load_identified_build_spec(
+        paths, apl_path=None, profile_path=None, build_file=None, build_text=None,
+        talents=talents, class_talents=None, spec_talents=None, hero_talents=None,
+        actor_class=actor_class, spec_name=spec_name,
+    )
+    if not base_spec.actor_class or not base_spec.spec:
+        _fail(ctx, "invalid_query", "Could not identify actor class and spec for base build.",
+              extra={"build_spec": _serialize_build_spec(base_spec), "identity": _serialize_build_identity(base_identity)})
+        return
+
+    try:
+        base_resolution = decode_build(paths, base_spec)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "decode_failed", f"Failed to decode base build: {exc}")
+        return
+
+    modifications: list[str] = []
+
+    # Decode each tree-swap source and collect per-tree entry strings.
+    class_entries: str | None = None
+    spec_entries: str | None = None
+    hero_entries: str | None = None
+
+    swap_sources = [
+        ("class", swap_class_tree_from),
+        ("spec", swap_spec_tree_from),
+        ("hero", swap_hero_tree_from),
+    ]
+    for tree_name, swap_source in swap_sources:
+        if not swap_source:
+            continue
+        swap_spec = load_build_spec(
+            apl_path=None, profile_path=None, build_file=None, build_text=None,
+            talents=swap_source, class_talents=None, spec_talents=None, hero_talents=None,
+            actor_class=base_spec.actor_class, spec_name=base_spec.spec,
+        )
+        try:
+            swap_resolution = decode_build(paths, swap_spec)
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            _fail(ctx, "decode_failed", f"Failed to decode {tree_name} tree source: {exc}")
+            return
+        entries_str = tree_entries_string(swap_resolution.talents_by_tree.get(tree_name, []))
+        if tree_name == "class":
+            class_entries = entries_str
+        elif tree_name == "spec":
+            spec_entries = entries_str
+        else:
+            hero_entries = entries_str
+        modifications.append(f"swap_{tree_name}_tree")
+
+    # Build the per-tree entry strings for trees that are NOT being swapped,
+    # pulling from the base build.
+    if any([class_entries, spec_entries, hero_entries]):
+        if class_entries is None:
+            class_entries = tree_entries_string(base_resolution.talents_by_tree.get("class", []))
+        if spec_entries is None:
+            spec_entries = tree_entries_string(base_resolution.talents_by_tree.get("spec", []))
+        if hero_entries is None:
+            hero_entries = tree_entries_string(base_resolution.talents_by_tree.get("hero", []))
+
+    # Build individual talent overrides (--add / --remove).
+    # SimC's parse_traits accepts both entry_id:rank and talent_name:rank,
+    # so we pass values through directly and let SimC resolve names.
+    overrides: list[str] = []
+    # For --remove by name, we need to resolve to entry:0 using the base build
+    # since SimC's rank-0 override requires an entry ID or known name.
+    token_to_entry: dict[str, int] = {}
+    for tree_talents in base_resolution.talents_by_tree.values():
+        for t in tree_talents:
+            if t.entry:
+                token_to_entry[t.token] = t.entry
+                token_to_entry[t.name.lower()] = t.entry
+
+    for item in remove:
+        token = item.strip()
+        if token.isdigit():
+            overrides.append(f"{token}:0")
+        elif token.lower() in token_to_entry:
+            overrides.append(f"{token_to_entry[token.lower()]}:0")
+        else:
+            msg = (
+                f"Cannot resolve talent to remove: '{token}'. "
+                "Use an entry ID or a name from the base build."
+            )
+            _fail(ctx, "unknown_talent", msg)
+            return
+        modifications.append(f"remove:{token}")
+
+    for item in add:
+        parts = item.strip().split(":", 1)
+        if len(parts) != 2:
+            _fail(
+                ctx, "invalid_add",
+                f"--add requires 'name:rank' or 'entry_id:rank', got: '{item}'",
+            )
+            return
+        name_or_id, rank_str = parts
+        if not rank_str.isdigit():
+            _fail(ctx, "invalid_add", f"Rank must be a number in '{item}'")
+            return
+        # Pass through as-is — SimC resolves both entry IDs and talent names.
+        overrides.append(f"{name_or_id}:{rank_str}")
+        modifications.append(f"add:{item}")
+
+    # Assemble the modified BuildSpec.
+    if class_entries is not None:
+        # Tree-swap path: build from split trees.
+        override_suffix = "/" + "/".join(overrides) if overrides else ""
+        modified_spec = BuildSpec(
+            actor_class=base_spec.actor_class,
+            spec=base_spec.spec,
+            class_talents=class_entries + override_suffix if override_suffix else class_entries,
+            spec_talents=spec_entries,
+            hero_talents=hero_entries,
+        )
+    elif overrides:
+        # Individual override path: keep base talents, append overrides.
+        modified_spec = BuildSpec(
+            actor_class=base_spec.actor_class,
+            spec=base_spec.spec,
+            talents=base_spec.talents,
+            class_talents="/".join(overrides),
+        )
+    else:
+        _fail(
+            ctx, "no_modifications",
+            "No modifications specified. Use --swap-*-tree-from, --add, or --remove.",
+        )
+        return
+
+    try:
+        encoded = encode_build(paths, modified_spec)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        _fail(ctx, "encode_failed", f"Failed to encode modified build: {exc}")
+        return
+
+    # Decode the result to produce the diff and verify.
+    verify_spec = BuildSpec(
+        actor_class=base_spec.actor_class,
+        spec=base_spec.spec,
+        talents=encoded,
+    )
+    try:
+        result_resolution = decode_build(paths, verify_spec)
+    except (FileNotFoundError, RuntimeError, ValueError):
+        result_resolution = None
+
+    diff_payload: dict[str, Any] = {}
+    if result_resolution:
+        for t in ("class", "spec", "hero"):
+            diff = diff_talent_trees(
+                base_resolution.talents_by_tree.get(t, []),
+                result_resolution.talents_by_tree.get(t, []),
+            )
+            diff_payload[t] = _tree_diff_payload(diff)
+
+    wowhead_url = f"https://www.wowhead.com/talent-calc/blizzard/{encoded}"
+
+    _emit(ctx, {
+        "provider": "simc",
+        "kind": "modify_build",
+        "base": {
+            "input": talents,
+            "actor_class": base_resolution.actor_class,
+            "spec": base_resolution.spec,
+        },
+        "modifications": modifications,
+        "result": {
+            "talents_export": encoded,
+            "wowhead_url": wowhead_url,
+            "diff_from_base": diff_payload,
+        },
+    })
 
 
 @app.command("run")

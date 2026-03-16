@@ -656,6 +656,10 @@ simc apl-branch-compare /home/auro/code/simc/ActionPriorityLists/default/monk_mi
 simc analysis-packet /home/auro/code/simc/ActionPriorityLists/default/monk_mistweaver.simc --targets 1
 simc first-cast /home/auro/code/simc/profiles/MID1/MID1_Monk_Windwalker.simc tiger_palm --seeds 1 --max-time 20
 simc log-actions /tmp/simc-cli-example/seed_1.log tiger_palm rising_sun_kick
+simc compare-builds --base 'TALENT_STRING_A' --other 'TALENT_STRING_B' --actor-class druid --spec balance
+simc compare-builds --base 'TALENT_STRING_A' --other 'TALENT_STRING_B' --other 'TALENT_STRING_C' --tree class
+simc modify-build --talents 'TALENT_STRING' --swap-class-tree-from 'OTHER_TALENT_STRING' --actor-class druid --spec balance
+simc modify-build --talents 'TALENT_STRING' --add 'forestwalk:2' --remove 'innervate' --actor-class druid --spec balance
 simc run ./profile.simc --arg iterations=1 --arg desired_targets=1
 simc sync
 simc build
@@ -723,6 +727,14 @@ SimulationCraft behavior:
 - if the user wants to compare guide-shaped rotations or draft APLs, use `build-harness`, `validate-apl`, and `compare-apls` instead of editing upstream files
 - `first-cast` runs short one-iteration sims and records the first observed execution time for a named action across one or more seeds
 - `log-actions` inspects an existing SimC combat log and extracts the first scheduled and performed timestamps for named actions
+- `compare-builds` diffs talent selections between a base build and one or more other builds, grouped by tree (class, spec, hero); use `--tree` to limit the diff to specific trees
+- `modify-build` produces a new WoW talent export string from an existing build after applying modifications:
+  - `--swap-class-tree-from`, `--swap-spec-tree-from`, `--swap-hero-tree-from` replace an entire tree's talents from another build
+  - `--add name:rank` or `--add entry_id:rank` adds or sets individual talents (SimC resolves both names and entry IDs)
+  - `--remove name` or `--remove entry_id` removes individual talents from the base build
+  - tree swaps and individual overrides can be combined in one invocation
+  - output includes the encoded export string, a Wowhead talent-calc URL, and a per-tree diff from the base build
+  - encoding uses SimC's own `generate_traits_hash()` via `save=`, not reverse-engineered client-side encoding
 - `run` executes the local `simc` binary against a profile and returns bounded stdout/stderr previews
 - `sync` and `build` are conservative local repo helpers; `sync` skips dirty worktrees unless `--allow-dirty` is set
 - `search` and `resolve` exist for wrapper-contract stability, but return structured `coming_soon` payloads until SimC discovery is implemented
