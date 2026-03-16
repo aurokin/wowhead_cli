@@ -154,6 +154,7 @@ def _doctor_payload() -> dict[str, Any]:
             "top_kills": "ready",
             "kill_time_distribution": "ready",
             "boss_spec_usage": "ready",
+            "comp_samples": "ready",
             "ability_usage_summary": "ready",
             "report_encounter": "ready",
             "report_encounter_players": "ready",
@@ -1415,6 +1416,203 @@ def _boss_spec_usage_payload(
         },
         "count": len(returned),
         "spec_usage": returned,
+    }
+
+
+def _composition_sample_row(row: dict[str, Any], *, details_report: dict[str, Any]) -> dict[str, Any]:
+    details_payload = _report_player_details_payload(
+        details_report,
+        report_code=((row.get("report") or {}).get("code") if isinstance(row.get("report"), dict) else None),
+        fight_id=((row.get("fight") or {}).get("id") if isinstance(row.get("fight"), dict) else None),
+    )
+    role_rows = details_payload["player_details"]["roles"]
+    flattened_players: list[dict[str, Any]] = []
+    class_counts: dict[str, int] = {}
+    for role, players in role_rows.items():
+        for player in players:
+            if not isinstance(player, dict):
+                continue
+            flattened_players.append({"role": role, **player})
+            actor_class = str(player.get("type") or "").strip()
+            if actor_class:
+                class_counts[actor_class] = class_counts.get(actor_class, 0) + 1
+    class_count_rows = [
+        {"class_name": class_name, "count": count}
+        for class_name, count in sorted(class_counts.items(), key=lambda item: (-item[1], item[0].lower()))
+    ]
+    class_signature = "|".join(f"{row['class_name']}x{row['count']}" for row in class_count_rows) if class_count_rows else None
+    return {
+        **row,
+        "composition": {
+            "player_count": details_payload["player_details"]["counts"]["total"],
+            "role_counts": {
+                "tanks": details_payload["player_details"]["counts"]["tanks"],
+                "healers": details_payload["player_details"]["counts"]["healers"],
+                "dps": details_payload["player_details"]["counts"]["dps"],
+            },
+            "class_counts": class_count_rows,
+            "class_signature": class_signature,
+        },
+        "player_details": {
+            "counts": details_payload["player_details"]["counts"],
+            "players": flattened_players,
+        },
+    }
+
+
+def _collect_comp_sample_rows(
+    *,
+    client: WarcraftLogsClient,
+    zone_id: int,
+    boss_id: int | None,
+    boss_name: str | None,
+    difficulty: int | None,
+    spec_name: str | None,
+    kill_time_min: float | None,
+    kill_time_max: float | None,
+    report_pages: int,
+    reports_per_page: int,
+    start_time: float | None,
+    end_time: float | None,
+    guild_region: str | None,
+    guild_realm: str | None,
+    guild_name: str | None,
+) -> dict[str, Any]:
+    analytics = _collect_boss_kill_rows(
+        client=client,
+        zone_id=zone_id,
+        boss_id=boss_id,
+        boss_name=boss_name,
+        difficulty=difficulty,
+        spec_name=spec_name,
+        kill_time_min=kill_time_min,
+        kill_time_max=kill_time_max,
+        report_pages=report_pages,
+        reports_per_page=reports_per_page,
+        start_time=start_time,
+        end_time=end_time,
+        guild_region=guild_region,
+        guild_realm=guild_realm,
+        guild_name=guild_name,
+    )
+    composed_rows: list[dict[str, Any]] = []
+    for row in analytics["rows"]:
+        report_payload = row.get("report") if isinstance(row.get("report"), dict) else {}
+        fight_payload = row.get("fight") if isinstance(row.get("fight"), dict) else {}
+        report_code = report_payload.get("code")
+        fight_id = fight_payload.get("id")
+        encounter_id = fight_payload.get("encounter_id")
+        if not isinstance(report_code, str) or not isinstance(fight_id, int):
+            continue
+        details_report = client.report_player_details(
+            code=report_code,
+            allow_unlisted=False,
+            options=ReportPlayerDetailsOptions(
+                difficulty=int(fight_payload["difficulty"]) if isinstance(fight_payload.get("difficulty"), int) else difficulty,
+                encounter_id=int(encounter_id) if isinstance(encounter_id, int) else None,
+                fight_ids=[fight_id],
+                include_combatant_info=True,
+                kill_type="Kills",
+            ),
+        )
+        composed_rows.append(_composition_sample_row(row, details_report=details_report))
+    return {
+        "rows": composed_rows,
+        "sample": analytics["sample"],
+    }
+
+
+def _comp_samples_payload(
+    *,
+    rows: list[dict[str, Any]],
+    sample: dict[str, Any],
+    query: dict[str, Any],
+    top: int,
+) -> dict[str, Any]:
+    class_presence: dict[str, dict[str, Any]] = {}
+    signature_counts: dict[str, dict[str, Any]] = {}
+    sampled_player_count = 0
+
+    for row in rows:
+        report_code = str(((row.get("report") or {}).get("code") or ""))
+        fight_id = int(((row.get("fight") or {}).get("id") or 0))
+        player_details = row.get("player_details") if isinstance(row.get("player_details"), dict) else {}
+        players = player_details.get("players") if isinstance(player_details.get("players"), list) else []
+        sampled_player_count += len([player for player in players if isinstance(player, dict)])
+        composition = row.get("composition") if isinstance(row.get("composition"), dict) else {}
+        class_rows = composition.get("class_counts") if isinstance(composition.get("class_counts"), list) else []
+        seen_classes: set[str] = set()
+        for class_row in class_rows:
+            if not isinstance(class_row, dict):
+                continue
+            class_name = str(class_row.get("class_name") or "").strip()
+            if not class_name:
+                continue
+            count = int(class_row.get("count") or 0)
+            entry = class_presence.setdefault(
+                class_name,
+                {
+                    "class_name": class_name,
+                    "appearance_count": 0,
+                    "kill_presence_count": 0,
+                    "sample_fights": [],
+                },
+            )
+            entry["appearance_count"] += count if count > 0 else 1
+            if class_name not in seen_classes:
+                seen_classes.add(class_name)
+                entry["kill_presence_count"] += 1
+                if len(entry["sample_fights"]) < 3:
+                    entry["sample_fights"].append({"report_code": report_code, "fight_id": fight_id})
+        class_signature = composition.get("class_signature")
+        if isinstance(class_signature, str) and class_signature:
+            signature_entry = signature_counts.setdefault(
+                class_signature,
+                {
+                    "class_signature": class_signature,
+                    "kill_count": 0,
+                    "sample_fights": [],
+                },
+            )
+            signature_entry["kill_count"] += 1
+            if len(signature_entry["sample_fights"]) < 3:
+                signature_entry["sample_fights"].append({"report_code": report_code, "fight_id": fight_id})
+
+    normalized_class_rows = sorted(
+        [
+            {
+                **entry,
+                "percent_of_kills": round((entry["kill_presence_count"] / len(rows)) * 100, 2) if rows else 0.0,
+            }
+            for entry in class_presence.values()
+        ],
+        key=lambda entry: (-int(entry["kill_presence_count"]), -int(entry["appearance_count"]), str(entry["class_name"]).lower()),
+    )
+    normalized_signatures = sorted(
+        signature_counts.values(),
+        key=lambda entry: (-int(entry["kill_count"]), str(entry["class_signature"]).lower()),
+    )
+    returned = rows[:top]
+    return {
+        "ok": True,
+        "provider": "warcraftlogs",
+        "kind": "comp_samples",
+        "ranking_basis": "sampled_fastest_kills",
+        "query": query,
+        "sample": {
+            **sample,
+            "filtered_kill_count": len(rows),
+            "returned_kill_count": len(returned),
+            "excluded_kill_count": max(0, len(rows) - len(returned)),
+            "truncated": len(rows) > top,
+            "sampled_player_count": sampled_player_count,
+            "distinct_class_count": len(normalized_class_rows),
+            "distinct_class_signature_count": len(normalized_signatures),
+            "stable_source_only": True,
+        },
+        "class_presence": normalized_class_rows,
+        "composition_signatures": normalized_signatures[: min(10, len(normalized_signatures))],
+        "kills": returned,
     }
 
 
@@ -3092,6 +3290,77 @@ def ability_usage_summary(
             ability=analytics["ability"],
             preview_limit=preview_limit,
             event_limit=event_limit,
+        ),
+    )
+
+
+@app.command("comp-samples")
+def comp_samples(
+    ctx: typer.Context,
+    zone_id: int = typer.Option(..., "--zone-id", help="Warcraft Logs zone ID to sample reports from."),
+    boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
+    boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants before aggregation."),
+    kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
+    kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
+    top: int = typer.Option(10, "--top", min=1, max=100, help="Maximum returned sampled kill rows after ranking."),
+    report_pages: int = typer.Option(1, "--report-pages", min=1, max=10, help="How many report-list pages to sample."),
+    reports_per_page: int = typer.Option(25, "--reports-per-page", min=1, max=100, help="Reports to fetch per sampled page."),
+    start_time: float | None = typer.Option(None, "--start-time", help="Optional report-range start time in milliseconds."),
+    end_time: float | None = typer.Option(None, "--end-time", help="Optional report-range end time in milliseconds."),
+    guild_region: str | None = typer.Option(None, "--guild-region", help="Optional guild-region scope for report discovery."),
+    guild_realm: str | None = typer.Option(None, "--guild-realm", help="Optional guild-realm scope for report discovery."),
+    guild_name: str | None = typer.Option(None, "--guild-name", help="Optional guild-name scope for report discovery."),
+) -> None:
+    _require_boss_scope(ctx, boss_id=boss_id, boss_name=boss_name)
+    client = _client(ctx)
+    try:
+        analytics = _collect_comp_sample_rows(
+            client=client,
+            zone_id=zone_id,
+            boss_id=boss_id,
+            boss_name=boss_name,
+            difficulty=difficulty,
+            spec_name=spec_name,
+            kill_time_min=kill_time_min,
+            kill_time_max=kill_time_max,
+            report_pages=report_pages,
+            reports_per_page=reports_per_page,
+            start_time=start_time,
+            end_time=end_time,
+            guild_region=guild_region,
+            guild_realm=guild_realm,
+            guild_name=guild_name,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    _emit(
+        ctx,
+        _comp_samples_payload(
+            rows=analytics["rows"],
+            sample=analytics["sample"],
+            query=_cross_report_query(
+                zone_id=zone_id,
+                boss_id=boss_id,
+                boss_name=boss_name,
+                difficulty=difficulty,
+                spec_name=spec_name,
+                kill_time_min=kill_time_min,
+                kill_time_max=kill_time_max,
+                top=top,
+                report_pages=report_pages,
+                reports_per_page=reports_per_page,
+                start_time=start_time,
+                end_time=end_time,
+                guild_region=guild_region,
+                guild_realm=guild_realm,
+                guild_name=guild_name,
+            ),
+            top=top,
         ),
     )
 

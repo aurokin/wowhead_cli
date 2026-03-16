@@ -503,6 +503,7 @@ warcraftlogs boss-kills --zone-id 38 --boss-id 3012 --difficulty 5 --top 10
 warcraftlogs top-kills --zone-id 38 --boss-name 'Dimensius' --difficulty 5 --top 5
 warcraftlogs kill-time-distribution --zone-id 38 --boss-id 3012 --difficulty 5 --bucket-seconds 30
 warcraftlogs boss-spec-usage --zone-id 38 --boss-id 3012 --difficulty 5 --top 10
+warcraftlogs comp-samples --zone-id 38 --boss-id 3012 --difficulty 5 --top 5
 warcraftlogs ability-usage-summary --zone-id 38 --boss-id 3012 --difficulty 5 --ability-id 20473 --preview-limit 5
 ```
 
@@ -569,11 +570,12 @@ EOF
     - `--window-end-ms`
   - these commands preserve the resolved absolute report timestamps in the payload so the agent does not have to calculate them
   - `report-encounter-casts` now includes additive `by_target` and `by_source_target` summaries so agents can compare spell usage across encounter targets without dropping to raw events
-- `boss-kills`, `top-kills`, `kill-time-distribution`, `boss-spec-usage`, and `ability-usage-summary` are the current sampled cross-report analytics slice:
+- `boss-kills`, `top-kills`, `kill-time-distribution`, `boss-spec-usage`, `comp-samples`, and `ability-usage-summary` are the current sampled cross-report analytics slice:
   - they sample public finished reports for one zone
   - they rank within the sampled cohort, not all possible Warcraft Logs data
   - they expose sample, exclusion, and truncation metadata so the agent does not have to pretend the sample is global
   - `boss-spec-usage` summarizes spec presence inside the sampled finished-kill cohort after boss/difficulty/spec/time filters have already been applied
+  - `comp-samples` returns sampled kill rosters plus additive class-presence and exact class-signature summaries for the sampled cohort
   - `ability-usage-summary` summarizes one explicit `--ability-id` across that same sampled finished-kill cohort and reports cast counts per kill instead of inferring broader gameplay conclusions
 - `report-events` is available now, but it intentionally requires a narrowed slice:
   - `--fight-id`

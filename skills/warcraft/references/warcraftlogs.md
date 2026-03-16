@@ -53,6 +53,7 @@ Best fits:
   - `warcraftlogs top-kills --zone-id ... --boss-id ... --difficulty ...`
   - `warcraftlogs kill-time-distribution --zone-id ... --boss-id ... --difficulty ...`
   - `warcraftlogs boss-spec-usage --zone-id ... --boss-id ... --difficulty ...`
+  - `warcraftlogs comp-samples --zone-id ... --boss-id ... --difficulty ...`
   - `warcraftlogs ability-usage-summary --zone-id ... --boss-id ... --difficulty ... --ability-id ...`
 
 ## Current Boundaries
@@ -117,6 +118,7 @@ Best fits:
   - `warcraftlogs top-kills --zone-id 38 --boss-name Dimensius --difficulty 5 --top 5`
   - `warcraftlogs kill-time-distribution --zone-id 38 --boss-id 3012 --difficulty 5 --bucket-seconds 30`
   - `warcraftlogs boss-spec-usage --zone-id 38 --boss-id 3012 --difficulty 5 --top 10`
+  - `warcraftlogs comp-samples --zone-id 38 --boss-id 3012 --difficulty 5 --top 5`
   - `warcraftlogs ability-usage-summary --zone-id 38 --boss-id 3012 --difficulty 5 --ability-id 20473 --preview-limit 5`
 
 ## Notes
@@ -141,6 +143,7 @@ Best fits:
 - `report-rankings` can legitimately return zero rows for a valid public report slice
 - `boss-kills`, `top-kills`, and `kill-time-distribution` are sampled cross-report analytics, not a promise that the CLI searched every possible public report
 - `boss-spec-usage` is also sampled cross-report analytics; it reports spec presence within the filtered finished-kill cohort, not a site-wide meta snapshot
+- `comp-samples` is sampled cross-report analytics too; it returns sampled kill rosters plus additive class-presence and exact class-signature summaries for that filtered cohort
 - `ability-usage-summary` is sampled cross-report analytics too; it reports explicit cast counts for one requested `--ability-id` across the filtered finished-kill cohort
 - those sampled analytics intentionally skip unfinished live reports and surface sample/truncation metadata instead of faking global certainty
 - `warcraftlogs auth status` is the first place to check when auth looks wrong; it shows credential source and whether any persisted auth state exists
