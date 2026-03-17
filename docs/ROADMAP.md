@@ -115,7 +115,14 @@ See [wowhead/README.md](wowhead/README.md).
 
 ### Raidbots
 
-Keep in the picture as a workflow-oriented companion to `simc`, not as the driver of shared auth or canonical gameplay truth.
+Workflow-oriented companion to `simc`, not a driver of shared auth or canonical gameplay truth.
+
+There is no public API for sim submission. The viable path is report consumption and local bridging:
+- fetch and parse completed reports (public, stable)
+- extract SimC input from reports and hand off to local `simc` analysis
+- generate ready-to-paste SimC input locally as the handoff to Raidbots cloud execution
+
+Submission automation is deferred indefinitely unless Raidbots exposes a sanctioned API.
 
 See [raidbots/README.md](raidbots/README.md).
 
