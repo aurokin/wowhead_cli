@@ -271,6 +271,15 @@ def test_load_cache_settings_from_env_supports_redis_and_ttl_overrides(
     assert settings.ttls.entity_page_html == 3600
 
 
+def test_load_cache_settings_from_env_uses_shared_xdg_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("WOWHEAD_CACHE_DIR", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+
+    settings = load_cache_settings_from_env()
+
+    assert settings.cache_dir == (tmp_path / "cache" / "warcraft" / "wowhead" / "http")
+
+
 def test_wowhead_client_uses_updated_default_cache_ttls() -> None:
     client = WowheadClient(cache_enabled=False, cache_ttls=CacheTTLConfig())
     assert client._cache_ttls.search_suggestions == 900

@@ -9,7 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-DEFAULT_CACHE_ROOT = Path.home() / ".cache" / "wowhead_cli"
+from warcraft_core.paths import provider_cache_root
+
+DEFAULT_CACHE_ROOT = provider_cache_root("wowhead")
 DEFAULT_HTTP_CACHE_DIR = DEFAULT_CACHE_ROOT / "http"
 DEFAULT_CACHE_PREFIX = "wowhead_cli"
 
@@ -52,6 +54,14 @@ def _env_int(name: str, default: int) -> int:
     if value < 0:
         raise ValueError(f"{name} must be >= 0.")
     return value
+
+
+def default_cache_root() -> Path:
+    return provider_cache_root("wowhead")
+
+
+def default_http_cache_dir() -> Path:
+    return default_cache_root() / "http"
 
 
 def load_prefixed_cache_settings_from_env(
@@ -108,7 +118,7 @@ def load_prefixed_cache_settings_from_env(
 def load_cache_settings_from_env() -> CacheSettings:
     return load_prefixed_cache_settings_from_env(
         env_prefix="WOWHEAD",
-        default_cache_dir=DEFAULT_HTTP_CACHE_DIR,
+        default_cache_dir=default_http_cache_dir(),
         default_redis_prefix=DEFAULT_CACHE_PREFIX,
         ttl_env_overrides={
             "search_suggestions": "WOWHEAD_SEARCH_CACHE_TTL_SECONDS",

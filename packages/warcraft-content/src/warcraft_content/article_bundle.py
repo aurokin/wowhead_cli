@@ -281,8 +281,9 @@ def query_article_bundle(
 
 
 def _bundle_title(bundle: dict[str, Any]) -> str | None:
-    manifest = bundle.get("manifest") if isinstance(bundle.get("manifest"), dict) else {}
-    resource_key = manifest.get("resource_key") if isinstance(manifest, dict) else None
+    manifest_raw = bundle.get("manifest")
+    manifest: dict[str, Any] = manifest_raw if isinstance(manifest_raw, dict) else {}
+    resource_key = manifest.get("resource_key")
     if isinstance(resource_key, str):
         resource = manifest.get(resource_key)
         if isinstance(resource, dict):
@@ -302,9 +303,12 @@ def _bundle_title(bundle: dict[str, Any]) -> str | None:
 
 
 def _bundle_descriptor(bundle: dict[str, Any], *, path: Path) -> dict[str, Any]:
-    manifest = bundle.get("manifest") if isinstance(bundle.get("manifest"), dict) else {}
-    provider = manifest.get("provider") if isinstance(manifest.get("provider"), str) else None
-    counts = manifest.get("counts") if isinstance(manifest.get("counts"), dict) else {}
+    manifest_raw = bundle.get("manifest")
+    manifest: dict[str, Any] = manifest_raw if isinstance(manifest_raw, dict) else {}
+    provider_value = manifest.get("provider")
+    provider = provider_value if isinstance(provider_value, str) else None
+    counts_value = manifest.get("counts")
+    counts = counts_value if isinstance(counts_value, dict) else {}
     return {
         "provider": provider,
         "path": str(path),
@@ -378,15 +382,16 @@ def _section_bundle_entry(bundle_info: dict[str, Any], rows: list[dict[str, Any]
 
 
 def _build_reference_identity(row: dict[str, Any]) -> dict[str, Any]:
-    build_identity = row.get("build_identity") if isinstance(row.get("build_identity"), dict) else {}
-    class_spec_identity = (
-        build_identity.get("class_spec_identity")
-        if isinstance(build_identity.get("class_spec_identity"), dict)
-        else {}
-    )
-    identity = class_spec_identity.get("identity") if isinstance(class_spec_identity.get("identity"), dict) else {}
-    actor_class = identity.get("actor_class") if isinstance(identity.get("actor_class"), str) else None
-    spec = identity.get("spec") if isinstance(identity.get("spec"), str) else None
+    build_identity_raw = row.get("build_identity")
+    build_identity: dict[str, Any] = build_identity_raw if isinstance(build_identity_raw, dict) else {}
+    class_spec_identity_value = build_identity.get("class_spec_identity")
+    class_spec_identity = class_spec_identity_value if isinstance(class_spec_identity_value, dict) else {}
+    identity_value = class_spec_identity.get("identity")
+    identity = identity_value if isinstance(identity_value, dict) else {}
+    actor_class_value = identity.get("actor_class")
+    actor_class = actor_class_value if isinstance(actor_class_value, str) else None
+    spec_value = identity.get("spec")
+    spec = spec_value if isinstance(spec_value, str) else None
     build_code = row.get("build_code") if isinstance(row.get("build_code"), str) else None
     url = row.get("url") if isinstance(row.get("url"), str) else None
     return {
