@@ -39,8 +39,10 @@ lint:
 lint-all:
 	@status=0; \
 	$(RUFF) check $(LINT_ALL_PATHS) || status=$$?; \
-	if [ $$status -ne 0 ]; then \
+	if [ $$status -eq 1 ]; then \
 		echo "lint-all is report-only: keeping the existing full-repo Ruff backlog visible without failing the target."; \
+	elif [ $$status -ne 0 ]; then \
+		exit $$status; \
 	fi
 
 complexity:

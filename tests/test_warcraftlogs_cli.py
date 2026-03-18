@@ -965,7 +965,7 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["capabilities"]["report_encounter_damage_source_summary"] == "ready"
     assert payload["capabilities"]["report_encounter_damage_target_summary"] == "ready"
     assert payload["capabilities"]["report_encounter_damage_breakdown"] == "ready"
-    assert payload["capabilities"]["user_auth"] == "requires_saved_user_token"
+    assert payload["capabilities"]["user_auth"] == "ready_manual_exchange"
 
 
 def test_warcraftlogs_doctor_reports_saved_user_token_runtime_access(monkeypatch) -> None:
@@ -1001,6 +1001,36 @@ def test_warcraftlogs_doctor_reports_saved_user_token_runtime_access(monkeypatch
     assert payload["auth"]["user_api_access"]["ready"] is True
     assert payload["capabilities"]["report_fights"] == "requires_client_credentials"
     assert payload["capabilities"]["user_auth"] == "ready"
+
+
+def test_warcraftlogs_doctor_requires_client_credentials_for_user_auth_bootstrap(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": False, "env_file": None})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": False,
+            "readable": False,
+            "valid_json": False,
+            "auth_mode": None,
+            "pending_auth_mode": None,
+            "has_pending_state": False,
+            "has_access_token": False,
+            "has_refresh_token": False,
+            "expires_at": None,
+            "expired": None,
+        },
+    )
+
+    result = runner.invoke(warcraftlogs_app, ["doctor"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["user_api_access"]["ready"] is False
+    assert payload["capabilities"]["user_auth"] == "requires_client_credentials"
 
 
 def test_warcraftlogs_search_matches_explicit_report_reference() -> None:

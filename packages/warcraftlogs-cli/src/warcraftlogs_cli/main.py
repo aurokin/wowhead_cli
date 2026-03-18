@@ -136,6 +136,14 @@ def _user_api_access_payload(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _user_auth_capability(*, auth_configured: bool, user_api_access: dict[str, Any]) -> str:
+    if user_api_access["ready"]:
+        return "ready"
+    if auth_configured:
+        return "ready_manual_exchange"
+    return "requires_client_credentials"
+
+
 def _capability_status(*, ready: bool, reason: str) -> str:
     return "ready" if ready else reason
 
@@ -220,7 +228,7 @@ def _doctor_payload() -> dict[str, Any]:
             "report_master_data": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
             "report_player_details": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
             "report_rankings": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "user_auth": _capability_status(ready=user_api_access["ready"], reason="requires_saved_user_token"),
+            "user_auth": _user_auth_capability(auth_configured=auth.configured, user_api_access=user_api_access),
         },
     }
 

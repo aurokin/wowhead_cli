@@ -89,22 +89,20 @@ def _print_summary(rows: list[tuple[str, int, int, float]]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run pytest under stdlib trace and summarize line coverage.")
+    parser = argparse.ArgumentParser(
+        description="Run pytest under stdlib trace and summarize line coverage.",
+        allow_abbrev=False,
+    )
     parser.add_argument(
         "--include",
         action="append",
         default=[],
         help="Additional repo-relative directory to include in the coverage summary. Repeat as needed.",
     )
-    parser.add_argument(
-        "pytest_args",
-        nargs="*",
-        help="Optional pytest arguments. Defaults to `-q`.",
-    )
-    args = parser.parse_args()
+    args, pytest_args = parser.parse_known_args()
 
     include_dirs = DEFAULT_INCLUDE_DIRS + tuple((REPO_ROOT / item).resolve() for item in args.include)
-    pytest_args = args.pytest_args or ["-q"]
+    pytest_args = pytest_args or ["-q"]
 
     tracer = trace.Trace(count=1, trace=0, ignoredirs=_ignored_dirs())
     exit_code = tracer.runfunc(pytest.main, pytest_args)

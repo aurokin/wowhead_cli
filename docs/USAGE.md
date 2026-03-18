@@ -548,6 +548,7 @@ EOF
 - `auth client` reports the configured client metadata and endpoint URLs without exposing the secret
 - `auth token` reports persisted token metadata without printing raw tokens
 - `auth whoami` uses the saved user token against the private `/api/v2/user` endpoint and is the clearest direct verification that saved user auth is actually usable
+- in `doctor`, `capabilities.user_auth` reports `ready_manual_exchange` when `auth login` / `auth pkce-login` can bootstrap user auth but no saved user token exists yet
 - if client credentials are not available, public data commands fail with `missing_public_auth` instead of a generic `missing_auth`
 - `auth login` and `auth pkce-login` now validate client credentials before writing pending auth state, so a failed login bootstrap does not clobber the saved auth-state file
 - `auth login --redirect-uri ...` supports a manual two-step authorization-code flow:
