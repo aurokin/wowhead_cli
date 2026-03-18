@@ -884,7 +884,7 @@ Transport caching is configurable through env vars. Useful defaults:
 
 ```bash
 WOWHEAD_CACHE_BACKEND=file
-WOWHEAD_CACHE_DIR=~/.cache/wowhead_cli/http
+WOWHEAD_CACHE_DIR=~/.cache/warcraft/wowhead/http
 WOWHEAD_SEARCH_CACHE_TTL_SECONDS=900
 WOWHEAD_TOOLTIP_CACHE_TTL_SECONDS=3600
 WOWHEAD_ENTITY_PAGE_CACHE_TTL_SECONDS=3600

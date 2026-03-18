@@ -67,7 +67,12 @@ def _preview_text(article: dict[str, Any]) -> str:
 
 
 def _keyword_tags(*values: str | None) -> tuple[list[str], list[str]]:
-    haystack_parts = [normalized_text(value) for value in values if _clean_text(value)]
+    haystack_parts: list[str] = []
+    for value in values:
+        cleaned = _clean_text(value)
+        if cleaned is None:
+            continue
+        haystack_parts.append(normalized_text(cleaned))
     haystack = " ".join(part for part in haystack_parts if part)
     if not haystack:
         return [], []
