@@ -95,7 +95,11 @@ def _normalize_graphql_enum(value: str | None) -> str | None:
 
 
 def _client(ctx: typer.Context) -> WarcraftLogsClient:
-    return WarcraftLogsClient()
+    try:
+        return WarcraftLogsClient()
+    except Exception as exc:  # noqa: BLE001
+        _fail(ctx, "invalid_runtime_config", str(exc))
+        raise AssertionError("unreachable") from exc
 
 
 def _handle_client_error(ctx: typer.Context, exc: WarcraftLogsClientError) -> None:
@@ -168,6 +172,8 @@ def _user_api_access_payload(state: dict[str, Any], *, runtime_access: dict[str,
 def _user_auth_capability(*, auth_configured: bool, runtime_access: dict[str, Any], user_api_access: dict[str, Any]) -> str:
     if user_api_access["ready"]:
         return "ready"
+    if user_api_access.get("reason") == "invalid_runtime_config":
+        return "invalid_runtime_config"
     if auth_configured and not runtime_access["ready"]:
         return str(runtime_access["reason"])
     if auth_configured:
