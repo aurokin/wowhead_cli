@@ -1120,16 +1120,11 @@ class WarcraftLogsClient:
         if self._access_token and now < self._token_expires_at - 60:
             return self._access_token
         if not self._has_client_credentials():
-            try:
-                return self._user_token()
-            except WarcraftLogsClientError as exc:
-                if exc.code in {"missing_user_auth", "user_token_expired"}:
-                    raise WarcraftLogsClientError(
-                        "missing_public_auth",
-                        "Public Warcraft Logs commands need either client credentials or a saved unexpired user token. "
-                        "Set WARCRAFTLOGS_CLIENT_ID and WARCRAFTLOGS_CLIENT_SECRET, or re-run Warcraft Logs user auth.",
-                    ) from exc
-                raise
+            raise WarcraftLogsClientError(
+                "missing_public_auth",
+                "Public Warcraft Logs commands need WARCRAFTLOGS_CLIENT_ID and WARCRAFTLOGS_CLIENT_SECRET. "
+                f"Set them (for example in {self._credential_hint}).",
+            )
         response = request_with_retries(
             self._client(),
             self._site.oauth_token_url,

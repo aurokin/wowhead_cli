@@ -467,11 +467,9 @@ These commands should clearly surface:
 - rate-limit state
 - whether public `/api/v2/client` commands are currently runnable
 - whether saved `/api/v2/user` auth is currently runnable
-- when the CLI is using a saved user token as the runtime fallback for public commands
 
 Current runtime auth contract:
-- client credentials remain the default path for public `/api/v2/client` commands
-- a saved unexpired user token may also satisfy those public commands when client credentials are not configured
+- client credentials are required for public `/api/v2/client` commands
 - `auth whoami` stays on the private `/api/v2/user` endpoint and requires saved user auth specifically
 - failed `auth login` and `auth pkce-login` attempts should not write pending auth state before client credentials are validated
 
