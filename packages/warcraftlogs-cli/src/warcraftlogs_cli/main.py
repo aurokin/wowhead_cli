@@ -95,21 +95,66 @@ def _normalize_graphql_enum(value: str | None) -> str | None:
 
 
 def _client(ctx: typer.Context) -> WarcraftLogsClient:
-    try:
-        return WarcraftLogsClient()
-    except ValueError as exc:
-        _fail(ctx, "missing_auth", str(exc))
-        raise AssertionError("unreachable") from exc
+    return WarcraftLogsClient()
 
 
 def _handle_client_error(ctx: typer.Context, exc: WarcraftLogsClientError) -> None:
     _fail(ctx, exc.code, exc.message)
 
 
+def _saved_user_token_ready(state: dict[str, Any]) -> bool:
+    return bool(
+        state.get("has_access_token")
+        and state.get("auth_mode") in {"authorization_code", "pkce"}
+        and not state.get("expired")
+    )
+
+
+def _public_api_access_payload(*, auth_configured: bool, state: dict[str, Any]) -> dict[str, Any]:
+    saved_user_token_ready = _saved_user_token_ready(state)
+    if auth_configured:
+        return {
+            "ready": True,
+            "mode": "client_credentials",
+            "fallback_ready": saved_user_token_ready,
+        }
+    if saved_user_token_ready:
+        return {
+            "ready": True,
+            "mode": "saved_user_token",
+            "fallback_ready": False,
+        }
+    return {
+        "ready": False,
+        "mode": None,
+        "fallback_ready": False,
+        "reason": "requires_client_credentials_or_saved_user_token",
+    }
+
+
+def _user_api_access_payload(state: dict[str, Any]) -> dict[str, Any]:
+    if _saved_user_token_ready(state):
+        return {
+            "ready": True,
+            "mode": state.get("auth_mode"),
+        }
+    return {
+        "ready": False,
+        "mode": None,
+        "reason": "requires_saved_user_token",
+    }
+
+
+def _capability_status(*, ready: bool, reason: str) -> str:
+    return "ready" if ready else reason
+
+
 def _doctor_payload() -> dict[str, Any]:
     auth = load_warcraftlogs_auth_config()
     credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
     state = provider_auth_status("warcraftlogs")
+    public_api_access = _public_api_access_payload(auth_configured=auth.configured, state=state)
+    user_api_access = _user_api_access_payload(state)
     return {
         "ok": True,
         "provider": "warcraftlogs",
@@ -123,6 +168,7 @@ def _doctor_payload() -> dict[str, Any]:
         "auth": {
             "required": True,
             "configured": auth.configured,
+            "client_credentials_configured": auth.configured,
             "flow": "oauth_client_credentials",
             "active_mode": (
                 state.get("auth_mode")
@@ -139,49 +185,51 @@ def _doctor_payload() -> dict[str, Any]:
             "state": state,
             "state_path": str(provider_state_path("warcraftlogs")),
             "redirect_flow_deferred": True,
+            "public_api_access": public_api_access,
+            "user_api_access": user_api_access,
         },
         "capabilities": {
             "doctor": "ready",
             "search": "ready_explicit_report_only",
             "resolve": "ready_explicit_report_only",
-            "rate_limit": "ready",
-            "regions": "ready",
-            "expansions": "ready",
-            "server": "ready",
-            "zone": "ready",
-            "zones": "ready",
-            "encounter": "ready",
-            "guild": "ready",
-            "guild_members": "ready",
-            "guild_attendance": "ready",
-            "guild_rankings": "ready",
-            "boss_kills": "ready",
-            "top_kills": "ready",
-            "kill_time_distribution": "ready",
-            "boss_spec_usage": "ready",
-            "comp_samples": "ready",
-            "ability_usage_summary": "ready",
-            "report_encounter": "ready",
-            "report_encounter_players": "ready",
-            "report_encounter_casts": "ready",
-            "report_encounter_buffs": "ready",
-            "report_encounter_aura_summary": "ready",
-            "report_encounter_aura_compare": "ready",
-            "report_encounter_damage_source_summary": "ready",
-            "report_encounter_damage_target_summary": "ready",
-            "report_encounter_damage_breakdown": "ready",
-            "character": "ready",
-            "character_rankings": "ready",
-            "report": "ready",
-            "reports": "ready",
-            "report_fights": "ready",
-            "report_events": "ready",
-            "report_table": "ready",
-            "report_graph": "ready",
-            "report_master_data": "ready",
-            "report_player_details": "ready",
-            "report_rankings": "ready",
-            "user_auth": "manual_ready",
+            "rate_limit": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "regions": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "expansions": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "server": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "zone": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "zones": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "encounter": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "guild": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "guild_members": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "guild_attendance": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "guild_rankings": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "boss_kills": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "top_kills": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "kill_time_distribution": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "boss_spec_usage": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "comp_samples": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "ability_usage_summary": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_encounter": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_encounter_players": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_encounter_casts": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_encounter_buffs": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_encounter_aura_summary": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_encounter_aura_compare": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_encounter_damage_source_summary": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_encounter_damage_target_summary": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_encounter_damage_breakdown": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "character": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "character_rankings": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "reports": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_fights": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_events": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_table": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_graph": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_master_data": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_player_details": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "report_rankings": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials_or_saved_user_token"),
+            "user_auth": _capability_status(ready=user_api_access["ready"], reason="requires_saved_user_token"),
         },
     }
 
@@ -2440,6 +2488,8 @@ def auth_status(ctx: typer.Context) -> None:
     auth = load_warcraftlogs_auth_config()
     credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
     state = provider_auth_status("warcraftlogs")
+    public_api_access = _public_api_access_payload(auth_configured=auth.configured, state=state)
+    user_api_access = _user_api_access_payload(state)
     _emit(
         ctx,
         {
@@ -2447,12 +2497,15 @@ def auth_status(ctx: typer.Context) -> None:
             "provider": "warcraftlogs",
             "auth": {
                 "configured": auth.configured,
+                "client_credentials_configured": auth.configured,
                 "flow": "oauth_client_credentials",
                 "active_mode": _active_auth_mode_from_state(state),
                 "endpoint_family": _endpoint_family_from_state(state),
                 "credential_source": credential_source,
                 "lookup_order": [".env.local", warcraftlogs_provider_env_path(), "environment"],
                 "state": state,
+                "public_api_access": public_api_access,
+                "user_api_access": user_api_access,
                 "grants": {
                     "client_credentials": "ready",
                     "authorization_code": "ready_manual_exchange",
@@ -2518,6 +2571,10 @@ def auth_login(
         try:
             pending_state = _random_state_token()
             scopes = [item.strip() for item in scope if item.strip()]
+            authorize_url = client.authorization_code_url(redirect_uri=redirect_uri, state=pending_state)
+            if scopes:
+                joiner = "&" if "?" in authorize_url else "?"
+                authorize_url = f"{authorize_url}{joiner}scope={'+'.join(scopes)}"
             saved_path = save_provider_auth_state(
                 "warcraftlogs",
                 {
@@ -2527,10 +2584,9 @@ def auth_login(
                     "requested_scopes": scopes,
                 },
             )
-            authorize_url = client.authorization_code_url(redirect_uri=redirect_uri, state=pending_state)
-            if scopes:
-                joiner = "&" if "?" in authorize_url else "?"
-                authorize_url = f"{authorize_url}{joiner}scope={'+'.join(scopes)}"
+        except WarcraftLogsClientError as exc:
+            _handle_client_error(ctx, exc)
+            return
         finally:
             client.close()
         _emit(
@@ -2604,6 +2660,14 @@ def auth_pkce_login(
             code_verifier = _pkce_verifier()
             code_challenge = _pkce_challenge(code_verifier)
             scopes = [item.strip() for item in scope if item.strip()]
+            authorize_url = client.pkce_code_url(
+                redirect_uri=redirect_uri,
+                state=pending_state,
+                code_challenge=code_challenge,
+            )
+            if scopes:
+                joiner = "&" if "?" in authorize_url else "?"
+                authorize_url = f"{authorize_url}{joiner}scope={'+'.join(scopes)}"
             saved_path = save_provider_auth_state(
                 "warcraftlogs",
                 {
@@ -2614,14 +2678,9 @@ def auth_pkce_login(
                     "requested_scopes": scopes,
                 },
             )
-            authorize_url = client.pkce_code_url(
-                redirect_uri=redirect_uri,
-                state=pending_state,
-                code_challenge=code_challenge,
-            )
-            if scopes:
-                joiner = "&" if "?" in authorize_url else "?"
-                authorize_url = f"{authorize_url}{joiner}scope={'+'.join(scopes)}"
+        except WarcraftLogsClientError as exc:
+            _handle_client_error(ctx, exc)
+            return
         finally:
             client.close()
         _emit(
