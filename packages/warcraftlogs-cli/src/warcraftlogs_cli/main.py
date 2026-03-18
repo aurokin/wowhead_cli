@@ -98,7 +98,7 @@ def _client(ctx: typer.Context) -> WarcraftLogsClient:
     try:
         return WarcraftLogsClient()
     except Exception as exc:  # noqa: BLE001
-        _fail(ctx, "invalid_runtime_config", str(exc))
+        _fail(ctx, "invalid_runtime_config", _runtime_error_message(str(exc)))
         raise AssertionError("unreachable") from exc
 
 
@@ -114,6 +114,10 @@ def _saved_user_token_ready(state: dict[str, Any]) -> bool:
     )
 
 
+def _runtime_error_message(message: str) -> str:
+    return message.replace("WOWHEAD_", "WARCRAFTLOGS_")
+
+
 def _runtime_access_payload() -> dict[str, Any]:
     try:
         client = WarcraftLogsClient()
@@ -121,7 +125,7 @@ def _runtime_access_payload() -> dict[str, Any]:
         return {
             "ready": False,
             "reason": "invalid_runtime_config",
-            "message": str(exc),
+            "message": _runtime_error_message(str(exc)),
         }
     client.close()
     return {
@@ -130,7 +134,7 @@ def _runtime_access_payload() -> dict[str, Any]:
 
 
 def _public_api_access_payload(*, auth_configured: bool, runtime_access: dict[str, Any]) -> dict[str, Any]:
-    if not runtime_access["ready"] and auth_configured:
+    if not runtime_access["ready"]:
         return {
             "ready": False,
             "mode": None,
@@ -172,17 +176,15 @@ def _user_api_access_payload(state: dict[str, Any], *, runtime_access: dict[str,
 def _user_auth_capability(*, auth_configured: bool, runtime_access: dict[str, Any], user_api_access: dict[str, Any]) -> str:
     if user_api_access["ready"]:
         return "ready"
-    if user_api_access.get("reason") == "invalid_runtime_config":
+    if not runtime_access["ready"] or user_api_access.get("reason") == "invalid_runtime_config":
         return "invalid_runtime_config"
-    if auth_configured and not runtime_access["ready"]:
-        return str(runtime_access["reason"])
     if auth_configured:
         return "ready_manual_exchange"
     return "requires_client_credentials"
 
 
 def _grant_statuses(*, auth_configured: bool, runtime_access: dict[str, Any]) -> dict[str, str]:
-    if auth_configured and not runtime_access["ready"]:
+    if not runtime_access["ready"]:
         status = str(runtime_access["reason"])
         return {
             "client_credentials": status,
