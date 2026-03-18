@@ -111,9 +111,8 @@ Focus first on:
 Prefer branch coverage in critical shared logic where practical.
 
 Environment note:
-- coverage tooling depends on `sqlite3`
-- on this machine, the current Python build is missing `_sqlite3`
-- keep coverage explicitly deferred until the local runtime is fixed rather than breaking normal `pytest`
+- prefer `pytest-cov` when `sqlite3` support is available
+- on machines where the active Python build is missing `_sqlite3`, `make coverage` should fall back to a stdlib `trace` summary for the shared packages instead of failing outright
 
 ### Import-Linter
 
@@ -168,8 +167,9 @@ Do not try to clean the whole repo in the same change.
 
 Practical phase-1 behavior:
 - `make lint` should be clean for shared packages
-- `make lint-all` can remain an exploratory full-repo report
-- `make coverage` should fail clearly with an environment message until `sqlite3` support exists
+- `make lint-all` can remain an exploratory full-repo report and should not block local work on the existing backlog
+- `make complexity` should use module invocation so stale console-script wrappers do not break the report
+- `make coverage` should prefer `pytest-cov`, but fall back to stdlib `trace` coverage when `sqlite3` support is unavailable
 
 ### Phase 2
 
