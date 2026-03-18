@@ -517,7 +517,6 @@ warcraftlogs ability-usage-summary --zone-id 38 --boss-id 3012 --difficulty 5 --
 Current Warcraft Logs provider behavior:
 - `warcraftlogs` currently targets the retail/main site profile only
 - public OAuth client credentials are the default auth mode
-- public `/api/v2/client` commands can also run from a saved user token when client credentials are not configured
 - manual user-auth groundwork is available for:
   - authorization code
   - PKCE

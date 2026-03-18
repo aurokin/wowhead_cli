@@ -144,6 +144,20 @@ def _user_auth_capability(*, auth_configured: bool, user_api_access: dict[str, A
     return "requires_client_credentials"
 
 
+def _grant_statuses(*, auth_configured: bool) -> dict[str, str]:
+    if auth_configured:
+        return {
+            "client_credentials": "ready",
+            "authorization_code": "ready_manual_exchange",
+            "pkce": "ready_manual_exchange",
+        }
+    return {
+        "client_credentials": "requires_client_credentials",
+        "authorization_code": "requires_client_credentials",
+        "pkce": "requires_client_credentials",
+    }
+
+
 def _capability_status(*, ready: bool, reason: str) -> str:
     return "ready" if ready else reason
 
@@ -2505,11 +2519,7 @@ def auth_status(ctx: typer.Context) -> None:
                 "state": state,
                 "public_api_access": public_api_access,
                 "user_api_access": user_api_access,
-                "grants": {
-                    "client_credentials": "ready",
-                    "authorization_code": "ready_manual_exchange",
-                    "pkce": "ready_manual_exchange",
-                },
+                "grants": _grant_statuses(auth_configured=auth.configured),
             },
         },
     )

@@ -1103,6 +1103,37 @@ def test_warcraftlogs_auth_status_reports_shared_state_summary(monkeypatch) -> N
     assert payload["auth"]["grants"]["pkce"] == "ready_manual_exchange"
 
 
+def test_warcraftlogs_auth_status_reports_grants_blocked_without_client_credentials(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": False, "env_file": None})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": True,
+            "readable": True,
+            "valid_json": True,
+            "auth_mode": "pkce",
+            "has_access_token": True,
+            "has_refresh_token": True,
+            "expires_at": 1500.0,
+            "expired": False,
+        },
+    )
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "status"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["public_api_access"]["ready"] is False
+    assert payload["auth"]["user_api_access"]["ready"] is True
+    assert payload["auth"]["grants"]["client_credentials"] == "requires_client_credentials"
+    assert payload["auth"]["grants"]["authorization_code"] == "requires_client_credentials"
+    assert payload["auth"]["grants"]["pkce"] == "requires_client_credentials"
+
+
 def test_warcraftlogs_auth_client_reports_endpoint_metadata(monkeypatch) -> None:
     monkeypatch.setattr(
         "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
