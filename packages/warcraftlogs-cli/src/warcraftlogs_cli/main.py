@@ -110,7 +110,29 @@ def _saved_user_token_ready(state: dict[str, Any]) -> bool:
     )
 
 
-def _public_api_access_payload(*, auth_configured: bool, state: dict[str, Any]) -> dict[str, Any]:
+def _runtime_access_payload() -> dict[str, Any]:
+    try:
+        client = WarcraftLogsClient()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ready": False,
+            "reason": "invalid_runtime_config",
+            "message": str(exc),
+        }
+    client.close()
+    return {
+        "ready": True,
+    }
+
+
+def _public_api_access_payload(*, auth_configured: bool, runtime_access: dict[str, Any]) -> dict[str, Any]:
+    if not runtime_access["ready"] and auth_configured:
+        return {
+            "ready": False,
+            "mode": None,
+            "reason": str(runtime_access["reason"]),
+            "message": runtime_access["message"],
+        }
     if auth_configured:
         return {
             "ready": True,
@@ -123,7 +145,14 @@ def _public_api_access_payload(*, auth_configured: bool, state: dict[str, Any]) 
     }
 
 
-def _user_api_access_payload(state: dict[str, Any]) -> dict[str, Any]:
+def _user_api_access_payload(state: dict[str, Any], *, runtime_access: dict[str, Any]) -> dict[str, Any]:
+    if not runtime_access["ready"] and _saved_user_token_ready(state):
+        return {
+            "ready": False,
+            "mode": None,
+            "reason": str(runtime_access["reason"]),
+            "message": runtime_access["message"],
+        }
     if _saved_user_token_ready(state):
         return {
             "ready": True,
@@ -136,15 +165,24 @@ def _user_api_access_payload(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _user_auth_capability(*, auth_configured: bool, user_api_access: dict[str, Any]) -> str:
+def _user_auth_capability(*, auth_configured: bool, runtime_access: dict[str, Any], user_api_access: dict[str, Any]) -> str:
     if user_api_access["ready"]:
         return "ready"
+    if auth_configured and not runtime_access["ready"]:
+        return str(runtime_access["reason"])
     if auth_configured:
         return "ready_manual_exchange"
     return "requires_client_credentials"
 
 
-def _grant_statuses(*, auth_configured: bool) -> dict[str, str]:
+def _grant_statuses(*, auth_configured: bool, runtime_access: dict[str, Any]) -> dict[str, str]:
+    if auth_configured and not runtime_access["ready"]:
+        status = str(runtime_access["reason"])
+        return {
+            "client_credentials": status,
+            "authorization_code": status,
+            "pkce": status,
+        }
     if auth_configured:
         return {
             "client_credentials": "ready",
@@ -162,12 +200,20 @@ def _capability_status(*, ready: bool, reason: str) -> str:
     return "ready" if ready else reason
 
 
+def _public_capability_status(public_api_access: dict[str, Any]) -> str:
+    return _capability_status(
+        ready=bool(public_api_access["ready"]),
+        reason=str(public_api_access.get("reason") or "requires_client_credentials"),
+    )
+
+
 def _doctor_payload() -> dict[str, Any]:
     auth = load_warcraftlogs_auth_config()
     credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
     state = provider_auth_status("warcraftlogs")
-    public_api_access = _public_api_access_payload(auth_configured=auth.configured, state=state)
-    user_api_access = _user_api_access_payload(state)
+    runtime_access = _runtime_access_payload()
+    public_api_access = _public_api_access_payload(auth_configured=auth.configured, runtime_access=runtime_access)
+    user_api_access = _user_api_access_payload(state, runtime_access=runtime_access)
     return {
         "ok": True,
         "provider": "warcraftlogs",
@@ -198,6 +244,7 @@ def _doctor_payload() -> dict[str, Any]:
             "state": state,
             "state_path": str(provider_state_path("warcraftlogs")),
             "redirect_flow_deferred": True,
+            "runtime_access": runtime_access,
             "public_api_access": public_api_access,
             "user_api_access": user_api_access,
         },
@@ -205,44 +252,48 @@ def _doctor_payload() -> dict[str, Any]:
             "doctor": "ready",
             "search": "ready_explicit_report_only",
             "resolve": "ready_explicit_report_only",
-            "rate_limit": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "regions": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "expansions": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "server": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "zone": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "zones": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "encounter": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "guild": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "guild_members": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "guild_attendance": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "guild_rankings": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "boss_kills": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "top_kills": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "kill_time_distribution": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "boss_spec_usage": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "comp_samples": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "ability_usage_summary": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_encounter": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_encounter_players": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_encounter_casts": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_encounter_buffs": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_encounter_aura_summary": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_encounter_aura_compare": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_encounter_damage_source_summary": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_encounter_damage_target_summary": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_encounter_damage_breakdown": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "character": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "character_rankings": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "reports": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_fights": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_events": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_table": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_graph": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_master_data": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_player_details": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "report_rankings": _capability_status(ready=public_api_access["ready"], reason="requires_client_credentials"),
-            "user_auth": _user_auth_capability(auth_configured=auth.configured, user_api_access=user_api_access),
+            "rate_limit": _public_capability_status(public_api_access),
+            "regions": _public_capability_status(public_api_access),
+            "expansions": _public_capability_status(public_api_access),
+            "server": _public_capability_status(public_api_access),
+            "zone": _public_capability_status(public_api_access),
+            "zones": _public_capability_status(public_api_access),
+            "encounter": _public_capability_status(public_api_access),
+            "guild": _public_capability_status(public_api_access),
+            "guild_members": _public_capability_status(public_api_access),
+            "guild_attendance": _public_capability_status(public_api_access),
+            "guild_rankings": _public_capability_status(public_api_access),
+            "boss_kills": _public_capability_status(public_api_access),
+            "top_kills": _public_capability_status(public_api_access),
+            "kill_time_distribution": _public_capability_status(public_api_access),
+            "boss_spec_usage": _public_capability_status(public_api_access),
+            "comp_samples": _public_capability_status(public_api_access),
+            "ability_usage_summary": _public_capability_status(public_api_access),
+            "report_encounter": _public_capability_status(public_api_access),
+            "report_encounter_players": _public_capability_status(public_api_access),
+            "report_encounter_casts": _public_capability_status(public_api_access),
+            "report_encounter_buffs": _public_capability_status(public_api_access),
+            "report_encounter_aura_summary": _public_capability_status(public_api_access),
+            "report_encounter_aura_compare": _public_capability_status(public_api_access),
+            "report_encounter_damage_source_summary": _public_capability_status(public_api_access),
+            "report_encounter_damage_target_summary": _public_capability_status(public_api_access),
+            "report_encounter_damage_breakdown": _public_capability_status(public_api_access),
+            "character": _public_capability_status(public_api_access),
+            "character_rankings": _public_capability_status(public_api_access),
+            "report": _public_capability_status(public_api_access),
+            "reports": _public_capability_status(public_api_access),
+            "report_fights": _public_capability_status(public_api_access),
+            "report_events": _public_capability_status(public_api_access),
+            "report_table": _public_capability_status(public_api_access),
+            "report_graph": _public_capability_status(public_api_access),
+            "report_master_data": _public_capability_status(public_api_access),
+            "report_player_details": _public_capability_status(public_api_access),
+            "report_rankings": _public_capability_status(public_api_access),
+            "user_auth": _user_auth_capability(
+                auth_configured=auth.configured,
+                runtime_access=runtime_access,
+                user_api_access=user_api_access,
+            ),
         },
     }
 
@@ -2501,8 +2552,9 @@ def auth_status(ctx: typer.Context) -> None:
     auth = load_warcraftlogs_auth_config()
     credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
     state = provider_auth_status("warcraftlogs")
-    public_api_access = _public_api_access_payload(auth_configured=auth.configured, state=state)
-    user_api_access = _user_api_access_payload(state)
+    runtime_access = _runtime_access_payload()
+    public_api_access = _public_api_access_payload(auth_configured=auth.configured, runtime_access=runtime_access)
+    user_api_access = _user_api_access_payload(state, runtime_access=runtime_access)
     _emit(
         ctx,
         {
@@ -2517,9 +2569,10 @@ def auth_status(ctx: typer.Context) -> None:
                 "credential_source": credential_source,
                 "lookup_order": [".env.local", warcraftlogs_provider_env_path(), "environment"],
                 "state": state,
+                "runtime_access": runtime_access,
                 "public_api_access": public_api_access,
                 "user_api_access": user_api_access,
-                "grants": _grant_statuses(auth_configured=auth.configured),
+                "grants": _grant_statuses(auth_configured=auth.configured, runtime_access=runtime_access),
             },
         },
     )

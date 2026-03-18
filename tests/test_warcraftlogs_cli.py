@@ -1033,6 +1033,47 @@ def test_warcraftlogs_doctor_requires_client_credentials_for_user_auth_bootstrap
     assert payload["capabilities"]["user_auth"] == "requires_client_credentials"
 
 
+def test_warcraftlogs_doctor_reports_invalid_runtime_config(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local"})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": False,
+            "readable": False,
+            "valid_json": False,
+            "auth_mode": None,
+            "pending_auth_mode": None,
+            "has_pending_state": False,
+            "has_access_token": False,
+            "has_refresh_token": False,
+            "expires_at": None,
+            "expired": None,
+        },
+    )
+
+    class _BrokenClient:
+        def __init__(self) -> None:
+            raise ValueError("WARCRAFTLOGS_REDIS_URL is required when WARCRAFTLOGS_CACHE_BACKEND=redis.")
+
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _BrokenClient)
+
+    result = runner.invoke(warcraftlogs_app, ["doctor"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["runtime_access"]["ready"] is False
+    assert payload["auth"]["runtime_access"]["reason"] == "invalid_runtime_config"
+    assert "WARCRAFTLOGS_REDIS_URL" in payload["auth"]["runtime_access"]["message"]
+    assert payload["auth"]["public_api_access"]["ready"] is False
+    assert payload["auth"]["public_api_access"]["reason"] == "invalid_runtime_config"
+    assert payload["capabilities"]["report_fights"] == "invalid_runtime_config"
+    assert payload["capabilities"]["user_auth"] == "invalid_runtime_config"
+
+
 def test_warcraftlogs_search_matches_explicit_report_reference() -> None:
     result = runner.invoke(warcraftlogs_app, ["search", "https://www.warcraftlogs.com/reports/abcd1234#fight=3"])
     assert result.exit_code == 0
@@ -1132,6 +1173,46 @@ def test_warcraftlogs_auth_status_reports_grants_blocked_without_client_credenti
     assert payload["auth"]["grants"]["client_credentials"] == "requires_client_credentials"
     assert payload["auth"]["grants"]["authorization_code"] == "requires_client_credentials"
     assert payload["auth"]["grants"]["pkce"] == "requires_client_credentials"
+
+
+def test_warcraftlogs_auth_status_reports_invalid_runtime_config(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local"})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": True,
+            "readable": True,
+            "valid_json": True,
+            "auth_mode": "pkce",
+            "has_access_token": True,
+            "has_refresh_token": True,
+            "expires_at": 1500.0,
+            "expired": False,
+        },
+    )
+
+    class _BrokenClient:
+        def __init__(self) -> None:
+            raise ValueError("WARCRAFTLOGS_REDIS_URL is required when WARCRAFTLOGS_CACHE_BACKEND=redis.")
+
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _BrokenClient)
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "status"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["runtime_access"]["ready"] is False
+    assert payload["auth"]["public_api_access"]["ready"] is False
+    assert payload["auth"]["public_api_access"]["reason"] == "invalid_runtime_config"
+    assert payload["auth"]["user_api_access"]["ready"] is False
+    assert payload["auth"]["user_api_access"]["reason"] == "invalid_runtime_config"
+    assert payload["auth"]["grants"]["client_credentials"] == "invalid_runtime_config"
+    assert payload["auth"]["grants"]["authorization_code"] == "invalid_runtime_config"
+    assert payload["auth"]["grants"]["pkce"] == "invalid_runtime_config"
 
 
 def test_warcraftlogs_auth_client_reports_endpoint_metadata(monkeypatch) -> None:
