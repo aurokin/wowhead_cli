@@ -156,16 +156,16 @@ def _public_api_access_payload(*, auth_configured: bool, runtime_access: dict[st
     if auth_configured:
         if not live:
             return {
-                "ready": False,
+                "ready": True,
                 "mode": "client_credentials",
-                "reason": "skipped_no_live_probe",
                 "validation": "skipped",
                 "probe": "rate_limit",
+                "live_validated": False,
             }
         client: WarcraftLogsClient | None = None
         try:
             client = WarcraftLogsClient()
-            client.rate_limit()
+            client.probe_live_public_api()
         except WarcraftLogsClientError as exc:
             return {
                 "ready": False,
@@ -190,6 +190,7 @@ def _public_api_access_payload(*, auth_configured: bool, runtime_access: dict[st
             "mode": "client_credentials",
             "validation": "live",
             "probe": "rate_limit",
+            "live_validated": True,
         }
     return {
         "ready": False,
@@ -200,7 +201,7 @@ def _public_api_access_payload(*, auth_configured: bool, runtime_access: dict[st
 
 
 def _user_api_access_payload(state: dict[str, Any], *, runtime_access: dict[str, Any], live: bool) -> dict[str, Any]:
-    if not runtime_access["ready"] and _saved_user_token_ready(state):
+    if not runtime_access["ready"]:
         return {
             "ready": False,
             "mode": None,
@@ -212,16 +213,16 @@ def _user_api_access_payload(state: dict[str, Any], *, runtime_access: dict[str,
         auth_mode = state.get("auth_mode")
         if not live:
             return {
-                "ready": False,
+                "ready": True,
                 "mode": auth_mode,
-                "reason": "skipped_no_live_probe",
                 "validation": "skipped",
                 "probe": "current_user",
+                "live_validated": False,
             }
         client: WarcraftLogsClient | None = None
         try:
             client = WarcraftLogsClient()
-            client.current_user()
+            client.probe_live_user_api()
         except WarcraftLogsClientError as exc:
             return {
                 "ready": False,
@@ -246,6 +247,7 @@ def _user_api_access_payload(state: dict[str, Any], *, runtime_access: dict[str,
             "mode": auth_mode,
             "validation": "live",
             "probe": "current_user",
+            "live_validated": True,
         }
     return {
         "ready": False,

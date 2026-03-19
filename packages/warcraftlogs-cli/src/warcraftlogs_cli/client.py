@@ -1221,12 +1221,14 @@ class WarcraftLogsClient:
         variables: dict[str, Any] | None,
         namespace: str,
         ttl_seconds: int,
+        use_cache: bool = True,
     ) -> dict[str, Any]:
         cache_payload = {"operation_name": operation_name, "variables": variables or {}}
         cache_key = self._cache_key(namespace, cache_payload)
-        cached = self._read_cache(cache_key)
-        if isinstance(cached, dict):
-            return cached
+        if use_cache:
+            cached = self._read_cache(cache_key)
+            if isinstance(cached, dict):
+                return cached
         response = request_with_retries(
             self._client(),
             self._site.user_api_url,
@@ -1272,6 +1274,23 @@ class WarcraftLogsClient:
             raise WarcraftLogsClientError("not_found", "Warcraft Logs did not return the current user for the saved token.")
         return current_user
 
+    def probe_live_user_api(self) -> dict[str, Any]:
+        data = self._graphql_user(
+            operation_name="CurrentUser",
+            query=CURRENT_USER_QUERY,
+            variables=None,
+            namespace="user_current",
+            ttl_seconds=self._metadata_ttl,
+            use_cache=False,
+        )
+        user_data = data.get("userData")
+        if not isinstance(user_data, dict):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs user data was missing from the current-user response.")
+        current_user = user_data.get("currentUser")
+        if not isinstance(current_user, dict):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs did not return the current user for the saved token.")
+        return current_user
+
     def _graphql(
         self,
         *,
@@ -1280,12 +1299,14 @@ class WarcraftLogsClient:
         variables: dict[str, Any] | None,
         namespace: str,
         ttl_seconds: int,
+        use_cache: bool = True,
     ) -> dict[str, Any]:
         cache_payload = {"operation_name": operation_name, "variables": variables or {}}
         cache_key = self._cache_key(namespace, cache_payload)
-        cached = self._read_cache(cache_key)
-        if isinstance(cached, dict):
-            return cached
+        if use_cache:
+            cached = self._read_cache(cache_key)
+            if isinstance(cached, dict):
+                return cached
         response = request_with_retries(
             self._client(),
             self._site.api_url,
@@ -1406,6 +1427,20 @@ class WarcraftLogsClient:
             variables=None,
             namespace="rate_limit",
             ttl_seconds=60,
+        )
+        payload = data.get("rateLimitData")
+        if not isinstance(payload, dict):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs rate limit data was not available.")
+        return payload
+
+    def probe_live_public_api(self) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="RateLimit",
+            query=RATE_LIMIT_QUERY,
+            variables=None,
+            namespace="rate_limit",
+            ttl_seconds=60,
+            use_cache=False,
         )
         payload = data.get("rateLimitData")
         if not isinstance(payload, dict):

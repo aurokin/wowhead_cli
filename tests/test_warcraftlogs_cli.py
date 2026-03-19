@@ -58,12 +58,18 @@ class _FakeWarcraftLogsClient:
             "avatar": "https://assets.example/avatar.png",
         }
 
+    def probe_live_user_api(self) -> dict[str, object]:
+        return self.current_user()
+
     def rate_limit(self) -> dict[str, object]:
         return {
             "limitPerHour": 3600,
             "pointsSpentThisHour": 42,
             "pointsResetIn": 1800,
         }
+
+    def probe_live_public_api(self) -> dict[str, object]:
+        return self.rate_limit()
 
     def regions(self) -> list[dict[str, object]]:
         return [
@@ -1066,11 +1072,52 @@ def test_warcraftlogs_doctor_can_skip_live_probes(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["auth"]["public_api_access"]["ready"] is False
-    assert payload["auth"]["public_api_access"]["reason"] == "skipped_no_live_probe"
+    assert payload["auth"]["public_api_access"]["ready"] is True
     assert payload["auth"]["public_api_access"]["validation"] == "skipped"
-    assert payload["capabilities"]["report_fights"] == "skipped_no_live_probe"
+    assert payload["auth"]["public_api_access"]["live_validated"] is False
+    assert payload["capabilities"]["report_fights"] == "ready"
     assert payload["capabilities"]["user_auth"] == "ready_manual_exchange"
+
+
+def test_warcraftlogs_doctor_live_probe_uses_uncached_public_helper(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local"})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": False,
+            "readable": False,
+            "valid_json": False,
+            "auth_mode": None,
+            "has_access_token": False,
+            "has_refresh_token": False,
+            "expires_at": None,
+            "expired": None,
+        },
+    )
+
+    class _ProbeAwareClient(_FakeWarcraftLogsClient):
+        def rate_limit(self) -> dict[str, object]:
+            raise AssertionError("doctor should use the uncached public probe helper")
+
+        def probe_live_public_api(self) -> dict[str, object]:
+            return {
+                "limitPerHour": 3600,
+                "pointsSpentThisHour": 42,
+                "pointsResetIn": 1800,
+            }
+
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _ProbeAwareClient)
+
+    result = runner.invoke(warcraftlogs_app, ["doctor"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["public_api_access"]["ready"] is True
+    assert payload["auth"]["public_api_access"]["validation"] == "live"
+    assert payload["auth"]["public_api_access"]["live_validated"] is True
 
 
 def test_warcraftlogs_doctor_reports_live_public_auth_failure(monkeypatch) -> None:
@@ -1219,6 +1266,7 @@ def test_warcraftlogs_doctor_prioritizes_invalid_runtime_config_without_credenti
 
     payload = json.loads(result.stdout)
     assert payload["auth"]["public_api_access"]["reason"] == "invalid_runtime_config"
+    assert payload["auth"]["user_api_access"]["reason"] == "invalid_runtime_config"
     assert payload["capabilities"]["report_fights"] == "invalid_runtime_config"
     assert payload["capabilities"]["user_auth"] == "invalid_runtime_config"
 
@@ -1353,10 +1401,53 @@ def test_warcraftlogs_auth_status_can_skip_live_probes(monkeypatch) -> None:
     assert result.exit_code == 0
 
     payload = json.loads(result.stdout)
-    assert payload["auth"]["public_api_access"]["reason"] == "skipped_no_live_probe"
+    assert payload["auth"]["public_api_access"]["ready"] is True
     assert payload["auth"]["public_api_access"]["validation"] == "skipped"
-    assert payload["auth"]["user_api_access"]["reason"] == "skipped_no_live_probe"
+    assert payload["auth"]["public_api_access"]["live_validated"] is False
+    assert payload["auth"]["user_api_access"]["ready"] is True
     assert payload["auth"]["user_api_access"]["validation"] == "skipped"
+    assert payload["auth"]["user_api_access"]["live_validated"] is False
+
+
+def test_warcraftlogs_auth_status_live_probe_uses_uncached_user_helper(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": False, "env_file": None})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": True,
+            "readable": True,
+            "valid_json": True,
+            "auth_mode": "pkce",
+            "has_access_token": True,
+            "has_refresh_token": True,
+            "expires_at": 1500.0,
+            "expired": False,
+        },
+    )
+
+    class _ProbeAwareClient(_FakeWarcraftLogsClient):
+        def current_user(self) -> dict[str, object]:
+            raise AssertionError("auth status should use the uncached user probe helper")
+
+        def probe_live_user_api(self) -> dict[str, object]:
+            return {
+                "id": 55,
+                "name": "Auro",
+                "avatar": "https://assets.example/avatar.png",
+            }
+
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _ProbeAwareClient)
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "status"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["user_api_access"]["ready"] is True
+    assert payload["auth"]["user_api_access"]["validation"] == "live"
+    assert payload["auth"]["user_api_access"]["live_validated"] is True
 
 
 def test_warcraftlogs_auth_status_reports_live_user_auth_failure(monkeypatch) -> None:
@@ -1467,6 +1558,7 @@ def test_warcraftlogs_auth_status_prioritizes_invalid_runtime_config_without_cre
 
     payload = json.loads(result.stdout)
     assert payload["auth"]["public_api_access"]["reason"] == "invalid_runtime_config"
+    assert payload["auth"]["user_api_access"]["reason"] == "invalid_runtime_config"
     assert payload["auth"]["grants"]["client_credentials"] == "invalid_runtime_config"
     assert payload["auth"]["grants"]["authorization_code"] == "invalid_runtime_config"
     assert payload["auth"]["grants"]["pkce"] == "invalid_runtime_config"
