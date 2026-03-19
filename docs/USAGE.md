@@ -543,6 +543,10 @@ EOF
   - `public_api_access`: whether public report/world/guild commands are runnable right now
   - `user_api_access`: whether saved user-auth commands are runnable right now
   - runtime mode: public commands use `client_credentials`; saved user auth is reported separately
+- `doctor` and `auth status` now run live Warcraft Logs probes by default:
+  - public auth is validated with a `rate-limit` probe when client credentials are configured
+  - saved user auth is validated with `auth whoami`-equivalent `current_user` access when a saved user token exists
+  - pass `--no-live` to either command when you want local/runtime-only diagnostics without remote validation
 - `auth status` reports credential source, runtime auth-state presence, and which grant types are currently implemented
 - `auth client` reports the configured client metadata and endpoint URLs without exposing the secret
 - `auth token` reports persisted token metadata without printing raw tokens

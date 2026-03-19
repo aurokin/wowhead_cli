@@ -118,6 +118,17 @@ def _runtime_error_message(message: str) -> str:
     return message.replace("WOWHEAD_", "WARCRAFTLOGS_")
 
 
+def _probe_failed_payload(*, mode: str | None, validation: str, probe: str, message: str) -> dict[str, Any]:
+    return {
+        "ready": False,
+        "mode": mode,
+        "reason": "probe_failed",
+        "message": _runtime_error_message(message),
+        "validation": validation,
+        "probe": probe,
+    }
+
+
 def _runtime_access_payload() -> dict[str, Any]:
     try:
         client = WarcraftLogsClient()
@@ -133,51 +144,125 @@ def _runtime_access_payload() -> dict[str, Any]:
     }
 
 
-def _public_api_access_payload(*, auth_configured: bool, runtime_access: dict[str, Any]) -> dict[str, Any]:
+def _public_api_access_payload(*, auth_configured: bool, runtime_access: dict[str, Any], live: bool) -> dict[str, Any]:
     if not runtime_access["ready"]:
         return {
             "ready": False,
             "mode": None,
             "reason": str(runtime_access["reason"]),
             "message": runtime_access["message"],
+            "validation": "local",
         }
     if auth_configured:
+        if not live:
+            return {
+                "ready": False,
+                "mode": "client_credentials",
+                "reason": "skipped_no_live_probe",
+                "validation": "skipped",
+                "probe": "rate_limit",
+            }
+        client: WarcraftLogsClient | None = None
+        try:
+            client = WarcraftLogsClient()
+            client.rate_limit()
+        except WarcraftLogsClientError as exc:
+            return {
+                "ready": False,
+                "mode": "client_credentials",
+                "reason": exc.code,
+                "message": exc.message,
+                "validation": "live",
+                "probe": "rate_limit",
+            }
+        except Exception as exc:  # noqa: BLE001
+            return _probe_failed_payload(
+                mode="client_credentials",
+                validation="live",
+                probe="rate_limit",
+                message=str(exc),
+            )
+        finally:
+            if client is not None:
+                client.close()
         return {
             "ready": True,
             "mode": "client_credentials",
+            "validation": "live",
+            "probe": "rate_limit",
         }
     return {
         "ready": False,
         "mode": None,
         "reason": "requires_client_credentials",
+        "validation": "local",
     }
 
 
-def _user_api_access_payload(state: dict[str, Any], *, runtime_access: dict[str, Any]) -> dict[str, Any]:
+def _user_api_access_payload(state: dict[str, Any], *, runtime_access: dict[str, Any], live: bool) -> dict[str, Any]:
     if not runtime_access["ready"] and _saved_user_token_ready(state):
         return {
             "ready": False,
             "mode": None,
             "reason": str(runtime_access["reason"]),
             "message": runtime_access["message"],
+            "validation": "local",
         }
     if _saved_user_token_ready(state):
+        auth_mode = state.get("auth_mode")
+        if not live:
+            return {
+                "ready": False,
+                "mode": auth_mode,
+                "reason": "skipped_no_live_probe",
+                "validation": "skipped",
+                "probe": "current_user",
+            }
+        client: WarcraftLogsClient | None = None
+        try:
+            client = WarcraftLogsClient()
+            client.current_user()
+        except WarcraftLogsClientError as exc:
+            return {
+                "ready": False,
+                "mode": auth_mode,
+                "reason": exc.code,
+                "message": exc.message,
+                "validation": "live",
+                "probe": "current_user",
+            }
+        except Exception as exc:  # noqa: BLE001
+            return _probe_failed_payload(
+                mode=str(auth_mode) if isinstance(auth_mode, str) else None,
+                validation="live",
+                probe="current_user",
+                message=str(exc),
+            )
+        finally:
+            if client is not None:
+                client.close()
         return {
             "ready": True,
-            "mode": state.get("auth_mode"),
+            "mode": auth_mode,
+            "validation": "live",
+            "probe": "current_user",
         }
     return {
         "ready": False,
         "mode": None,
         "reason": "requires_saved_user_token",
+        "validation": "local",
     }
 
 
 def _user_auth_capability(*, auth_configured: bool, runtime_access: dict[str, Any], user_api_access: dict[str, Any]) -> str:
     if user_api_access["ready"]:
         return "ready"
-    if not runtime_access["ready"] or user_api_access.get("reason") == "invalid_runtime_config":
+    reason = str(user_api_access.get("reason") or "")
+    if not runtime_access["ready"] or reason == "invalid_runtime_config":
         return "invalid_runtime_config"
+    if reason in {"auth_failed", "probe_failed", "skipped_no_live_probe"}:
+        return reason
     if auth_configured:
         return "ready_manual_exchange"
     return "requires_client_credentials"
@@ -215,13 +300,21 @@ def _public_capability_status(public_api_access: dict[str, Any]) -> str:
     )
 
 
-def _doctor_payload() -> dict[str, Any]:
+def _doctor_payload(*, live: bool) -> dict[str, Any]:
     auth = load_warcraftlogs_auth_config()
     credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
     state = provider_auth_status("warcraftlogs")
     runtime_access = _runtime_access_payload()
-    public_api_access = _public_api_access_payload(auth_configured=auth.configured, runtime_access=runtime_access)
-    user_api_access = _user_api_access_payload(state, runtime_access=runtime_access)
+    public_api_access = _public_api_access_payload(
+        auth_configured=auth.configured,
+        runtime_access=runtime_access,
+        live=live,
+    )
+    user_api_access = _user_api_access_payload(
+        state,
+        runtime_access=runtime_access,
+        live=live,
+    )
     return {
         "ok": True,
         "provider": "warcraftlogs",
@@ -2512,8 +2605,11 @@ def resolve(
 
 
 @app.command("doctor")
-def doctor(ctx: typer.Context) -> None:
-    _emit(ctx, _doctor_payload())
+def doctor(
+    ctx: typer.Context,
+    no_live: bool = typer.Option(False, "--no-live", help="Skip live Warcraft Logs auth probes and report local/runtime readiness only."),
+) -> None:
+    _emit(ctx, _doctor_payload(live=not no_live))
 
 
 def _random_state_token() -> str:
@@ -2556,13 +2652,24 @@ def _endpoint_family_from_state(state: dict[str, Any]) -> str:
 
 
 @auth_app.command("status")
-def auth_status(ctx: typer.Context) -> None:
+def auth_status(
+    ctx: typer.Context,
+    no_live: bool = typer.Option(False, "--no-live", help="Skip live Warcraft Logs auth probes and report local/runtime readiness only."),
+) -> None:
     auth = load_warcraftlogs_auth_config()
     credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
     state = provider_auth_status("warcraftlogs")
     runtime_access = _runtime_access_payload()
-    public_api_access = _public_api_access_payload(auth_configured=auth.configured, runtime_access=runtime_access)
-    user_api_access = _user_api_access_payload(state, runtime_access=runtime_access)
+    public_api_access = _public_api_access_payload(
+        auth_configured=auth.configured,
+        runtime_access=runtime_access,
+        live=not no_live,
+    )
+    user_api_access = _user_api_access_payload(
+        state,
+        runtime_access=runtime_access,
+        live=not no_live,
+    )
     _emit(
         ctx,
         {

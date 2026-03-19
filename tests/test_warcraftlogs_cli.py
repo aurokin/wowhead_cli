@@ -919,6 +919,7 @@ class _FakeWarcraftLogsClient:
 
 
 def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _FakeWarcraftLogsClient)
     monkeypatch.setattr(
         "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
         lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local"})(),
@@ -951,6 +952,8 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
     assert payload["auth"]["state"]["exists"] is False
     assert payload["auth"]["public_api_access"]["ready"] is True
     assert payload["auth"]["public_api_access"]["mode"] == "client_credentials"
+    assert payload["auth"]["public_api_access"]["validation"] == "live"
+    assert payload["auth"]["public_api_access"]["probe"] == "rate_limit"
     assert payload["auth"]["user_api_access"]["ready"] is False
     assert payload["capabilities"]["guild"] == "ready"
     assert payload["capabilities"]["search"] == "ready_explicit_report_only"
@@ -969,6 +972,7 @@ def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None
 
 
 def test_warcraftlogs_doctor_reports_saved_user_token_runtime_access(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _FakeWarcraftLogsClient)
     monkeypatch.setattr(
         "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
         lambda: type("Auth", (), {"configured": False, "env_file": None})(),
@@ -998,12 +1002,16 @@ def test_warcraftlogs_doctor_reports_saved_user_token_runtime_access(monkeypatch
     assert payload["auth"]["public_api_access"]["ready"] is False
     assert payload["auth"]["public_api_access"]["mode"] is None
     assert payload["auth"]["public_api_access"]["reason"] == "requires_client_credentials"
+    assert payload["auth"]["public_api_access"]["validation"] == "local"
     assert payload["auth"]["user_api_access"]["ready"] is True
+    assert payload["auth"]["user_api_access"]["validation"] == "live"
+    assert payload["auth"]["user_api_access"]["probe"] == "current_user"
     assert payload["capabilities"]["report_fights"] == "requires_client_credentials"
     assert payload["capabilities"]["user_auth"] == "ready"
 
 
 def test_warcraftlogs_doctor_requires_client_credentials_for_user_auth_bootstrap(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _FakeWarcraftLogsClient)
     monkeypatch.setattr(
         "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
         lambda: type("Auth", (), {"configured": False, "env_file": None})(),
@@ -1031,6 +1039,74 @@ def test_warcraftlogs_doctor_requires_client_credentials_for_user_auth_bootstrap
     payload = json.loads(result.stdout)
     assert payload["auth"]["user_api_access"]["ready"] is False
     assert payload["capabilities"]["user_auth"] == "requires_client_credentials"
+
+
+def test_warcraftlogs_doctor_can_skip_live_probes(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _FakeWarcraftLogsClient)
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local"})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": False,
+            "readable": False,
+            "valid_json": False,
+            "auth_mode": None,
+            "has_access_token": False,
+            "has_refresh_token": False,
+            "expires_at": None,
+            "expired": None,
+        },
+    )
+
+    result = runner.invoke(warcraftlogs_app, ["doctor", "--no-live"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["public_api_access"]["ready"] is False
+    assert payload["auth"]["public_api_access"]["reason"] == "skipped_no_live_probe"
+    assert payload["auth"]["public_api_access"]["validation"] == "skipped"
+    assert payload["capabilities"]["report_fights"] == "skipped_no_live_probe"
+    assert payload["capabilities"]["user_auth"] == "ready_manual_exchange"
+
+
+def test_warcraftlogs_doctor_reports_live_public_auth_failure(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local"})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": False,
+            "readable": False,
+            "valid_json": False,
+            "auth_mode": None,
+            "has_access_token": False,
+            "has_refresh_token": False,
+            "expires_at": None,
+            "expired": None,
+        },
+    )
+
+    class _AuthFailingPublicClient(_FakeWarcraftLogsClient):
+        def rate_limit(self) -> dict[str, object]:
+            raise WarcraftLogsClientError("auth_failed", "Warcraft Logs rejected the client credentials.")
+
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _AuthFailingPublicClient)
+
+    result = runner.invoke(warcraftlogs_app, ["doctor"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["public_api_access"]["ready"] is False
+    assert payload["auth"]["public_api_access"]["reason"] == "auth_failed"
+    assert payload["auth"]["public_api_access"]["validation"] == "live"
+    assert payload["capabilities"]["report_fights"] == "auth_failed"
 
 
 def test_warcraftlogs_doctor_reports_invalid_runtime_config(monkeypatch) -> None:
@@ -1184,6 +1260,7 @@ def test_warcraftlogs_resolve_matches_bare_report_code() -> None:
 
 
 def test_warcraftlogs_auth_status_reports_shared_state_summary(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _FakeWarcraftLogsClient)
     monkeypatch.setattr(
         "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
         lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local"})(),
@@ -1213,11 +1290,14 @@ def test_warcraftlogs_auth_status_reports_shared_state_summary(monkeypatch) -> N
     assert payload["auth"]["state"]["auth_mode"] == "authorization_code"
     assert payload["auth"]["public_api_access"]["ready"] is True
     assert payload["auth"]["user_api_access"]["ready"] is True
+    assert payload["auth"]["public_api_access"]["validation"] == "live"
+    assert payload["auth"]["user_api_access"]["validation"] == "live"
     assert payload["auth"]["grants"]["client_credentials"] == "ready"
     assert payload["auth"]["grants"]["pkce"] == "ready_manual_exchange"
 
 
 def test_warcraftlogs_auth_status_reports_grants_blocked_without_client_credentials(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _FakeWarcraftLogsClient)
     monkeypatch.setattr(
         "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
         lambda: type("Auth", (), {"configured": False, "env_file": None})(),
@@ -1246,6 +1326,72 @@ def test_warcraftlogs_auth_status_reports_grants_blocked_without_client_credenti
     assert payload["auth"]["grants"]["client_credentials"] == "requires_client_credentials"
     assert payload["auth"]["grants"]["authorization_code"] == "requires_client_credentials"
     assert payload["auth"]["grants"]["pkce"] == "requires_client_credentials"
+
+
+def test_warcraftlogs_auth_status_can_skip_live_probes(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _FakeWarcraftLogsClient)
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": True, "env_file": "/tmp/.env.local"})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": True,
+            "readable": True,
+            "valid_json": True,
+            "auth_mode": "pkce",
+            "has_access_token": True,
+            "has_refresh_token": True,
+            "expires_at": 1500.0,
+            "expired": False,
+        },
+    )
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "status", "--no-live"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["public_api_access"]["reason"] == "skipped_no_live_probe"
+    assert payload["auth"]["public_api_access"]["validation"] == "skipped"
+    assert payload["auth"]["user_api_access"]["reason"] == "skipped_no_live_probe"
+    assert payload["auth"]["user_api_access"]["validation"] == "skipped"
+
+
+def test_warcraftlogs_auth_status_reports_live_user_auth_failure(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.load_warcraftlogs_auth_config",
+        lambda: type("Auth", (), {"configured": False, "env_file": None})(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.provider_auth_status",
+        lambda provider: {
+            "path": "/tmp/state/warcraftlogs.json",
+            "exists": True,
+            "readable": True,
+            "valid_json": True,
+            "auth_mode": "pkce",
+            "has_access_token": True,
+            "has_refresh_token": True,
+            "expires_at": 1500.0,
+            "expired": False,
+        },
+    )
+
+    class _AuthFailingUserClient(_FakeWarcraftLogsClient):
+        def current_user(self) -> dict[str, object]:
+            raise WarcraftLogsClientError("auth_failed", "Saved Warcraft Logs user token was rejected by Warcraft Logs.")
+
+    monkeypatch.setattr("warcraftlogs_cli.main.WarcraftLogsClient", _AuthFailingUserClient)
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "status"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["auth"]["user_api_access"]["ready"] is False
+    assert payload["auth"]["user_api_access"]["reason"] == "auth_failed"
+    assert payload["auth"]["user_api_access"]["validation"] == "live"
 
 
 def test_warcraftlogs_auth_status_reports_invalid_runtime_config(monkeypatch) -> None:
