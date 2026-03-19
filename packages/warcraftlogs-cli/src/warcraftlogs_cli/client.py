@@ -1255,7 +1255,8 @@ class WarcraftLogsClient:
         data = payload.get("data")
         if not isinstance(data, dict):
             raise WarcraftLogsClientError("invalid_response", f"Warcraft Logs returned no user data for {operation_name}.")
-        self._write_cache(cache_key, data, ttl_seconds=ttl_seconds)
+        if use_cache:
+            self._write_cache(cache_key, data, ttl_seconds=ttl_seconds)
         return data
 
     def current_user(self) -> dict[str, Any]:
@@ -1333,7 +1334,8 @@ class WarcraftLogsClient:
         data = payload.get("data")
         if not isinstance(data, dict):
             raise WarcraftLogsClientError("invalid_response", f"Warcraft Logs returned no data for {operation_name}.")
-        self._write_cache(cache_key, data, ttl_seconds=ttl_seconds)
+        if use_cache:
+            self._write_cache(cache_key, data, ttl_seconds=ttl_seconds)
         return data
 
     def _report_query_variables(self, *, code: str, allow_unlisted: bool, options: ReportFilterOptions) -> dict[str, Any]:

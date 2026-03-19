@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 import httpx
 import pytest
@@ -2720,6 +2721,109 @@ def test_warcraftlogs_client_public_token_requires_client_credentials(monkeypatc
 
     assert exc_info.value.code == "missing_public_auth"
     assert "WARCRAFTLOGS_CLIENT_ID" in exc_info.value.message
+
+
+def test_warcraftlogs_client_live_user_probe_does_not_write_shared_cache(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.client.load_warcraftlogs_auth_config",
+        lambda start_dir=None: type(
+            "Auth",
+            (),
+            {
+                "configured": False,
+                "client_id": None,
+                "client_secret": None,
+                "env_file": None,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.client.load_provider_auth_state",
+        lambda provider: {
+            "auth_mode": "pkce",
+            "access_token": "user-token",
+            "expires_at": time.time() + 3600,
+        },
+    )
+
+    def _fake_request(client, url, *, method="GET", data=None, auth=None, retry_attempts=1, **kwargs):  # noqa: ANN001
+        del client, data, auth, retry_attempts
+        assert method == "POST"
+        assert url.endswith("/api/v2/user")
+        return httpx.Response(
+            200,
+            json={"data": {"userData": {"currentUser": {"id": 55, "name": "Auro", "avatar": "https://assets.example/avatar.png"}}}},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr("warcraftlogs_cli.client.request_with_retries", _fake_request)
+
+    writes: list[tuple[str, object, int]] = []
+    client = WarcraftLogsClient()
+    monkeypatch.setattr(
+        client,
+        "_write_cache",
+        lambda key, payload, *, ttl_seconds: writes.append((key, payload, ttl_seconds)),
+    )
+    try:
+        payload = client.probe_live_user_api()
+    finally:
+        client.close()
+
+    assert payload["name"] == "Auro"
+    assert writes == []
+
+
+def test_warcraftlogs_client_live_public_probe_does_not_write_shared_cache(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.client.load_warcraftlogs_auth_config",
+        lambda start_dir=None: type(
+            "Auth",
+            (),
+            {
+                "configured": True,
+                "client_id": "client-id",
+                "client_secret": "client-secret",
+                "env_file": "/tmp/.env.local",
+            },
+        )(),
+    )
+
+    def _fake_request(client, url, *, method="GET", data=None, auth=None, retry_attempts=1, **kwargs):  # noqa: ANN001
+        del client, retry_attempts, kwargs
+        if url.endswith("/oauth/token"):
+            assert method == "POST"
+            return httpx.Response(
+                200,
+                json={"access_token": "public-token", "expires_in": 3600},
+                request=httpx.Request("POST", url),
+            )
+        assert method == "POST"
+        assert url.endswith("/api/v2/client")
+        assert auth is None
+        assert data is None
+        return httpx.Response(
+            200,
+            json={"data": {"rateLimitData": {"limitPerHour": 3600, "pointsSpentThisHour": 42, "pointsResetIn": 1800}}},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr("warcraftlogs_cli.client.request_with_retries", _fake_request)
+
+    writes: list[tuple[str, object, int]] = []
+    client = WarcraftLogsClient()
+    monkeypatch.setattr(
+        client,
+        "_write_cache",
+        lambda key, payload, *, ttl_seconds: writes.append((key, payload, ttl_seconds)),
+    )
+    try:
+        payload = client.probe_live_public_api()
+    finally:
+        client.close()
+
+    assert payload["limitPerHour"] == 3600
+    assert writes == []
 
 
 def test_warcraftlogs_report_fights_requires_public_auth_not_generic_missing_auth(monkeypatch) -> None:
