@@ -90,3 +90,19 @@ WOWHEAD_LIVE_TESTS=1 pytest -q -m live
 
 Live checks can be run manually in GitHub Actions via `.github/workflows/live-wowhead-contracts.yml` (`workflow_dispatch`).
 Live coverage includes mixed entity-type (`item`, `quest`, `npc`, `spell`) contracts and cross-entity compare checks.
+
+## Health Checks
+
+```bash
+make fmt-check
+make lint
+make lint-all
+make complexity
+make typecheck
+make coverage
+```
+
+Notes:
+- `make lint-all` is report-only and keeps the current full-repo Ruff backlog visible without blocking local work.
+- `make complexity` runs `radon` via `python -m` so stale console-script wrappers do not break the report.
+- `make coverage` prefers `pytest-cov` when available and falls back to stdlib `trace` coverage for the shared packages when the active Python build lacks `sqlite3`.

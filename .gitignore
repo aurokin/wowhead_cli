@@ -8,3 +8,5 @@ research/warcraftlogs-docs-fresh/
 .venv/
 __pycache__/
 .pytest_cache/
+.coverage
+.coverage.*

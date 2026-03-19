@@ -8,10 +8,10 @@
 - Live tests: `WOWHEAD_LIVE_TESTS=1 pytest -q -m live`
 - Local deploy: `make dev-deploy`
 - Lint: `make lint`
-- Full lint report: `make lint-all`
+- Full lint report: `make lint-all` (report-only; surfaces the full-repo Ruff backlog without failing)
 - Complexity report: `make complexity`
 - Type check: `make typecheck`
-- Coverage: `make coverage` (currently blocked if the local Python build lacks `sqlite3`)
+- Coverage: `make coverage` (uses `pytest-cov` when available, otherwise falls back to stdlib `trace` coverage)
 
 ## Commit Attribution
 - AI commits MUST include:

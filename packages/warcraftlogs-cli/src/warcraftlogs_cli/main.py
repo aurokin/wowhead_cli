@@ -97,8 +97,8 @@ def _normalize_graphql_enum(value: str | None) -> str | None:
 def _client(ctx: typer.Context) -> WarcraftLogsClient:
     try:
         return WarcraftLogsClient()
-    except ValueError as exc:
-        _fail(ctx, "missing_auth", str(exc))
+    except Exception as exc:  # noqa: BLE001
+        _fail(ctx, "invalid_runtime_config", _runtime_error_message(str(exc)))
         raise AssertionError("unreachable") from exc
 
 
@@ -106,10 +106,217 @@ def _handle_client_error(ctx: typer.Context, exc: WarcraftLogsClientError) -> No
     _fail(ctx, exc.code, exc.message)
 
 
-def _doctor_payload() -> dict[str, Any]:
+def _saved_user_token_ready(state: dict[str, Any]) -> bool:
+    return bool(
+        state.get("has_access_token")
+        and state.get("auth_mode") in {"authorization_code", "pkce"}
+        and not state.get("expired")
+    )
+
+
+def _runtime_error_message(message: str) -> str:
+    return message.replace("WOWHEAD_", "WARCRAFTLOGS_")
+
+
+def _probe_failed_payload(*, mode: str | None, validation: str, probe: str, message: str) -> dict[str, Any]:
+    return {
+        "ready": False,
+        "mode": mode,
+        "reason": "probe_failed",
+        "message": _runtime_error_message(message),
+        "validation": validation,
+        "probe": probe,
+    }
+
+
+def _runtime_access_payload() -> dict[str, Any]:
+    try:
+        client = WarcraftLogsClient()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ready": False,
+            "reason": "invalid_runtime_config",
+            "message": _runtime_error_message(str(exc)),
+        }
+    client.close()
+    return {
+        "ready": True,
+    }
+
+
+def _public_api_access_payload(*, auth_configured: bool, runtime_access: dict[str, Any], live: bool) -> dict[str, Any]:
+    if not runtime_access["ready"]:
+        return {
+            "ready": False,
+            "mode": None,
+            "reason": str(runtime_access["reason"]),
+            "message": runtime_access["message"],
+            "validation": "local",
+        }
+    if auth_configured:
+        if not live:
+            return {
+                "ready": True,
+                "mode": "client_credentials",
+                "validation": "skipped",
+                "probe": "rate_limit",
+                "live_validated": False,
+            }
+        client: WarcraftLogsClient | None = None
+        try:
+            client = WarcraftLogsClient()
+            client.probe_live_public_api()
+        except WarcraftLogsClientError as exc:
+            return {
+                "ready": False,
+                "mode": "client_credentials",
+                "reason": exc.code,
+                "message": exc.message,
+                "validation": "live",
+                "probe": "rate_limit",
+            }
+        except Exception as exc:  # noqa: BLE001
+            return _probe_failed_payload(
+                mode="client_credentials",
+                validation="live",
+                probe="rate_limit",
+                message=str(exc),
+            )
+        finally:
+            if client is not None:
+                client.close()
+        return {
+            "ready": True,
+            "mode": "client_credentials",
+            "validation": "live",
+            "probe": "rate_limit",
+            "live_validated": True,
+        }
+    return {
+        "ready": False,
+        "mode": None,
+        "reason": "requires_client_credentials",
+        "validation": "local",
+    }
+
+
+def _user_api_access_payload(state: dict[str, Any], *, runtime_access: dict[str, Any], live: bool) -> dict[str, Any]:
+    if not runtime_access["ready"]:
+        return {
+            "ready": False,
+            "mode": None,
+            "reason": str(runtime_access["reason"]),
+            "message": runtime_access["message"],
+            "validation": "local",
+        }
+    if _saved_user_token_ready(state):
+        auth_mode = state.get("auth_mode")
+        if not live:
+            return {
+                "ready": True,
+                "mode": auth_mode,
+                "validation": "skipped",
+                "probe": "current_user",
+                "live_validated": False,
+            }
+        client: WarcraftLogsClient | None = None
+        try:
+            client = WarcraftLogsClient()
+            client.probe_live_user_api()
+        except WarcraftLogsClientError as exc:
+            return {
+                "ready": False,
+                "mode": auth_mode,
+                "reason": exc.code,
+                "message": exc.message,
+                "validation": "live",
+                "probe": "current_user",
+            }
+        except Exception as exc:  # noqa: BLE001
+            return _probe_failed_payload(
+                mode=str(auth_mode) if isinstance(auth_mode, str) else None,
+                validation="live",
+                probe="current_user",
+                message=str(exc),
+            )
+        finally:
+            if client is not None:
+                client.close()
+        return {
+            "ready": True,
+            "mode": auth_mode,
+            "validation": "live",
+            "probe": "current_user",
+            "live_validated": True,
+        }
+    return {
+        "ready": False,
+        "mode": None,
+        "reason": "requires_saved_user_token",
+        "validation": "local",
+    }
+
+
+def _user_auth_capability(*, auth_configured: bool, runtime_access: dict[str, Any], user_api_access: dict[str, Any]) -> str:
+    if user_api_access["ready"]:
+        return "ready"
+    reason = str(user_api_access.get("reason") or "")
+    if not runtime_access["ready"] or reason == "invalid_runtime_config":
+        return "invalid_runtime_config"
+    if reason in {"auth_failed", "probe_failed", "skipped_no_live_probe"}:
+        return reason
+    if auth_configured:
+        return "ready_manual_exchange"
+    return "requires_client_credentials"
+
+
+def _grant_statuses(*, auth_configured: bool, runtime_access: dict[str, Any]) -> dict[str, str]:
+    if not runtime_access["ready"]:
+        status = str(runtime_access["reason"])
+        return {
+            "client_credentials": status,
+            "authorization_code": status,
+            "pkce": status,
+        }
+    if auth_configured:
+        return {
+            "client_credentials": "ready",
+            "authorization_code": "ready_manual_exchange",
+            "pkce": "ready_manual_exchange",
+        }
+    return {
+        "client_credentials": "requires_client_credentials",
+        "authorization_code": "requires_client_credentials",
+        "pkce": "requires_client_credentials",
+    }
+
+
+def _capability_status(*, ready: bool, reason: str) -> str:
+    return "ready" if ready else reason
+
+
+def _public_capability_status(public_api_access: dict[str, Any]) -> str:
+    return _capability_status(
+        ready=bool(public_api_access["ready"]),
+        reason=str(public_api_access.get("reason") or "requires_client_credentials"),
+    )
+
+
+def _doctor_payload(*, live: bool) -> dict[str, Any]:
     auth = load_warcraftlogs_auth_config()
     credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
     state = provider_auth_status("warcraftlogs")
+    runtime_access = _runtime_access_payload()
+    public_api_access = _public_api_access_payload(
+        auth_configured=auth.configured,
+        runtime_access=runtime_access,
+        live=live,
+    )
+    user_api_access = _user_api_access_payload(
+        state,
+        runtime_access=runtime_access,
+        live=live,
+    )
     return {
         "ok": True,
         "provider": "warcraftlogs",
@@ -123,6 +330,7 @@ def _doctor_payload() -> dict[str, Any]:
         "auth": {
             "required": True,
             "configured": auth.configured,
+            "client_credentials_configured": auth.configured,
             "flow": "oauth_client_credentials",
             "active_mode": (
                 state.get("auth_mode")
@@ -139,49 +347,56 @@ def _doctor_payload() -> dict[str, Any]:
             "state": state,
             "state_path": str(provider_state_path("warcraftlogs")),
             "redirect_flow_deferred": True,
+            "runtime_access": runtime_access,
+            "public_api_access": public_api_access,
+            "user_api_access": user_api_access,
         },
         "capabilities": {
             "doctor": "ready",
             "search": "ready_explicit_report_only",
             "resolve": "ready_explicit_report_only",
-            "rate_limit": "ready",
-            "regions": "ready",
-            "expansions": "ready",
-            "server": "ready",
-            "zone": "ready",
-            "zones": "ready",
-            "encounter": "ready",
-            "guild": "ready",
-            "guild_members": "ready",
-            "guild_attendance": "ready",
-            "guild_rankings": "ready",
-            "boss_kills": "ready",
-            "top_kills": "ready",
-            "kill_time_distribution": "ready",
-            "boss_spec_usage": "ready",
-            "comp_samples": "ready",
-            "ability_usage_summary": "ready",
-            "report_encounter": "ready",
-            "report_encounter_players": "ready",
-            "report_encounter_casts": "ready",
-            "report_encounter_buffs": "ready",
-            "report_encounter_aura_summary": "ready",
-            "report_encounter_aura_compare": "ready",
-            "report_encounter_damage_source_summary": "ready",
-            "report_encounter_damage_target_summary": "ready",
-            "report_encounter_damage_breakdown": "ready",
-            "character": "ready",
-            "character_rankings": "ready",
-            "report": "ready",
-            "reports": "ready",
-            "report_fights": "ready",
-            "report_events": "ready",
-            "report_table": "ready",
-            "report_graph": "ready",
-            "report_master_data": "ready",
-            "report_player_details": "ready",
-            "report_rankings": "ready",
-            "user_auth": "manual_ready",
+            "rate_limit": _public_capability_status(public_api_access),
+            "regions": _public_capability_status(public_api_access),
+            "expansions": _public_capability_status(public_api_access),
+            "server": _public_capability_status(public_api_access),
+            "zone": _public_capability_status(public_api_access),
+            "zones": _public_capability_status(public_api_access),
+            "encounter": _public_capability_status(public_api_access),
+            "guild": _public_capability_status(public_api_access),
+            "guild_members": _public_capability_status(public_api_access),
+            "guild_attendance": _public_capability_status(public_api_access),
+            "guild_rankings": _public_capability_status(public_api_access),
+            "boss_kills": _public_capability_status(public_api_access),
+            "top_kills": _public_capability_status(public_api_access),
+            "kill_time_distribution": _public_capability_status(public_api_access),
+            "boss_spec_usage": _public_capability_status(public_api_access),
+            "comp_samples": _public_capability_status(public_api_access),
+            "ability_usage_summary": _public_capability_status(public_api_access),
+            "report_encounter": _public_capability_status(public_api_access),
+            "report_encounter_players": _public_capability_status(public_api_access),
+            "report_encounter_casts": _public_capability_status(public_api_access),
+            "report_encounter_buffs": _public_capability_status(public_api_access),
+            "report_encounter_aura_summary": _public_capability_status(public_api_access),
+            "report_encounter_aura_compare": _public_capability_status(public_api_access),
+            "report_encounter_damage_source_summary": _public_capability_status(public_api_access),
+            "report_encounter_damage_target_summary": _public_capability_status(public_api_access),
+            "report_encounter_damage_breakdown": _public_capability_status(public_api_access),
+            "character": _public_capability_status(public_api_access),
+            "character_rankings": _public_capability_status(public_api_access),
+            "report": _public_capability_status(public_api_access),
+            "reports": _public_capability_status(public_api_access),
+            "report_fights": _public_capability_status(public_api_access),
+            "report_events": _public_capability_status(public_api_access),
+            "report_table": _public_capability_status(public_api_access),
+            "report_graph": _public_capability_status(public_api_access),
+            "report_master_data": _public_capability_status(public_api_access),
+            "report_player_details": _public_capability_status(public_api_access),
+            "report_rankings": _public_capability_status(public_api_access),
+            "user_auth": _user_auth_capability(
+                auth_configured=auth.configured,
+                runtime_access=runtime_access,
+                user_api_access=user_api_access,
+            ),
         },
     }
 
@@ -2392,8 +2607,11 @@ def resolve(
 
 
 @app.command("doctor")
-def doctor(ctx: typer.Context) -> None:
-    _emit(ctx, _doctor_payload())
+def doctor(
+    ctx: typer.Context,
+    no_live: bool = typer.Option(False, "--no-live", help="Skip live Warcraft Logs auth probes and report local/runtime readiness only."),
+) -> None:
+    _emit(ctx, _doctor_payload(live=not no_live))
 
 
 def _random_state_token() -> str:
@@ -2436,10 +2654,24 @@ def _endpoint_family_from_state(state: dict[str, Any]) -> str:
 
 
 @auth_app.command("status")
-def auth_status(ctx: typer.Context) -> None:
+def auth_status(
+    ctx: typer.Context,
+    no_live: bool = typer.Option(False, "--no-live", help="Skip live Warcraft Logs auth probes and report local/runtime readiness only."),
+) -> None:
     auth = load_warcraftlogs_auth_config()
     credential_source = auth.env_file if auth.env_file is not None else ("environment" if auth.configured else None)
     state = provider_auth_status("warcraftlogs")
+    runtime_access = _runtime_access_payload()
+    public_api_access = _public_api_access_payload(
+        auth_configured=auth.configured,
+        runtime_access=runtime_access,
+        live=not no_live,
+    )
+    user_api_access = _user_api_access_payload(
+        state,
+        runtime_access=runtime_access,
+        live=not no_live,
+    )
     _emit(
         ctx,
         {
@@ -2447,17 +2679,17 @@ def auth_status(ctx: typer.Context) -> None:
             "provider": "warcraftlogs",
             "auth": {
                 "configured": auth.configured,
+                "client_credentials_configured": auth.configured,
                 "flow": "oauth_client_credentials",
                 "active_mode": _active_auth_mode_from_state(state),
                 "endpoint_family": _endpoint_family_from_state(state),
                 "credential_source": credential_source,
                 "lookup_order": [".env.local", warcraftlogs_provider_env_path(), "environment"],
                 "state": state,
-                "grants": {
-                    "client_credentials": "ready",
-                    "authorization_code": "ready_manual_exchange",
-                    "pkce": "ready_manual_exchange",
-                },
+                "runtime_access": runtime_access,
+                "public_api_access": public_api_access,
+                "user_api_access": user_api_access,
+                "grants": _grant_statuses(auth_configured=auth.configured, runtime_access=runtime_access),
             },
         },
     )
@@ -2518,6 +2750,10 @@ def auth_login(
         try:
             pending_state = _random_state_token()
             scopes = [item.strip() for item in scope if item.strip()]
+            authorize_url = client.authorization_code_url(redirect_uri=redirect_uri, state=pending_state)
+            if scopes:
+                joiner = "&" if "?" in authorize_url else "?"
+                authorize_url = f"{authorize_url}{joiner}scope={'+'.join(scopes)}"
             saved_path = save_provider_auth_state(
                 "warcraftlogs",
                 {
@@ -2527,10 +2763,9 @@ def auth_login(
                     "requested_scopes": scopes,
                 },
             )
-            authorize_url = client.authorization_code_url(redirect_uri=redirect_uri, state=pending_state)
-            if scopes:
-                joiner = "&" if "?" in authorize_url else "?"
-                authorize_url = f"{authorize_url}{joiner}scope={'+'.join(scopes)}"
+        except WarcraftLogsClientError as exc:
+            _handle_client_error(ctx, exc)
+            return
         finally:
             client.close()
         _emit(
@@ -2604,6 +2839,14 @@ def auth_pkce_login(
             code_verifier = _pkce_verifier()
             code_challenge = _pkce_challenge(code_verifier)
             scopes = [item.strip() for item in scope if item.strip()]
+            authorize_url = client.pkce_code_url(
+                redirect_uri=redirect_uri,
+                state=pending_state,
+                code_challenge=code_challenge,
+            )
+            if scopes:
+                joiner = "&" if "?" in authorize_url else "?"
+                authorize_url = f"{authorize_url}{joiner}scope={'+'.join(scopes)}"
             saved_path = save_provider_auth_state(
                 "warcraftlogs",
                 {
@@ -2614,14 +2857,9 @@ def auth_pkce_login(
                     "requested_scopes": scopes,
                 },
             )
-            authorize_url = client.pkce_code_url(
-                redirect_uri=redirect_uri,
-                state=pending_state,
-                code_challenge=code_challenge,
-            )
-            if scopes:
-                joiner = "&" if "?" in authorize_url else "?"
-                authorize_url = f"{authorize_url}{joiner}scope={'+'.join(scopes)}"
+        except WarcraftLogsClientError as exc:
+            _handle_client_error(ctx, exc)
+            return
         finally:
             client.close()
         _emit(

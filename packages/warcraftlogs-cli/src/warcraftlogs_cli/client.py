@@ -1056,18 +1056,13 @@ class WarcraftLogsClient:
         retry_attempts: int = DEFAULT_RETRY_ATTEMPTS,
     ) -> None:
         auth = load_warcraftlogs_auth_config()
-        if not auth.configured:
-            env_hint = auth.env_file or str(find_env_file() or ".env.local")
-            raise ValueError(
-                "Missing Warcraft Logs credentials. Set WARCRAFTLOGS_CLIENT_ID and WARCRAFTLOGS_CLIENT_SECRET "
-                f"(for example in {env_hint})."
-            )
         self._site = site
         self._http_client: httpx.Client | None = None
         self._timeout_seconds = timeout_seconds
         self._retry_attempts = max(1, retry_attempts)
         self._client_id = auth.client_id or ""
         self._client_secret = auth.client_secret or ""
+        self._credential_hint = auth.env_file or str(find_env_file() or ".env.local")
         self._access_token: str | None = None
         self._token_expires_at = 0.0
         settings, metadata_ttl, guild_ttl, static_ttl, report_ttl = load_warcraftlogs_cache_settings_from_env()
@@ -1108,10 +1103,28 @@ class WarcraftLogsClient:
             return
         self._cache_store.set(key, payload, ttl_seconds=ttl_seconds)
 
+    def _has_client_credentials(self) -> bool:
+        return bool(self._client_id and self._client_secret)
+
+    def _require_client_credentials(self) -> None:
+        if self._has_client_credentials():
+            return
+        raise WarcraftLogsClientError(
+            "missing_client_credentials",
+            "Missing Warcraft Logs credentials. Set WARCRAFTLOGS_CLIENT_ID and WARCRAFTLOGS_CLIENT_SECRET "
+            f"(for example in {self._credential_hint}).",
+        )
+
     def _token(self) -> str:
         now = time.time()
         if self._access_token and now < self._token_expires_at - 60:
             return self._access_token
+        if not self._has_client_credentials():
+            raise WarcraftLogsClientError(
+                "missing_public_auth",
+                "Public Warcraft Logs commands need WARCRAFTLOGS_CLIENT_ID and WARCRAFTLOGS_CLIENT_SECRET. "
+                f"Set them (for example in {self._credential_hint}).",
+            )
         response = request_with_retries(
             self._client(),
             self._site.oauth_token_url,
@@ -1153,12 +1166,15 @@ class WarcraftLogsClient:
         return self._client_id
 
     def authorization_code_url(self, *, redirect_uri: str, state: str) -> str:
+        self._require_client_credentials()
         return f"{self._site.oauth_authorize_url}?{urlencode({'client_id': self._client_id, 'state': state, 'redirect_uri': redirect_uri, 'response_type': 'code'})}"
 
     def pkce_code_url(self, *, redirect_uri: str, state: str, code_challenge: str) -> str:
+        self._require_client_credentials()
         return f"{self._site.oauth_authorize_url}?{urlencode({'client_id': self._client_id, 'code_challenge': code_challenge, 'code_challenge_method': 'S256', 'state': state, 'redirect_uri': redirect_uri, 'response_type': 'code'})}"
 
     def exchange_authorization_code(self, *, code: str, redirect_uri: str) -> dict[str, Any]:
+        self._require_client_credentials()
         response = request_with_retries(
             self._client(),
             self._site.oauth_token_url,
@@ -1177,6 +1193,7 @@ class WarcraftLogsClient:
         return payload
 
     def exchange_pkce_code(self, *, code: str, redirect_uri: str, code_verifier: str) -> dict[str, Any]:
+        self._require_client_credentials()
         response = request_with_retries(
             self._client(),
             self._site.oauth_token_url,
@@ -1204,12 +1221,14 @@ class WarcraftLogsClient:
         variables: dict[str, Any] | None,
         namespace: str,
         ttl_seconds: int,
+        use_cache: bool = True,
     ) -> dict[str, Any]:
         cache_payload = {"operation_name": operation_name, "variables": variables or {}}
         cache_key = self._cache_key(namespace, cache_payload)
-        cached = self._read_cache(cache_key)
-        if isinstance(cached, dict):
-            return cached
+        if use_cache:
+            cached = self._read_cache(cache_key)
+            if isinstance(cached, dict):
+                return cached
         response = request_with_retries(
             self._client(),
             self._site.user_api_url,
@@ -1255,6 +1274,23 @@ class WarcraftLogsClient:
             raise WarcraftLogsClientError("not_found", "Warcraft Logs did not return the current user for the saved token.")
         return current_user
 
+    def probe_live_user_api(self) -> dict[str, Any]:
+        data = self._graphql_user(
+            operation_name="CurrentUser",
+            query=CURRENT_USER_QUERY,
+            variables=None,
+            namespace="user_current",
+            ttl_seconds=self._metadata_ttl,
+            use_cache=False,
+        )
+        user_data = data.get("userData")
+        if not isinstance(user_data, dict):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs user data was missing from the current-user response.")
+        current_user = user_data.get("currentUser")
+        if not isinstance(current_user, dict):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs did not return the current user for the saved token.")
+        return current_user
+
     def _graphql(
         self,
         *,
@@ -1263,12 +1299,14 @@ class WarcraftLogsClient:
         variables: dict[str, Any] | None,
         namespace: str,
         ttl_seconds: int,
+        use_cache: bool = True,
     ) -> dict[str, Any]:
         cache_payload = {"operation_name": operation_name, "variables": variables or {}}
         cache_key = self._cache_key(namespace, cache_payload)
-        cached = self._read_cache(cache_key)
-        if isinstance(cached, dict):
-            return cached
+        if use_cache:
+            cached = self._read_cache(cache_key)
+            if isinstance(cached, dict):
+                return cached
         response = request_with_retries(
             self._client(),
             self._site.api_url,
@@ -1389,6 +1427,20 @@ class WarcraftLogsClient:
             variables=None,
             namespace="rate_limit",
             ttl_seconds=60,
+        )
+        payload = data.get("rateLimitData")
+        if not isinstance(payload, dict):
+            raise WarcraftLogsClientError("not_found", "Warcraft Logs rate limit data was not available.")
+        return payload
+
+    def probe_live_public_api(self) -> dict[str, Any]:
+        data = self._graphql(
+            operation_name="RateLimit",
+            query=RATE_LIMIT_QUERY,
+            variables=None,
+            namespace="rate_limit",
+            ttl_seconds=60,
+            use_cache=False,
         )
         payload = data.get("rateLimitData")
         if not isinstance(payload, dict):

@@ -539,10 +539,21 @@ WARCRAFTLOGS_CLIENT_SECRET=...
 EOF
 ```
 - `doctor` reports auth status plus the active site profile
+- `doctor` and `auth status` now also distinguish:
+  - `public_api_access`: whether public report/world/guild commands are runnable right now
+  - `user_api_access`: whether saved user-auth commands are runnable right now
+  - runtime mode: public commands use `client_credentials`; saved user auth is reported separately
+- `doctor` and `auth status` now run live Warcraft Logs probes by default:
+  - public auth is validated with a `rate-limit` probe when client credentials are configured
+  - saved user auth is validated with `auth whoami`-equivalent `current_user` access when a saved user token exists
+  - pass `--no-live` to either command when you want local/runtime-only diagnostics without remote validation
 - `auth status` reports credential source, runtime auth-state presence, and which grant types are currently implemented
 - `auth client` reports the configured client metadata and endpoint URLs without exposing the secret
 - `auth token` reports persisted token metadata without printing raw tokens
 - `auth whoami` uses the saved user token against the private `/api/v2/user` endpoint and is the clearest direct verification that saved user auth is actually usable
+- in `doctor`, `capabilities.user_auth` reports `ready_manual_exchange` when `auth login` / `auth pkce-login` can bootstrap user auth but no saved user token exists yet
+- if client credentials are not available, public data commands fail with `missing_public_auth` instead of a generic `missing_auth`
+- `auth login` and `auth pkce-login` now validate client credentials before writing pending auth state, so a failed login bootstrap does not clobber the saved auth-state file
 - `auth login --redirect-uri ...` supports a manual two-step authorization-code flow:
   - run it once to get the authorize URL
   - complete the browser consent flow
