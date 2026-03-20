@@ -899,7 +899,21 @@ class _FakeWarcraftLogsClient:
                 "data": {
                     "tanks": [{"name": "Sherway", "id": 1, "type": "Warrior", "specs": [{"spec": "Protection", "count": 1}]}],
                     "healers": [],
-                    "dps": [{"name": "Auropower", "id": 9, "type": "Paladin", "specs": [{"spec": "Retribution", "count": 1}]}],
+                    "dps": [
+                        {
+                            "name": "Auropower",
+                            "id": 9,
+                            "type": "Paladin",
+                            "specs": [{"spec": "Retribution", "count": 1}],
+                            "combatantInfo": {
+                                "talentTree": [
+                                    {"id": 103324, "nodeID": 82244, "rank": 1},
+                                    {"id": 109839, "nodeID": 88206, "rank": 1},
+                                    {"id": 117176, "nodeID": 94585, "rank": 1},
+                                ]
+                            },
+                        }
+                    ],
                 }
             },
         }
@@ -2347,6 +2361,32 @@ def test_warcraftlogs_report_encounter_players_scopes_to_selected_fight(monkeypa
     assert payload["player_details"]["roles"]["dps"][0]["name"] == "Auropower"
     assert payload["player_details"]["roles"]["dps"][0]["identity_contract"]["status"] == "canonical"
     assert payload["player_details"]["roles"]["dps"][0]["class_spec_identity"]["identity"]["spec"] == "retribution"
+
+
+def test_warcraftlogs_report_player_talents_emits_raw_transport_packet(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "report_player_talents"
+    assert payload["reference"]["fight_id"] == 1
+    assert payload["player"]["id"] == 9
+    assert payload["talent_transport_packet"]["kind"] == "talent_transport_packet"
+    assert payload["talent_transport_packet"]["transport_status"] == "raw_only"
+    assert payload["talent_transport_packet"]["build_identity"]["class_spec_identity"]["identity"] == {
+        "actor_class": "paladin",
+        "spec": "retribution",
+    }
+    assert payload["talent_transport_packet"]["raw_evidence"]["talent_tree_entries"][0] == {
+        "entry": 103324,
+        "node_id": 82244,
+        "rank": 1,
+    }
+    assert payload["talent_transport_packet"]["validation"]["status"] == "not_attempted"
 
 
 def test_warcraftlogs_report_encounter_casts_summarizes_cast_rows(monkeypatch) -> None:

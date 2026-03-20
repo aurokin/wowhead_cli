@@ -24,6 +24,7 @@ from warcraft_core.identity import (
     class_spec_identity_payload,
     encounter_identity_payload,
     report_actor_identity_payload,
+    talent_transport_packet_payload,
 )
 from warcraft_core.output import emit
 from warcraft_core.paths import provider_state_path
@@ -1382,6 +1383,60 @@ def _all_player_detail_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             if isinstance(actor, dict):
                 rows.append({"role": role, **actor})
     return rows
+
+
+def _normalized_talent_tree_rows(actor: dict[str, Any]) -> list[dict[str, Any]]:
+    combatant_info = actor.get("combatant_info") if isinstance(actor.get("combatant_info"), dict) else {}
+    rows = combatant_info.get("talentTree") if isinstance(combatant_info.get("talentTree"), list) else []
+    normalized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        normalized_rows.append(
+            {
+                "entry": row.get("id") if isinstance(row.get("id"), int) else None,
+                "node_id": row.get("nodeID") if isinstance(row.get("nodeID"), int) else None,
+                "rank": row.get("rank") if isinstance(row.get("rank"), int) else None,
+            }
+        )
+    return normalized_rows
+
+
+def _player_talent_transport_packet(
+    actor: dict[str, Any],
+    *,
+    report_code: str,
+    fight_id: int,
+    actor_id: int,
+) -> dict[str, Any]:
+    class_spec_identity = actor.get("class_spec_identity") if isinstance(actor.get("class_spec_identity"), dict) else {}
+    identity = class_spec_identity.get("identity") if isinstance(class_spec_identity.get("identity"), dict) else {}
+    raw_rows = _normalized_talent_tree_rows(actor)
+    return talent_transport_packet_payload(
+        actor_class=identity.get("actor_class") if isinstance(identity.get("actor_class"), str) else None,
+        spec=identity.get("spec") if isinstance(identity.get("spec"), str) else None,
+        confidence="high" if identity.get("actor_class") and identity.get("spec") else "none",
+        source="warcraftlogs_talent_tree",
+        provider="warcraftlogs",
+        source_notes=[
+            "raw talents came from combatant_info.talentTree",
+            "one report, one fight, one actor scope",
+        ],
+        raw_evidence={
+            "source_contract": "warcraftlogs_combatant_info_talentTree",
+            "talent_tree_entries": raw_rows,
+        },
+        validation={
+            "status": "not_attempted",
+            "reason": "simc_entry_resolution_not_implemented",
+        },
+        scope={
+            "type": "report_fight_actor",
+            "report_code": report_code,
+            "fight_id": fight_id,
+            "actor_id": actor_id,
+        },
+    )
 
 
 def _duration_bucket_rows(values: list[float], *, bucket_seconds: int) -> list[dict[str, Any]]:
@@ -3955,6 +4010,79 @@ def report_encounter_players(
                 payload,
                 report_code=ref.code,
                 fight_id=fight.get("id") if isinstance(fight.get("id"), int) else None,
+            ),
+        },
+    )
+
+
+@app.command("report-player-talents")
+def report_player_talents(
+    ctx: typer.Context,
+    reference: str,
+    actor_id: int = typer.Option(..., "--actor-id", help="Report-local actor ID scoped to the selected fight."),
+    fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+) -> None:
+    client = _client(ctx)
+    try:
+        ref, report, fight, encounter = _resolve_encounter_scope(
+            ctx,
+            client=client,
+            reference=reference,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+        )
+        payload = client.report_player_details(
+            code=ref.code,
+            allow_unlisted=allow_unlisted,
+            options=ReportPlayerDetailsOptions(
+                encounter_id=fight.get("encounterID") if isinstance(fight.get("encounterID"), int) else None,
+                fight_ids=[int(fight["id"])] if isinstance(fight.get("id"), int) else None,
+                include_combatant_info=True,
+                kill_type=_kill_type_for_fight(fight),
+            ),
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+
+    details_payload = _report_player_details_payload(
+        payload,
+        report_code=ref.code,
+        fight_id=fight.get("id") if isinstance(fight.get("id"), int) else None,
+    )
+    player_rows: list[dict[str, Any]] = []
+    for role_rows in (details_payload.get("player_details") or {}).get("roles", {}).values():
+        if not isinstance(role_rows, list):
+            continue
+        for row in role_rows:
+            if isinstance(row, dict):
+                player_rows.append(row)
+    actor = next((row for row in player_rows if row.get("id") == actor_id), None)
+    if not isinstance(actor, dict):
+        _fail(ctx, "not_found", f"Actor ID {actor_id} was not present in the selected fight.")
+        return
+
+    talent_rows = _normalized_talent_tree_rows(actor)
+    if not talent_rows:
+        _fail(ctx, "missing_talent_tree", f"Actor ID {actor_id} did not include combatant_info.talentTree in the selected fight.")
+        return
+
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "kind": "report_player_talents",
+            **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
+            "player": actor,
+            "talent_transport_packet": _player_talent_transport_packet(
+                actor,
+                report_code=ref.code,
+                fight_id=int(fight["id"]),
+                actor_id=actor_id,
             ),
         },
     )

@@ -166,6 +166,104 @@ def test_load_build_spec_extracts_class_and_spec_from_talents_url() -> None:
     assert spec.source_kind == "wowhead_talent_calc_url"
 
 
+def test_load_build_spec_extracts_exact_transport_form_from_packet(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+            "simc_split_talents": {
+              "class_talents": "103324:1",
+              "spec_talents": "109839:1",
+              "hero_talents": "117176:1"
+            }
+          }
+        }
+        """.strip()
+    )
+
+    spec = load_build_spec(
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=None,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+        build_packet=str(packet_path),
+    )
+
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
+    assert spec.talents == "ABC123"
+    assert spec.source_kind == "wowhead_talent_calc_url"
+    assert spec.transport_form == "wowhead_talent_calc_url"
+    assert any("talent transport packet" in note for note in spec.source_notes)
+
+
+def test_load_build_spec_extracts_split_transport_form_from_packet(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "validated",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "simc_split_talents": {
+              "class_talents": "103324:1",
+              "spec_talents": "109839:1",
+              "hero_talents": "117176:1"
+            }
+          }
+        }
+        """.strip()
+    )
+
+    spec = load_build_spec(
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=None,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+        build_packet=str(packet_path),
+    )
+
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
+    assert spec.class_talents == "103324:1"
+    assert spec.spec_talents == "109839:1"
+    assert spec.hero_talents == "117176:1"
+    assert spec.source_kind == "simc_split_talents"
+    assert spec.transport_form == "simc_split_talents"
+
+
 def test_parse_debug_talents_ignores_selection_tree() -> None:
     output = (FIXTURES / "dh_decode_debug.txt").read_text()
     talents = parse_debug_talents(output)

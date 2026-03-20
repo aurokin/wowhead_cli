@@ -97,10 +97,12 @@ Safe shared contract:
 - source kind
 - source notes
 - explicit build-reference packets when a provider page embeds a concrete Wowhead talent-calc URL
+- talent transport packets that preserve raw build evidence plus any exact or validated transport forms
 
 Build identity should usually be `inferred`, `ambiguous`, or `unknown`.
 Do not emit a canonical build id unless a future source contract proves one exists.
 Do not create build references from guide slugs, page titles, or other indirect hints alone.
+Do not mark a reconstructed transport form as reliable unless the consumer contract validated it explicitly.
 
 ## Shared Code Ownership
 
@@ -135,6 +137,7 @@ The current shared module intentionally covers only:
 - report-actor identity
 - build identity packets
 - explicit Wowhead talent-calc build-reference parsing
+- talent transport packet shaping
 
 It does not yet attempt:
 - universal cross-provider build equivalence

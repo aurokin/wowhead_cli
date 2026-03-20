@@ -133,6 +133,7 @@ Recent usability improvement:
   - bare WoW talent export strings
   - Wowhead talent-calc URLs
   - SimC-native build/profile text
+  - talent transport packet JSON files that carry an exact or validated build transport form
   and report both `source_kind` and the normalized generated SimC profile used for decode/debug flows
 - `describe-build` now sits above that exact-build layer as the default “what is this build doing?” command
 - it keeps the summary evidence-backed by combining:
@@ -144,6 +145,7 @@ Recent usability improvement:
 - exact-build workflows now auto-resolve class/spec when possible:
   - actor/spec lines and APL paths resolve directly
   - Wowhead talent-calc URLs provide class/spec directly from the URL path
+  - talent transport packets preserve provider provenance while still handing the best available exact or validated form into `simc`
   - bare WoW talent exports are identified by bounded local SimC probes against the installed spec set
 - this removes the old agent failure mode where a valid user talent export was rejected just because the consumer did not already know the engine-facing class/spec labels
 

@@ -62,6 +62,7 @@ Implemented today:
   - `warcraftlogs report-fights`
   - `warcraftlogs report-master-data`
   - `warcraftlogs report-player-details`
+  - `warcraftlogs report-player-talents`
   - `warcraftlogs report-events`
   - `warcraftlogs report-table`
   - `warcraftlogs report-graph`
@@ -518,6 +519,7 @@ Ranking support should include:
 - `warcraftlogs report-graph <code>`
 - `warcraftlogs report-rankings <code>`
 - `warcraftlogs report-player-details <code>`
+- `warcraftlogs report-player-talents <report-url-or-code> --actor-id <id>`
 - `warcraftlogs report-master-data <code>`
 
 These commands should support:
@@ -530,6 +532,15 @@ These commands should support:
 - pagination via `nextPageTimestamp`
 - translation toggle
 - low-bandwidth toggles when the user does not need actor/ability expansion
+
+Current talent-transport lane:
+- `report-player-talents` is intentionally narrow:
+  - one report
+  - one fight
+  - one actor id
+- it emits a raw scoped talent transport packet from `combatant_info.talentTree`
+- it does not yet claim a validated portable form such as `simc_split_talents`
+- the packet explicitly reports `validation.status = not_attempted` until SimC-backed entry resolution exists
 
 ### Deep Encounter Analytics
 

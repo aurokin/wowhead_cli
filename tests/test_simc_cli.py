@@ -232,6 +232,55 @@ def test_simc_identify_build_reports_probe_result(monkeypatch) -> None:
     assert payload["identity"]["identity_contract"]["class_spec_identity"]["status"] == "inferred"
 
 
+def test_simc_identify_build_accepts_build_packet(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text('{"kind":"talent_transport_packet"}')
+
+    def fake_loader(_paths, **kwargs):  # noqa: ANN001
+        assert kwargs["build_packet"] == str(packet_path)
+        return (
+            type(
+                "BuildSpec",
+                (),
+                {
+                    "actor_class": "druid",
+                    "spec": "balance",
+                    "talents": "ABC123",
+                    "class_talents": None,
+                    "spec_talents": None,
+                    "hero_talents": None,
+                    "source_kind": "wowhead_talent_calc_url",
+                    "source_notes": ["talent transport packet"],
+                    "transport_form": "wowhead_talent_calc_url",
+                    "transport_status": "exact",
+                    "transport_source": str(packet_path),
+                },
+            )(),
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": "druid",
+                    "spec": "balance",
+                    "confidence": "high",
+                    "source": "wowhead_talent_calc_url",
+                    "candidate_count": 1,
+                    "candidates": [("druid", "balance")],
+                    "source_notes": ["talent transport packet"],
+                },
+            )(),
+        )
+
+    monkeypatch.setattr("simc_cli.main._load_identified_build_spec", fake_loader)
+
+    result = runner.invoke(simc_app, ["identify-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["transport_packet"]["path"] == str(packet_path)
+    assert payload["build_spec"]["transport_packet"]["transport_form"] == "wowhead_talent_calc_url"
+    assert payload["build_spec"]["transport_packet"]["transport_status"] == "exact"
+
+
 def test_simc_decode_build_auto_identifies_missing_class_and_spec(monkeypatch) -> None:
     monkeypatch.setattr(
         "simc_cli.main._load_identified_build_spec",
@@ -287,6 +336,70 @@ def test_simc_decode_build_auto_identifies_missing_class_and_spec(monkeypatch) -
     assert payload["build_spec"]["actor_class"] == "demonhunter"
     assert payload["identity"]["source"] == "simc_probe"
     assert payload["decoded"]["spec"] == "devourer"
+
+
+def test_simc_decode_build_accepts_build_packet(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text('{"kind":"talent_transport_packet"}')
+
+    def fake_loader(_paths, **kwargs):  # noqa: ANN001
+        assert kwargs["build_packet"] == str(packet_path)
+        return (
+            type(
+                "BuildSpec",
+                (),
+                {
+                    "actor_class": "druid",
+                    "spec": "balance",
+                    "talents": None,
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                    "source_kind": "simc_split_talents",
+                    "source_notes": ["talent transport packet"],
+                    "transport_form": "simc_split_talents",
+                    "transport_status": "validated",
+                    "transport_source": str(packet_path),
+                },
+            )(),
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": "druid",
+                    "spec": "balance",
+                    "confidence": "high",
+                    "source": "warcraftlogs_talent_tree",
+                    "candidate_count": 1,
+                    "candidates": [("druid", "balance")],
+                    "source_notes": ["talent transport packet"],
+                },
+            )(),
+        )
+
+    monkeypatch.setattr("simc_cli.main._load_identified_build_spec", fake_loader)
+    monkeypatch.setattr(
+        "simc_cli.main.decode_build",
+        lambda paths, build_spec: type(
+            "Resolution",
+            (),
+            {
+                "actor_class": "druid",
+                "spec": "balance",
+                "enabled_talents": {"innervate", "incarnation_chosen_of_elune"},
+                "source_kind": "simc_split_talents",
+                "generated_profile_text": 'druid="simc_decode"\nclass_talents=103324:1\nspec_talents=109839:1\nhero_talents=117176:1\n',
+                "talents_by_tree": {"class": [], "spec": [], "hero": [], "selection": []},
+                "source_notes": ["talent transport packet", "decoded via /tmp/simc"],
+            },
+        )(),
+    )
+
+    result = runner.invoke(simc_app, ["decode-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["transport_packet"]["transport_form"] == "simc_split_talents"
+    assert payload["decoded"]["source_kind"] == "simc_split_talents"
 
 
 def test_simc_describe_build_summarizes_st_and_aoe(monkeypatch, tmp_path: Path) -> None:
@@ -402,6 +515,94 @@ def test_simc_describe_build_summarizes_st_and_aoe(monkeypatch, tmp_path: Path) 
     assert payload["multi_target"]["focus_list"] == "aoe"
     assert payload["comparison"]["new_active_actions_in_aoe"] == ["soul_immolation"]
     assert payload["single_target"]["inactive_talent_branches"][0]["action"] == "the_hunt"
+
+
+def test_simc_describe_build_accepts_build_packet(monkeypatch, tmp_path: Path) -> None:
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text('{"kind":"talent_transport_packet"}')
+
+    def fake_loader(_paths, **kwargs):  # noqa: ANN001
+        assert kwargs["build_packet"] == str(packet_path)
+        return (
+            type(
+                "BuildSpec",
+                (),
+                {
+                    "actor_class": "druid",
+                    "spec": "balance",
+                    "talents": None,
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                    "source_kind": "simc_split_talents",
+                    "source_notes": ["talent transport packet"],
+                    "transport_form": "simc_split_talents",
+                    "transport_status": "validated",
+                    "transport_source": str(packet_path),
+                },
+            )(),
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": "druid",
+                    "spec": "balance",
+                    "confidence": "high",
+                    "source": "warcraftlogs_talent_tree",
+                    "candidate_count": 1,
+                    "candidates": [("druid", "balance")],
+                    "source_notes": ["talent transport packet"],
+                },
+            )(),
+        )
+
+    monkeypatch.setattr("simc_cli.main._load_identified_build_spec", fake_loader)
+
+    resolution = type(
+        "Resolution",
+        (),
+        {
+            "actor_class": "druid",
+            "spec": "balance",
+            "source_kind": "simc_split_talents",
+            "enabled_talents": {"wrath"},
+            "talents_by_tree": {"class": [], "spec": [], "hero": [], "selection": []},
+            "source_notes": ["talent transport packet", "decoded via /tmp/simc"],
+        },
+    )()
+
+    def fake_resolve_prune_context(_paths, _apl, option_values, targets):  # noqa: ANN001
+        assert option_values["build_packet"] == str(packet_path)
+        context = type("Context", (), {"targets": targets, "enabled_talents": {"wrath"}, "disabled_talents": set(), "talent_sources": {}})()
+        return context, resolution
+
+    monkeypatch.setattr("simc_cli.main._resolve_prune_context", fake_resolve_prune_context)
+    monkeypatch.setattr(
+        "simc_cli.main._describe_target_payload",
+        lambda _resolved, context, *, start_list, priority_limit, inactive_limit: {
+            "targets": context.targets,
+            "focus_list": "default",
+            "focus_path": ["default"],
+            "focus_resolution": "direct",
+            "active_priority": [],
+            "inactive_priority": [],
+            "active_action_names": ["wrath"],
+            "inactive_action_names": [],
+            "talent_tree": {"class": {"selected": [], "skipped": []}, "spec": {"selected": [], "skipped": []}, "hero": {"selected": [], "skipped": []}},
+            "inactive_talents": [],
+            "active_talents": [],
+            "explained_intent": {"setup": [], "helpers": [], "burst": [], "priorities": []},
+            "runtime_sensitive": [],
+        },
+    )
+
+    result = runner.invoke(simc_app, ["describe-build", "--apl-path", str(apl_path), "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["transport_packet"]["path"] == str(packet_path)
+    assert payload["build_spec"]["transport_packet"]["transport_form"] == "simc_split_talents"
 
 
 def test_simc_describe_build_uses_leaf_focus_and_full_action_diff(monkeypatch, tmp_path: Path) -> None:

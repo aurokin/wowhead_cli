@@ -13,6 +13,7 @@ from warcraft_core.identity import (
     normalize_spec_name,
     parse_wowhead_talent_calc_ref,
     report_actor_identity_payload,
+    talent_transport_packet_payload,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "normalize_spec_name",
     "parse_wowhead_talent_calc_ref",
     "report_actor_identity_payload",
+    "talent_transport_packet_payload",
 ]

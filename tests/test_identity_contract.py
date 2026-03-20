@@ -10,6 +10,7 @@ from warcraft_core.identity import (
     normalize_spec_name,
     parse_wowhead_talent_calc_ref,
     report_actor_identity_payload,
+    talent_transport_packet_payload,
 )
 
 
@@ -128,3 +129,42 @@ def test_build_reference_payload_only_accepts_explicit_wowhead_talent_calc_urls(
     assert payload["build_identity"]["status"] == "inferred"
     assert payload["build_identity"]["class_spec_identity"]["identity"] == {"actor_class": "druid", "spec": "balance"}
     assert build_reference_payload(ref="https://www.wowhead.com/spell=116670", provider="method", source="guide_embedded_link") is None
+
+
+def test_talent_transport_packet_distinguishes_exact_validated_and_raw_only() -> None:
+    exact = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="wowhead_talent_calc_url",
+        transport_forms={"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+        source_notes=["explicit wowhead ref"],
+    )
+    assert exact["transport_status"] == "exact"
+    assert exact["build_identity"]["status"] == "inferred"
+
+    validated = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="warcraftlogs_talent_tree",
+        transport_forms={
+            "simc_split_talents": {
+                "class_talents": "103324:1",
+                "spec_talents": "109839:1",
+                "hero_talents": "117176:1",
+            }
+        },
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+        validation={"status": "validated"},
+    )
+    assert validated["transport_status"] == "validated"
+
+    raw_only = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="medium",
+        source="warcraftlogs_talent_tree",
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+    )
+    assert raw_only["transport_status"] == "raw_only"

@@ -146,7 +146,7 @@ def _coming_soon_payload(*, query: str, suggested_command: str) -> dict[str, Any
 
 
 def _serialize_build_spec(spec: Any) -> dict[str, Any]:
-    return {
+    payload = {
         "actor_class": spec.actor_class,
         "spec": spec.spec,
         "talents": spec.talents,
@@ -156,6 +156,16 @@ def _serialize_build_spec(spec: Any) -> dict[str, Any]:
         "source_kind": getattr(spec, "source_kind", None),
         "source_notes": spec.source_notes,
     }
+    transport_source = getattr(spec, "transport_source", None)
+    transport_form = getattr(spec, "transport_form", None)
+    transport_status = getattr(spec, "transport_status", None)
+    if transport_source or transport_form or transport_status:
+        payload["transport_packet"] = {
+            "path": transport_source,
+            "transport_form": transport_form,
+            "transport_status": transport_status,
+        }
+    return payload
 
 
 def _serialize_build_identity(identity: Any) -> dict[str, Any]:
@@ -229,10 +239,12 @@ def _build_option_values(
     spec_name: str | None,
     enable: list[str],
     disable: list[str],
+    build_packet: str | None = None,
 ) -> dict[str, Any]:
     return {
         "profile_path": profile_path,
         "build_file": build_file,
+        "build_packet": build_packet,
         "build_text": build_text,
         "talents": talents,
         "class_talents": class_talents,
@@ -250,6 +262,7 @@ def _resolve_prune_context(paths: RepoPaths, apl_path: Path, option_values: dict
         apl_path=apl_path,
         profile_path=option_values["profile_path"],
         build_file=option_values["build_file"],
+        build_packet=option_values["build_packet"],
         build_text=option_values["build_text"],
         talents=option_values["talents"],
         class_talents=option_values["class_talents"],
@@ -292,11 +305,13 @@ def _load_identified_build_spec(
     hero_talents: str | None,
     actor_class: str | None,
     spec_name: str | None,
+    build_packet: str | None = None,
 ) -> tuple[Any, Any]:
     unresolved_spec = load_build_spec(
         apl_path=apl_path,
         profile_path=profile_path,
         build_file=build_file,
+        build_packet=build_packet,
         build_text=build_text,
         talents=talents,
         class_talents=class_talents,
@@ -673,6 +688,7 @@ def decode_build_command(
     apl_path: str | None = typer.Option(None, "--apl-path", help="Optional APL path used to infer actor class and spec."),
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
     talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
@@ -687,6 +703,7 @@ def decode_build_command(
         apl_path=apl_path,
         profile_path=profile_path,
         build_file=build_file,
+        build_packet=build_packet,
         build_text=build_text,
         talents=talents,
         class_talents=class_talents,
@@ -752,6 +769,7 @@ def identify_build_command(
     apl_path: str | None = typer.Option(None, "--apl-path", help="Optional APL path used to infer actor class and spec."),
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or Wowhead talent-calc URL."),
     talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
@@ -766,6 +784,7 @@ def identify_build_command(
         apl_path=apl_path,
         profile_path=profile_path,
         build_file=build_file,
+        build_packet=build_packet,
         build_text=build_text,
         talents=talents,
         class_talents=class_talents,
@@ -1542,6 +1561,7 @@ def describe_build_command(
     inactive_limit: int = typer.Option(8, "--inactive-limit", min=1, max=50, help="Maximum inactive talent-gated actions to summarize per target view."),
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
+    build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or talent-calc URL."),
     talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
@@ -1558,6 +1578,7 @@ def describe_build_command(
         apl_path=apl_path,
         profile_path=profile_path,
         build_file=build_file,
+        build_packet=build_packet,
         build_text=build_text,
         talents=talents,
         class_talents=class_talents,
@@ -1586,6 +1607,7 @@ def describe_build_command(
     option_values = _build_option_values(
         profile_path=profile_path,
         build_file=build_file,
+        build_packet=build_packet,
         build_text=build_text,
         talents=talents,
         class_talents=class_talents,

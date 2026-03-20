@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urljoin, urlparse, urlunparse
 
 from warcraft_core.wow_normalization import normalized_text
 
 IdentityStatus = Literal["unknown", "normalized", "canonical", "inferred", "ambiguous"]
 IdentityConfidence = Literal["none", "low", "medium", "high"]
+TalentTransportStatus = Literal["unknown", "raw_only", "validated", "exact"]
 WOWHEAD_TALENT_CALC_SEGMENT = "talent-calc"
 
 
@@ -316,6 +317,73 @@ def build_reference_payload(
             source="wowhead_talent_calc_url",
             source_notes=source_notes,
         ),
+    }
+    if provider is not None or source is not None:
+        payload["source"] = {"provider": provider, "source": source}
+    return payload
+
+
+def talent_transport_packet_payload(
+    *,
+    actor_class: str | None,
+    spec: str | None,
+    confidence: IdentityConfidence,
+    source: str,
+    transport_forms: dict[str, Any] | None = None,
+    raw_evidence: dict[str, Any] | None = None,
+    validation: dict[str, Any] | None = None,
+    scope: dict[str, Any] | None = None,
+    provider: str | None = None,
+    candidates: list[tuple[str | None, str | None]] | None = None,
+    source_notes: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, object]:
+    cleaned_transport_forms: dict[str, Any] = {}
+    for key, value in (transport_forms or {}).items():
+        if isinstance(value, str):
+            text = _clean_text(value)
+            if text is not None:
+                cleaned_transport_forms[key] = text
+        elif isinstance(value, dict):
+            nested = {
+                nested_key: nested_value.strip() if isinstance(nested_value, str) else nested_value
+                for nested_key, nested_value in value.items()
+                if (
+                    (isinstance(nested_value, str) and nested_value.strip())
+                    or (not isinstance(nested_value, str) and nested_value is not None)
+                )
+            }
+            if nested:
+                cleaned_transport_forms[key] = nested
+        elif value is not None:
+            cleaned_transport_forms[key] = value
+
+    validation_payload = validation if isinstance(validation, dict) else {}
+    raw_payload = raw_evidence if isinstance(raw_evidence, dict) else {}
+    status: TalentTransportStatus
+    if cleaned_transport_forms.get("wowhead_talent_calc_url") or cleaned_transport_forms.get("wow_talent_export"):
+        status = "exact"
+    elif cleaned_transport_forms.get("simc_split_talents") and validation_payload.get("status") == "validated":
+        status = "validated"
+    elif raw_payload:
+        status = "raw_only"
+    else:
+        status = "unknown"
+
+    payload: dict[str, object] = {
+        "kind": "talent_transport_packet",
+        "transport_status": status,
+        "build_identity": build_identity_payload(
+            actor_class=actor_class,
+            spec=spec,
+            confidence=confidence,
+            source=source,
+            candidates=candidates,
+            source_notes=source_notes,
+        ),
+        "transport_forms": cleaned_transport_forms,
+        "raw_evidence": raw_payload,
+        "validation": validation_payload,
+        "scope": scope if isinstance(scope, dict) else {},
     }
     if provider is not None or source is not None:
         payload["source"] = {"provider": provider, "source": source}
