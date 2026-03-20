@@ -538,9 +538,9 @@ Current talent-transport lane:
   - one report
   - one fight
   - one actor id
-- it emits a raw scoped talent transport packet from `combatant_info.talentTree`
-- it does not yet claim a validated portable form such as `simc_split_talents`
-- the packet explicitly reports `validation.status = not_attempted` until SimC-backed entry resolution exists
+- it always emits the raw scoped talent transport packet from `combatant_info.talentTree`
+- when local SimulationCraft trait data resolves every entry and the reconstructed build round-trips, it also emits validated `simc_split_talents`
+- when that proof does not hold, it stays `raw_only` and reports the validation failure reason in the packet
 
 ### Deep Encounter Analytics
 

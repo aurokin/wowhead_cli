@@ -2365,6 +2365,16 @@ def test_warcraftlogs_report_encounter_players_scopes_to_selected_fight(monkeypa
 
 def test_warcraftlogs_report_player_talents_emits_raw_transport_packet(monkeypatch) -> None:
     monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "simc_trait_resolution_incomplete",
+            },
+        },
+    )
 
     result = runner.invoke(
         warcraftlogs_app,
@@ -2386,7 +2396,37 @@ def test_warcraftlogs_report_player_talents_emits_raw_transport_packet(monkeypat
         "node_id": 82244,
         "rank": 1,
     }
-    assert payload["talent_transport_packet"]["validation"]["status"] == "not_attempted"
+    assert payload["talent_transport_packet"]["validation"]["status"] == "not_validated"
+
+
+def test_warcraftlogs_report_player_talents_emits_validated_split_transport(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["talent_transport_packet"]["transport_status"] == "validated"
+    assert payload["talent_transport_packet"]["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
+    assert payload["talent_transport_packet"]["validation"]["status"] == "validated"
 
 
 def test_warcraftlogs_report_encounter_casts_summarizes_cast_rows(monkeypatch) -> None:

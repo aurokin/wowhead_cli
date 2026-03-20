@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import typer
+from simc_cli.talent_transport import validate_talent_tree_transport
 from warcraft_core.analytics import numeric_summary
 from warcraft_core.auth import (
     delete_provider_auth_state,
@@ -1412,24 +1413,34 @@ def _player_talent_transport_packet(
     class_spec_identity = actor.get("class_spec_identity") if isinstance(actor.get("class_spec_identity"), dict) else {}
     identity = class_spec_identity.get("identity") if isinstance(class_spec_identity.get("identity"), dict) else {}
     raw_rows = _normalized_talent_tree_rows(actor)
+    actor_class = identity.get("actor_class") if isinstance(identity.get("actor_class"), str) else None
+    spec = identity.get("spec") if isinstance(identity.get("spec"), str) else None
+    validation_result = validate_talent_tree_transport(
+        actor_class=actor_class,
+        spec=spec,
+        talent_tree_rows=raw_rows,
+    )
+    transport_forms = validation_result.get("transport_forms") if isinstance(validation_result.get("transport_forms"), dict) else {}
+    validation = validation_result.get("validation") if isinstance(validation_result.get("validation"), dict) else {}
+    source_notes = [
+        "raw talents came from combatant_info.talentTree",
+        "one report, one fight, one actor scope",
+    ]
+    if transport_forms.get("simc_split_talents"):
+        source_notes.append("validated simc_split_talents via local SimulationCraft trait data")
     return talent_transport_packet_payload(
-        actor_class=identity.get("actor_class") if isinstance(identity.get("actor_class"), str) else None,
-        spec=identity.get("spec") if isinstance(identity.get("spec"), str) else None,
-        confidence="high" if identity.get("actor_class") and identity.get("spec") else "none",
+        actor_class=actor_class,
+        spec=spec,
+        confidence="high" if actor_class and spec else "none",
         source="warcraftlogs_talent_tree",
         provider="warcraftlogs",
-        source_notes=[
-            "raw talents came from combatant_info.talentTree",
-            "one report, one fight, one actor scope",
-        ],
+        source_notes=source_notes,
+        transport_forms=transport_forms,
         raw_evidence={
             "source_contract": "warcraftlogs_combatant_info_talentTree",
             "talent_tree_entries": raw_rows,
         },
-        validation={
-            "status": "not_attempted",
-            "reason": "simc_entry_resolution_not_implemented",
-        },
+        validation=validation,
         scope={
             "type": "report_fight_actor",
             "report_code": report_code,

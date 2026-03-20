@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from simc_cli.build_input import BuildResolution
+from simc_cli.talent_transport import _decoded_talent, validate_talent_tree_transport
+
+
+def _write_fake_generated_repo(root: Path) -> None:
+    generated = root / "engine" / "dbc" / "generated"
+    generated.mkdir(parents=True)
+    (generated / "sc_specialization_data.inc").write_text(
+        """enum specialization_e {
+  SPEC_NONE              = 0,
+  DRUID_BALANCE          = 102,
+};
+"""
+    )
+    (generated / "trait_data.inc").write_text(
+        "static constexpr std::array<trait_data_t, 3> __trait_data_data { {\n"
+        '  { 1, 11, 103324, 82244, 1, 23, 108329, 29166, 0, 0, 10, 8, 100, "Innervate", '
+        "{ 0, 0, 0, 0 }, { 0, 0, 0, 0 }, 0, 0 },\n"
+        '  { 2, 11, 109839, 88206, 1, 20, 114844, 394013, 0, 102560, 9, 4, 100, '
+        '"Incarnation: Chosen of Elune", { 102, 0, 0, 0 }, { 0, 0, 0, 0 }, 0, 2 },\n'
+        '  { 3, 11, 117176, 94585, 1, 0, 122188, 428655, 0, 0, 4, 2, 100, "The Light of Elune", '
+        "{ 102, 104, 0, 0 }, { 0, 0, 0, 0 }, 24, 2 },\n"
+        "} };\n"
+        "static constexpr std::array<std::tuple<unsigned, const char*, unsigned>, 1> __trait_sub_tree_data { {\n"
+        '  { 24, "Elune\'s Chosen", 11 },\n'
+        "} };\n"
+    )
+
+
+def test_validate_talent_tree_transport_builds_validated_split_forms(monkeypatch, tmp_path: Path) -> None:
+    _write_fake_generated_repo(tmp_path)
+
+    monkeypatch.setattr("simc_cli.talent_transport.encode_build", lambda repo, build_spec: "ENCODED123")
+    monkeypatch.setattr(
+        "simc_cli.talent_transport.decode_build",
+        lambda repo, build_spec: BuildResolution(
+            actor_class="druid",
+            spec="balance",
+            enabled_talents={"innervate", "incarnation_chosen_of_elune", "the_light_of_elune"},
+            talents_by_tree={
+                "class": [_decoded_talent(tree="class", entry=103324, rank=1, name="Innervate")],
+                "spec": [_decoded_talent(tree="spec", entry=109839, rank=1, name="Incarnation: Chosen of Elune")],
+                "hero": [_decoded_talent(tree="hero", entry=117176, rank=1, name="The Light of Elune")],
+                "selection": [],
+            },
+            source_kind="wow_talent_export",
+            generated_profile_text=None,
+            source_notes=[],
+        ),
+    )
+
+    payload = validate_talent_tree_transport(
+        actor_class="Druid",
+        spec="Balance",
+        talent_tree_rows=[
+            {"entry": 103324, "node_id": 82244, "rank": 1},
+            {"entry": 109839, "node_id": 88206, "rank": 1},
+            {"entry": 117176, "node_id": 94585, "rank": 1},
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert payload["transport_forms"]["simc_split_talents"] == {
+        "class_talents": "103324:1",
+        "spec_talents": "109839:1",
+        "hero_talents": "117176:1",
+    }
+    assert payload["validation"]["status"] == "validated"
+    assert payload["validation"]["round_trip"]["wow_talent_export"] == "ENCODED123"
+    assert payload["validation"]["resolved_entries"][2]["hero_tree"] == "Elune's Chosen"
+
+
+def test_validate_talent_tree_transport_stays_unvalidated_when_rows_do_not_resolve(tmp_path: Path) -> None:
+    _write_fake_generated_repo(tmp_path)
+
+    payload = validate_talent_tree_transport(
+        actor_class="Druid",
+        spec="Balance",
+        talent_tree_rows=[
+            {"entry": 103324, "node_id": 99999, "rank": 1},
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert payload["transport_forms"] == {}
+    assert payload["validation"]["status"] == "not_validated"
+    assert payload["validation"]["reason"] == "simc_trait_resolution_incomplete"
+    assert payload["validation"]["unresolved_entries"][0]["reason"] == "trait_not_found"

@@ -583,7 +583,9 @@ EOF
   - one fight
   - one actor id
   - it emits a `talent_transport_packet` built from `combatant_info.talentTree`
-  - it currently stays conservative and reports `transport_status=raw_only` with `validation.status=not_attempted` until SimC-backed entry resolution exists
+  - it always preserves the raw `combatant_info.talentTree` evidence
+  - when local SimulationCraft trait data can resolve every row and the reconstructed build round-trips, it also emits validated `simc_split_talents`
+  - otherwise it stays `raw_only` and reports why validation could not be proven
 - `report-master-data` exposes report actor and ability catalogs, which is often the most useful companion surface for deeper report analysis
 - `report-table` and `report-graph` accept friendly enum-like filters such as `damage-done` and normalize them to the official GraphQL enum values
 - `report-rankings` exposes the official report rankings JSON with typed query metadata

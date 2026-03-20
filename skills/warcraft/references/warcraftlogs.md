@@ -153,7 +153,9 @@ Best fits:
 - `report-player-talents` is the first narrow build-transport lane:
   - use it when you need one actor's selected talents for one explicit fight
   - it returns a scoped `talent_transport_packet` sourced from `combatant_info.talentTree`
-  - today it is intentionally conservative: raw evidence first, no claimed portable build form until entry resolution is validated
+  - it always keeps the raw evidence
+  - when local SimulationCraft trait data resolves every entry and the reconstructed build round-trips, it also includes validated `simc_split_talents`
+  - otherwise it stays `raw_only` and tells you why validation could not be proven
 - `report-fights` is still the stable broad fight-list surface; use it to get fight IDs first, then move to `report-player-details`, `report-events`, `report-table`, or `report-graph` for deeper filtered analysis
 - `report-table` and `report-graph` accept user-friendly enum filters like `damage-done` and normalize them for the API
 - `report-events` intentionally requires a narrowed slice such as `--fight-id`, `--encounter-id`, `--start-time`, or `--end-time`
