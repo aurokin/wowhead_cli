@@ -26,6 +26,199 @@ def _simc_build_input_summary(args: list[str]) -> dict[str, object]:
     return summary
 
 
+class _EndToEndWarcraftLogsClient:
+    def close(self) -> None:
+        return None
+
+    def report(self, *, code: str, allow_unlisted: bool = False) -> dict[str, object]:
+        assert code == "abcd1234"
+        return {
+            "code": "abcd1234",
+            "title": "Manaforge Omega - Liquid",
+            "startTime": 123,
+            "endTime": 456,
+            "visibility": "public",
+            "archiveStatus": {
+                "isArchived": True,
+                "isAccessible": True,
+                "archiveDate": 789,
+            },
+            "segments": 1,
+            "exportedSegments": 0,
+            "zone": {"id": 38, "name": "Manaforge Omega"},
+        }
+
+    def report_fights(
+        self,
+        *,
+        code: str,
+        difficulty: int | None = None,
+        allow_unlisted: bool = False,
+        ttl_override: int | None = None,
+    ) -> dict[str, object]:
+        assert code == "abcd1234"
+        return {
+            "code": "abcd1234",
+            "title": "Manaforge Omega - Liquid",
+            "zone": {"id": 38, "name": "Manaforge Omega"},
+            "fights": [
+                {
+                    "id": 1,
+                    "name": "Dimensius, the All-Devouring",
+                    "encounterID": 3012,
+                    "difficulty": 5,
+                    "kill": True,
+                    "completeRaid": False,
+                    "startTime": 100000,
+                    "endTime": 200000,
+                    "fightPercentage": 100,
+                    "bossPercentage": 0,
+                    "averageItemLevel": 685.2,
+                    "size": 20,
+                }
+            ],
+        }
+
+    def encounter(self, *, encounter_id: int) -> dict[str, object]:
+        assert encounter_id == 3012
+        return {
+            "id": 3012,
+            "name": "Dimensius, the All-Devouring",
+            "journalID": 9001,
+            "zone": {"id": 38, "name": "Manaforge Omega", "expansion": {"id": 12, "name": "Midnight"}},
+        }
+
+    def report_player_details(self, *, code: str, allow_unlisted: bool = False, options, ttl_override: int | None = None) -> dict[str, object]:  # noqa: ANN001
+        assert code == "abcd1234"
+        assert options.fight_ids == [1]
+        return {
+            "code": "abcd1234",
+            "title": "Manaforge Omega - Liquid",
+            "zone": {"id": 38, "name": "Manaforge Omega"},
+            "playerDetails": {
+                "data": {
+                    "tanks": [],
+                    "healers": [],
+                    "dps": [
+                        {
+                            "name": "Auropower",
+                            "id": 9,
+                            "type": "Paladin",
+                            "specs": [{"spec": "Retribution", "count": 1}],
+                            "combatantInfo": {
+                                "talentTree": [
+                                    {"id": 103324, "nodeID": 82244, "rank": 1},
+                                    {"id": 109839, "nodeID": 88206, "rank": 1},
+                                    {"id": 117176, "nodeID": 94585, "rank": 1},
+                                ]
+                            },
+                        }
+                    ],
+                }
+            },
+        }
+
+
+
+def _patch_simc_describe_pipeline(
+    monkeypatch,
+    *,
+    transport_form: str,
+    transport_status: str,
+) -> None:
+    def fake_loader(_paths, **kwargs):  # noqa: ANN001
+        build_packet = kwargs["build_packet"]
+        assert isinstance(build_packet, str) and build_packet
+        split_class = "103324:1" if transport_form == "simc_split_talents" else None
+        split_spec = "109839:1" if transport_form == "simc_split_talents" else None
+        split_hero = "117176:1" if transport_form == "simc_split_talents" else None
+        return (
+            type(
+                "BuildSpec",
+                (),
+                {
+                    "actor_class": "druid",
+                    "spec": "balance",
+                    "talents": None,
+                    "class_talents": split_class,
+                    "spec_talents": split_spec,
+                    "hero_talents": split_hero,
+                    "source_kind": transport_form,
+                    "source_notes": ["talent transport packet"],
+                    "transport_form": transport_form,
+                    "transport_status": transport_status,
+                    "transport_source": build_packet,
+                },
+            )(),
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": "druid",
+                    "spec": "balance",
+                    "confidence": "high",
+                    "source": transport_form,
+                    "candidate_count": 1,
+                    "candidates": [("druid", "balance")],
+                    "source_notes": ["talent transport packet"],
+                },
+            )(),
+        )
+
+    monkeypatch.setattr("simc_cli.main._load_identified_build_spec", fake_loader)
+
+    resolution = type(
+        "Resolution",
+        (),
+        {
+            "actor_class": "druid",
+            "spec": "balance",
+            "source_kind": transport_form,
+            "enabled_talents": {"moonkin_form"},
+            "talents_by_tree": {"class": [], "spec": [], "hero": [], "selection": []},
+            "source_notes": ["talent transport packet"],
+        },
+    )()
+
+    def fake_resolve_prune_context(_paths, _apl, option_values, targets):  # noqa: ANN001
+        assert isinstance(option_values["build_packet"], str)
+        context = type(
+            "Context",
+            (),
+            {
+                "targets": targets,
+                "enabled_talents": {"moonkin_form"},
+                "disabled_talents": set(),
+                "talent_sources": {},
+            },
+        )()
+        return context, resolution
+
+    monkeypatch.setattr("simc_cli.main._resolve_prune_context", fake_resolve_prune_context)
+    monkeypatch.setattr(
+        "simc_cli.main._describe_target_payload",
+        lambda _resolved, context, *, start_list, priority_limit, inactive_limit: {
+            "targets": context.targets,
+            "focus_list": "default",
+            "focus_path": ["default"],
+            "focus_resolution": "direct",
+            "active_priority": [],
+            "inactive_priority": [],
+            "active_action_names": ["moonfire"],
+            "inactive_action_names": [],
+            "talent_tree": {
+                "class": {"selected": [], "skipped": []},
+                "spec": {"selected": [], "skipped": []},
+                "hero": {"selected": [], "skipped": []},
+            },
+            "inactive_talents": [],
+            "active_talents": [],
+            "explained_intent": {"setup": [], "helpers": [], "burst": [], "priorities": []},
+            "runtime_sensitive": [],
+        },
+    )
+
+
 def _comparison_payload(
     *,
     provider: str,
@@ -2411,6 +2604,121 @@ def test_warcraft_talent_describe_uses_packet_file_and_can_write_output(monkeypa
     written = json.loads(out_path.read_text())
     assert written["transport_status"] == "exact"
 
+
+
+def test_warcraft_talent_round_trip_wowhead_packet_to_describe(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "wowhead-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    monkeypatch.setattr(
+        "wowhead_cli.main._talent_calc_payload",
+        lambda ctx, ref, listed_build_limit=10: {
+            "provider": "wowhead",
+            "kind": "talent_calc",
+            "expansion": "retail",
+            "page": {"canonical_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+            "tool": {"state_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+            "listed_builds": {"count": 0, "items": []},
+        },
+    )
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="wowhead_talent_calc_url",
+        transport_status="exact",
+    )
+
+    packet_result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "druid/balance/ABC123", "--out", str(packet_path)],
+    )
+    assert packet_result.exit_code == 0
+    packet_payload = json.loads(packet_result.stdout)
+    assert packet_payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    written_packet = json.loads(packet_path.read_text())
+    assert written_packet["transport_status"] == "exact"
+    assert written_packet["transport_forms"]["wowhead_talent_calc_url"] == "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+
+    describe_result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--apl-path", str(apl_path)],
+    )
+    assert describe_result.exit_code == 0
+    payload = json.loads(describe_result.stdout)
+    assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
+    assert transport_packet["transport_form"] == "wowhead_talent_calc_url"
+    assert transport_packet["transport_status"] == "exact"
+    assert Path(transport_packet["path"]).name.startswith("warcraft-talent-describe-")
+
+
+
+def test_warcraft_talent_round_trip_warcraftlogs_packet_to_describe(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "warcraftlogs-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _EndToEndWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "simc_trait_resolution_incomplete",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="simc_split_talents",
+        transport_status="validated",
+    )
+
+    packet_result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--out", str(packet_path)],
+    )
+    assert packet_result.exit_code == 0
+    packet_payload = json.loads(packet_result.stdout)
+    assert packet_payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+    assert packet_payload["source_packet_status"] == "raw_only"
+    assert packet_payload["talent_transport_packet"]["transport_status"] == "validated"
+    written_packet = json.loads(packet_path.read_text())
+    assert written_packet["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
+
+    describe_result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--apl-path", str(apl_path)],
+    )
+    assert describe_result.exit_code == 0
+    payload = json.loads(describe_result.stdout)
+    assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    assert payload["talent_transport_packet"]["transport_status"] == "validated"
+    transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
+    assert transport_packet["transport_form"] == "simc_split_talents"
+    assert transport_packet["transport_status"] == "validated"
+    assert Path(transport_packet["path"]).name.startswith("warcraft-talent-describe-")
 
 
 def test_warcraft_passthrough_to_raiderio(monkeypatch) -> None:
