@@ -48,6 +48,7 @@ def test_simc_doctor_reports_phase_one_capabilities(monkeypatch, tmp_path: Path)
     assert payload["capabilities"]["log_actions"] == "ready"
     assert payload["capabilities"]["compare_builds"] == "ready"
     assert payload["capabilities"]["modify_build"] == "ready"
+    assert payload["capabilities"]["validate_talent_transport"] == "ready"
 
 
 def test_simc_search_is_structured_coming_soon() -> None:
@@ -279,6 +280,167 @@ def test_simc_identify_build_accepts_build_packet(monkeypatch, tmp_path: Path) -
     assert payload["build_spec"]["transport_packet"]["path"] == str(packet_path)
     assert payload["build_spec"]["transport_packet"]["transport_form"] == "wowhead_talent_calc_url"
     assert payload["build_spec"]["transport_packet"]["transport_status"] == "exact"
+
+
+def test_simc_validate_talent_transport_accepts_build_packet(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "raw_evidence": {
+                    "talent_tree_entries": [
+                        {"entry": 103324, "node_id": 82244, "rank": 1},
+                        {"entry": 109839, "node_id": 88206, "rank": 1},
+                    ]
+                },
+            }
+        )
+    )
+
+    def fake_validate(**kwargs):  # noqa: ANN001
+        assert kwargs["actor_class"] == "druid"
+        assert kwargs["spec"] == "balance"
+        assert kwargs["talent_tree_rows"] == [
+            {"entry": 103324, "node_id": 82244, "rank": 1},
+            {"entry": 109839, "node_id": 88206, "rank": 1},
+        ]
+        return {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": None,
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        }
+
+    monkeypatch.setattr("simc_cli.main.validate_talent_tree_transport", fake_validate)
+
+    result = runner.invoke(simc_app, ["validate-talent-transport", "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "validate_talent_transport"
+    assert payload["input"]["source"] == "build_packet"
+    assert payload["input"]["packet_transport_status"] == "raw_only"
+    assert payload["transport_status"] == "validated"
+    assert payload["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
+    assert payload["updated_packet"]["transport_status"] == "validated"
+    packet_payload = json.loads(packet_path.read_text())
+    assert payload["updated_packet"].get("source") == packet_payload.get("source")
+
+
+def test_simc_validate_talent_transport_can_write_upgraded_packet(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    out_path = tmp_path / "validated-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "raw_evidence": {
+                    "talent_tree_entries": [
+                        {"entry": 103324, "node_id": 82244, "rank": 1},
+                    ]
+                },
+                "source": {"provider": "warcraftlogs", "source": "warcraftlogs_talent_tree"},
+            }
+        )
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        simc_app,
+        [
+            "validate-talent-transport",
+            "--build-packet",
+            str(packet_path),
+            "--out",
+            str(out_path),
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["written_packet_path"] == str(out_path.resolve())
+
+    written = json.loads(out_path.read_text())
+    assert written["transport_status"] == "validated"
+    assert written["source"] == {"provider": "warcraftlogs", "source": "warcraftlogs_talent_tree"}
+    assert written["transport_forms"]["simc_split_talents"]["class_talents"] == "103324:1"
+
+
+def test_simc_validate_talent_transport_accepts_inline_rows(monkeypatch) -> None:
+    def fake_validate(**kwargs):  # noqa: ANN001
+        assert kwargs["actor_class"] == "druid"
+        assert kwargs["spec"] == "balance"
+        assert kwargs["talent_tree_rows"] == [
+            {"entry": 103324, "node_id": 82244, "rank": 1},
+            {"entry": 109839, "node_id": 88206, "rank": 1},
+        ]
+        return {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "simc_trait_resolution_incomplete",
+            },
+        }
+
+    monkeypatch.setattr("simc_cli.main.validate_talent_tree_transport", fake_validate)
+
+    result = runner.invoke(
+        simc_app,
+        [
+            "validate-talent-transport",
+            "--actor-class",
+            "druid",
+            "--spec",
+            "balance",
+            "--talent-row",
+            "103324:82244:1",
+            "--talent-row",
+            "109839:88206:1",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["input"]["source"] == "talent_rows"
+    assert payload["transport_status"] == "raw_only"
+    assert payload["validation"]["reason"] == "simc_trait_resolution_incomplete"
+
+
+def test_simc_validate_talent_transport_requires_one_input_mode() -> None:
+    result = runner.invoke(simc_app, ["validate-talent-transport"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
 
 
 def test_simc_decode_build_auto_identifies_missing_class_and_spec(monkeypatch) -> None:

@@ -60,7 +60,8 @@ from simc_cli.repo import (
 from simc_cli.run import binary_version, build_repo, repo_git_status, run_profile, sync_repo
 from simc_cli.search import find_action, spec_file_search
 from simc_cli.sim import first_action_hits, run_first_casts, summarize_first_casts
-from warcraft_core.identity import build_identity_payload
+from simc_cli.talent_transport import validate_talent_tree_transport
+from warcraft_core.identity import build_identity_payload, refresh_talent_transport_packet
 from warcraft_core.output import emit
 
 app = typer.Typer(add_completion=False, help="SimulationCraft local workflow CLI.")
@@ -197,6 +198,65 @@ def _resolve_path(paths: RepoPaths, value: str) -> Path:
 
 def _relative_to_repo(paths: RepoPaths, path: Path) -> str | None:
     return str(path.relative_to(paths.root)) if path.is_relative_to(paths.root) else None
+
+
+def _load_transport_packet(path: str) -> tuple[dict[str, Any], str]:
+    resolved = Path(path).expanduser().resolve()
+    raw = json.loads(resolved.read_text())
+    if not isinstance(raw, dict):
+        raise ValueError(f"Build packet must be a JSON object: {resolved}")
+    if raw.get("kind") != "talent_transport_packet":
+        raise ValueError(f"Unsupported build packet kind under {resolved}: {raw.get('kind')!r}")
+    return raw, str(resolved)
+
+
+def _packet_identity_value(packet: dict[str, Any], key: str) -> str | None:
+    build_identity = packet.get("build_identity")
+    if not isinstance(build_identity, dict):
+        return None
+    class_spec_identity = build_identity.get("class_spec_identity")
+    if not isinstance(class_spec_identity, dict):
+        return None
+    identity = class_spec_identity.get("identity")
+    if not isinstance(identity, dict):
+        return None
+    value = identity.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _packet_talent_tree_rows(packet: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_evidence = packet.get("raw_evidence")
+    if not isinstance(raw_evidence, dict):
+        return []
+    rows = raw_evidence.get("talent_tree_entries")
+    if not isinstance(rows, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        entry = row.get("entry")
+        node_id = row.get("node_id")
+        rank = row.get("rank")
+        normalized.append(
+            {
+                "entry": entry if isinstance(entry, int) else None,
+                "node_id": node_id if isinstance(node_id, int) else None,
+                "rank": rank if isinstance(rank, int) else None,
+            }
+        )
+    return normalized
+
+
+def _parse_talent_row(value: str) -> dict[str, int]:
+    entry_text, node_text, rank_text = (part.strip() for part in value.split(":", 2))
+    if not entry_text.isdigit() or not node_text.isdigit() or not rank_text.isdigit():
+        raise ValueError(f"Invalid talent row '{value}'. Expected entry_id:node_id:rank.")
+    return {
+        "entry": int(entry_text),
+        "node_id": int(node_text),
+        "rank": int(rank_text),
+    }
 
 
 def _infer_default_apl_path(paths: RepoPaths, *, actor_class: str | None, spec: str | None) -> Path | None:
@@ -467,6 +527,7 @@ def doctor(ctx: typer.Context) -> None:
                 "spec_files": "ready",
                 "identify_build": "ready",
                 "decode_build": "ready",
+                "validate_talent_transport": "ready",
                 "apl_lists": "ready",
                 "apl_graph": "ready",
                 "apl_talents": "ready",
@@ -800,6 +861,102 @@ def identify_build_command(
             "kind": "identify_build",
             "build_spec": _serialize_build_spec(build_spec),
             "identity": _serialize_build_identity(identity),
+        },
+    )
+
+
+@app.command("validate-talent-transport")
+def validate_talent_transport_command(
+    ctx: typer.Context,
+    build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
+    talent_row: list[str] = typer.Option([], "--talent-row", help="Raw talent row as entry_id:node_id:rank. Repeat as needed."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as druid or paladin."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as balance or retribution."),
+    out: str | None = typer.Option(None, "--out", help="Optional path to write the upgraded packet JSON when --build-packet is used."),
+) -> None:
+    if build_packet and talent_row:
+        _fail(ctx, "invalid_query", "Use either --build-packet or --talent-row, not both.")
+        return
+    if not build_packet and not talent_row:
+        _fail(ctx, "invalid_query", "Provide either --build-packet or at least one --talent-row.")
+        return
+    if out and not build_packet:
+        _fail(ctx, "invalid_query", "--out requires --build-packet.")
+        return
+
+    source = "talent_rows"
+    resolved_packet_path: str | None = None
+    packet_transport_status: str | None = None
+    packet: dict[str, Any] | None = None
+    rows: list[dict[str, Any]] = []
+    resolved_actor_class = actor_class
+    resolved_spec = spec_name
+
+    if build_packet:
+        try:
+            packet, resolved_packet_path = _load_transport_packet(build_packet)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            _fail(ctx, "invalid_build_packet", str(exc))
+            return
+        source = "build_packet"
+        packet_transport_status = packet.get("transport_status") if isinstance(packet.get("transport_status"), str) else None
+        rows = _packet_talent_tree_rows(packet)
+        if actor_class is None:
+            resolved_actor_class = _packet_identity_value(packet, "actor_class")
+        if spec_name is None:
+            resolved_spec = _packet_identity_value(packet, "spec")
+    else:
+        try:
+            rows = [_parse_talent_row(value) for value in talent_row]
+        except ValueError as exc:
+            _fail(ctx, "invalid_talent_row", str(exc))
+            return
+
+    if not rows:
+        _fail(ctx, "invalid_query", "No raw talent rows were available to validate.")
+        return
+
+    result = validate_talent_tree_transport(
+        actor_class=resolved_actor_class,
+        spec=resolved_spec,
+        talent_tree_rows=rows,
+        repo_root=_cfg(ctx).repo_root,
+    )
+    transport_forms = result.get("transport_forms") if isinstance(result.get("transport_forms"), dict) else {}
+    validation = result.get("validation") if isinstance(result.get("validation"), dict) else {}
+    transport_status = "validated" if transport_forms.get("simc_split_talents") else "raw_only"
+    updated_packet: dict[str, Any] | None = None
+    written_packet_path: str | None = None
+    if packet is not None:
+        updated_packet = refresh_talent_transport_packet(
+            packet,
+            transport_forms=transport_forms,
+            validation=validation,
+        )
+        if out:
+            output_path = Path(out).expanduser().resolve()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(updated_packet, indent=2) + "\n")
+            written_packet_path = str(output_path)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "kind": "validate_talent_transport",
+            "input": {
+                "source": source,
+                "build_packet": resolved_packet_path,
+                "packet_transport_status": packet_transport_status,
+                "actor_class": resolved_actor_class,
+                "spec": resolved_spec,
+                "talent_row_count": len(rows),
+            },
+            "raw_talent_tree_entries": rows,
+            "transport_status": transport_status,
+            "transport_forms": transport_forms,
+            "validation": validation,
+            "updated_packet": updated_packet,
+            "written_packet_path": written_packet_path,
         },
     )
 

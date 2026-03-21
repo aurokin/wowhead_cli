@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import secrets
 import shlex
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 import re
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -4033,6 +4035,7 @@ def report_player_talents(
     actor_id: int = typer.Option(..., "--actor-id", help="Report-local actor ID scoped to the selected fight."),
     fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
     allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+    out: str | None = typer.Option(None, "--out", help="Optional path to write the scoped talent transport packet JSON."),
 ) -> None:
     client = _client(ctx)
     try:
@@ -4081,6 +4084,19 @@ def report_player_talents(
         _fail(ctx, "missing_talent_tree", f"Actor ID {actor_id} did not include combatant_info.talentTree in the selected fight.")
         return
 
+    transport_packet = _player_talent_transport_packet(
+        actor,
+        report_code=ref.code,
+        fight_id=int(fight["id"]),
+        actor_id=actor_id,
+    )
+    written_packet_path: str | None = None
+    if out:
+        output_path = Path(out).expanduser().resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(transport_packet, indent=2) + "\n")
+        written_packet_path = str(output_path)
+
     _emit(
         ctx,
         {
@@ -4089,12 +4105,8 @@ def report_player_talents(
             "kind": "report_player_talents",
             **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
             "player": actor,
-            "talent_transport_packet": _player_talent_transport_packet(
-                actor,
-                report_code=ref.code,
-                fight_id=int(fight["id"]),
-                actor_id=actor_id,
-            ),
+            "talent_transport_packet": transport_packet,
+            "written_packet_path": written_packet_path,
         },
     )
 

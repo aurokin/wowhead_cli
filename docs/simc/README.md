@@ -17,6 +17,7 @@ Current commands:
 - `simc inspect`
 - `simc spec-files`
 - `simc identify-build`
+- `simc validate-talent-transport`
 - `simc describe-build`
 - `simc decode-build`
 - `simc build-harness`
@@ -135,6 +136,11 @@ Recent usability improvement:
   - SimC-native build/profile text
   - talent transport packet JSON files that carry an exact or validated build transport form
   and report both `source_kind` and the normalized generated SimC profile used for decode/debug flows
+- `validate-talent-transport` is the reusable cross-integration handoff primitive:
+  - it accepts a raw `talent_transport_packet` via `--build-packet`
+  - or repeated `--talent-row entry_id:node_id:rank` values with explicit class/spec
+  - it resolves rows through local SimC generated trait data
+  - it only emits validated `simc_split_talents` when the reconstructed build round-trips
 - `describe-build` now sits above that exact-build layer as the default “what is this build doing?” command
 - it keeps the summary evidence-backed by combining:
   - resolved build identity

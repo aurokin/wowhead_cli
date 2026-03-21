@@ -5,6 +5,7 @@ from warcraft_core.identity import (
     ability_identity_payload,
     build_identity_payload,
     build_reference_payload,
+    build_reference_transport_packet_payload,
     class_spec_identity_payload,
     encounter_identity_payload,
     normalize_ability_name,
@@ -12,6 +13,7 @@ from warcraft_core.identity import (
     normalize_encounter_name,
     normalize_spec_name,
     parse_wowhead_talent_calc_ref,
+    refresh_talent_transport_packet,
     report_actor_identity_payload,
     talent_transport_packet_payload,
 )
@@ -20,6 +22,7 @@ __all__ = [
     "ability_identity_payload",
     "build_identity_payload",
     "build_reference_payload",
+    "build_reference_transport_packet_payload",
     "class_spec_identity_payload",
     "encounter_identity_payload",
     "find_env_file",
@@ -30,6 +33,7 @@ __all__ = [
     "normalize_encounter_name",
     "normalize_spec_name",
     "parse_wowhead_talent_calc_ref",
+    "refresh_talent_transport_packet",
     "report_actor_identity_payload",
     "talent_transport_packet_payload",
 ]

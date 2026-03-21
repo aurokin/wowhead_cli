@@ -541,6 +541,7 @@ Current talent-transport lane:
 - it always emits the raw scoped talent transport packet from `combatant_info.talentTree`
 - when local SimulationCraft trait data resolves every entry and the reconstructed build round-trips, it also emits validated `simc_split_talents`
 - when that proof does not hold, it stays `raw_only` and reports the validation failure reason in the packet
+- add `--out <path>` when you want to save just the packet JSON for follow-up `simc` validation or wrapper handoff
 
 ### Deep Encounter Analytics
 

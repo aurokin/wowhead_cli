@@ -129,6 +129,7 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert providers["warcraft-wiki"]["details"]["capabilities"]["article"] == "ready"
     assert providers["wowprogress"]["details"]["capabilities"]["leaderboard"] == "ready"
     assert providers["simc"]["details"]["capabilities"]["decode_build"] == "ready"
+    assert providers["simc"]["details"]["capabilities"]["validate_talent_transport"] == "ready"
     assert providers["warcraftlogs"]["auth"]["required"] is True
     assert providers["simc"]["wrapper_surfaces"]["search"]["ready"] is False
     assert providers["simc"]["wrapper_surfaces"]["search"]["status"] == "coming_soon"
@@ -781,6 +782,7 @@ def test_warcraft_guide_compare_query_can_include_simc_build_handoff(
     assert handoff["build_reference_count"] == 1
     assert handoff["apl_path"] == str(apl_path)
     assert len(handoff["builds"][0]["sources"]) == 2
+    assert handoff["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
     assert handoff["builds"][0]["simc"]["identify"]["payload"]["kind"] == "identify-build"
     assert handoff["builds"][0]["simc"]["decode"]["payload"]["kind"] == "decode-build"
     assert handoff["builds"][0]["simc"]["describe"]["payload"]["kind"] == "describe-build"
@@ -848,6 +850,11 @@ def test_warcraft_guide_builds_simc_reads_bundle_build_refs(monkeypatch, tmp_pat
     assert payload["summary"]["identify_success_count"] == 1
     assert payload["summary"]["decode_success_count"] == 1
     assert payload["builds"][0]["reference"]["build_code"] == "ABC123"
+    assert payload["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
+    assert (
+        payload["builds"][0]["talent_transport_packet"]["transport_forms"]["wowhead_talent_calc_url"]
+        == "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"
+    )
     assert payload["builds"][0]["evidence"]["explicit_build_reference_only"] is True
     assert payload["builds"][0]["evidence"]["provider_count"] == 1
     assert payload["builds"][0]["simc"]["identify"]["payload"]["kind"] == "identify_build"
@@ -939,6 +946,7 @@ def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
     assert payload["citations"]["bundle_paths"] == [str(method_dir), str(wowhead_dir)]
     assert len(payload["builds"][0]["sources"]) == 2
     assert payload["builds"][0]["evidence"]["provider_count"] == 2
+    assert payload["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
     assert payload["builds"][0]["simc"]["decode"] is None
     assert payload["builds"][0]["simc"]["describe"] is None
     assert invoke_calls == [["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]]
@@ -986,6 +994,7 @@ def test_warcraft_guide_builds_simc_can_include_describe_build_with_apl(
     payload = json.loads(result.stdout)
     assert payload["apl_path"] == str(apl_path)
     assert payload["summary"]["describe_success_count"] == 1
+    assert payload["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
     assert payload["builds"][0]["simc"]["describe"]["payload"]["kind"] == "describe-build"
     assert invoke_calls == [
         ["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"],
@@ -1855,6 +1864,159 @@ def test_warcraft_passthrough_to_simc(monkeypatch, tmp_path) -> None:
     assert payload["provider"] == "simc"
     assert payload["status"] == "completed"
     assert payload["version"] == "SimulationCraft 1201"
+
+
+def test_warcraft_passthrough_to_simc_validate_talent_transport(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": None,
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        [
+            "simc",
+            "validate-talent-transport",
+            "--actor-class",
+            "druid",
+            "--spec",
+            "balance",
+            "--talent-row",
+            "103324:82244:1",
+            "--talent-row",
+            "109839:88206:1",
+        ],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "simc"
+    assert payload["kind"] == "validate_talent_transport"
+    assert payload["transport_status"] == "validated"
+    assert payload["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
+
+
+def test_warcraft_packet_handoff_from_warcraftlogs_to_simc(monkeypatch, tmp_path: Path) -> None:
+    raw_packet_path = tmp_path / "raw-packet.json"
+    validated_packet_path = tmp_path / "validated-packet.json"
+
+    class _PacketClient:
+        def report_player_details(self, **kwargs):  # noqa: ANN003, ANN201
+            return {}
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _PacketClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._resolve_encounter_scope",
+        lambda ctx, *, client, reference, fight_id, allow_unlisted: (
+            type("Ref", (), {"code": "abcd1234", "fight_id": 1, "source_url": None})(),
+            {"code": "abcd1234", "title": "Test Report", "startTime": 1, "endTime": 2},
+            {"id": 1, "encounterID": 3012, "name": "Dimensius", "kill": True, "difficulty": 5, "startTime": 0, "endTime": 1},
+            {"id": 3012, "journalID": 3001, "name": "Dimensius", "zone": {"id": 38, "name": "Nerub-ar Palace", "expansion": {"id": 10, "name": "Retail"}}},
+        ),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._report_player_details_payload",
+        lambda payload, *, report_code=None, fight_id=None: {
+            "player_details": {
+                "roles": {
+                    "dps": [
+                        {
+                            "id": 9,
+                            "name": "gubkfc",
+                            "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                            "combatant_info": {
+                                "talentTree": [
+                                    {"id": 103324, "guid": 82244, "rank": 1},
+                                    {"id": 109839, "guid": 88206, "rank": 1},
+                                ]
+                            },
+                        }
+                    ]
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "simc_trait_resolution_incomplete",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": None,
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    export_result = runner.invoke(
+        warcraft_app,
+        [
+            "warcraftlogs",
+            "report-player-talents",
+            "abcd1234",
+            "--fight-id",
+            "1",
+            "--actor-id",
+            "9",
+            "--out",
+            str(raw_packet_path),
+        ],
+    )
+    assert export_result.exit_code == 0
+    export_payload = json.loads(export_result.stdout)
+    assert export_payload["written_packet_path"] == str(raw_packet_path.resolve())
+
+    validate_result = runner.invoke(
+        warcraft_app,
+        [
+            "simc",
+            "validate-talent-transport",
+            "--build-packet",
+            str(raw_packet_path),
+            "--out",
+            str(validated_packet_path),
+        ],
+    )
+    assert validate_result.exit_code == 0
+    validate_payload = json.loads(validate_result.stdout)
+    assert validate_payload["transport_status"] == "validated"
+    assert validate_payload["written_packet_path"] == str(validated_packet_path.resolve())
+
+    written_packet = json.loads(validated_packet_path.read_text())
+    assert written_packet["transport_status"] == "validated"
+    assert written_packet["source"] == {"provider": "warcraftlogs", "source": "warcraftlogs_talent_tree"}
+    assert written_packet["scope"] == {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9}
+    assert written_packet["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
 
 
 def test_warcraft_passthrough_to_raiderio(monkeypatch) -> None:

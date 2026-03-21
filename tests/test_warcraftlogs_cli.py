@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -2427,6 +2428,40 @@ def test_warcraftlogs_report_player_talents_emits_validated_split_transport(monk
     assert payload["talent_transport_packet"]["transport_status"] == "validated"
     assert payload["talent_transport_packet"]["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
     assert payload["talent_transport_packet"]["validation"]["status"] == "validated"
+
+
+def test_warcraftlogs_report_player_talents_can_write_transport_packet(monkeypatch, tmp_path: Path) -> None:
+    out_path = tmp_path / "gubkfc-packet.json"
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": None,
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--out", str(out_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["written_packet_path"] == str(out_path.resolve())
+
+    written_packet = json.loads(out_path.read_text())
+    assert written_packet["kind"] == "talent_transport_packet"
+    assert written_packet["transport_status"] == "validated"
+    assert written_packet["scope"] == {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9}
 
 
 def test_warcraftlogs_report_encounter_casts_summarizes_cast_rows(monkeypatch) -> None:

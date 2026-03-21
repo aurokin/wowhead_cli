@@ -83,6 +83,7 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
 - `warcraft guide-builds-simc` reads explicit embedded guide build references from one exported guide bundle or a `guide-compare-query` output root, dedupes them, and hands those exact build refs to `simc identify-build` plus optional `simc decode-build`
 - `warcraft guide-builds-simc --apl-path <apl>` also runs `simc describe-build` for each explicit build ref so the handoff can include exact-build APL-backed detail without inferring claims from guide prose
 - `guide-builds-simc` also includes explicit provenance, citations, and source freshness metadata for the handoff packet so agents can tell whether the build evidence came from one bundle or a fresher orchestration root
+- each handed-off guide build now also carries an exact `talent_transport_packet`, so explicit Wowhead build refs and raw Warcraft Logs talent trees can travel through the same packet contract
 - `simc` is a phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` includes readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
@@ -493,6 +494,7 @@ warcraftlogs report abcdefgh
 warcraftlogs report-fights abcdefgh --difficulty 5
 warcraftlogs report-player-details abcdefgh --fight-id 47
 warcraftlogs report-player-talents abcdefgh --fight-id 47 --actor-id 1234
+warcraftlogs report-player-talents abcdefgh --fight-id 47 --actor-id 1234 --out ./tmp/gubkfc-packet.json
 warcraftlogs report-master-data abcdefgh --actor-type Player
 warcraftlogs report-events abcdefgh --fight-id 47 --limit 100
 warcraftlogs report-table abcdefgh --data-type damage-done --fight-id 47
@@ -586,6 +588,7 @@ EOF
   - it always preserves the raw `combatant_info.talentTree` evidence
   - when local SimulationCraft trait data can resolve every row and the reconstructed build round-trips, it also emits validated `simc_split_talents`
   - otherwise it stays `raw_only` and reports why validation could not be proven
+  - add `--out <path>` when you want the command to write just the packet JSON for a later `simc` or wrapper handoff
 - `report-master-data` exposes report actor and ability catalogs, which is often the most useful companion surface for deeper report analysis
 - `report-table` and `report-graph` accept friendly enum-like filters such as `damage-done` and normalize them to the official GraphQL enum values
 - `report-rankings` exposes the official report rankings JSON with typed query metadata
@@ -650,6 +653,8 @@ simc spec-files mistweaver
 simc identify-build --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc identify-build --build-text 'https://www.wowhead.com/talent-calc/demon-hunter/devourer/CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc identify-build --build-packet ./build-packet.json
+simc validate-talent-transport --build-packet ./build-packet.json
+simc validate-talent-transport --actor-class druid --spec balance --talent-row 103324:82244:1 --talent-row 109839:88206:1 --talent-row 117176:94585:1
 simc describe-build --build-text 'CgcBG5bbocFKcv+yIq8fPd6ORBA2MmZmxMzMGzMAAAAAAAegxsNYGAAAAAAAAmxMMmZmZmZmZGzsYGjFtsxMzMzWbzMzAYYAIwMGMmB'
 simc describe-build --build-packet ./build-packet.json --apl-path <simc-root>/ActionPriorityLists/default/druid_balance.simc
 simc decode-build --apl-path <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc --talents ABC123
@@ -701,6 +706,10 @@ SimulationCraft behavior:
   - exact forms such as embedded Wowhead URLs or WoW export strings are preferred first
   - validated reconstructed forms such as `simc_split_talents` are used when no exact form exists
   - packet provenance is preserved on the returned `build_spec.transport_packet` block
+- `validate-talent-transport` is the reusable packet-validation primitive:
+  - use `--build-packet <path>` when another integration already emitted a raw scoped packet
+  - or pass repeated `--talent-row entry_id:node_id:rank` with explicit `--actor-class` and `--spec`
+  - it keeps the raw rows visible, resolves entries through local SimC trait data, and only emits `simc_split_talents` when the reconstructed build round-trips cleanly
 - `--talents` accepts the same common consumer inputs as `--build-text` for exact-build commands:
   - bare WoW talent export strings
   - Wowhead talent-calc URLs

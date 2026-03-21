@@ -12,6 +12,7 @@ from raiderio_cli.main import app as raiderio_app
 from simc_cli.main import app as simc_app
 from typer.main import get_command
 from warcraft_content.article_bundle import compare_article_bundles, load_article_bundle
+from warcraft_core.identity import build_reference_transport_packet_payload
 from warcraft_core.output import emit
 from warcraft_core.provider_contract import (
     compact_resolve_match,
@@ -466,6 +467,25 @@ def _guide_builds_simc_payload(
         if not isinstance(build_url, str) or not build_url.strip():
             continue
         sources = row.get("sources") if isinstance(row.get("sources"), list) else []
+        transport_packet = build_reference_transport_packet_payload(
+            ref=build_url,
+            provider="warcraft",
+            source="guide_build_reference_handoff",
+            label=reference.get("label") if isinstance(reference.get("label"), str) else None,
+            source_urls=_unique_non_empty_strings(
+                [
+                    url
+                    for source_row in sources
+                    if isinstance(source_row, dict)
+                    for url in (source_row.get("source_urls") or [])
+                ]
+            ),
+            notes=[
+                "exact build reference came from exported guide bundles",
+                "transport packet preserves the same explicit wowhead ref used for simc handoff",
+            ],
+            scope={"type": "guide_build_reference_handoff"},
+        )
         identify_result = provider_invoke("simc", ["identify-build", "--build-text", build_url], expansion=expansion)
         decode_result = (
             provider_invoke("simc", ["decode-build", "--build-text", build_url], expansion=expansion)
@@ -484,6 +504,7 @@ def _guide_builds_simc_payload(
         build_rows.append(
             {
                 "reference": reference,
+                "talent_transport_packet": transport_packet,
                 "sources": sources,
                 "evidence": {
                     "explicit_build_reference_only": True,

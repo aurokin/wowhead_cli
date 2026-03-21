@@ -4,11 +4,13 @@ from warcraft_core.identity import (
     ability_identity_payload,
     build_identity_payload,
     build_reference_payload,
+    build_reference_transport_packet_payload,
     class_spec_identity_payload,
     encounter_identity_payload,
     normalize_actor_class,
     normalize_spec_name,
     parse_wowhead_talent_calc_ref,
+    refresh_talent_transport_packet,
     report_actor_identity_payload,
     talent_transport_packet_payload,
 )
@@ -131,6 +133,24 @@ def test_build_reference_payload_only_accepts_explicit_wowhead_talent_calc_urls(
     assert build_reference_payload(ref="https://www.wowhead.com/spell=116670", provider="method", source="guide_embedded_link") is None
 
 
+def test_build_reference_transport_packet_payload_marks_explicit_refs_as_exact() -> None:
+    payload = build_reference_transport_packet_payload(
+        ref="https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+        provider="warcraft",
+        source="guide_build_reference_handoff",
+        source_url="https://www.method.gg/guides/balance-druid",
+        source_urls=["https://www.method.gg/guides/balance-druid"],
+        label="Raid Build",
+        notes=["explicit guide build ref"],
+        scope={"type": "guide_build_reference_handoff"},
+    )
+    assert payload is not None
+    assert payload["transport_status"] == "exact"
+    assert payload["transport_forms"]["wowhead_talent_calc_url"] == "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+    assert payload["raw_evidence"]["reference_type"] == "wowhead_talent_calc_url"
+    assert payload["scope"] == {"type": "guide_build_reference_handoff"}
+
+
 def test_talent_transport_packet_distinguishes_exact_validated_and_raw_only() -> None:
     exact = talent_transport_packet_payload(
         actor_class="Druid",
@@ -168,3 +188,32 @@ def test_talent_transport_packet_distinguishes_exact_validated_and_raw_only() ->
         raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
     )
     assert raw_only["transport_status"] == "raw_only"
+
+
+def test_refresh_talent_transport_packet_preserves_scope_and_upgrades_status() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="warcraftlogs_talent_tree",
+        provider="warcraftlogs",
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+        validation={"status": "not_validated"},
+        scope={"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+    )
+
+    refreshed = refresh_talent_transport_packet(
+        packet,
+        transport_forms={
+            "simc_split_talents": {
+                "class_talents": "103324:1",
+                "spec_talents": "109839:1",
+            }
+        },
+        validation={"status": "validated", "source": "simc_trait_data_round_trip"},
+    )
+
+    assert refreshed["transport_status"] == "validated"
+    assert refreshed["scope"] == packet["scope"]
+    assert refreshed["source"] == packet["source"]
+    assert refreshed["raw_evidence"] == packet["raw_evidence"]
