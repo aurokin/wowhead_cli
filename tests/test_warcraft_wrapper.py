@@ -2834,6 +2834,142 @@ def test_warcraft_talent_describe_packet_out_changes_after_validation_upgrade(mo
     assert wrapper_packet["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
 
 
+def test_warcraft_talent_packet_file_reuse_stays_exact_without_validation(monkeypatch, tmp_path: Path) -> None:
+    source_path = tmp_path / "wowhead-source.json"
+    routed_path = tmp_path / "wowhead-routed.json"
+    described_path = tmp_path / "wowhead-described.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    monkeypatch.setattr(
+        "wowhead_cli.main._talent_calc_payload",
+        lambda ctx, ref, listed_build_limit=10: {
+            "provider": "wowhead",
+            "kind": "talent_calc",
+            "expansion": "retail",
+            "page": {"canonical_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+            "tool": {"state_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+            "listed_builds": {"count": 0, "items": []},
+        },
+    )
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="wowhead_talent_calc_url",
+        transport_status="exact",
+    )
+
+    producer_result = runner.invoke(
+        wowhead_app,
+        ["talent-calc-packet", "druid/balance/ABC123", "--out", str(source_path)],
+    )
+    assert producer_result.exit_code == 0
+
+    packet_result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", str(source_path), "--no-validate", "--out", str(routed_path)],
+    )
+    assert packet_result.exit_code == 0
+    describe_result = runner.invoke(
+        warcraft_app,
+        [
+            "talent-describe",
+            str(source_path),
+            "--no-validate",
+            "--apl-path",
+            str(apl_path),
+            "--packet-out",
+            str(described_path),
+        ],
+    )
+    assert describe_result.exit_code == 0
+
+    packet_payload = json.loads(packet_result.stdout)
+    describe_payload = json.loads(describe_result.stdout)
+    assert packet_payload["upgrade_attempted"] is False
+    assert describe_payload["upgrade_attempted"] is False
+    assert source_path.read_text() == routed_path.read_text()
+    assert source_path.read_text() == described_path.read_text()
+
+
+
+def test_warcraft_talent_packet_file_reuse_upgrades_raw_packet_consistently(monkeypatch, tmp_path: Path) -> None:
+    raw_path = tmp_path / "warcraftlogs-raw.json"
+    routed_path = tmp_path / "warcraftlogs-routed.json"
+    described_path = tmp_path / "warcraftlogs-described.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _EndToEndWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "simc_trait_resolution_incomplete",
+            },
+        },
+    )
+    raw_result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--out", str(raw_path)],
+    )
+    assert raw_result.exit_code == 0
+
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="simc_split_talents",
+        transport_status="validated",
+    )
+
+    packet_result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", str(raw_path), "--out", str(routed_path)],
+    )
+    assert packet_result.exit_code == 0
+    describe_result = runner.invoke(
+        warcraft_app,
+        [
+            "talent-describe",
+            str(raw_path),
+            "--apl-path",
+            str(apl_path),
+            "--packet-out",
+            str(described_path),
+        ],
+    )
+    assert describe_result.exit_code == 0
+
+    packet_payload = json.loads(packet_result.stdout)
+    describe_payload = json.loads(describe_result.stdout)
+    raw_packet = json.loads(raw_path.read_text())
+    routed_packet = json.loads(routed_path.read_text())
+    described_packet = json.loads(described_path.read_text())
+
+    assert packet_payload["upgrade_attempted"] is True
+    assert describe_payload["upgrade_attempted"] is True
+    assert raw_packet["transport_status"] == "raw_only"
+    assert routed_packet == described_packet
+    assert routed_packet["transport_status"] == "validated"
+    assert raw_path.read_text() != routed_path.read_text()
+
+
 def test_warcraft_talent_round_trip_wowhead_packet_to_describe(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "wowhead-packet.json"
     apl_path = tmp_path / "druid_balance.simc"
