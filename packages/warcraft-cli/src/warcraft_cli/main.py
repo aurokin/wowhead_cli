@@ -738,7 +738,7 @@ def _upgrade_transport_packet_with_simc(
     )
     payload = result.get("payload") if isinstance(result.get("payload"), dict) else {}
     updated_packet = payload.get("updated_packet") if isinstance(payload.get("updated_packet"), dict) else packet
-    return result, updated_packet
+    return result, validate_talent_transport_packet(updated_packet)
 
 
 def _describe_transport_packet_with_simc(
@@ -913,7 +913,17 @@ def _maybe_upgrade_transport_packet(
     upgrade_result: dict[str, Any] | None = None
     upgrade_attempted = bool(validate and source_status in {"raw_only", "unknown"})
     if upgrade_attempted:
-        upgrade_result, packet = _upgrade_transport_packet_with_simc(packet, expansion=requested_expansion)
+        try:
+            upgrade_result, packet = _upgrade_transport_packet_with_simc(packet, expansion=requested_expansion)
+        except ValueError as exc:
+            _fail_talent_route(
+                ctx,
+                code="packet_upgrade_failed",
+                message=f"simc validate-talent-transport returned an invalid upgraded packet: {exc}",
+                source=source,
+                kind="talent_transport",
+                route=route,
+            )
         if upgrade_result.get("exit_code") != 0:
             _fail_talent_route(
                 ctx,

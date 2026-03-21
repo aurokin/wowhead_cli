@@ -266,3 +266,24 @@ def test_validate_talent_transport_packet_rejects_empty_simc_split_forms() -> No
         assert "simc_split_talents" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_refresh_talent_transport_packet_rejects_invalid_transport_forms() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="warcraftlogs_talent_tree",
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+    )
+
+    try:
+        refresh_talent_transport_packet(
+            packet,
+            transport_forms={"simc_split_talents": []},
+            validation={"status": "validated"},
+        )
+    except ValueError as exc:
+        assert "simc_split_talents" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")

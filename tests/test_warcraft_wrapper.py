@@ -2517,6 +2517,50 @@ def test_warcraft_talent_packet_rejects_invalid_provider_packet(monkeypatch) -> 
 
 
 
+def test_warcraft_talent_packet_rejects_invalid_upgraded_packet(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {},
+                "transport_forms": {},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "updated_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "validated",
+                    "build_identity": {},
+                    "transport_forms": {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {},
+                }
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "packet_upgrade_failed"
+    assert "invalid upgraded packet" in payload["error"]["message"]
+
+
 def test_warcraft_talent_packet_reports_upgrade_failure(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "raw-packet.json"
     packet_path.write_text(

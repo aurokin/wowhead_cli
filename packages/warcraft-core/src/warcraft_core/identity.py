@@ -447,7 +447,7 @@ def talent_transport_packet_payload(
     }
     if provider is not None or source is not None:
         payload["source"] = {"provider": provider, "source": source}
-    return payload
+    return validate_talent_transport_packet(payload)
 
 
 def refresh_talent_transport_packet(
@@ -466,7 +466,7 @@ def refresh_talent_transport_packet(
     refreshed["validation"] = validation_payload
     refreshed["transport_status"] = status
     refreshed["raw_evidence"] = raw_payload
-    return refreshed
+    return validate_talent_transport_packet(refreshed)
 
 
 def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
