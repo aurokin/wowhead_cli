@@ -323,6 +323,48 @@ def build_reference_payload(
     return payload
 
 
+def _clean_transport_form_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return _clean_text(value)
+    if isinstance(value, dict):
+        nested = {
+            nested_key: cleaned_value
+            for nested_key, nested_value in value.items()
+            if (cleaned_value := _clean_transport_form_value(nested_value)) is not None
+        }
+        return nested or None
+    return value if value is not None else None
+
+
+def _clean_transport_forms(transport_forms: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        key: cleaned_value
+        for key, value in (transport_forms or {}).items()
+        if (cleaned_value := _clean_transport_form_value(value)) is not None
+    }
+
+
+def _clean_payload_dict(value: dict[str, Any] | None) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _talent_transport_payload_parts(
+    *,
+    transport_forms: dict[str, Any] | None,
+    raw_evidence: dict[str, Any] | None,
+    validation: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], TalentTransportStatus]:
+    cleaned_transport_forms = _clean_transport_forms(transport_forms)
+    raw_payload = _clean_payload_dict(raw_evidence)
+    validation_payload = _clean_payload_dict(validation)
+    status = _talent_transport_status(
+        transport_forms=cleaned_transport_forms,
+        raw_evidence=raw_payload,
+        validation=validation_payload,
+    )
+    return cleaned_transport_forms, raw_payload, validation_payload, status
+
+
 def build_reference_transport_packet_payload(
     *,
     ref: str,
@@ -382,34 +424,11 @@ def talent_transport_packet_payload(
     candidates: list[tuple[str | None, str | None]] | None = None,
     source_notes: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, object]:
-    cleaned_transport_forms: dict[str, Any] = {}
-    for key, value in (transport_forms or {}).items():
-        if isinstance(value, str):
-            text = _clean_text(value)
-            if text is not None:
-                cleaned_transport_forms[key] = text
-        elif isinstance(value, dict):
-            nested = {
-                nested_key: nested_value.strip() if isinstance(nested_value, str) else nested_value
-                for nested_key, nested_value in value.items()
-                if (
-                    (isinstance(nested_value, str) and nested_value.strip())
-                    or (not isinstance(nested_value, str) and nested_value is not None)
-                )
-            }
-            if nested:
-                cleaned_transport_forms[key] = nested
-        elif value is not None:
-            cleaned_transport_forms[key] = value
-
-    validation_payload = validation if isinstance(validation, dict) else {}
-    raw_payload = raw_evidence if isinstance(raw_evidence, dict) else {}
-    status = _talent_transport_status(
-        transport_forms=cleaned_transport_forms,
-        raw_evidence=raw_payload,
-        validation=validation_payload,
+    cleaned_transport_forms, raw_payload, validation_payload, status = _talent_transport_payload_parts(
+        transport_forms=transport_forms,
+        raw_evidence=raw_evidence,
+        validation=validation,
     )
-
     payload: dict[str, object] = {
         "kind": "talent_transport_packet",
         "transport_status": status,
@@ -438,34 +457,15 @@ def refresh_talent_transport_packet(
     validation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     refreshed = dict(packet)
-    cleaned_transport_forms: dict[str, Any] = {}
-    for key, value in (transport_forms or {}).items():
-        if isinstance(value, str):
-            text = _clean_text(value)
-            if text is not None:
-                cleaned_transport_forms[key] = text
-        elif isinstance(value, dict):
-            nested = {
-                nested_key: nested_value.strip() if isinstance(nested_value, str) else nested_value
-                for nested_key, nested_value in value.items()
-                if (
-                    (isinstance(nested_value, str) and nested_value.strip())
-                    or (not isinstance(nested_value, str) and nested_value is not None)
-                )
-            }
-            if nested:
-                cleaned_transport_forms[key] = nested
-        elif value is not None:
-            cleaned_transport_forms[key] = value
-    validation_payload = validation if isinstance(validation, dict) else {}
-    raw_payload = refreshed.get("raw_evidence") if isinstance(refreshed.get("raw_evidence"), dict) else {}
+    cleaned_transport_forms, raw_payload, validation_payload, status = _talent_transport_payload_parts(
+        transport_forms=transport_forms,
+        raw_evidence=refreshed.get("raw_evidence") if isinstance(refreshed.get("raw_evidence"), dict) else {},
+        validation=validation,
+    )
     refreshed["transport_forms"] = cleaned_transport_forms
     refreshed["validation"] = validation_payload
-    refreshed["transport_status"] = _talent_transport_status(
-        transport_forms=cleaned_transport_forms,
-        raw_evidence=raw_payload,
-        validation=validation_payload,
-    )
+    refreshed["transport_status"] = status
+    refreshed["raw_evidence"] = raw_payload
     return refreshed
 
 
