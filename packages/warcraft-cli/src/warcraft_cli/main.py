@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -486,21 +487,38 @@ def _guide_builds_simc_payload(
             ],
             scope={"type": "guide_build_reference_handoff"},
         )
-        identify_result = provider_invoke("simc", ["identify-build", "--build-text", build_url], expansion=expansion)
-        decode_result = (
-            provider_invoke("simc", ["decode-build", "--build-text", build_url], expansion=expansion)
-            if decode
-            else None
-        )
-        describe_result = (
-            provider_invoke(
-                "simc",
-                ["describe-build", "--apl-path", apl_path, "--build-text", build_url],
-                expansion=expansion,
+        packet_path: Path | None = None
+        build_input_args = ["--build-text", build_url]
+        if isinstance(transport_packet, dict):
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                suffix=".json",
+                prefix="guide-build-packet-",
+                delete=False,
+            ) as handle:
+                json.dump(transport_packet, handle, indent=2)
+                handle.write("\n")
+                packet_path = Path(handle.name).resolve()
+            build_input_args = ["--build-packet", str(packet_path)]
+        try:
+            identify_result = provider_invoke("simc", ["identify-build", *build_input_args], expansion=expansion)
+            decode_result = (
+                provider_invoke("simc", ["decode-build", *build_input_args], expansion=expansion)
+                if decode
+                else None
             )
-            if isinstance(apl_path, str) and apl_path.strip()
-            else None
-        )
+            describe_result = (
+                provider_invoke(
+                    "simc",
+                    ["describe-build", "--apl-path", apl_path, *build_input_args],
+                    expansion=expansion,
+                )
+                if isinstance(apl_path, str) and apl_path.strip()
+                else None
+            )
+        finally:
+            packet_path.unlink(missing_ok=True) if packet_path is not None else None
         build_rows.append(
             {
                 "reference": reference,

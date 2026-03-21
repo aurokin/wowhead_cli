@@ -11,6 +11,19 @@ from warcraft_content.article_bundle import write_article_bundle
 runner = CliRunner()
 
 
+def _simc_build_input_summary(args: list[str]) -> dict[str, object]:
+    summary: dict[str, object] = {"command": args[0], "args": args}
+    if "--build-packet" in args:
+        packet = json.loads(Path(args[args.index("--build-packet") + 1]).read_text())
+        summary["build_input"] = "packet"
+        summary["packet_transport_status"] = packet["transport_status"]
+        summary["packet_transport_url"] = packet["transport_forms"]["wowhead_talent_calc_url"]
+    elif "--build-text" in args:
+        summary["build_input"] = "text"
+        summary["build_text"] = args[args.index("--build-text") + 1]
+    return summary
+
+
 def _comparison_payload(
     *,
     provider: str,
@@ -728,7 +741,7 @@ def test_warcraft_guide_compare_query_can_include_simc_build_handoff(
         }
 
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
-        invoke_calls.append((provider, args))
+        invoke_calls.append({"provider": provider, **(_simc_build_input_summary(args) if provider == "simc" else {"args": args})})
         if provider in {"method", "wowhead"}:
             export_dir = Path(args[3])
             payload = _comparison_payload(
@@ -786,22 +799,24 @@ def test_warcraft_guide_compare_query_can_include_simc_build_handoff(
     assert handoff["builds"][0]["simc"]["identify"]["payload"]["kind"] == "identify-build"
     assert handoff["builds"][0]["simc"]["decode"]["payload"]["kind"] == "decode-build"
     assert handoff["builds"][0]["simc"]["describe"]["payload"]["kind"] == "describe-build"
-    assert invoke_calls == [
-        ("method", ["guide-export", "mistweaver-monk", "--out", str(tmp_path / "orchestrated" / "method")]),
-        ("wowhead", ["guide-export", "mistweaver-monk", "--out", str(tmp_path / "orchestrated" / "wowhead")]),
-        ("simc", ["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]),
-        ("simc", ["decode-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]),
-        (
-            "simc",
-            [
-                "describe-build",
-                "--apl-path",
-                str(apl_path),
-                "--build-text",
-                "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123",
-            ],
-        ),
-    ]
+    assert invoke_calls[0] == {
+        "provider": "method",
+        "args": ["guide-export", "mistweaver-monk", "--out", str(tmp_path / "orchestrated" / "method")],
+    }
+    assert invoke_calls[1] == {
+        "provider": "wowhead",
+        "args": ["guide-export", "mistweaver-monk", "--out", str(tmp_path / "orchestrated" / "wowhead")],
+    }
+    assert invoke_calls[2]["provider"] == "simc"
+    assert invoke_calls[2]["command"] == "identify-build"
+    assert invoke_calls[2]["build_input"] == "packet"
+    assert invoke_calls[2]["packet_transport_status"] == "exact"
+    assert invoke_calls[2]["packet_transport_url"] == "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"
+    assert invoke_calls[3]["command"] == "decode-build"
+    assert invoke_calls[3]["build_input"] == "packet"
+    assert invoke_calls[4]["command"] == "describe-build"
+    assert invoke_calls[4]["build_input"] == "packet"
+    assert invoke_calls[4]["args"][1:3] == ["--apl-path", str(apl_path)]
 
 
 def test_warcraft_guide_builds_simc_reads_bundle_build_refs(monkeypatch, tmp_path: Path) -> None:
@@ -819,9 +834,12 @@ def test_warcraft_guide_builds_simc_reads_bundle_build_refs(monkeypatch, tmp_pat
         export_dir=bundle_dir,
     )
 
+    invoke_calls: list[dict[str, object]] = []
+
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
         assert provider == "simc"
         assert args[0] in {"identify-build", "decode-build"}
+        invoke_calls.append(_simc_build_input_summary(args))
         return {
             "provider": provider,
             "exit_code": 0,
@@ -860,6 +878,13 @@ def test_warcraft_guide_builds_simc_reads_bundle_build_refs(monkeypatch, tmp_pat
     assert payload["builds"][0]["simc"]["identify"]["payload"]["kind"] == "identify_build"
     assert payload["builds"][0]["simc"]["decode"]["payload"]["kind"] == "decode_build"
     assert payload["builds"][0]["simc"]["describe"] is None
+    assert len(invoke_calls) == 2
+    assert invoke_calls[0]["command"] == "identify-build"
+    assert invoke_calls[0]["build_input"] == "packet"
+    assert invoke_calls[0]["packet_transport_status"] == "exact"
+    assert invoke_calls[0]["packet_transport_url"] == "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"
+    assert invoke_calls[1]["command"] == "decode-build"
+    assert invoke_calls[1]["build_input"] == "packet"
 
 
 def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
@@ -920,10 +945,10 @@ def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
         encoding="utf-8",
     )
 
-    invoke_calls: list[list[str]] = []
+    invoke_calls: list[dict[str, object]] = []
 
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
-        invoke_calls.append(args)
+        invoke_calls.append(_simc_build_input_summary(args))
         return {
             "provider": provider,
             "exit_code": 0,
@@ -949,7 +974,11 @@ def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
     assert payload["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
     assert payload["builds"][0]["simc"]["decode"] is None
     assert payload["builds"][0]["simc"]["describe"] is None
-    assert invoke_calls == [["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]]
+    assert len(invoke_calls) == 1
+    assert invoke_calls[0]["command"] == "identify-build"
+    assert invoke_calls[0]["build_input"] == "packet"
+    assert invoke_calls[0]["packet_transport_status"] == "exact"
+    assert invoke_calls[0]["packet_transport_url"] == "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"
 
 
 def test_warcraft_guide_builds_simc_can_include_describe_build_with_apl(
@@ -972,10 +1001,10 @@ def test_warcraft_guide_builds_simc_can_include_describe_build_with_apl(
         export_dir=bundle_dir,
     )
 
-    invoke_calls: list[list[str]] = []
+    invoke_calls: list[dict[str, object]] = []
 
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
-        invoke_calls.append(args)
+        invoke_calls.append(_simc_build_input_summary(args))
         return {
             "provider": provider,
             "exit_code": 0,
@@ -996,17 +1025,14 @@ def test_warcraft_guide_builds_simc_can_include_describe_build_with_apl(
     assert payload["summary"]["describe_success_count"] == 1
     assert payload["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
     assert payload["builds"][0]["simc"]["describe"]["payload"]["kind"] == "describe-build"
-    assert invoke_calls == [
-        ["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"],
-        ["decode-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"],
-        [
-            "describe-build",
-            "--apl-path",
-            str(apl_path),
-            "--build-text",
-            "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123",
-        ],
-    ]
+    assert len(invoke_calls) == 3
+    assert invoke_calls[0]["command"] == "identify-build"
+    assert invoke_calls[0]["build_input"] == "packet"
+    assert invoke_calls[1]["command"] == "decode-build"
+    assert invoke_calls[1]["build_input"] == "packet"
+    assert invoke_calls[2]["command"] == "describe-build"
+    assert invoke_calls[2]["build_input"] == "packet"
+    assert invoke_calls[2]["args"][1:3] == ["--apl-path", str(apl_path)]
 
 
 def test_warcraft_guide_compare_query_fails_when_too_few_guides_export(
