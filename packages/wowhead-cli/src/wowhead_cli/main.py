@@ -13,7 +13,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 import typer
 
-from warcraft_core.identity import build_identity_payload
+from warcraft_core.identity import build_identity_payload, build_reference_transport_packet_payload
 from warcraft_content.guide_analysis import extract_section_chunk_analysis_surfaces
 from wowhead_cli.cache import (
     clear_file_cache,
@@ -2942,6 +2942,77 @@ def _extract_talent_calc_listed_builds(html: str, *, limit: int) -> dict[str, An
     }
 
 
+def _load_talent_calc_context(
+    ctx: typer.Context,
+    *,
+    ref: str,
+    listed_build_limit: int,
+) -> tuple[str, dict[str, Any], dict[str, Any], str, dict[str, Any] | None]:
+    cfg = _cfg(ctx)
+    try:
+        state_url = _normalize_tool_ref(ref, tool_slug="talent-calc", expansion=cfg.expansion)
+        state = _parse_talent_calc_state(state_url)
+    except ValueError as exc:
+        _fail(ctx, "invalid_tool_ref", str(exc))
+        raise AssertionError("unreachable")
+    client = _client(ctx)
+    try:
+        html = client.page_html(state_url)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+        raise AssertionError("unreachable")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+        raise AssertionError("unreachable")
+    metadata = parse_page_metadata(html, fallback_url=state_url)
+    page_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=state_url) or state_url
+    listed_builds = _extract_talent_calc_listed_builds(html, limit=listed_build_limit)
+    return state_url, state, metadata, page_url, listed_builds
+
+
+def _talent_calc_payload(
+    ctx: typer.Context,
+    *,
+    ref: str,
+    listed_build_limit: int,
+) -> dict[str, Any]:
+    cfg = _cfg(ctx)
+    state_url, state, metadata, page_url, listed_builds = _load_talent_calc_context(
+        ctx,
+        ref=ref,
+        listed_build_limit=listed_build_limit,
+    )
+    payload = {
+        "expansion": cfg.expansion.key,
+        "tool": {
+            "kind": "talent-calc",
+            "input": ref,
+            "state_url": state_url,
+            "page_url": page_url,
+            **state,
+        },
+        "build_identity": build_identity_payload(
+            actor_class=state.get("class_slug"),
+            spec=state.get("spec_slug"),
+            confidence="high" if state.get("class_slug") and state.get("spec_slug") else "none",
+            source="wowhead_talent_calc_url",
+            candidates=[(state.get("class_slug"), state.get("spec_slug"))] if state.get("class_slug") and state.get("spec_slug") else None,
+            source_notes=["class/spec came from the explicit Wowhead talent-calc URL path"],
+        ),
+        "page": {
+            "title": metadata.get("title"),
+            "description": metadata.get("description"),
+            "canonical_url": page_url,
+        },
+        "citations": {
+            "page": state_url,
+        },
+    }
+    if listed_builds is not None:
+        payload["listed_builds"] = listed_builds
+    return payload
+
+
 def _parse_profession_tree_state(state_url: str) -> dict[str, Any]:
     parsed = urlparse(state_url)
     parts = [part for part in parsed.path.split("/") if part]
@@ -5029,52 +5100,42 @@ def talent_calc(
         help="Maximum embedded listed builds to return when the page exposes them.",
     ),
 ) -> None:
-    cfg = _cfg(ctx)
-    try:
-        state_url = _normalize_tool_ref(ref, tool_slug="talent-calc", expansion=cfg.expansion)
-        state = _parse_talent_calc_state(state_url)
-    except ValueError as exc:
-        _fail(ctx, "invalid_tool_ref", str(exc))
-    client = _client(ctx)
-    try:
-        html = client.page_html(state_url)
-    except httpx.HTTPStatusError as exc:
-        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
-    except httpx.HTTPError as exc:
-        _fail(ctx, "network_error", str(exc))
-    metadata = parse_page_metadata(html, fallback_url=state_url)
-    canonical_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=state_url)
-    listed_builds = _extract_talent_calc_listed_builds(html, limit=listed_build_limit)
+    _emit(ctx, _talent_calc_payload(ctx, ref=ref, listed_build_limit=listed_build_limit))
 
-    payload = {
-        "expansion": cfg.expansion.key,
-        "tool": {
-            "kind": "talent-calc",
-            "input": ref,
-            "state_url": state_url,
-            "page_url": canonical_url or state_url,
-            **state,
+
+@app.command("talent-calc-packet")
+def talent_calc_packet(
+    ctx: typer.Context,
+    ref: str = typer.Argument(
+        ...,
+        help="Wowhead talent calculator URL, path, or class/spec/build ref such as druid/balance/<code>.",
+    ),
+    listed_build_limit: int = typer.Option(
+        10,
+        "--listed-build-limit",
+        min=1,
+        max=100,
+        help="Maximum embedded listed builds to return when the page exposes them.",
+    ),
+) -> None:
+    payload = _talent_calc_payload(ctx, ref=ref, listed_build_limit=listed_build_limit)
+    packet = build_reference_transport_packet_payload(
+        ref=str(payload["tool"]["state_url"]),
+        provider="wowhead",
+        source="wowhead_talent_calc_url",
+        source_url=str(payload["page"]["canonical_url"]),
+        notes=["exact transport packet came from an explicit Wowhead talent-calc ref"],
+        scope={"type": "wowhead_talent_calc", "expansion": str(payload["expansion"])},
+    )
+    _emit(
+        ctx,
+        {
+            "provider": "wowhead",
+            "kind": "talent_calc_packet",
+            **payload,
+            "talent_transport_packet": packet,
         },
-        "build_identity": build_identity_payload(
-            actor_class=state.get("class_slug"),
-            spec=state.get("spec_slug"),
-            confidence="high" if state.get("class_slug") and state.get("spec_slug") else "none",
-            source="wowhead_talent_calc_url",
-            candidates=[(state.get("class_slug"), state.get("spec_slug"))] if state.get("class_slug") and state.get("spec_slug") else None,
-            source_notes=["class/spec came from the explicit Wowhead talent-calc URL path"],
-        ),
-        "page": {
-            "title": metadata.get("title"),
-            "description": metadata.get("description"),
-            "canonical_url": canonical_url,
-        },
-        "citations": {
-            "page": state_url,
-        },
-    }
-    if listed_builds is not None:
-        payload["listed_builds"] = listed_builds
-    _emit(ctx, payload)
+    )
 
 
 @app.command("profession-tree")

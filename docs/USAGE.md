@@ -153,6 +153,7 @@ wowhead guides classes "death knight"
 wowhead guides classes --author Khazakdk --patch-min 120001 --updated-after 2026-02-01
 wowhead guides classes --sort updated --limit 10
 wowhead talent-calc druid/balance/DAQBBBBQQRUFURYVBEANVVRUVFVVVQCVQhEUEBUEBhVQ
+wowhead talent-calc-packet druid/balance/DAQBBBBQQRUFURYVBEANVVRUVFVVVQCVQhEUEBUEBhVQ
 wowhead profession-tree alchemy/BCuA
 wowhead dressing-room "#fz8zz0zb89c8mM8YB8mN8X18mO8ub8mP8uD"
 wowhead profiler 97060220/us/illidan/Roguecane
@@ -243,6 +244,9 @@ Wowhead command behavior:
   - current build code
   - shared `build_identity` metadata that can be handed off directly into `simc`
   - listed embedded builds when the page exposes them
+- `talent-calc-packet` is the narrow exact-build producer for explicit Wowhead refs:
+  - it emits an exact `talent_transport_packet` using the explicit talent-calc state URL
+  - it preserves page metadata and listed embedded builds alongside that packet
 - `profession-tree` decodes profession tree state URLs into:
   - profession slug
   - current loadout code

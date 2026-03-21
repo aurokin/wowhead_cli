@@ -29,6 +29,7 @@ Implemented now:
 - `blue-topic`
 - `guides <category>`
 - `talent-calc`
+- `talent-calc-packet`
 - `profession-tree`
 - `dressing-room`
 - `profiler`
@@ -214,6 +215,9 @@ Current tool state:
   - spec slug
   - build code
   - embedded listed builds when the page exposes them
+- `talent-calc-packet` is the first exact talent transport producer on the Wowhead side:
+  - it emits an exact `talent_transport_packet` from the explicit calculator ref
+  - it keeps the cited state URL, page metadata, and listed embedded builds next to the packet
 - `profession-tree` is now a real route-state decoder and extracts:
   - profession slug
   - loadout code

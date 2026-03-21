@@ -835,6 +835,31 @@ def test_talent_calc_command_decodes_url_and_embedded_builds(monkeypatch) -> Non
     assert payload["listed_builds"]["items"][0]["name"] == "Leveling"
 
 
+def test_talent_calc_packet_command_emits_exact_transport_packet(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "5"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "wowhead"
+    assert payload["kind"] == "talent_calc_packet"
+    assert payload["tool"]["state_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert payload["talent_transport_packet"]["transport_status"] == "exact"
+    assert (
+        payload["talent_transport_packet"]["transport_forms"]["wowhead_talent_calc_url"]
+        == "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+    )
+    assert payload["talent_transport_packet"]["build_identity"]["class_spec_identity"]["identity"] == {
+        "actor_class": "druid",
+        "spec": "balance",
+    }
+    assert payload["talent_transport_packet"]["scope"] == {"type": "wowhead_talent_calc", "expansion": "retail"}
+    assert payload["listed_builds"]["count"] == 2
+
+
 def test_profession_tree_command_decodes_url(monkeypatch) -> None:
     def fake_page_html(self, page_url: str):  # noqa: ANN001
         assert page_url.endswith("/profession-tree-calc/alchemy/BCuA")
