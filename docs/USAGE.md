@@ -25,6 +25,9 @@ warcraft guide-compare-query "mistweaver monk guide"
 warcraft guide-compare-query "mistweaver monk guide" --simc-build-handoff --simc-apl-path <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc
 warcraft guide-builds-simc ./tmp/method-mistweaver
 warcraft guide-builds-simc ./tmp/method-mistweaver --apl-path <simc-root>/ActionPriorityLists/default/monk_mistweaver.simc
+warcraft talent-packet druid/balance/ABC123
+warcraft talent-packet https://www.warcraftlogs.com/reports/abcd1234#fight=47 --actor-id 1234
+warcraft talent-packet ./tmp/gubkfc-packet.json --out ./tmp/gubkfc-packet-validated.json
 warcraft --expansion wotlk wowhead search "thunderfury"
 warcraft wowhead search "defias"
 warcraft wowhead guide 3143
@@ -84,6 +87,10 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
 - `warcraft guide-builds-simc --apl-path <apl>` also runs `simc describe-build` for each explicit build ref so the handoff can include exact-build APL-backed detail without inferring claims from guide prose
 - `guide-builds-simc` also includes explicit provenance, citations, and source freshness metadata for the handoff packet so agents can tell whether the build evidence came from one bundle or a fresher orchestration root
 - each handed-off guide build now also carries an exact `talent_transport_packet`, so explicit Wowhead build refs and raw Warcraft Logs talent trees can travel through the same packet contract
+- `warcraft talent-packet` is the wrapper-level packet router:
+  - explicit Wowhead talent-calc refs route to `wowhead talent-calc-packet`
+  - explicit Warcraft Logs report refs route to `warcraftlogs report-player-talents` and can auto-upgrade through `simc`
+  - existing packet JSON files can be re-emitted or upgraded without choosing a provider first
 - `simc` is a phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` includes readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
