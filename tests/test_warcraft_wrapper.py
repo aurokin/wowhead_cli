@@ -15,9 +15,11 @@ def _simc_build_input_summary(args: list[str]) -> dict[str, object]:
     summary: dict[str, object] = {"command": args[0], "args": args}
     if "--build-packet" in args:
         packet = json.loads(Path(args[args.index("--build-packet") + 1]).read_text())
+        transport_forms = packet.get("transport_forms") if isinstance(packet.get("transport_forms"), dict) else {}
         summary["build_input"] = "packet"
         summary["packet_transport_status"] = packet["transport_status"]
-        summary["packet_transport_url"] = packet["transport_forms"]["wowhead_talent_calc_url"]
+        summary["packet_transport_url"] = transport_forms.get("wowhead_talent_calc_url")
+        summary["packet_transport_form_keys"] = sorted(transport_forms)
     elif "--build-text" in args:
         summary["build_input"] = "text"
         summary["build_text"] = args[args.index("--build-text") + 1]
@@ -2205,6 +2207,209 @@ def test_warcraft_talent_packet_requires_explicit_source_contract() -> None:
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "unsupported_talent_source"
+
+
+def test_warcraft_talent_describe_routes_wowhead_ref_to_simc(monkeypatch) -> None:
+    provider_calls: list[tuple[str, list[str]]] = []
+    simc_calls: list[dict[str, object]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args))
+        if provider == "wowhead":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "talent_calc_packet",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "transport_forms": {
+                            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                        },
+                        "build_identity": {
+                            "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                        },
+                        "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                        "validation": {},
+                        "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+                    },
+                },
+                "stdout": "",
+            }
+        assert provider == "simc"
+        simc_calls.append(_simc_build_input_summary(args))
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 5},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "druid/balance/ABC123", "--apl-path", "/tmp/druid_balance.simc"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "warcraft"
+    assert payload["kind"] == "talent_describe"
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["source_packet_status"] == "exact"
+    assert payload["upgrade_attempted"] is False
+    assert payload["packet_written_path"] is None
+    assert payload["describe_result"]["payload"]["kind"] == "describe_build"
+    assert provider_calls[0] == ("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "10"])
+    assert simc_calls[0]["command"] == "describe-build"
+    assert simc_calls[0]["packet_transport_status"] == "exact"
+    assert simc_calls[0]["packet_transport_url"] == "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+    assert simc_calls[0]["args"][:4] == ["describe-build", "--targets", "1", "--aoe-targets"]
+    assert "--apl-path" in simc_calls[0]["args"]
+
+
+
+def test_warcraft_talent_describe_routes_warcraftlogs_and_upgrades(monkeypatch) -> None:
+    provider_calls: list[tuple[str, list[str]]] = []
+    simc_calls: list[dict[str, object]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args))
+        if provider == "warcraftlogs":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "report_player_talents",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "raw_only",
+                        "transport_forms": {},
+                        "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                        "validation": {"status": "not_validated"},
+                        "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+                    },
+                },
+                "stdout": "",
+            }
+        assert provider == "simc"
+        simc_calls.append(_simc_build_input_summary(args))
+        packet = json.loads(Path(args[args.index("--build-packet") + 1]).read_text())
+        if args[0] == "validate-talent-transport":
+            assert packet["transport_status"] == "raw_only"
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "validate_talent_transport",
+                    "updated_packet": {
+                        **packet,
+                        "transport_status": "validated",
+                        "transport_forms": {"simc_split_talents": {"class_talents": "103324:1"}},
+                        "validation": {"status": "validated", "source": "simc_trait_data_round_trip"},
+                    },
+                },
+                "stdout": "",
+            }
+        assert args[0] == "describe-build"
+        assert packet["transport_status"] == "validated"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 7},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+    assert payload["source_packet_status"] == "raw_only"
+    assert payload["upgrade_attempted"] is True
+    assert payload["upgraded"] is True
+    assert payload["talent_transport_packet"]["transport_status"] == "validated"
+    assert payload["describe_result"]["payload"]["kind"] == "describe_build"
+    assert provider_calls[0] == ("warcraftlogs", ["report-player-talents", "abcd1234", "--actor-id", "9", "--fight-id", "1"])
+    assert [row["command"] for row in simc_calls] == ["validate-talent-transport", "describe-build"]
+    assert simc_calls[1]["packet_transport_status"] == "validated"
+    assert simc_calls[1]["packet_transport_form_keys"] == ["simc_split_talents"]
+
+
+
+def test_warcraft_talent_describe_uses_packet_file_and_can_write_output(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    out_path = tmp_path / "described-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                },
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+            }
+        )
+    )
+    simc_calls: list[dict[str, object]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        simc_calls.append(_simc_build_input_summary(args))
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 4},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--packet-out", str(out_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    assert payload["packet_written_path"] == str(out_path.resolve())
+    assert payload["describe_result"]["payload"]["kind"] == "describe_build"
+    assert simc_calls[0]["command"] == "describe-build"
+    assert simc_calls[0]["packet_transport_status"] == "exact"
+    written = json.loads(out_path.read_text())
+    assert written["transport_status"] == "exact"
 
 
 

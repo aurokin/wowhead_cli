@@ -28,6 +28,7 @@ warcraft guide-builds-simc ./tmp/method-mistweaver --apl-path <simc-root>/Action
 warcraft talent-packet druid/balance/ABC123
 warcraft talent-packet https://www.warcraftlogs.com/reports/abcd1234#fight=47 --actor-id 1234
 warcraft talent-packet ./tmp/gubkfc-packet.json --out ./tmp/gubkfc-packet-validated.json
+warcraft talent-describe druid/balance/ABC123 --apl-path <simc-root>/ActionPriorityLists/default/druid_balance.simc
 warcraft --expansion wotlk wowhead search "thunderfury"
 warcraft wowhead search "defias"
 warcraft wowhead guide 3143
@@ -91,6 +92,9 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
   - explicit Wowhead talent-calc refs route to `wowhead talent-calc-packet`
   - explicit Warcraft Logs report refs route to `warcraftlogs report-player-talents` and can auto-upgrade through `simc`
   - existing packet JSON files can be re-emitted or upgraded without choosing a provider first
+- `warcraft talent-describe` reuses that same routing contract, then hands the final packet to `simc describe-build`
+  - use `--packet-out <path>` when you want to keep the exact packet that was described
+  - use `--apl-path <apl>` when you want to pin the SimC APL instead of relying on default APL inference
 - `simc` is a phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` includes readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
