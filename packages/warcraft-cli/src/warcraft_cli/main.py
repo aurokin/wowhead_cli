@@ -808,17 +808,20 @@ def _transport_packet_from_provider_result(
     provider_result: dict[str, Any],
     command_name: str,
 ) -> dict[str, Any]:
+    producer_payload = provider_result.get("payload") if isinstance(provider_result.get("payload"), dict) else {}
     if provider_result.get("exit_code") != 0:
+        error_payload = producer_payload.get("error") if isinstance(producer_payload.get("error"), dict) else {}
+        error_code = error_payload.get("code") if isinstance(error_payload.get("code"), str) else "provider_command_failed"
+        error_message = error_payload.get("message") if isinstance(error_payload.get("message"), str) else f"{command_name} failed."
         _fail_talent_route(
             ctx,
-            code="provider_command_failed",
-            message=f"{command_name} failed.",
+            code=error_code if error_code == "invalid_transport_packet" else "provider_command_failed",
+            message=error_message,
             source=source,
             kind="talent_transport",
             route=route,
             provider_result=provider_result,
         )
-    producer_payload = provider_result.get("payload") if isinstance(provider_result.get("payload"), dict) else {}
     packet_value = producer_payload.get("talent_transport_packet")
     packet = packet_value if isinstance(packet_value, dict) else {}
     if not packet:
