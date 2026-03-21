@@ -798,6 +798,122 @@ def _fail_talent_route(
     raise typer.Exit(1)
 
 
+def _transport_packet_from_provider_result(
+    ctx: typer.Context,
+    *,
+    source: str,
+    route: dict[str, Any],
+    provider_result: dict[str, Any],
+    command_name: str,
+) -> dict[str, Any]:
+    if provider_result.get("exit_code") != 0:
+        _fail_talent_route(
+            ctx,
+            code="provider_command_failed",
+            message=f"{command_name} failed.",
+            source=source,
+            kind="talent_transport",
+            route=route,
+            provider_result=provider_result,
+        )
+    producer_payload = provider_result.get("payload") if isinstance(provider_result.get("payload"), dict) else {}
+    packet_value = producer_payload.get("talent_transport_packet")
+    packet = packet_value if isinstance(packet_value, dict) else {}
+    if not packet:
+        _fail_talent_route(
+            ctx,
+            code="missing_transport_packet",
+            message=f"{command_name} did not return a talent transport packet.",
+            source=source,
+            kind="talent_transport",
+            route=route,
+            provider_result=provider_result,
+        )
+    return packet
+
+
+def _wowhead_transport_packet(
+    ctx: typer.Context,
+    *,
+    source: str,
+    listed_build_limit: int,
+    requested_expansion: str | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    route = {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    producer_result = provider_invoke(
+        "wowhead",
+        ["talent-calc-packet", source, "--listed-build-limit", str(listed_build_limit)],
+        expansion=requested_expansion,
+    )
+    packet = _transport_packet_from_provider_result(
+        ctx,
+        source=source,
+        route=route,
+        provider_result=producer_result,
+        command_name="wowhead talent-calc-packet",
+    )
+    return route, producer_result, packet
+
+
+def _warcraftlogs_transport_packet(
+    ctx: typer.Context,
+    *,
+    source: str,
+    actor_id: int,
+    fight_id: int | None,
+    allow_unlisted: bool,
+    requested_expansion: str | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    route = {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": actor_id,
+        "fight_id": fight_id,
+        "allow_unlisted": allow_unlisted,
+    }
+    args = ["report-player-talents", source, "--actor-id", str(actor_id)]
+    if fight_id is not None:
+        args.extend(["--fight-id", str(fight_id)])
+    if allow_unlisted:
+        args.append("--allow-unlisted")
+    producer_result = provider_invoke("warcraftlogs", args, expansion=requested_expansion)
+    packet = _transport_packet_from_provider_result(
+        ctx,
+        source=source,
+        route=route,
+        provider_result=producer_result,
+        command_name="warcraftlogs report-player-talents",
+    )
+    return route, producer_result, packet
+
+
+def _maybe_upgrade_transport_packet(
+    ctx: typer.Context,
+    *,
+    source: str,
+    route: dict[str, Any],
+    packet: dict[str, Any],
+    validate: bool,
+    requested_expansion: str | None,
+) -> tuple[str | None, bool, dict[str, Any] | None, dict[str, Any]]:
+    source_status = packet.get("transport_status") if isinstance(packet.get("transport_status"), str) else None
+    upgrade_result: dict[str, Any] | None = None
+    upgrade_attempted = bool(validate and source_status in {"raw_only", "unknown"})
+    if upgrade_attempted:
+        upgrade_result, packet = _upgrade_transport_packet_with_simc(packet, expansion=requested_expansion)
+        if upgrade_result.get("exit_code") != 0:
+            _fail_talent_route(
+                ctx,
+                code="packet_upgrade_failed",
+                message="simc validate-talent-transport failed while upgrading the packet.",
+                source=source,
+                kind="talent_transport",
+                route=route,
+                provider_result=upgrade_result,
+            )
+    return source_status, upgrade_attempted, upgrade_result, packet
+
+
 def _resolve_talent_transport(
     ctx: typer.Context,
     *,
@@ -811,7 +927,6 @@ def _resolve_talent_transport(
     requested_expansion = _requested_expansion(ctx)
     route: dict[str, Any]
     producer_result: dict[str, Any] | None = None
-    packet: dict[str, Any]
     try:
         packet_file = _load_transport_packet_file(source)
     except ValueError as exc:
@@ -829,102 +944,42 @@ def _resolve_talent_transport(
             "provider": None,
             "packet_path": packet_path,
         }
+    elif _looks_like_wowhead_talent_calc_reference(source):
+        route, producer_result, packet = _wowhead_transport_packet(
+            ctx,
+            source=source,
+            listed_build_limit=listed_build_limit,
+            requested_expansion=requested_expansion,
+        )
+    elif actor_id is not None and _looks_like_warcraftlogs_report_reference(source):
+        route, producer_result, packet = _warcraftlogs_transport_packet(
+            ctx,
+            source=source,
+            actor_id=actor_id,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+            requested_expansion=requested_expansion,
+        )
     else:
-        if _looks_like_wowhead_talent_calc_reference(source):
-            route = {"kind": "wowhead_talent_calc", "provider": "wowhead"}
-            producer_result = provider_invoke(
-                "wowhead",
-                ["talent-calc-packet", source, "--listed-build-limit", str(listed_build_limit)],
-                expansion=requested_expansion,
-            )
-            if producer_result.get("exit_code") != 0:
-                _fail_talent_route(
-                    ctx,
-                    code="provider_command_failed",
-                    message="wowhead talent-calc-packet failed.",
-                    source=source,
-                    kind="talent_transport",
-                    route=route,
-                    provider_result=producer_result,
-                )
-            producer_payload = producer_result.get("payload") if isinstance(producer_result.get("payload"), dict) else {}
-            packet_value = producer_payload.get("talent_transport_packet")
-            packet = packet_value if isinstance(packet_value, dict) else {}
-            if not packet:
-                _fail_talent_route(
-                    ctx,
-                    code="missing_transport_packet",
-                    message="wowhead talent-calc-packet did not return a talent transport packet.",
-                    source=source,
-                    kind="talent_transport",
-                    route=route,
-                    provider_result=producer_result,
-                )
-        else:
-            if actor_id is None or not _looks_like_warcraftlogs_report_reference(source):
-                _fail_talent_route(
-                    ctx,
-                    code="unsupported_talent_source",
-                    message=(
-                        "Use an explicit Wowhead talent-calc ref, an explicit Warcraft Logs report ref with --actor-id, "
-                        "or a local talent transport packet JSON path."
-                    ),
-                    source=source,
-                    kind="talent_transport",
-                )
-            route = {
-                "kind": "warcraftlogs_report_actor",
-                "provider": "warcraftlogs",
-                "actor_id": actor_id,
-                "fight_id": fight_id,
-                "allow_unlisted": allow_unlisted,
-            }
-            args = ["report-player-talents", source, "--actor-id", str(actor_id)]
-            if fight_id is not None:
-                args.extend(["--fight-id", str(fight_id)])
-            if allow_unlisted:
-                args.append("--allow-unlisted")
-            producer_result = provider_invoke("warcraftlogs", args, expansion=requested_expansion)
-            if producer_result.get("exit_code") != 0:
-                _fail_talent_route(
-                    ctx,
-                    code="provider_command_failed",
-                    message="warcraftlogs report-player-talents failed.",
-                    source=source,
-                    kind="talent_transport",
-                    route=route,
-                    provider_result=producer_result,
-                )
-            producer_payload = producer_result.get("payload") if isinstance(producer_result.get("payload"), dict) else {}
-            packet_value = producer_payload.get("talent_transport_packet")
-            packet = packet_value if isinstance(packet_value, dict) else {}
-            if not packet:
-                _fail_talent_route(
-                    ctx,
-                    code="missing_transport_packet",
-                    message="warcraftlogs report-player-talents did not return a talent transport packet.",
-                    source=source,
-                    kind="talent_transport",
-                    route=route,
-                    provider_result=producer_result,
-                )
+        _fail_talent_route(
+            ctx,
+            code="unsupported_talent_source",
+            message=(
+                "Use an explicit Wowhead talent-calc ref, an explicit Warcraft Logs report ref with --actor-id, "
+                "or a local talent transport packet JSON path."
+            ),
+            source=source,
+            kind="talent_transport",
+        )
 
-    source_status = packet.get("transport_status") if isinstance(packet.get("transport_status"), str) else None
-    upgrade_result: dict[str, Any] | None = None
-    upgrade_attempted = bool(validate and source_status in {"raw_only", "unknown"})
-    if upgrade_attempted:
-        upgrade_result, packet = _upgrade_transport_packet_with_simc(packet, expansion=requested_expansion)
-        if upgrade_result.get("exit_code") != 0:
-            _fail_talent_route(
-                ctx,
-                code="packet_upgrade_failed",
-                message="simc validate-talent-transport failed while upgrading the packet.",
-                source=source,
-                kind="talent_transport",
-                route=route,
-                provider_result=upgrade_result,
-            )
-
+    source_status, upgrade_attempted, upgrade_result, packet = _maybe_upgrade_transport_packet(
+        ctx,
+        source=source,
+        route=route,
+        packet=packet,
+        validate=validate,
+        requested_expansion=requested_expansion,
+    )
     final_status = packet.get("transport_status") if isinstance(packet.get("transport_status"), str) else None
     return {
         "source": source,
