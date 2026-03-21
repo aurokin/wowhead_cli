@@ -2659,6 +2659,68 @@ def test_warcraft_talent_packet_reports_upgrade_failure(monkeypatch, tmp_path: P
 
 
 
+def test_warcraft_talent_describe_preserves_wowhead_invalid_transport_packet_error(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowhead"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_transport_packet",
+                    "message": "wowhead talent-calc-packet produced an invalid talent transport packet: invalid test packet",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-describe", "druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "wowhead talent-calc-packet produced an invalid talent transport packet: invalid test packet"
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["provider_result"]["provider"] == "wowhead"
+
+
+
+def test_warcraft_talent_describe_preserves_warcraftlogs_invalid_transport_packet_error(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "warcraftlogs"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_transport_packet",
+                    "message": "warcraftlogs report-player-talents produced an invalid talent transport packet: invalid test packet",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-describe", "abcd1234", "--fight-id", "1", "--actor-id", "9"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "warcraftlogs report-player-talents produced an invalid talent transport packet: invalid test packet"
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+    assert payload["provider_result"]["provider"] == "warcraftlogs"
+
+
+
 def test_warcraft_talent_describe_reports_simc_failure(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "exact-packet.json"
     apl_path = tmp_path / "balance.simc"
