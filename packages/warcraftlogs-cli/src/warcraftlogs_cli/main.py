@@ -1380,12 +1380,22 @@ def _matching_spec_players(report: dict[str, Any], *, spec_name: str) -> list[di
 
 def _all_player_detail_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
     details = _report_player_details_payload(report)["player_details"]["roles"]
+    return _all_player_detail_rows_from_roles(details)
+
+
+def _all_player_detail_rows_from_roles(details: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for role, actors in details.items():
         for actor in actors:
             if isinstance(actor, dict):
                 rows.append({"role": role, **actor})
     return rows
+
+
+def _player_detail_actor(details_payload: dict[str, Any], actor_id: int) -> dict[str, Any] | None:
+    player_details = details_payload.get("player_details") if isinstance(details_payload.get("player_details"), dict) else {}
+    roles = player_details.get("roles") if isinstance(player_details.get("roles"), dict) else {}
+    return next((row for row in _all_player_detail_rows_from_roles(roles) if row.get("id") == actor_id), None)
 
 
 def _normalized_talent_tree_rows(actor: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1405,18 +1415,17 @@ def _normalized_talent_tree_rows(actor: dict[str, Any]) -> list[dict[str, Any]]:
     return normalized_rows
 
 
-def _player_talent_transport_packet(
-    actor: dict[str, Any],
-    *,
-    report_code: str,
-    fight_id: int,
-    actor_id: int,
-) -> dict[str, Any]:
+def _player_talent_transport_identity(actor: dict[str, Any]) -> tuple[str | None, str | None]:
     class_spec_identity = actor.get("class_spec_identity") if isinstance(actor.get("class_spec_identity"), dict) else {}
     identity = class_spec_identity.get("identity") if isinstance(class_spec_identity.get("identity"), dict) else {}
-    raw_rows = _normalized_talent_tree_rows(actor)
     actor_class = identity.get("actor_class") if isinstance(identity.get("actor_class"), str) else None
     spec = identity.get("spec") if isinstance(identity.get("spec"), str) else None
+    return actor_class, spec
+
+
+def _player_talent_transport_validation(actor: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    raw_rows = _normalized_talent_tree_rows(actor)
+    actor_class, spec = _player_talent_transport_identity(actor)
     validation_result = validate_talent_tree_transport(
         actor_class=actor_class,
         spec=spec,
@@ -1424,19 +1433,44 @@ def _player_talent_transport_packet(
     )
     transport_forms = validation_result.get("transport_forms") if isinstance(validation_result.get("transport_forms"), dict) else {}
     validation = validation_result.get("validation") if isinstance(validation_result.get("validation"), dict) else {}
+    return raw_rows, transport_forms, validation
+
+
+def _player_talent_source_notes(transport_forms: dict[str, Any]) -> list[str]:
     source_notes = [
         "raw talents came from combatant_info.talentTree",
         "one report, one fight, one actor scope",
     ]
     if transport_forms.get("simc_split_talents"):
         source_notes.append("validated simc_split_talents via local SimulationCraft trait data")
+    return source_notes
+
+
+def _write_transport_packet_json(out: str | None, transport_packet: dict[str, Any]) -> str | None:
+    if not out:
+        return None
+    output_path = Path(out).expanduser().resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(transport_packet, indent=2) + "\n")
+    return str(output_path)
+
+
+def _player_talent_transport_packet(
+    actor: dict[str, Any],
+    *,
+    report_code: str,
+    fight_id: int,
+    actor_id: int,
+) -> dict[str, Any]:
+    actor_class, spec = _player_talent_transport_identity(actor)
+    raw_rows, transport_forms, validation = _player_talent_transport_validation(actor)
     return talent_transport_packet_payload(
         actor_class=actor_class,
         spec=spec,
         confidence="high" if actor_class and spec else "none",
         source="warcraftlogs_talent_tree",
         provider="warcraftlogs",
-        source_notes=source_notes,
+        source_notes=_player_talent_source_notes(transport_forms),
         transport_forms=transport_forms,
         raw_evidence={
             "source_contract": "warcraftlogs_combatant_info_talentTree",
@@ -4067,14 +4101,7 @@ def report_player_talents(
         report_code=ref.code,
         fight_id=fight.get("id") if isinstance(fight.get("id"), int) else None,
     )
-    player_rows: list[dict[str, Any]] = []
-    for role_rows in (details_payload.get("player_details") or {}).get("roles", {}).values():
-        if not isinstance(role_rows, list):
-            continue
-        for row in role_rows:
-            if isinstance(row, dict):
-                player_rows.append(row)
-    actor = next((row for row in player_rows if row.get("id") == actor_id), None)
+    actor = _player_detail_actor(details_payload, actor_id)
     if not isinstance(actor, dict):
         _fail(ctx, "not_found", f"Actor ID {actor_id} was not present in the selected fight.")
         return
@@ -4090,12 +4117,7 @@ def report_player_talents(
         fight_id=int(fight["id"]),
         actor_id=actor_id,
     )
-    written_packet_path: str | None = None
-    if out:
-        output_path = Path(out).expanduser().resolve()
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(transport_packet, indent=2) + "\n")
-        written_packet_path = str(output_path)
+    written_packet_path = _write_transport_packet_json(out, transport_packet)
 
     _emit(
         ctx,
