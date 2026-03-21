@@ -28,6 +28,7 @@ from warcraft_core.identity import (
     encounter_identity_payload,
     report_actor_identity_payload,
     talent_transport_packet_payload,
+    validate_talent_transport_packet,
 )
 from warcraft_core.output import emit
 from warcraft_core.paths import provider_state_path
@@ -78,6 +79,14 @@ def _emit(ctx: typer.Context, payload: dict[str, Any], *, err: bool = False) -> 
 def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> None:
     _emit(ctx, {"ok": False, "error": {"code": code, "message": message}}, err=True)
     raise typer.Exit(status)
+
+
+def _validated_transport_packet(ctx: typer.Context, packet: Any, *, command_name: str) -> dict[str, Any]:
+    try:
+        return validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        _fail(ctx, "invalid_transport_packet", f"{command_name} produced an invalid talent transport packet: {exc}")
+        raise AssertionError("unreachable")
 
 
 def _utc_now_z() -> str:
@@ -4111,11 +4120,15 @@ def report_player_talents(
         _fail(ctx, "missing_talent_tree", f"Actor ID {actor_id} did not include combatant_info.talentTree in the selected fight.")
         return
 
-    transport_packet = _player_talent_transport_packet(
-        actor,
-        report_code=ref.code,
-        fight_id=int(fight["id"]),
-        actor_id=actor_id,
+    transport_packet = _validated_transport_packet(
+        ctx,
+        _player_talent_transport_packet(
+            actor,
+            report_code=ref.code,
+            fight_id=int(fight["id"]),
+            actor_id=actor_id,
+        ),
+        command_name="warcraftlogs report-player-talents",
     )
     written_packet_path = _write_transport_packet_json(out, transport_packet)
 

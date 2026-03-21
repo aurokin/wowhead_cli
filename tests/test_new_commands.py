@@ -878,6 +878,31 @@ def test_talent_calc_packet_command_can_write_exact_transport_packet(monkeypatch
     assert written_packet["transport_status"] == "exact"
 
 
+def test_talent_calc_packet_command_rejects_invalid_transport_packet(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    monkeypatch.setattr(
+        "wowhead_cli.main.build_reference_transport_packet_payload",
+        lambda **kwargs: {
+            "kind": "talent_transport_packet",
+            "transport_status": "validated",
+            "build_identity": {},
+            "transport_forms": {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+            "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+            "validation": {},
+            "scope": {},
+        },
+    )
+
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+
+
 def test_profession_tree_command_decodes_url(monkeypatch) -> None:
     def fake_page_html(self, page_url: str):  # noqa: ANN001
         assert page_url.endswith("/profession-tree-calc/alchemy/BCuA")

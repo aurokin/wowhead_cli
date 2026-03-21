@@ -2464,6 +2464,30 @@ def test_warcraftlogs_report_player_talents_can_write_transport_packet(monkeypat
     assert written_packet["scope"] == {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9}
 
 
+def test_warcraftlogs_report_player_talents_rejects_invalid_transport_packet(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._player_talent_transport_packet",
+        lambda *args, **kwargs: {
+            "kind": "talent_transport_packet",
+            "transport_status": "validated",
+            "build_identity": {},
+            "transport_forms": {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+            "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+            "validation": {},
+            "scope": {},
+        },
+    )
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+
+
 def test_warcraftlogs_report_encounter_casts_summarizes_cast_rows(monkeypatch) -> None:
     monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
 

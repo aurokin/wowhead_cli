@@ -13,7 +13,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 import typer
 
-from warcraft_core.identity import build_identity_payload, build_reference_transport_packet_payload
+from warcraft_core.identity import build_identity_payload, build_reference_transport_packet_payload, validate_talent_transport_packet
 from warcraft_content.guide_analysis import extract_section_chunk_analysis_surfaces
 from wowhead_cli.cache import (
     clear_file_cache,
@@ -211,6 +211,14 @@ def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> No
     }
     _emit(ctx, payload, err=True)
     raise typer.Exit(status)
+
+
+def _validated_transport_packet(ctx: typer.Context, packet: Any, *, command_name: str) -> dict[str, Any]:
+    try:
+        return validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        _fail(ctx, "invalid_transport_packet", f"{command_name} produced an invalid talent transport packet: {exc}")
+        raise AssertionError("unreachable")
 
 
 def _load_cache_settings_or_fail(ctx: typer.Context):
@@ -5120,13 +5128,17 @@ def talent_calc_packet(
     out: str | None = typer.Option(None, "--out", help="Optional path to write just the exact talent transport packet JSON."),
 ) -> None:
     payload = _talent_calc_payload(ctx, ref=ref, listed_build_limit=listed_build_limit)
-    packet = build_reference_transport_packet_payload(
-        ref=str(payload["tool"]["state_url"]),
-        provider="wowhead",
-        source="wowhead_talent_calc_url",
-        source_url=str(payload["page"]["canonical_url"]),
-        notes=["exact transport packet came from an explicit Wowhead talent-calc ref"],
-        scope={"type": "wowhead_talent_calc", "expansion": str(payload["expansion"])},
+    packet = _validated_transport_packet(
+        ctx,
+        build_reference_transport_packet_payload(
+            ref=str(payload["tool"]["state_url"]),
+            provider="wowhead",
+            source="wowhead_talent_calc_url",
+            source_url=str(payload["page"]["canonical_url"]),
+            notes=["exact transport packet came from an explicit Wowhead talent-calc ref"],
+            scope={"type": "wowhead_talent_calc", "expansion": str(payload["expansion"])},
+        ),
+        command_name="wowhead talent-calc-packet",
     )
     written_packet_path: str | None = None
     if isinstance(out, str) and out.strip():
