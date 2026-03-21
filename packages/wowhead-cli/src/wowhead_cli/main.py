@@ -5117,6 +5117,7 @@ def talent_calc_packet(
         max=100,
         help="Maximum embedded listed builds to return when the page exposes them.",
     ),
+    out: str | None = typer.Option(None, "--out", help="Optional path to write just the exact talent transport packet JSON."),
 ) -> None:
     payload = _talent_calc_payload(ctx, ref=ref, listed_build_limit=listed_build_limit)
     packet = build_reference_transport_packet_payload(
@@ -5127,6 +5128,12 @@ def talent_calc_packet(
         notes=["exact transport packet came from an explicit Wowhead talent-calc ref"],
         scope={"type": "wowhead_talent_calc", "expansion": str(payload["expansion"])},
     )
+    written_packet_path: str | None = None
+    if isinstance(out, str) and out.strip():
+        output_path = Path(out).expanduser().resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(packet, indent=2) + "\n", encoding="utf-8")
+        written_packet_path = str(output_path)
     _emit(
         ctx,
         {
@@ -5134,6 +5141,7 @@ def talent_calc_packet(
             "kind": "talent_calc_packet",
             **payload,
             "talent_transport_packet": packet,
+            "written_packet_path": written_packet_path,
         },
     )
 

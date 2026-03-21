@@ -218,6 +218,7 @@ Current tool state:
 - `talent-calc-packet` is the first exact talent transport producer on the Wowhead side:
   - it emits an exact `talent_transport_packet` from the explicit calculator ref
   - it keeps the cited state URL, page metadata, and listed embedded builds next to the packet
+  - add `--out <path>` when you want to save just the exact packet JSON for wrapper handoff or parity checks
 - `profession-tree` is now a real route-state decoder and extracts:
   - profession slug
   - loadout code

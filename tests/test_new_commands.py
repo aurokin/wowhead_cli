@@ -860,6 +860,24 @@ def test_talent_calc_packet_command_emits_exact_transport_packet(monkeypatch) ->
     assert payload["listed_builds"]["count"] == 2
 
 
+def test_talent_calc_packet_command_can_write_exact_transport_packet(monkeypatch, tmp_path: Path) -> None:
+    out_path = tmp_path / "balance-packet.json"
+
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(out_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["written_packet_path"] == str(out_path.resolve())
+
+    written_packet = json.loads(out_path.read_text())
+    assert written_packet == payload["talent_transport_packet"]
+    assert written_packet["transport_status"] == "exact"
+
+
 def test_profession_tree_command_decodes_url(monkeypatch) -> None:
     def fake_page_html(self, page_url: str):  # noqa: ANN001
         assert page_url.endswith("/profession-tree-calc/alchemy/BCuA")
