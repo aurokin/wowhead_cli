@@ -61,7 +61,7 @@ from simc_cli.run import binary_version, build_repo, repo_git_status, run_profil
 from simc_cli.search import find_action, spec_file_search
 from simc_cli.sim import first_action_hits, run_first_casts, summarize_first_casts
 from simc_cli.talent_transport import validate_talent_tree_transport
-from warcraft_core.identity import build_identity_payload, refresh_talent_transport_packet
+from warcraft_core.identity import build_identity_payload, refresh_talent_transport_packet, validate_talent_transport_packet
 from warcraft_core.output import emit
 
 app = typer.Typer(add_completion=False, help="SimulationCraft local workflow CLI.")
@@ -203,11 +203,8 @@ def _relative_to_repo(paths: RepoPaths, path: Path) -> str | None:
 def _load_transport_packet(path: str) -> tuple[dict[str, Any], str]:
     resolved = Path(path).expanduser().resolve()
     raw = json.loads(resolved.read_text())
-    if not isinstance(raw, dict):
-        raise ValueError(f"Build packet must be a JSON object: {resolved}")
-    if raw.get("kind") != "talent_transport_packet":
-        raise ValueError(f"Unsupported build packet kind under {resolved}: {raw.get('kind')!r}")
-    return raw, str(resolved)
+    packet = validate_talent_transport_packet(raw)
+    return packet, str(resolved)
 
 
 def _packet_identity_value(packet: dict[str, Any], key: str) -> str | None:

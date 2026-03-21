@@ -13,7 +13,7 @@ from raiderio_cli.main import app as raiderio_app
 from simc_cli.main import app as simc_app
 from typer.main import get_command
 from warcraft_content.article_bundle import compare_article_bundles, load_article_bundle
-from warcraft_core.identity import build_reference_transport_packet_payload
+from warcraft_core.identity import build_reference_transport_packet_payload, validate_talent_transport_packet
 from warcraft_core.output import emit
 from warcraft_core.provider_contract import (
     compact_resolve_match,
@@ -688,9 +688,11 @@ def _load_transport_packet_file(source: str) -> tuple[dict[str, Any], str] | Non
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Invalid talent transport packet file {path}: {exc}") from exc
-    if not isinstance(payload, dict) or payload.get("kind") != "talent_transport_packet":
-        raise ValueError(f"File is not a talent transport packet: {path}")
-    return payload, str(path.resolve())
+    try:
+        packet = validate_talent_transport_packet(payload)
+    except ValueError as exc:
+        raise ValueError(f"Invalid talent transport packet file {path}: {exc}") from exc
+    return packet, str(path.resolve())
 
 
 def _write_transport_packet(path_value: str, packet: dict[str, Any]) -> str:
@@ -829,7 +831,18 @@ def _transport_packet_from_provider_result(
             route=route,
             provider_result=provider_result,
         )
-    return packet
+    try:
+        return validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        _fail_talent_route(
+            ctx,
+            code="invalid_transport_packet",
+            message=f"{command_name} returned an invalid talent transport packet: {exc}",
+            source=source,
+            kind="talent_transport",
+            route=route,
+            provider_result=provider_result,
+        )
 
 
 def _wowhead_transport_packet(

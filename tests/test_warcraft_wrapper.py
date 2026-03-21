@@ -2301,6 +2301,7 @@ def test_warcraft_talent_packet_routes_warcraftlogs_and_upgrades(monkeypatch) ->
                     "talent_transport_packet": {
                         "kind": "talent_transport_packet",
                         "transport_status": "raw_only",
+                        "build_identity": {},
                         "transport_forms": {},
                         "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
                         "validation": {"status": "not_validated"},
@@ -2359,6 +2360,7 @@ def test_warcraft_talent_packet_upgrades_packet_file_and_writes_output(monkeypat
             {
                 "kind": "talent_transport_packet",
                 "transport_status": "raw_only",
+                "build_identity": {},
                 "transport_forms": {},
                 "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
                 "validation": {"status": "not_validated"},
@@ -2436,6 +2438,85 @@ def test_warcraft_talent_packet_fails_when_provider_omits_packet(monkeypatch) ->
 
 
 
+def test_warcraft_talent_packet_rejects_malformed_packet_status(tmp_path: Path) -> None:
+    packet_path = tmp_path / "mismatched-status.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "build_identity": {},
+                "transport_forms": {},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+                "validation": {},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert "does not match packet contents" in payload["error"]["message"]
+
+
+
+def test_warcraft_talent_packet_rejects_malformed_transport_forms(tmp_path: Path) -> None:
+    packet_path = tmp_path / "bad-forms.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "validated",
+                "build_identity": {},
+                "transport_forms": {"simc_split_talents": []},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+                "validation": {"status": "validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert "simc_split_talents" in payload["error"]["message"]
+
+
+
+def test_warcraft_talent_packet_rejects_invalid_provider_packet(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowhead"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "validated",
+                    "build_identity": {},
+                    "transport_forms": {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {},
+                }
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["provider_result"]["provider"] == "wowhead"
+
+
+
 def test_warcraft_talent_packet_reports_upgrade_failure(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "raw-packet.json"
     packet_path.write_text(
@@ -2443,6 +2524,7 @@ def test_warcraft_talent_packet_reports_upgrade_failure(monkeypatch, tmp_path: P
             {
                 "kind": "talent_transport_packet",
                 "transport_status": "raw_only",
+                "build_identity": {},
                 "transport_forms": {},
                 "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
                 "validation": {"status": "not_validated"},
@@ -2597,6 +2679,7 @@ def test_warcraft_talent_describe_routes_warcraftlogs_and_upgrades(monkeypatch) 
                     "talent_transport_packet": {
                         "kind": "talent_transport_packet",
                         "transport_status": "raw_only",
+                        "build_identity": {},
                         "transport_forms": {},
                         "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
                         "validation": {"status": "not_validated"},

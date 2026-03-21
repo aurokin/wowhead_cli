@@ -294,6 +294,9 @@ def test_simc_validate_talent_transport_accepts_build_packet(monkeypatch, tmp_pa
                         "identity": {"actor_class": "druid", "spec": "balance"},
                     }
                 },
+                "transport_forms": {},
+                "validation": {},
+                "scope": {},
                 "raw_evidence": {
                     "talent_tree_entries": [
                         {"entry": 103324, "node_id": 82244, "rank": 1},
@@ -340,6 +343,29 @@ def test_simc_validate_talent_transport_accepts_build_packet(monkeypatch, tmp_pa
     assert payload["updated_packet"].get("source") == packet_payload.get("source")
 
 
+def test_simc_validate_talent_transport_rejects_malformed_build_packet(tmp_path: Path) -> None:
+    packet_path = tmp_path / "bad-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "validated",
+                "build_identity": {},
+                "transport_forms": {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(simc_app, ["validate-talent-transport", "--build-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert "does not match packet contents" in payload["error"]["message"]
+
+
 def test_simc_validate_talent_transport_can_write_upgraded_packet(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     out_path = tmp_path / "validated-packet.json"
@@ -358,6 +384,9 @@ def test_simc_validate_talent_transport_can_write_upgraded_packet(monkeypatch, t
                         {"entry": 103324, "node_id": 82244, "rank": 1},
                     ]
                 },
+                "transport_forms": {},
+                "validation": {"status": "not_validated"},
+                "scope": {},
                 "source": {"provider": "warcraftlogs", "source": "warcraftlogs_talent_tree"},
             }
         )

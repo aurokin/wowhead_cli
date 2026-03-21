@@ -469,6 +469,61 @@ def refresh_talent_transport_packet(
     return refreshed
 
 
+def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
+    if not isinstance(packet, dict):
+        raise ValueError("Talent transport packet must be a JSON object.")
+    if packet.get("kind") != "talent_transport_packet":
+        raise ValueError(f"Unsupported talent transport packet kind: {packet.get('kind')!r}")
+
+    transport_status = packet.get("transport_status")
+    if transport_status not in {"unknown", "raw_only", "validated", "exact"}:
+        raise ValueError(f"Unsupported talent transport status: {transport_status!r}")
+
+    build_identity = packet.get("build_identity")
+    if not isinstance(build_identity, dict):
+        raise ValueError("Talent transport packet build_identity must be an object.")
+    transport_forms = packet.get("transport_forms")
+    if not isinstance(transport_forms, dict):
+        raise ValueError("Talent transport packet transport_forms must be an object.")
+    raw_evidence = packet.get("raw_evidence")
+    if not isinstance(raw_evidence, dict):
+        raise ValueError("Talent transport packet raw_evidence must be an object.")
+    validation = packet.get("validation")
+    if not isinstance(validation, dict):
+        raise ValueError("Talent transport packet validation must be an object.")
+    scope = packet.get("scope")
+    if not isinstance(scope, dict):
+        raise ValueError("Talent transport packet scope must be an object.")
+
+    wowhead_ref = transport_forms.get("wowhead_talent_calc_url")
+    if wowhead_ref is not None and not (isinstance(wowhead_ref, str) and wowhead_ref.strip()):
+        raise ValueError("Talent transport packet wowhead_talent_calc_url must be a non-empty string.")
+
+    wow_export = transport_forms.get("wow_talent_export")
+    if wow_export is not None and not (isinstance(wow_export, str) and wow_export.strip()):
+        raise ValueError("Talent transport packet wow_talent_export must be a non-empty string.")
+
+    split = transport_forms.get("simc_split_talents")
+    if split is not None:
+        if not isinstance(split, dict):
+            raise ValueError("Talent transport packet simc_split_talents must be an object.")
+        if not any(isinstance(split.get(key), str) and split.get(key).strip() for key in ("class_talents", "spec_talents", "hero_talents")):
+            raise ValueError(
+                "Talent transport packet simc_split_talents must include at least one non-empty class/spec/hero string."
+            )
+
+    expected_status = _talent_transport_status(
+        transport_forms=transport_forms,
+        raw_evidence=raw_evidence,
+        validation=validation,
+    )
+    if transport_status != expected_status:
+        raise ValueError(
+            f"Talent transport packet transport_status {transport_status!r} does not match packet contents; expected {expected_status!r}."
+        )
+    return packet
+
+
 def _talent_transport_status(
     *,
     transport_forms: dict[str, Any],

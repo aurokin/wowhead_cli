@@ -16,6 +16,7 @@ from warcraft_core.identity import (
     refresh_talent_transport_packet,
     report_actor_identity_payload,
     talent_transport_packet_payload,
+    validate_talent_transport_packet,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "refresh_talent_transport_packet",
     "report_actor_identity_payload",
     "talent_transport_packet_payload",
+    "validate_talent_transport_packet",
 ]

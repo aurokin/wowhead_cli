@@ -8,7 +8,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from warcraft_core.identity import parse_wowhead_talent_calc_ref as parse_shared_wowhead_talent_calc_ref
+from warcraft_core.identity import (
+    parse_wowhead_talent_calc_ref as parse_shared_wowhead_talent_calc_ref,
+    validate_talent_transport_packet,
+)
 
 from simc_cli.repo import RepoPaths
 
@@ -74,11 +77,8 @@ class BuildResolution:
 def _load_build_packet(path: str) -> tuple[dict[str, Any], str]:
     resolved = Path(path).expanduser().resolve()
     raw = json.loads(resolved.read_text())
-    if not isinstance(raw, dict):
-        raise ValueError(f"Build packet must be a JSON object: {resolved}")
-    if raw.get("kind") != "talent_transport_packet":
-        raise ValueError(f"Unsupported build packet kind under {resolved}: {raw.get('kind')!r}")
-    return raw, str(resolved)
+    packet = validate_talent_transport_packet(raw)
+    return packet, str(resolved)
 
 
 def _identity_value(packet: dict[str, Any], key: str) -> str | None:

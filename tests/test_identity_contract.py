@@ -13,6 +13,7 @@ from warcraft_core.identity import (
     refresh_talent_transport_packet,
     report_actor_identity_payload,
     talent_transport_packet_payload,
+    validate_talent_transport_packet,
 )
 
 
@@ -217,3 +218,51 @@ def test_refresh_talent_transport_packet_preserves_scope_and_upgrades_status() -
     assert refreshed["scope"] == packet["scope"]
     assert refreshed["source"] == packet["source"]
     assert refreshed["raw_evidence"] == packet["raw_evidence"]
+
+
+def test_validate_talent_transport_packet_accepts_exact_packets() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="wowhead_talent_calc_url",
+        transport_forms={"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+    )
+
+    assert validate_talent_transport_packet(packet) == packet
+
+
+def test_validate_talent_transport_packet_rejects_mismatched_status() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="wowhead_talent_calc_url",
+        transport_forms={"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+    )
+    packet["transport_status"] = "raw_only"
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "does not match packet contents" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_validate_talent_transport_packet_rejects_empty_simc_split_forms() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="warcraftlogs_talent_tree",
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+    )
+    packet["transport_forms"] = {"simc_split_talents": {"class_talents": "  "}}
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "simc_split_talents" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
