@@ -89,8 +89,8 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
 - `guide-builds-simc` also includes explicit provenance, citations, and source freshness metadata for the handoff packet so agents can tell whether the build evidence came from one bundle or a fresher orchestration root
 - each handed-off guide build now also carries an exact `talent_transport_packet`, so explicit Wowhead build refs and raw Warcraft Logs talent trees can travel through the same packet contract
 - `warcraft talent-packet` is the wrapper-level packet router:
-  - explicit Wowhead talent-calc refs route to `wowhead talent-calc-packet`
-  - explicit Warcraft Logs report refs route to `warcraftlogs report-player-talents` and can auto-upgrade through `simc`
+  - explicit Wowhead talent-calc refs with build codes route to `wowhead talent-calc-packet`
+  - explicit Warcraft Logs report refs with `--actor-id` route to `warcraftlogs report-player-talents` and can auto-upgrade through `simc`
   - existing packet JSON files can be re-emitted or upgraded without choosing a provider first
 - `warcraft talent-describe` reuses that same routing contract, then hands the final packet to `simc describe-build`
   - use `--packet-out <path>` when you want to keep the final routed packet that was described, including any validation upgrade
@@ -735,7 +735,7 @@ SimulationCraft behavior:
   - exact forms such as embedded Wowhead URLs or WoW export strings are preferred first
   - validated reconstructed forms such as `simc_split_talents` are used when no exact form exists
   - raw-only packets must be upgraded through `simc validate-talent-transport` before they can drive build analysis
-  - packet provenance is preserved on the returned `build_spec.transport_packet` block
+  - the returned `build_spec.transport_packet` block records only the packet `path`, chosen `transport_form`, and `transport_status`; packet provenance continues to live in `source_notes`
   - malformed packet files now fail consistently with `invalid_build_packet`
 - `validate-talent-transport` is the reusable packet-validation primitive:
   - use `--build-packet <path>` when another integration already emitted a raw scoped packet

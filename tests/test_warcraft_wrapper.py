@@ -2672,6 +2672,38 @@ def test_warcraft_talent_packet_preserves_provider_error_codes(monkeypatch) -> N
     assert payload["error"]["message"] == "Public Warcraft Logs API access requires client credentials."
 
 
+def test_warcraft_talent_packet_preserves_warcraftlogs_not_found(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "warcraftlogs"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "not_found",
+                    "message": "Actor ID 999 was not present in the selected fight.",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "999"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "not_found"
+    assert payload["error"]["message"] == "Actor ID 999 was not present in the selected fight."
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 999,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+
+
 def test_warcraft_talent_packet_preserves_ok_false_provider_errors(monkeypatch) -> None:
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
         assert provider == "wowhead"
@@ -3018,6 +3050,38 @@ def test_warcraft_talent_describe_preserves_warcraftlogs_invalid_transport_packe
         "allow_unlisted": False,
     }
     assert payload["provider_result"]["provider"] == "warcraftlogs"
+
+
+def test_warcraft_talent_describe_preserves_warcraftlogs_not_found(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "warcraftlogs"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "not_found",
+                    "message": "Actor ID 999 was not present in the selected fight.",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-describe", "abcd1234", "--fight-id", "1", "--actor-id", "999"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "not_found"
+    assert payload["error"]["message"] == "Actor ID 999 was not present in the selected fight."
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 999,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
 
 
 
@@ -4063,6 +4127,89 @@ def test_warcraft_talent_describe_hides_stale_packet_path_after_in_memory_upgrad
     assert transport_packet["transport_form"] == "simc_split_talents"
     assert transport_packet["transport_status"] == "validated"
     assert "path" not in transport_packet
+
+
+def test_warcraft_talent_describe_hides_stale_packet_path_after_raw_only_refresh(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "transport_forms": {},
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="talent_transport_packet",
+        transport_status="raw_only",
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "raw_only",
+                "reason": "unresolved_talent_entries",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["source_packet_status"] == "raw_only"
+    assert payload["upgraded"] is True
+    assert payload["talent_transport_packet"]["transport_status"] == "raw_only"
+    assert payload["talent_transport_packet"]["validation"] == {
+        "status": "raw_only",
+        "reason": "unresolved_talent_entries",
+        "source": "simc_trait_data_round_trip",
+    }
+    transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
+    assert transport_packet["transport_form"] == "talent_transport_packet"
+    assert transport_packet["transport_status"] == "raw_only"
+    assert "path" not in transport_packet
+
+
+def test_warcraft_talent_packet_rejects_home_relative_missing_packet_path(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    home_dir = tmp_path / "home"
+    home_dir.mkdir()
+    monkeypatch.setenv("HOME", str(home_dir))
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "~/missing-packet.json"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "Talent transport packet file was not found: ~/missing-packet.json"
+
+
+def test_warcraft_talent_describe_rejects_backslash_packet_like_input() -> None:
+    result = runner.invoke(warcraft_app, ["talent-describe", r"tmp\missing-packet.json"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == r"Talent transport packet file was not found: tmp\missing-packet.json"
 
 
 def test_warcraft_passthrough_to_raiderio(monkeypatch) -> None:

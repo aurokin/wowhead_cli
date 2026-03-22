@@ -261,7 +261,10 @@ def _packet_talent_tree_rows(packet: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _parse_talent_row(value: str) -> dict[str, int]:
-    entry_text, node_text, rank_text = (part.strip() for part in value.split(":", 2))
+    parts = [part.strip() for part in value.split(":", 2)]
+    if len(parts) != 3:
+        raise ValueError(f"Invalid talent row '{value}'. Expected entry_id:node_id:rank.")
+    entry_text, node_text, rank_text = parts
     if not entry_text.isdigit() or not node_text.isdigit() or not rank_text.isdigit():
         raise ValueError(f"Invalid talent row '{value}'. Expected entry_id:node_id:rank.")
     return {
@@ -801,8 +804,8 @@ def decode_build_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
-    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or Wowhead talent-calc URL with build code."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -883,8 +886,8 @@ def identify_build_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
-    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or Wowhead talent-calc URL."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or Wowhead talent-calc URL with build code."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),

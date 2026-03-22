@@ -346,6 +346,100 @@ def test_load_build_spec_extracts_wow_export_transport_form_from_packet(tmp_path
     assert spec.transport_form == "wow_talent_export"
 
 
+def test_load_build_spec_uses_apl_inference_when_packet_identity_is_missing(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {}
+            }
+          },
+          "transport_forms": {
+            "wow_talent_export": "ABC123"
+          },
+          "raw_evidence": {
+            "reference_type": "wow_talent_export"
+          },
+          "validation": {},
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    spec = load_build_spec(
+        apl_path=str(apl_path),
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=None,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+        build_packet=str(packet_path),
+    )
+
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
+    assert spec.talents == "ABC123"
+    assert any(note.startswith("inferred from apl:") for note in spec.source_notes)
+
+
+def test_load_build_spec_does_not_override_packet_identity_with_apl_inference(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    apl_path = tmp_path / "evoker_devastation.simc"
+    apl_path.write_text("actions=disintegrate\n")
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "wow_talent_export": "ABC123"
+          },
+          "raw_evidence": {
+            "reference_type": "wow_talent_export"
+          },
+          "validation": {},
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    spec = load_build_spec(
+        apl_path=str(apl_path),
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=None,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+        build_packet=str(packet_path),
+    )
+
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
+    assert spec.talents == "ABC123"
+
+
 def test_load_build_spec_rejects_conflicting_exact_transport_forms(tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     packet_path.write_text(

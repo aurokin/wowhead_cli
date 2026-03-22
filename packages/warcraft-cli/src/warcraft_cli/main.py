@@ -867,6 +867,10 @@ def _upgrade_transport_packet_with_simc(
     return result, validate_talent_transport_packet(updated_packet)
 
 
+def _transport_packet_changed(previous_packet: dict[str, Any], updated_packet: dict[str, Any]) -> bool:
+    return previous_packet != updated_packet
+
+
 def _describe_transport_packet_with_simc(
     packet: dict[str, Any],
     *,
@@ -1043,11 +1047,13 @@ def _maybe_upgrade_transport_packet(
     validate: bool,
     requested_expansion: str | None,
     kind: str,
-) -> tuple[str | None, bool, dict[str, Any] | None, dict[str, Any]]:
+) -> tuple[str | None, bool, bool, dict[str, Any] | None, dict[str, Any]]:
     source_status = packet.get("transport_status") if isinstance(packet.get("transport_status"), str) else None
     upgrade_result: dict[str, Any] | None = None
+    packet_changed = False
     upgrade_attempted = bool(validate and source_status in {"raw_only", "unknown"})
     if upgrade_attempted:
+        original_packet = packet
         try:
             upgrade_result, packet = _upgrade_transport_packet_with_simc(packet, expansion=requested_expansion)
         except ValueError as exc:
@@ -1080,7 +1086,8 @@ def _maybe_upgrade_transport_packet(
                 route=route,
                 provider_result=upgrade_result,
             )
-    return source_status, upgrade_attempted, upgrade_result, packet
+        packet_changed = _transport_packet_changed(original_packet, packet)
+    return source_status, upgrade_attempted, packet_changed, upgrade_result, packet
 
 
 def _resolve_talent_transport(
@@ -1152,7 +1159,7 @@ def _resolve_talent_transport(
             kind=kind,
         )
 
-    source_status, upgrade_attempted, upgrade_result, packet = _maybe_upgrade_transport_packet(
+    source_status, upgrade_attempted, packet_changed, upgrade_result, packet = _maybe_upgrade_transport_packet(
         ctx,
         source=source,
         route=route,
@@ -1168,7 +1175,7 @@ def _resolve_talent_transport(
         "requested_expansion": requested_expansion,
         "source_packet_status": source_status,
         "upgrade_attempted": upgrade_attempted,
-        "upgraded": source_status != final_status,
+        "upgraded": packet_changed,
         "producer_result": producer_result,
         "upgrade_result": upgrade_result,
         "talent_transport_packet": packet,
@@ -2028,7 +2035,7 @@ def talent_packet(
     ctx: typer.Context,
     source: str = typer.Argument(
         ...,
-        help="Explicit Wowhead talent-calc ref, explicit Warcraft Logs report ref, or a talent transport packet JSON path.",
+        help="Explicit Wowhead talent-calc ref with build code, explicit Warcraft Logs report ref with --actor-id, or a talent transport packet JSON path.",
     ),
     actor_id: int | None = typer.Option(None, "--actor-id", help="Required for Warcraft Logs report sources; report-local actor ID."),
     fight_id: int | None = typer.Option(None, "--fight-id", help="Optional explicit fight id for Warcraft Logs report sources."),
@@ -2093,7 +2100,7 @@ def talent_describe(
     ctx: typer.Context,
     source: str = typer.Argument(
         ...,
-        help="Explicit Wowhead talent-calc ref, explicit Warcraft Logs report ref, or a talent transport packet JSON path.",
+        help="Explicit Wowhead talent-calc ref with build code, explicit Warcraft Logs report ref with --actor-id, or a talent transport packet JSON path.",
     ),
     actor_id: int | None = typer.Option(None, "--actor-id", help="Required for Warcraft Logs report sources; report-local actor ID."),
     fight_id: int | None = typer.Option(None, "--fight-id", help="Optional explicit fight id for Warcraft Logs report sources."),

@@ -2452,6 +2452,19 @@ def test_warcraftlogs_report_player_talents_passes_allow_unlisted(monkeypatch) -
     assert payload["talent_transport_packet"]["transport_status"] == "raw_only"
 
 
+def test_warcraftlogs_report_player_talents_rejects_missing_actor(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "999"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "not_found"
+    assert payload["error"]["message"] == "Actor ID 999 was not present in the selected fight."
+
+
 def test_warcraftlogs_report_player_talents_rejects_null_only_talent_rows(monkeypatch) -> None:
     monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
     monkeypatch.setattr(

@@ -5171,7 +5171,7 @@ def talent_calc_packet(
     ctx: typer.Context,
     ref: str = typer.Argument(
         ...,
-        help="Wowhead talent calculator URL, path, or class/spec/build ref such as druid/balance/<code>.",
+        help="Wowhead talent calculator URL, path, or class/spec/build ref with a build code such as druid/balance/<code>.",
     ),
     listed_build_limit: int = typer.Option(
         10,

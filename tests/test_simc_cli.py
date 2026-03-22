@@ -516,6 +516,42 @@ def test_simc_validate_talent_transport_accepts_build_packet(monkeypatch, tmp_pa
     assert payload["updated_packet"].get("source") == packet_payload.get("source")
 
 
+def test_simc_validate_talent_transport_rejects_build_packet_with_talent_rows(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text('{"kind":"talent_transport_packet"}')
+
+    result = runner.invoke(
+        simc_app,
+        ["validate-talent-transport", "--build-packet", str(packet_path), "--talent-row", "103324:82244:1"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert payload["error"]["message"] == "Use either --build-packet or --talent-row, not both."
+
+
+def test_simc_validate_talent_transport_rejects_out_without_build_packet() -> None:
+    result = runner.invoke(
+        simc_app,
+        ["validate-talent-transport", "--actor-class", "druid", "--spec", "balance", "--talent-row", "103324:82244:1", "--out", "./tmp/validated-packet.json"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert payload["error"]["message"] == "--out requires --build-packet."
+
+
+def test_simc_validate_talent_transport_rejects_malformed_talent_row() -> None:
+    result = runner.invoke(
+        simc_app,
+        ["validate-talent-transport", "--actor-class", "druid", "--spec", "balance", "--talent-row", "1:2"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_talent_row"
+    assert "entry_id:node_id:rank" in payload["error"]["message"]
+
+
 def test_simc_validate_talent_transport_rejects_malformed_build_packet(tmp_path: Path) -> None:
     packet_path = tmp_path / "bad-packet.json"
     packet_path.write_text(
@@ -873,6 +909,61 @@ def test_simc_decode_build_accepts_build_packet(monkeypatch, tmp_path: Path) -> 
     assert payload["decoded"]["source_kind"] == "simc_split_talents"
 
 
+def test_simc_decode_build_accepts_wowhead_transport_form_from_build_packet(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+                },
+                "raw_evidence": {
+                    "reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+                },
+                "validation": {},
+                "scope": {},
+            }
+        )
+    )
+
+    def fake_decode_build(_paths, build_spec):  # noqa: ANN001
+        assert build_spec.actor_class == "druid"
+        assert build_spec.spec == "balance"
+        assert build_spec.talents == "ABC123"
+        assert build_spec.source_kind == "wowhead_talent_calc_url"
+        assert build_spec.transport_form == "wowhead_talent_calc_url"
+        return type(
+            "Resolution",
+            (),
+            {
+                "actor_class": "druid",
+                "spec": "balance",
+                "enabled_talents": {"moonkin_form"},
+                "source_kind": "wowhead_talent_calc_url",
+                "generated_profile_text": 'druid="simc_decode"\ntalents=ABC123\n',
+                "talents_by_tree": {"class": [], "spec": [], "hero": [], "selection": []},
+                "source_notes": ["talent transport packet"],
+            },
+        )()
+
+    monkeypatch.setattr("simc_cli.main.decode_build", fake_decode_build)
+
+    result = runner.invoke(simc_app, ["decode-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["source_kind"] == "wowhead_talent_calc_url"
+    assert payload["build_spec"]["talents"] == "ABC123"
+    assert payload["build_spec"]["transport_packet"]["transport_form"] == "wowhead_talent_calc_url"
+    assert payload["decoded"]["source_kind"] == "wowhead_talent_calc_url"
+
+
 def test_simc_decode_build_rejects_malformed_build_packet(tmp_path: Path) -> None:
     packet_path = tmp_path / "bad-packet.json"
     packet_path.write_text(
@@ -1137,6 +1228,74 @@ def test_simc_describe_build_accepts_build_packet(monkeypatch, tmp_path: Path) -
     payload = json.loads(result.stdout)
     assert payload["build_spec"]["transport_packet"]["path"] == str(packet_path)
     assert payload["build_spec"]["transport_packet"]["transport_form"] == "simc_split_talents"
+
+
+def test_simc_describe_build_accepts_wow_export_transport_form_from_build_packet(monkeypatch, tmp_path: Path) -> None:
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path = tmp_path / "exact-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {"wow_talent_export": "ABC123"},
+                "raw_evidence": {"reference_type": "wow_talent_export"},
+                "validation": {},
+                "scope": {},
+            }
+        )
+    )
+
+    resolution = type(
+        "Resolution",
+        (),
+        {
+            "actor_class": "druid",
+            "spec": "balance",
+            "source_kind": "wow_talent_export",
+            "enabled_talents": {"wrath"},
+            "talents_by_tree": {"class": [], "spec": [], "hero": [], "selection": []},
+            "source_notes": ["talent transport packet"],
+        },
+    )()
+
+    def fake_resolve_prune_context(_paths, _apl, option_values, targets):  # noqa: ANN001
+        assert option_values["build_packet"] == str(packet_path)
+        context = type("Context", (), {"targets": targets, "enabled_talents": {"wrath"}, "disabled_talents": set(), "talent_sources": {}})()
+        return context, resolution
+
+    monkeypatch.setattr("simc_cli.main._resolve_prune_context", fake_resolve_prune_context)
+    monkeypatch.setattr(
+        "simc_cli.main._describe_target_payload",
+        lambda _resolved, context, *, start_list, priority_limit, inactive_limit: {
+            "targets": context.targets,
+            "focus_list": "default",
+            "focus_path": ["default"],
+            "focus_resolution": "direct",
+            "active_priority": [],
+            "inactive_priority": [],
+            "active_action_names": ["wrath"],
+            "inactive_action_names": [],
+            "talent_tree": {"class": {"selected": [], "skipped": []}, "spec": {"selected": [], "skipped": []}, "hero": {"selected": [], "skipped": []}},
+            "inactive_talents": [],
+            "active_talents": [],
+            "explained_intent": {"setup": [], "helpers": [], "burst": [], "priorities": []},
+            "runtime_sensitive": [],
+        },
+    )
+
+    result = runner.invoke(simc_app, ["describe-build", "--apl-path", str(apl_path), "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["source_kind"] == "wow_talent_export"
+    assert payload["build_spec"]["talents"] == "ABC123"
+    assert payload["build_spec"]["transport_packet"]["transport_form"] == "wow_talent_export"
 
 
 def test_simc_describe_build_rejects_malformed_build_packet(tmp_path: Path) -> None:
