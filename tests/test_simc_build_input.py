@@ -298,6 +298,54 @@ def test_load_build_spec_extracts_split_transport_form_from_packet(tmp_path: Pat
     assert spec.transport_form == "simc_split_talents"
 
 
+def test_load_build_spec_extracts_wow_export_transport_form_from_packet(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "wow_talent_export": "ABC123"
+          },
+          "raw_evidence": {
+            "reference_type": "wow_talent_export"
+          },
+          "validation": {},
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    spec = load_build_spec(
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=None,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+        build_packet=str(packet_path),
+    )
+
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
+    assert spec.talents == "ABC123"
+    assert spec.source_kind == "wow_talent_export"
+    assert spec.transport_form == "wow_talent_export"
+
+
 def test_parse_debug_talents_ignores_selection_tree() -> None:
     output = (FIXTURES / "dh_decode_debug.txt").read_text()
     talents = parse_debug_talents(output)

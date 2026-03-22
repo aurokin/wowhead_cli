@@ -2400,6 +2400,58 @@ def test_warcraftlogs_report_player_talents_emits_raw_transport_packet(monkeypat
     assert payload["talent_transport_packet"]["validation"]["status"] == "not_validated"
 
 
+def test_warcraftlogs_report_player_talents_passes_allow_unlisted(monkeypatch) -> None:
+    class _AllowUnlistedClient(_FakeWarcraftLogsClient):
+        def report(self, *, code: str, allow_unlisted: bool = False) -> dict[str, object]:
+            assert allow_unlisted is True
+            return super().report(code=code, allow_unlisted=allow_unlisted)
+
+        def report_fights(
+            self,
+            *,
+            code: str,
+            difficulty: int | None = None,
+            allow_unlisted: bool = False,
+            ttl_override: int | None = None,
+        ) -> dict[str, object]:
+            assert allow_unlisted is True
+            return super().report_fights(
+                code=code,
+                difficulty=difficulty,
+                allow_unlisted=False,
+                ttl_override=ttl_override,
+            )
+
+        def report_player_details(self, *, code: str, allow_unlisted: bool = False, options, ttl_override: int | None = None) -> dict[str, object]:  # noqa: ANN001
+            assert allow_unlisted is True
+            return super().report_player_details(
+                code=code,
+                allow_unlisted=False,
+                options=options,
+                ttl_override=ttl_override,
+            )
+
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _AllowUnlistedClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "simc_trait_resolution_incomplete",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--allow-unlisted"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["talent_transport_packet"]["transport_status"] == "raw_only"
+
+
 def test_warcraftlogs_report_player_talents_rejects_null_only_talent_rows(monkeypatch) -> None:
     monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
     monkeypatch.setattr(
@@ -2425,6 +2477,34 @@ def test_warcraftlogs_report_player_talents_rejects_null_only_talent_rows(monkey
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "missing_talent_tree"
+
+
+def test_warcraftlogs_report_player_talents_rejects_mixed_valid_and_invalid_talent_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._player_detail_actor",
+        lambda details_payload, actor_id: {
+            "id": actor_id,
+            "combatant_info": {
+                "talentTree": [
+                    {"id": 103324, "nodeID": 82244, "rank": 1},
+                    {"id": None, "nodeID": None, "rank": 1},
+                ]
+            },
+            "class_spec_identity": {
+                "identity": {"actor_class": "paladin", "spec": "retribution"},
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_talent_tree"
+    assert "incomplete combatant_info.talentTree rows" in payload["error"]["message"]
 
 
 def test_warcraftlogs_report_player_talents_rejects_incomplete_talent_rows(monkeypatch) -> None:

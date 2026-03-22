@@ -239,12 +239,12 @@ def _packet_talent_tree_rows(packet: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(raw_evidence, dict):
         return []
     rows = raw_evidence.get("talent_tree_entries")
-    if not isinstance(rows, list):
+    if not isinstance(rows, list) or not rows:
         return []
     normalized: list[dict[str, Any]] = []
     for row in rows:
         if not isinstance(row, dict):
-            continue
+            return []
         entry = row.get("entry")
         node_id = row.get("node_id")
         rank = row.get("rank")
@@ -255,6 +255,8 @@ def _packet_talent_tree_rows(packet: dict[str, Any]) -> list[dict[str, Any]]:
         }
         if all(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
             normalized.append(normalized_row)
+        else:
+            return []
     return normalized
 
 

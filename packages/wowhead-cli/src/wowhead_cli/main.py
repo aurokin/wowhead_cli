@@ -2978,25 +2978,25 @@ def _load_talent_calc_context(
     return state_url, state, metadata, page_url, listed_builds
 
 
-def _talent_calc_payload(
+def _base_talent_calc_payload(
     ctx: typer.Context,
     *,
     ref: str,
-    listed_build_limit: int,
 ) -> dict[str, Any]:
     cfg = _cfg(ctx)
-    state_url, state, metadata, page_url, listed_builds = _load_talent_calc_context(
-        ctx,
-        ref=ref,
-        listed_build_limit=listed_build_limit,
-    )
-    payload = {
+    try:
+        state_url = _normalize_tool_ref(ref, tool_slug="talent-calc", expansion=cfg.expansion)
+        state = _parse_talent_calc_state(state_url)
+    except ValueError as exc:
+        _fail(ctx, "invalid_tool_ref", str(exc))
+        raise AssertionError("unreachable")
+    return {
         "expansion": cfg.expansion.key,
         "tool": {
             "kind": "talent-calc",
             "input": ref,
             "state_url": state_url,
-            "page_url": page_url,
+            "page_url": state_url,
             **state,
         },
         "build_identity": build_identity_payload(
@@ -3008,17 +3008,67 @@ def _talent_calc_payload(
             source_notes=["class/spec came from the explicit Wowhead talent-calc URL path"],
         ),
         "page": {
-            "title": metadata.get("title"),
-            "description": metadata.get("description"),
-            "canonical_url": page_url,
+            "title": None,
+            "description": None,
+            "canonical_url": state_url,
         },
         "citations": {
             "page": state_url,
         },
     }
+
+
+def _enrich_talent_calc_payload_with_page_data(
+    ctx: typer.Context,
+    payload: dict[str, Any],
+    *,
+    listed_build_limit: int,
+    fail_on_fetch_error: bool,
+) -> dict[str, Any]:
+    state_url = str(payload["tool"]["state_url"])
+    client = _client(ctx)
+    try:
+        html = client.page_html(state_url)
+    except httpx.HTTPStatusError as exc:
+        if fail_on_fetch_error:
+            _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+            raise AssertionError("unreachable")
+        return payload
+    except httpx.HTTPError as exc:
+        if fail_on_fetch_error:
+            _fail(ctx, "network_error", str(exc))
+            raise AssertionError("unreachable")
+        return payload
+    metadata = parse_page_metadata(html, fallback_url=state_url)
+    page_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=state_url) or state_url
+    enriched_payload = dict(payload)
+    enriched_tool = dict(payload["tool"])
+    enriched_tool["page_url"] = page_url
+    enriched_payload["tool"] = enriched_tool
+    enriched_payload["page"] = {
+        "title": metadata.get("title"),
+        "description": metadata.get("description"),
+        "canonical_url": page_url,
+    }
+    listed_builds = _extract_talent_calc_listed_builds(html, limit=listed_build_limit)
     if listed_builds is not None:
-        payload["listed_builds"] = listed_builds
-    return payload
+        enriched_payload["listed_builds"] = listed_builds
+    return enriched_payload
+
+
+def _talent_calc_payload(
+    ctx: typer.Context,
+    *,
+    ref: str,
+    listed_build_limit: int,
+) -> dict[str, Any]:
+    payload = _base_talent_calc_payload(ctx, ref=ref)
+    return _enrich_talent_calc_payload_with_page_data(
+        ctx,
+        payload,
+        listed_build_limit=listed_build_limit,
+        fail_on_fetch_error=True,
+    )
 
 
 def _parse_profession_tree_state(state_url: str) -> dict[str, Any]:
@@ -5127,7 +5177,13 @@ def talent_calc_packet(
     ),
     out: str | None = typer.Option(None, "--out", help="Optional path to write just the exact talent transport packet JSON."),
 ) -> None:
-    payload = _talent_calc_payload(ctx, ref=ref, listed_build_limit=listed_build_limit)
+    payload = _base_talent_calc_payload(ctx, ref=ref)
+    payload = _enrich_talent_calc_payload_with_page_data(
+        ctx,
+        payload,
+        listed_build_limit=listed_build_limit,
+        fail_on_fetch_error=False,
+    )
     packet = _validated_transport_packet(
         ctx,
         build_reference_transport_packet_payload(

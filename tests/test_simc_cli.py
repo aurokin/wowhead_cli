@@ -282,6 +282,55 @@ def test_simc_identify_build_accepts_build_packet(monkeypatch, tmp_path: Path) -
     assert payload["build_spec"]["transport_packet"]["transport_status"] == "exact"
 
 
+def test_simc_identify_build_accepts_wow_export_transport_form_from_build_packet(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {"wow_talent_export": "ABC123"},
+                "raw_evidence": {"reference_type": "wow_talent_export"},
+                "validation": {},
+                "scope": {},
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        "simc_cli.main.identify_build",
+        lambda _paths, build_spec: (
+            build_spec,
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": build_spec.actor_class,
+                    "spec": build_spec.spec,
+                    "confidence": "high",
+                    "source": build_spec.source_kind,
+                    "candidate_count": 1,
+                    "candidates": [(build_spec.actor_class, build_spec.spec)],
+                    "source_notes": build_spec.source_notes,
+                },
+            )(),
+        ),
+    )
+
+    result = runner.invoke(simc_app, ["identify-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["source_kind"] == "wow_talent_export"
+    assert payload["build_spec"]["talents"] == "ABC123"
+    assert payload["build_spec"]["transport_packet"]["transport_form"] == "wow_talent_export"
+    assert payload["identity"]["source"] == "wow_talent_export"
+
+
 def test_simc_identify_build_rejects_malformed_build_packet(tmp_path: Path) -> None:
     packet_path = tmp_path / "bad-packet.json"
     packet_path.write_text(

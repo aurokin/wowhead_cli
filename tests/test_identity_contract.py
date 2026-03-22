@@ -383,6 +383,34 @@ def test_validate_talent_transport_packet_rejects_incomplete_raw_only_rows() -> 
         raise AssertionError("expected ValueError")
 
 
+def test_validate_talent_transport_packet_rejects_mixed_valid_and_invalid_raw_only_rows() -> None:
+    packet = {
+        "kind": "talent_transport_packet",
+        "transport_status": "raw_only",
+        "build_identity": {
+            "class_spec_identity": {
+                "identity": {"actor_class": "druid", "spec": "balance"},
+            }
+        },
+        "transport_forms": {},
+        "raw_evidence": {
+            "talent_tree_entries": [
+                {"entry": 103324, "node_id": 82244, "rank": 1},
+                {"entry": 109839, "rank": 1},
+            ]
+        },
+        "validation": {"status": "not_validated"},
+        "scope": {},
+    }
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "raw_only status requires usable raw talent_tree_entries evidence" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_refresh_talent_transport_packet_rejects_invalid_transport_forms() -> None:
     packet = talent_transport_packet_payload(
         actor_class="Druid",

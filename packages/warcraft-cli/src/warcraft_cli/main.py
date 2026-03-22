@@ -802,6 +802,31 @@ def _normalize_describe_transport_packet_path(
     return normalized_result
 
 
+def _normalize_upgrade_result_build_packet_path(
+    upgrade_result: dict[str, Any] | None,
+    *,
+    stable_packet_path: str | None,
+) -> dict[str, Any] | None:
+    if not isinstance(upgrade_result, dict):
+        return upgrade_result
+    payload = upgrade_result.get("payload")
+    if not isinstance(payload, dict):
+        return upgrade_result
+    input_payload = payload.get("input")
+    if not isinstance(input_payload, dict):
+        return upgrade_result
+    normalized_result = dict(upgrade_result)
+    normalized_payload = dict(payload)
+    normalized_input = dict(input_payload)
+    if stable_packet_path is not None:
+        normalized_input["build_packet"] = stable_packet_path
+    else:
+        normalized_input.pop("build_packet", None)
+    normalized_payload["input"] = normalized_input
+    normalized_result["payload"] = normalized_payload
+    return normalized_result
+
+
 def _invoke_simc_with_transport_packet(
     packet: dict[str, Any],
     args: list[str],
@@ -2045,11 +2070,21 @@ def talent_packet(
         route=resolved["route"],
         provider_result=resolved["producer_result"],
     )
+    stable_packet_path = _stable_transport_packet_path(
+        route=resolved["route"],
+        written_packet_path=written_packet_path,
+        upgraded=bool(resolved["upgraded"]),
+    )
+    upgrade_result = _normalize_upgrade_result_build_packet_path(
+        resolved.get("upgrade_result") if isinstance(resolved, dict) else None,
+        stable_packet_path=stable_packet_path,
+    )
     _emit(
         {
             "provider": "warcraft",
             "kind": "talent_transport",
             **resolved,
+            "upgrade_result": upgrade_result,
             "written_packet_path": written_packet_path,
         },
         pretty=_pretty(ctx),
@@ -2152,6 +2187,10 @@ def talent_describe(
         written_packet_path=written_packet_path,
         upgraded=bool(resolved["upgraded"]),
     )
+    upgrade_result = _normalize_upgrade_result_build_packet_path(
+        resolved.get("upgrade_result") if isinstance(resolved, dict) else None,
+        stable_packet_path=stable_packet_path,
+    )
     describe_result = _normalize_describe_transport_packet_path(
         describe_result,
         stable_packet_path=stable_packet_path,
@@ -2161,6 +2200,7 @@ def talent_describe(
             "provider": "warcraft",
             "kind": "talent_describe",
             **resolved,
+            "upgrade_result": upgrade_result,
             "packet_written_path": written_packet_path,
             "describe_result": describe_result,
         },

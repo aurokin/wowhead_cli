@@ -1407,12 +1407,14 @@ def _player_detail_actor(details_payload: dict[str, Any], actor_id: int) -> dict
     return next((row for row in _all_player_detail_rows_from_roles(roles) if row.get("id") == actor_id), None)
 
 
-def _normalized_talent_tree_rows(actor: dict[str, Any]) -> list[dict[str, Any]]:
+def _normalized_talent_tree_rows(actor: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
     combatant_info = actor.get("combatant_info") if isinstance(actor.get("combatant_info"), dict) else {}
     rows = combatant_info.get("talentTree") if isinstance(combatant_info.get("talentTree"), list) else []
     normalized_rows: list[dict[str, Any]] = []
+    had_invalid_rows = False
     for row in rows:
         if not isinstance(row, dict):
+            had_invalid_rows = True
             continue
         normalized_row = {
             "entry": row.get("id") if isinstance(row.get("id"), int) else None,
@@ -1421,7 +1423,9 @@ def _normalized_talent_tree_rows(actor: dict[str, Any]) -> list[dict[str, Any]]:
         }
         if all(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
             normalized_rows.append(normalized_row)
-    return normalized_rows
+        else:
+            had_invalid_rows = True
+    return normalized_rows, had_invalid_rows
 
 
 def _player_talent_transport_identity(actor: dict[str, Any]) -> tuple[str | None, str | None]:
@@ -1432,8 +1436,13 @@ def _player_talent_transport_identity(actor: dict[str, Any]) -> tuple[str | None
     return actor_class, spec
 
 
-def _player_talent_transport_validation(actor: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
-    raw_rows = _normalized_talent_tree_rows(actor)
+def _player_talent_transport_validation(
+    actor: dict[str, Any],
+    *,
+    raw_rows: list[dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    if raw_rows is None:
+        raw_rows, _ = _normalized_talent_tree_rows(actor)
     actor_class, spec = _player_talent_transport_identity(actor)
     validation_result = validate_talent_tree_transport(
         actor_class=actor_class,
@@ -1473,9 +1482,10 @@ def _player_talent_transport_packet(
     report_code: str,
     fight_id: int,
     actor_id: int,
+    raw_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     actor_class, spec = _player_talent_transport_identity(actor)
-    raw_rows, transport_forms, validation = _player_talent_transport_validation(actor)
+    raw_rows, transport_forms, validation = _player_talent_transport_validation(actor, raw_rows=raw_rows)
     return talent_transport_packet_payload(
         actor_class=actor_class,
         spec=spec,
@@ -4118,9 +4128,16 @@ def report_player_talents(
         _fail(ctx, "not_found", f"Actor ID {actor_id} was not present in the selected fight.")
         return
 
-    talent_rows = _normalized_talent_tree_rows(actor)
+    talent_rows, had_invalid_talent_rows = _normalized_talent_tree_rows(actor)
     if not talent_rows:
         _fail(ctx, "missing_talent_tree", f"Actor ID {actor_id} did not include combatant_info.talentTree in the selected fight.")
+        return
+    if had_invalid_talent_rows:
+        _fail(
+            ctx,
+            "missing_talent_tree",
+            f"Actor ID {actor_id} included incomplete combatant_info.talentTree rows in the selected fight.",
+        )
         return
 
     transport_packet = _validated_transport_packet(
@@ -4130,6 +4147,7 @@ def report_player_talents(
             report_code=ref.code,
             fight_id=int(fight["id"]),
             actor_id=actor_id,
+            raw_rows=talent_rows,
         ),
         command_name="warcraftlogs report-player-talents",
     )

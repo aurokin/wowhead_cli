@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 
+import httpx
 from typer.testing import CliRunner
 
 from wowhead_cli.main import (
@@ -876,6 +877,21 @@ def test_talent_calc_packet_command_can_write_exact_transport_packet(monkeypatch
     written_packet = json.loads(out_path.read_text())
     assert written_packet == payload["talent_transport_packet"]
     assert written_packet["transport_status"] == "exact"
+
+
+def test_talent_calc_packet_command_does_not_require_page_fetch_for_exact_ref(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        raise httpx.ConnectError("network down", request=httpx.Request("GET", page_url))
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool"]["state_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert payload["tool"]["page_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert payload["page"]["canonical_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert "listed_builds" not in payload
+    assert payload["talent_transport_packet"]["transport_status"] == "exact"
 
 
 def test_talent_calc_packet_command_normalizes_write_failure(monkeypatch, tmp_path: Path) -> None:

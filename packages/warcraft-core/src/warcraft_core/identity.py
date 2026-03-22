@@ -369,7 +369,7 @@ def _is_usable_talent_tree_row(row: Any) -> bool:
 
 def _has_usable_raw_talent_evidence(raw_evidence: dict[str, Any]) -> bool:
     rows = raw_evidence.get("talent_tree_entries")
-    return isinstance(rows, list) and any(_is_usable_talent_tree_row(row) for row in rows)
+    return isinstance(rows, list) and bool(rows) and all(_is_usable_talent_tree_row(row) for row in rows)
 
 
 def _talent_transport_payload_parts(

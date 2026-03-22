@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
 from method_cli.main import app as method_app
 from typer.testing import CliRunner
 from warcraft_cli.main import app as warcraft_app
@@ -11,6 +12,13 @@ from warcraftlogs_cli.main import app as warcraftlogs_app
 from wowhead_cli.main import app as wowhead_app
 
 runner = CliRunner()
+
+
+def _disable_wowhead_page_fetch(monkeypatch) -> None:  # noqa: ANN001
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        raise httpx.ConnectError("network disabled", request=httpx.Request("GET", page_url))
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
 
 
 def _simc_build_input_summary(args: list[str]) -> dict[str, object]:
@@ -2286,6 +2294,80 @@ def test_warcraft_talent_packet_routes_explicit_wowhead_ref(monkeypatch) -> None
     assert calls == [("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "10"])]
 
 
+def test_warcraft_talent_packet_passes_wowhead_listed_build_limit_and_expansion(monkeypatch) -> None:
+    calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        calls.append((provider, args, expansion))
+        return {
+            "provider": "wowhead",
+            "exit_code": 0,
+            "payload": {
+                "provider": "wowhead",
+                "kind": "talent_calc_packet",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "exact",
+                    "transport_forms": {
+                        "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                    },
+                    "build_identity": {
+                        "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                    },
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {"type": "wowhead_talent_calc", "expansion": "wotlk"},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["--expansion", "wotlk", "talent-packet", "druid/balance/ABC123", "--listed-build-limit", "3"],
+    )
+    assert result.exit_code == 0
+    assert calls == [("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "3"], "wotlk")]
+
+
+def test_warcraft_talent_packet_passes_allow_unlisted_to_warcraftlogs(monkeypatch) -> None:
+    calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        calls.append((provider, args, expansion))
+        return {
+            "provider": "warcraftlogs",
+            "exit_code": 0,
+            "payload": {
+                "provider": "warcraftlogs",
+                "kind": "report_player_talents",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "raw_only",
+                    "build_identity": {},
+                    "transport_forms": {},
+                    "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                    "validation": {"status": "not_validated"},
+                    "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "abcd1234", "--actor-id", "9", "--fight-id", "1", "--allow-unlisted", "--no-validate"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"]["allow_unlisted"] is True
+    assert calls == [("warcraftlogs", ["report-player-talents", "abcd1234", "--actor-id", "9", "--fight-id", "1", "--allow-unlisted"], None)]
+
+
 def test_warcraft_talent_packet_routes_warcraftlogs_and_upgrades(monkeypatch) -> None:
     calls: list[tuple[str, list[str]]] = []
 
@@ -2320,6 +2402,7 @@ def test_warcraft_talent_packet_routes_warcraftlogs_and_upgrades(monkeypatch) ->
             "payload": {
                 "provider": provider,
                 "kind": "validate_talent_transport",
+                "input": {"source": "build_packet", "build_packet": args[2]},
                 "updated_packet": {
                     **packet,
                     "transport_status": "validated",
@@ -2347,6 +2430,7 @@ def test_warcraft_talent_packet_routes_warcraftlogs_and_upgrades(monkeypatch) ->
     assert payload["upgraded"] is True
     assert payload["talent_transport_packet"]["transport_status"] == "validated"
     assert payload["talent_transport_packet"]["transport_forms"]["simc_split_talents"]["class_talents"] == "103324:1"
+    assert "build_packet" not in payload["upgrade_result"]["payload"]["input"]
     assert calls[0] == ("warcraftlogs", ["report-player-talents", "abcd1234", "--actor-id", "9", "--fight-id", "1"])
     assert calls[1][0] == "simc"
     assert calls[1][1][:2] == ["validate-talent-transport", "--build-packet"]
@@ -3208,6 +3292,55 @@ def test_warcraft_talent_describe_routes_wowhead_ref_to_simc(monkeypatch) -> Non
     assert "--apl-path" in simc_calls[0]["args"]
 
 
+def test_warcraft_talent_describe_passes_wowhead_listed_build_limit(monkeypatch) -> None:
+    provider_calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args, expansion))
+        if provider == "wowhead":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "talent_calc_packet",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "transport_forms": {
+                            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                        },
+                        "build_identity": {
+                            "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                        },
+                        "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                        "validation": {},
+                        "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+                    },
+                },
+                "stdout": "",
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 3},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "druid/balance/ABC123", "--listed-build-limit", "4"],
+    )
+    assert result.exit_code == 0
+    assert provider_calls[0] == ("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "4"], None)
+
+
 
 def test_warcraft_talent_describe_routes_warcraftlogs_and_upgrades(monkeypatch) -> None:
     provider_calls: list[tuple[str, list[str]]] = []
@@ -3245,6 +3378,7 @@ def test_warcraft_talent_describe_routes_warcraftlogs_and_upgrades(monkeypatch) 
                 "payload": {
                     "provider": provider,
                     "kind": "validate_talent_transport",
+                    "input": {"source": "build_packet", "build_packet": args[args.index("--build-packet") + 1]},
                     "updated_packet": {
                         **packet,
                         "transport_status": "validated",
@@ -3291,6 +3425,59 @@ def test_warcraft_talent_describe_routes_warcraftlogs_and_upgrades(monkeypatch) 
     assert [row["command"] for row in simc_calls] == ["validate-talent-transport", "describe-build"]
     assert simc_calls[1]["packet_transport_status"] == "validated"
     assert simc_calls[1]["packet_transport_form_keys"] == ["simc_split_talents"]
+    assert "build_packet" not in payload["upgrade_result"]["payload"]["input"]
+
+
+def test_warcraft_talent_describe_passes_allow_unlisted_and_expansion(monkeypatch) -> None:
+    provider_calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args, expansion))
+        if provider == "warcraftlogs":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "report_player_talents",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "build_identity": {},
+                        "transport_forms": {"wow_talent_export": "ABC123"},
+                        "raw_evidence": {"reference_type": "wow_talent_export"},
+                        "validation": {},
+                        "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+                    },
+                },
+                "stdout": "",
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 6},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["--expansion", "retail", "talent-describe", "abcd1234", "--actor-id", "9", "--fight-id", "1", "--allow-unlisted", "--no-validate"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"]["allow_unlisted"] is True
+    assert provider_calls[0] == (
+        "warcraftlogs",
+        ["report-player-talents", "abcd1234", "--actor-id", "9", "--fight-id", "1", "--allow-unlisted"],
+        "retail",
+    )
+    assert provider_calls[1][2] == "retail"
 
 
 
@@ -3349,17 +3536,7 @@ def test_warcraft_talent_describe_uses_packet_file_and_can_write_output(monkeypa
 
 
 def test_warcraft_talent_packet_preserves_wowhead_provider_packet(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "wowhead_cli.main._talent_calc_payload",
-        lambda ctx, ref, listed_build_limit=10: {
-            "provider": "wowhead",
-            "kind": "talent_calc",
-            "expansion": "retail",
-            "page": {"canonical_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
-            "tool": {"state_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
-            "listed_builds": {"count": 0, "items": []},
-        },
-    )
+    _disable_wowhead_page_fetch(monkeypatch)
 
     direct_result = runner.invoke(wowhead_app, ["talent-calc-packet", "druid/balance/ABC123"])
     assert direct_result.exit_code == 0
@@ -3378,17 +3555,7 @@ def test_warcraft_talent_packet_out_matches_wowhead_provider_file(monkeypatch, t
     direct_path = tmp_path / "wowhead-direct.json"
     wrapper_path = tmp_path / "wowhead-wrapper.json"
 
-    monkeypatch.setattr(
-        "wowhead_cli.main._talent_calc_payload",
-        lambda ctx, ref, listed_build_limit=10: {
-            "provider": "wowhead",
-            "kind": "talent_calc",
-            "expansion": "retail",
-            "page": {"canonical_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
-            "tool": {"state_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
-            "listed_builds": {"count": 0, "items": []},
-        },
-    )
+    _disable_wowhead_page_fetch(monkeypatch)
 
     direct_result = runner.invoke(wowhead_app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(direct_path)])
     assert direct_result.exit_code == 0
@@ -3487,17 +3654,7 @@ def test_warcraft_talent_describe_packet_out_matches_wowhead_provider_file(monke
     apl_path = tmp_path / "druid_balance.simc"
     apl_path.write_text("actions=wrath\n")
 
-    monkeypatch.setattr(
-        "wowhead_cli.main._talent_calc_payload",
-        lambda ctx, ref, listed_build_limit=10: {
-            "provider": "wowhead",
-            "kind": "talent_calc",
-            "expansion": "retail",
-            "page": {"canonical_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
-            "tool": {"state_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
-            "listed_builds": {"count": 0, "items": []},
-        },
-    )
+    _disable_wowhead_page_fetch(monkeypatch)
     _patch_simc_describe_pipeline(
         monkeypatch,
         transport_form="wowhead_talent_calc_url",
@@ -3581,17 +3738,7 @@ def test_warcraft_talent_packet_file_reuse_stays_exact_without_validation(monkey
     apl_path = tmp_path / "druid_balance.simc"
     apl_path.write_text("actions=wrath\n")
 
-    monkeypatch.setattr(
-        "wowhead_cli.main._talent_calc_payload",
-        lambda ctx, ref, listed_build_limit=10: {
-            "provider": "wowhead",
-            "kind": "talent_calc",
-            "expansion": "retail",
-            "page": {"canonical_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
-            "tool": {"state_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
-            "listed_builds": {"count": 0, "items": []},
-        },
-    )
+    _disable_wowhead_page_fetch(monkeypatch)
     _patch_simc_describe_pipeline(
         monkeypatch,
         transport_form="wowhead_talent_calc_url",
@@ -3714,17 +3861,7 @@ def test_warcraft_talent_round_trip_wowhead_packet_to_describe(monkeypatch, tmp_
     packet_path = tmp_path / "wowhead-packet.json"
     apl_path = tmp_path / "druid_balance.simc"
     apl_path.write_text("actions=wrath\n")
-    monkeypatch.setattr(
-        "wowhead_cli.main._talent_calc_payload",
-        lambda ctx, ref, listed_build_limit=10: {
-            "provider": "wowhead",
-            "kind": "talent_calc",
-            "expansion": "retail",
-            "page": {"canonical_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
-            "tool": {"state_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
-            "listed_builds": {"count": 0, "items": []},
-        },
-    )
+    _disable_wowhead_page_fetch(monkeypatch)
     _patch_simc_describe_pipeline(
         monkeypatch,
         transport_form="wowhead_talent_calc_url",
