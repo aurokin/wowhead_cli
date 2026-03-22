@@ -235,13 +235,13 @@ def _packet_talent_tree_rows(packet: dict[str, Any]) -> list[dict[str, Any]]:
         entry = row.get("entry")
         node_id = row.get("node_id")
         rank = row.get("rank")
-        normalized.append(
-            {
-                "entry": entry if isinstance(entry, int) else None,
-                "node_id": node_id if isinstance(node_id, int) else None,
-                "rank": rank if isinstance(rank, int) else None,
-            }
-        )
+        normalized_row = {
+            "entry": entry if isinstance(entry, int) else None,
+            "node_id": node_id if isinstance(node_id, int) else None,
+            "rank": rank if isinstance(rank, int) else None,
+        }
+        if any(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
+            normalized.append(normalized_row)
     return normalized
 
 
@@ -415,7 +415,8 @@ def _load_identified_build_spec_or_fail(
         if build_packet:
             _fail(ctx, "invalid_build_packet", str(exc))
             raise AssertionError("unreachable") from exc
-        raise
+        _fail(ctx, "invalid_query", str(exc))
+        raise AssertionError("unreachable") from exc
 
 
 def _prune_context_payload(resolution: Any, context: PruneContext) -> dict[str, Any]:
@@ -970,6 +971,7 @@ def validate_talent_transport_command(
             transport_forms=transport_forms,
             validation=validation,
         )
+        transport_status = updated_packet["transport_status"] if isinstance(updated_packet.get("transport_status"), str) else transport_status
         if out:
             output_path = Path(out).expanduser().resolve()
             output_path.parent.mkdir(parents=True, exist_ok=True)

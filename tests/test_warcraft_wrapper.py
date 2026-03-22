@@ -2427,6 +2427,14 @@ def test_warcraft_talent_packet_rejects_missing_packet_path_like_input(tmp_path:
     assert payload["error"]["message"] == f"Talent transport packet file was not found: {packet_path}"
 
 
+def test_warcraft_talent_packet_rejects_unscoped_relative_packet_like_input() -> None:
+    result = runner.invoke(warcraft_app, ["talent-packet", "tmp/foo"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "Talent transport packet file was not found: tmp/foo"
+
+
 
 def test_warcraft_talent_packet_fails_when_provider_omits_packet(monkeypatch) -> None:
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
@@ -2849,6 +2857,91 @@ def test_warcraft_talent_describe_does_not_write_packet_out_on_failure(monkeypat
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "describe_build_failed"
     assert not out_path.exists()
+
+
+def test_warcraft_talent_packet_normalizes_packet_write_failure(monkeypatch, tmp_path: Path) -> None:
+    out_dir = tmp_path / "out-dir"
+    out_dir.mkdir()
+    monkeypatch.setattr(
+        "warcraft_cli.main.provider_invoke",
+        lambda provider, args, *, expansion=None: {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": "wowhead",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "exact",
+                    "transport_forms": {
+                        "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                    },
+                    "build_identity": {
+                        "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                    },
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+                },
+            },
+            "stdout": "",
+        },
+    )
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123", "--out", str(out_dir)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "transport_packet_write_failed"
+
+
+def test_warcraft_talent_describe_normalizes_packet_write_failure(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    apl_path = tmp_path / "balance.simc"
+    out_dir = tmp_path / "out-dir"
+    apl_path.write_text("actions=wrath\n")
+    out_dir.mkdir()
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                },
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+            }
+        )
+    )
+    monkeypatch.setattr(
+        "warcraft_cli.main.provider_invoke",
+        lambda provider, args, *, expansion=None: {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "ok": True,
+                "build_spec": {
+                    "transport_packet": {
+                        "path": "/tmp/deleted-packet.json",
+                        "transport_form": "wowhead_talent_calc_url",
+                        "transport_status": "exact",
+                    }
+                },
+            },
+            "stdout": "",
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--no-validate", "--apl-path", str(apl_path), "--packet-out", str(out_dir)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "transport_packet_write_failed"
 
 
 def test_warcraft_talent_describe_routes_wowhead_ref_to_simc(monkeypatch) -> None:
@@ -3460,7 +3553,7 @@ def test_warcraft_talent_round_trip_wowhead_packet_to_describe(monkeypatch, tmp_
     transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
     assert transport_packet["transport_form"] == "wowhead_talent_calc_url"
     assert transport_packet["transport_status"] == "exact"
-    assert Path(transport_packet["path"]).name.startswith("warcraft-talent-describe-")
+    assert transport_packet["path"] == str(packet_path.resolve())
 
 
 
@@ -3530,7 +3623,7 @@ def test_warcraft_talent_round_trip_warcraftlogs_packet_to_describe(monkeypatch,
     transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
     assert transport_packet["transport_form"] == "simc_split_talents"
     assert transport_packet["transport_status"] == "validated"
-    assert Path(transport_packet["path"]).name.startswith("warcraft-talent-describe-")
+    assert transport_packet["path"] == str(packet_path.resolve())
 
 
 def test_warcraft_passthrough_to_raiderio(monkeypatch) -> None:

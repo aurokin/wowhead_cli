@@ -207,8 +207,21 @@ def _normalize_spec_name(value: str | None) -> str | None:
     return normalized or None
 
 
+def _raw_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
+    return parse_shared_wowhead_talent_calc_ref(ref)
+
+
+def _ensure_exact_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
+    parsed = _raw_wowhead_talent_calc_ref(ref)
+    if parsed is None:
+        return None
+    if not parsed["build_code"]:
+        raise ValueError("Wowhead talent-calc URLs must include a build code for simc analysis.")
+    return parsed
+
+
 def parse_wowhead_talent_calc_ref(ref: str) -> BuildSpec | None:
-    parsed = parse_shared_wowhead_talent_calc_ref(ref)
+    parsed = _ensure_exact_wowhead_talent_calc_ref(ref)
     if parsed is None:
         return None
 
@@ -229,8 +242,10 @@ def detect_build_text_source_kind(text: str) -> str | None:
     non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not non_empty_lines:
         return None
-    if len(non_empty_lines) == 1 and parse_wowhead_talent_calc_ref(non_empty_lines[0]) is not None:
-        return "wowhead_talent_calc_url"
+    if len(non_empty_lines) == 1:
+        shared_ref = _raw_wowhead_talent_calc_ref(non_empty_lines[0])
+        if shared_ref is not None:
+            return "wowhead_talent_calc_url"
     if len(non_empty_lines) == 1 and "=" not in non_empty_lines[0]:
         return "wow_talent_export"
 
@@ -264,6 +279,9 @@ def extract_build_spec_from_text(text: str) -> BuildSpec:
     spec.source_kind = detect_build_text_source_kind(text)
     non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(non_empty_lines) == 1:
+        shared_ref = _raw_wowhead_talent_calc_ref(non_empty_lines[0])
+        if shared_ref is not None and not shared_ref["build_code"]:
+            raise ValueError("Wowhead talent-calc URLs must include a build code for simc analysis.")
         wowhead_ref = parse_wowhead_talent_calc_ref(non_empty_lines[0])
         if wowhead_ref is not None:
             return wowhead_ref
@@ -389,6 +407,9 @@ def normalize_talents_input(value: str | None) -> str | None:
     stripped = value.strip()
     if stripped.startswith("talents="):
         return stripped.split("=", 1)[1].strip()
+    shared_ref = _raw_wowhead_talent_calc_ref(stripped)
+    if shared_ref is not None and not shared_ref["build_code"]:
+        raise ValueError("Wowhead talent-calc URLs must include a build code for simc analysis.")
     wowhead_ref = parse_wowhead_talent_calc_ref(stripped)
     if wowhead_ref is not None and wowhead_ref.talents:
         return wowhead_ref.talents
@@ -407,7 +428,7 @@ def detect_talents_option_source_kind(
     if not talents:
         return None
     stripped = talents.strip()
-    if parse_wowhead_talent_calc_ref(stripped) is not None:
+    if _raw_wowhead_talent_calc_ref(stripped) is not None:
         return "wowhead_talent_calc_url"
     if stripped.startswith("talents="):
         return "simc_profile"

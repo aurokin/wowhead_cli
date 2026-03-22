@@ -366,6 +366,17 @@ def test_simc_identify_build_rejects_build_packet_with_override_inputs(tmp_path:
     assert "Cannot combine --build-packet with other explicit build input options." == payload["error"]["message"]
 
 
+def test_simc_identify_build_rejects_buildless_wowhead_talent_calc_url() -> None:
+    result = runner.invoke(
+        simc_app,
+        ["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/druid/balance"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert "must include a build code" in payload["error"]["message"]
+
+
 def test_simc_validate_talent_transport_accepts_build_packet(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     packet_path.write_text(
@@ -448,6 +459,35 @@ def test_simc_validate_talent_transport_rejects_malformed_build_packet(tmp_path:
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "invalid_build_packet"
     assert "does not match packet contents" in payload["error"]["message"]
+
+
+def test_simc_validate_talent_transport_rejects_null_only_packet_rows(tmp_path: Path) -> None:
+    packet_path = tmp_path / "bad-rows-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "unknown",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {},
+                "raw_evidence": {
+                    "talent_tree_entries": [{"entry": None, "node_id": None, "rank": None}],
+                },
+                "validation": {"status": "not_validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(simc_app, ["validate-talent-transport", "--build-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert payload["error"]["message"] == "No raw talent rows were available to validate."
 
 
 def test_simc_validate_talent_transport_can_write_upgraded_packet(monkeypatch, tmp_path: Path) -> None:
@@ -729,6 +769,17 @@ def test_simc_decode_build_rejects_raw_only_build_packet_without_transport_form(
     assert "validate-talent-transport first" in payload["error"]["message"]
 
 
+def test_simc_decode_build_rejects_buildless_wowhead_talent_calc_url() -> None:
+    result = runner.invoke(
+        simc_app,
+        ["decode-build", "--build-text", "https://www.wowhead.com/talent-calc/druid/balance"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert "must include a build code" in payload["error"]["message"]
+
+
 def test_simc_describe_build_summarizes_st_and_aoe(monkeypatch, tmp_path: Path) -> None:
     apl_path = tmp_path / "demonhunter_devourer.simc"
     apl_path.write_text("actions=void_ray\n")
@@ -982,6 +1033,20 @@ def test_simc_describe_build_rejects_raw_only_build_packet_without_transport_for
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "invalid_build_packet"
     assert "validate-talent-transport first" in payload["error"]["message"]
+
+
+def test_simc_describe_build_rejects_buildless_wowhead_talent_calc_url(tmp_path: Path) -> None:
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    result = runner.invoke(
+        simc_app,
+        ["describe-build", "--apl-path", str(apl_path), "--build-text", "https://www.wowhead.com/talent-calc/druid/balance"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert "must include a build code" in payload["error"]["message"]
 
 
 def test_simc_describe_build_uses_leaf_focus_and_full_action_diff(monkeypatch, tmp_path: Path) -> None:

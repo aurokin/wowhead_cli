@@ -39,7 +39,7 @@ Best fits:
   - `warcraftlogs report <code>`
   - `warcraftlogs report-fights <code>`
   - `warcraftlogs report-player-details <code> --fight-id ...`
-  - `warcraftlogs report-player-talents <report-url-or-code> --actor-id ...`
+  - `warcraftlogs report-player-talents <report-url-or-code> --fight-id ... --actor-id ...`
   - `warcraftlogs report-master-data <code>`
   - `warcraftlogs report-events <code> --fight-id ...`
   - `warcraftlogs report-table <code> --data-type damage-done --fight-id ...`
@@ -153,7 +153,8 @@ Best fits:
 - `report-player-talents` is the first narrow build-transport lane:
   - use it when you need one actor's selected talents for one explicit fight
   - it returns a scoped `talent_transport_packet` sourced from `combatant_info.talentTree`
-  - it always keeps the raw evidence
+  - for normal multi-fight reports, give it `--fight-id` or a report URL that already includes `#fight=<id>`
+  - it keeps normalized raw `entry/node_id/rank` rows from the source tree as evidence
   - when local SimulationCraft trait data resolves every entry and the reconstructed build round-trips, it also includes validated `simc_split_talents`
   - otherwise it stays `raw_only` and tells you why validation could not be proven
 - `report-fights` is still the stable broad fight-list surface; use it to get fight IDs first, then move to `report-player-details`, `report-events`, `report-table`, or `report-graph` for deeper filtered analysis

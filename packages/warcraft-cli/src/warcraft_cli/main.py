@@ -666,9 +666,24 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
     if lowered.startswith("/"):
         return "/talent-calc/" in lowered
     parts = [part for part in text.split("/") if part]
-    if len(parts) >= 3 and parts[1] == "talent-calc":
+    known_classes = {
+        "deathknight",
+        "demonhunter",
+        "druid",
+        "evoker",
+        "hunter",
+        "mage",
+        "monk",
+        "paladin",
+        "priest",
+        "rogue",
+        "shaman",
+        "warlock",
+        "warrior",
+    }
+    if len(parts) >= 3 and (parts[0] == "talent-calc" or parts[1] == "talent-calc"):
         return True
-    return len(parts) >= 2 and all(part.strip() for part in parts[:2])
+    return len(parts) >= 2 and parts[0].strip() in known_classes and all(part.strip() for part in parts[:2])
 
 
 def _looks_like_warcraftlogs_report_reference(value: str) -> bool:
@@ -687,7 +702,9 @@ def _looks_like_transport_packet_path_input(value: str) -> bool:
     lowered = text.lower()
     if lowered.endswith(".json"):
         return True
-    return text.startswith(("./", "../", "~/")) or "\\" in text
+    if text.startswith(("./", "../", "~/")) or "\\" in text:
+        return True
+    return "/" in text and "://" not in text and not _looks_like_wowhead_talent_calc_reference(text)
 
 
 def _load_transport_packet_file(source: str) -> tuple[dict[str, Any], str] | None:
@@ -710,6 +727,71 @@ def _write_transport_packet(path_value: str, packet: dict[str, Any]) -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(packet, indent=2) + "\n", encoding="utf-8")
     return str(output_path)
+
+
+def _write_transport_packet_or_fail(
+    ctx: typer.Context,
+    *,
+    path_value: str | None,
+    packet: dict[str, Any],
+    source: str,
+    kind: str,
+    route: dict[str, Any] | None = None,
+    provider_result: dict[str, Any] | None = None,
+) -> str | None:
+    if not isinstance(path_value, str) or not path_value.strip():
+        return None
+    try:
+        return _write_transport_packet(path_value, packet)
+    except OSError as exc:
+        _fail_talent_route(
+            ctx,
+            code="transport_packet_write_failed",
+            message=f"Failed to write talent transport packet: {exc}",
+            source=source,
+            kind=kind,
+            route=route,
+            provider_result=provider_result,
+        )
+
+
+def _stable_transport_packet_path(
+    *,
+    route: dict[str, Any],
+    written_packet_path: str | None,
+) -> str | None:
+    if isinstance(written_packet_path, str) and written_packet_path.strip():
+        return written_packet_path
+    packet_path = route.get("packet_path")
+    return packet_path if isinstance(packet_path, str) and packet_path.strip() else None
+
+
+def _normalize_describe_transport_packet_path(
+    describe_result: dict[str, Any],
+    *,
+    stable_packet_path: str | None,
+) -> dict[str, Any]:
+    payload = describe_result.get("payload")
+    if not isinstance(payload, dict):
+        return describe_result
+    build_spec = payload.get("build_spec")
+    if not isinstance(build_spec, dict):
+        return describe_result
+    transport_packet = build_spec.get("transport_packet")
+    if not isinstance(transport_packet, dict):
+        return describe_result
+    normalized_result = dict(describe_result)
+    normalized_payload = dict(payload)
+    normalized_build_spec = dict(build_spec)
+    normalized_transport_packet = dict(transport_packet)
+    if stable_packet_path is not None:
+        normalized_transport_packet["path"] = stable_packet_path
+    else:
+        normalized_transport_packet.pop("path", None)
+    normalized_build_spec["transport_packet"] = normalized_transport_packet
+    normalized_payload["build_spec"] = normalized_build_spec
+    normalized_result["payload"] = normalized_payload
+    return normalized_result
 
 
 def _invoke_simc_with_transport_packet(
@@ -1920,7 +2002,15 @@ def talent_packet(
         validate=validate,
     )
     packet = resolved["talent_transport_packet"]
-    written_packet_path = _write_transport_packet(out, packet) if isinstance(out, str) and out.strip() else None
+    written_packet_path = _write_transport_packet_or_fail(
+        ctx,
+        path_value=out,
+        packet=packet,
+        source=source,
+        kind="talent_transport",
+        route=resolved["route"],
+        provider_result=resolved["producer_result"],
+    )
     _emit(
         {
             "provider": "warcraft",
@@ -2012,7 +2102,20 @@ def talent_describe(
             route=resolved["route"],
             provider_result=describe_result,
         )
-    written_packet_path = _write_transport_packet(packet_out, packet) if isinstance(packet_out, str) and packet_out.strip() else None
+    written_packet_path = _write_transport_packet_or_fail(
+        ctx,
+        path_value=packet_out,
+        packet=packet,
+        source=source,
+        kind="talent_describe",
+        route=resolved["route"],
+        provider_result=describe_result,
+    )
+    stable_packet_path = _stable_transport_packet_path(route=resolved["route"], written_packet_path=written_packet_path)
+    describe_result = _normalize_describe_transport_packet_path(
+        describe_result,
+        stable_packet_path=stable_packet_path,
+    )
     _emit(
         {
             "provider": "warcraft",

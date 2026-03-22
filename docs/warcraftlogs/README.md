@@ -519,7 +519,7 @@ Ranking support should include:
 - `warcraftlogs report-graph <code>`
 - `warcraftlogs report-rankings <code>`
 - `warcraftlogs report-player-details <code>`
-- `warcraftlogs report-player-talents <report-url-or-code> --actor-id <id>`
+- `warcraftlogs report-player-talents <report-url-or-code> --fight-id <id> --actor-id <id>`
 - `warcraftlogs report-master-data <code>`
 
 These commands should support:
@@ -538,7 +538,9 @@ Current talent-transport lane:
   - one report
   - one fight
   - one actor id
-- it always emits the raw scoped talent transport packet from `combatant_info.talentTree`
+- for normal multi-fight reports, it needs encounter scope via `--fight-id` or a report URL that already includes `#fight=<id>`
+- it always emits the scoped talent transport packet from `combatant_info.talentTree`
+- the packet preserves normalized raw talent rows as `entry/node_id/rank` evidence from that source tree
 - when local SimulationCraft trait data resolves every entry and the reconstructed build round-trips, it also emits validated `simc_split_talents`
 - when that proof does not hold, it stays `raw_only` and reports the validation failure reason in the packet
 - add `--out <path>` when you want to save just the packet JSON for follow-up `simc` validation or wrapper handoff

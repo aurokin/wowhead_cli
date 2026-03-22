@@ -610,8 +610,9 @@ EOF
   - one report
   - one fight
   - one actor id
+  - for normal multi-fight reports, supply encounter scope via `--fight-id` or a scoped report URL
   - it emits a `talent_transport_packet` built from `combatant_info.talentTree`
-  - it always preserves the raw `combatant_info.talentTree` evidence
+  - it preserves normalized raw talent-tree rows as `entry/node_id/rank` evidence from `combatant_info.talentTree`
   - when local SimulationCraft trait data can resolve every row and the reconstructed build round-trips, it also emits validated `simc_split_talents`
   - otherwise it stays `raw_only` and reports why validation could not be proven
   - add `--out <path>` when you want the command to write just the packet JSON for a later `simc` or wrapper handoff
@@ -728,7 +729,7 @@ SimulationCraft behavior:
 - `verify-clean` reports upstream git cleanliness and the local binary state, with optional binary hashing
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
-- `identify-build` is the safest first step when the user pastes a build string or talent-calc URL; it reports `source_kind`, resolved class/spec, confidence, and any probe candidates before deeper analysis
+- `identify-build` is the safest first step when the user pastes a build string or exact talent-calc URL; it reports `source_kind`, resolved class/spec, confidence, and any probe candidates before deeper analysis
 - `identify-build`, `decode-build`, and `describe-build` also accept `--build-packet <path>` for talent transport packet JSON:
   - exact forms such as embedded Wowhead URLs or WoW export strings are preferred first
   - validated reconstructed forms such as `simc_split_talents` are used when no exact form exists
@@ -742,7 +743,7 @@ SimulationCraft behavior:
   - malformed packet files also fail with `invalid_build_packet`, matching the other exact-build packet entrypoints
 - `--talents` accepts the same common consumer inputs as `--build-text` for exact-build commands:
   - bare WoW talent export strings
-  - Wowhead talent-calc URLs
+  - Wowhead talent-calc URLs with build codes
   - SimC `talents=...` lines
 - `describe-build` is the safest first step when the user says “tell me about this build”; it combines:
   - build identity
@@ -754,14 +755,14 @@ SimulationCraft behavior:
 - `decode-build` uses the local `simc` binary to decode talent strings into enabled talents and tree-grouped talent rows
 - `decode-build` accepts:
   - a bare WoW talent export string
-  - a Wowhead talent-calc URL
+  - a Wowhead talent-calc URL with a build code
   - SimC-native build/profile text
   - a talent transport packet JSON path via `--build-packet`
   and reports both the detected `source_kind` and the normalized generated SimC profile it used for decoding
 - `decode-build` only treats talents with positive ranks as enabled; `0/1` rows like a skipped capstone stay in the `skipped` side of `describe-build`
 - if class/spec are not supplied explicitly, `decode-build`, `build-harness`, and the exact-build APL commands try to identify them automatically:
   - direct actor/spec lines or APL path inference win first
-  - Wowhead talent-calc URLs contribute class/spec directly from the URL path
+  - Wowhead talent-calc URLs with build codes contribute class/spec directly from the URL path
   - bare WoW talent exports fall back to a bounded local SimC probe across supported specs
 - `sim` is the preferred consumer run path:
   - supports profile files, `stdin`, or `--profile-text`

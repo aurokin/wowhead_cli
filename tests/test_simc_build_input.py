@@ -220,6 +220,26 @@ def test_load_build_spec_extracts_exact_transport_form_from_packet(tmp_path: Pat
     assert any("talent transport packet" in note for note in spec.source_notes)
 
 
+def test_load_build_spec_rejects_buildless_wowhead_talent_calc_url() -> None:
+    try:
+        load_build_spec(
+            apl_path=None,
+            profile_path=None,
+            build_file=None,
+            build_text="https://www.wowhead.com/talent-calc/druid/balance",
+            talents=None,
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+            actor_class=None,
+            spec_name=None,
+        )
+    except ValueError as exc:
+        assert "must include a build code" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_load_build_spec_extracts_split_transport_form_from_packet(tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     packet_path.write_text(
