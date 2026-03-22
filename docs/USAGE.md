@@ -730,7 +730,7 @@ SimulationCraft behavior:
 - `verify-clean` reports upstream git cleanliness and the local binary state, with optional binary hashing
 - `inspect` returns either repo state or file-level inspection data, including inferred actor/spec and extracted build lines for `.simc` files
 - `spec-files` searches the local checkout across APL files and, when queried, matching class modules and spell dumps
-- `identify-build` is the safest first step when the user pastes a build string or exact talent-calc URL; it reports `source_kind`, resolved class/spec, confidence, and any probe candidates before deeper analysis
+- `identify-build` is the safest first step when the user pastes a build string or exact Wowhead talent-calc URL with build code; it reports `source_kind`, resolved class/spec, confidence, and any probe candidates before deeper analysis
 - `identify-build`, `decode-build`, and `describe-build` also accept `--build-packet <path>` for talent transport packet JSON:
   - exact forms such as embedded Wowhead URLs or WoW export strings are preferred first
   - validated reconstructed forms such as `simc_split_talents` are used when no exact form exists
