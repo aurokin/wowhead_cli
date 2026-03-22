@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+from urllib.parse import urlparse
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NoReturn
@@ -522,6 +523,17 @@ def _guide_builds_simc_payload(
                 if isinstance(apl_path, str) and apl_path.strip()
                 else None
             )
+            identify_result = _normalize_simc_transport_packet_path(identify_result, stable_packet_path=None)
+            decode_result = (
+                _normalize_simc_transport_packet_path(decode_result, stable_packet_path=None)
+                if isinstance(decode_result, dict)
+                else None
+            )
+            describe_result = (
+                _normalize_simc_transport_packet_path(describe_result, stable_packet_path=None)
+                if isinstance(describe_result, dict)
+                else None
+            )
         finally:
             packet_path.unlink(missing_ok=True) if packet_path is not None else None
         build_rows.append(
@@ -666,8 +678,15 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
     if not text:
         return False
     lowered = text.lower()
-    if "wowhead.com" in lowered:
-        return "talent-calc" in lowered
+    url_candidate: str | None = None
+    if "://" in text:
+        url_candidate = text
+    elif lowered.startswith(("www.wowhead.com/", "wowhead.com/")):
+        url_candidate = f"https://{text}"
+    if url_candidate is not None:
+        parsed = urlparse(url_candidate)
+        host = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""
+        return bool(host) and (host == "wowhead.com" or host.endswith(".wowhead.com")) and "talent-calc" in parsed.path.lower()
     if lowered.startswith("/"):
         return "/talent-calc/" in lowered
     parts = [part for part in text.split("/") if part]
@@ -774,21 +793,21 @@ def _stable_transport_packet_path(
     return packet_path if isinstance(packet_path, str) and packet_path.strip() else None
 
 
-def _normalize_describe_transport_packet_path(
-    describe_result: dict[str, Any],
+def _normalize_simc_transport_packet_path(
+    result: dict[str, Any],
     *,
     stable_packet_path: str | None,
 ) -> dict[str, Any]:
-    payload = describe_result.get("payload")
+    payload = result.get("payload")
     if not isinstance(payload, dict):
-        return describe_result
+        return result
     build_spec = payload.get("build_spec")
     if not isinstance(build_spec, dict):
-        return describe_result
+        return result
     transport_packet = build_spec.get("transport_packet")
     if not isinstance(transport_packet, dict):
-        return describe_result
-    normalized_result = dict(describe_result)
+        return result
+    normalized_result = dict(result)
     normalized_payload = dict(payload)
     normalized_build_spec = dict(build_spec)
     normalized_transport_packet = dict(transport_packet)
@@ -2195,7 +2214,7 @@ def talent_describe(
         resolved.get("upgrade_result") if isinstance(resolved, dict) else None,
         stable_packet_path=stable_packet_path,
     )
-    describe_result = _normalize_describe_transport_packet_path(
+    describe_result = _normalize_simc_transport_packet_path(
         describe_result,
         stable_packet_path=stable_packet_path,
     )

@@ -1245,6 +1245,57 @@ def test_warcraft_guide_builds_simc_can_include_describe_build_with_apl(
     assert invoke_calls[2]["args"][1:3] == ["--apl-path", str(apl_path)]
 
 
+def test_warcraft_guide_builds_simc_hides_deleted_temp_packet_paths(monkeypatch, tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "method-guide"
+    apl_path = tmp_path / "monk_mistweaver.simc"
+    apl_path.write_text("actions=spinning_crane_kick\n", encoding="utf-8")
+    write_article_bundle(
+        _comparison_payload(
+            provider="method",
+            slug="mistweaver-monk",
+            page_url="https://www.method.gg/guides/mistweaver-monk/talents",
+            page_title="Method Talents",
+            analysis_tags=["builds_talents", "talent_recommendations"],
+            build_code="ABC123",
+        ),
+        provider="method",
+        export_dir=bundle_dir,
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        packet_path = args[args.index("--build-packet") + 1]
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": "simc",
+                "kind": args[0],
+                "build_spec": {
+                    "transport_packet": {
+                        "path": packet_path,
+                        "transport_form": "wowhead_talent_calc_url",
+                        "transport_status": "exact",
+                    }
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["guide-builds-simc", str(bundle_dir), "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    simc_payloads = payload["builds"][0]["simc"]
+    assert "path" not in simc_payloads["identify"]["payload"]["build_spec"]["transport_packet"]
+    assert "path" not in simc_payloads["decode"]["payload"]["build_spec"]["transport_packet"]
+    assert "path" not in simc_payloads["describe"]["payload"]["build_spec"]["transport_packet"]
+
+
 def test_warcraft_guide_compare_query_fails_when_too_few_guides_export(
     monkeypatch,
     tmp_path: Path,
@@ -2536,6 +2587,16 @@ def test_warcraft_talent_packet_requires_explicit_source_contract() -> None:
     assert payload["error"]["code"] == "unsupported_talent_source"
 
 
+def test_warcraft_talent_packet_rejects_non_wowhead_absolute_url() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "https://notwowhead.com/talent-calc/druid/balance/ABC123"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "unsupported_talent_source"
+
+
 def test_warcraft_talent_packet_rejects_invalid_packet_file(tmp_path: Path) -> None:
     packet_path = tmp_path / "broken-packet.json"
     packet_path.write_text("{not json}\n")
@@ -3246,6 +3307,17 @@ def test_warcraft_talent_describe_does_not_write_packet_out_on_failure(monkeypat
 
 def test_warcraft_talent_describe_uses_stable_error_kind_for_route_failures() -> None:
     result = runner.invoke(warcraft_app, ["talent-describe", "abcd1234"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "unsupported_talent_source"
+
+
+def test_warcraft_talent_describe_rejects_non_wowhead_absolute_url() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "https://notwowhead.com/talent-calc/druid/balance/ABC123"],
+    )
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["kind"] == "talent_describe"
