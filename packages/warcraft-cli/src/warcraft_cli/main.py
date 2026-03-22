@@ -287,6 +287,11 @@ def _provider_error_payload(provider: str, result: dict[str, Any]) -> dict[str, 
     }
 
 
+def _provider_result_failed(result: dict[str, Any]) -> bool:
+    payload = result.get("payload")
+    return result.get("exit_code") != 0 or (isinstance(payload, dict) and payload.get("ok") is False)
+
+
 def _provider_payload_result(
     provider: str,
     args: list[str],
@@ -295,7 +300,7 @@ def _provider_payload_result(
 ) -> dict[str, Any]:
     result = provider_invoke(provider, args, expansion=expansion)
     payload = result.get("payload") if isinstance(result.get("payload"), dict) else None
-    if result.get("exit_code") != 0 or (isinstance(payload, dict) and payload.get("ok") is False):
+    if _provider_result_failed(result):
         return {
             "provider": provider,
             "status": "error",
@@ -824,13 +829,15 @@ def _upgrade_transport_packet_with_simc(
     packet: dict[str, Any],
     *,
     expansion: str | None,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     result = _invoke_simc_with_transport_packet(
         packet,
         ["validate-talent-transport"],
         expansion=expansion,
         prefix="warcraft-talent-packet-",
     )
+    if _provider_result_failed(result):
+        return result, None
     payload = result.get("payload") if isinstance(result.get("payload"), dict) else {}
     updated_packet = payload.get("updated_packet") if isinstance(payload.get("updated_packet"), dict) else packet
     return result, validate_talent_transport_packet(updated_packet)
@@ -905,14 +912,14 @@ def _transport_packet_from_provider_result(
     kind: str,
 ) -> dict[str, Any]:
     producer_payload = provider_result.get("payload") if isinstance(provider_result.get("payload"), dict) else {}
-    if provider_result.get("exit_code") != 0:
-        error_payload = producer_payload.get("error") if isinstance(producer_payload.get("error"), dict) else {}
-        error_code = error_payload.get("code") if isinstance(error_payload.get("code"), str) else "provider_command_failed"
-        error_message = error_payload.get("message") if isinstance(error_payload.get("message"), str) else f"{command_name} failed."
+    provider_name = route.get("provider")
+    provider_label = provider_name if isinstance(provider_name, str) and provider_name else "provider"
+    if _provider_result_failed(provider_result):
+        error_payload = _provider_error_payload(provider_label, provider_result)
         _fail_talent_route(
             ctx,
-            code=error_code,
-            message=error_message,
+            code=str(error_payload.get("code") or "provider_command_failed"),
+            message=str(error_payload.get("message") or f"{command_name} failed."),
             source=source,
             kind=kind,
             route=route,
@@ -1028,12 +1035,22 @@ def _maybe_upgrade_transport_packet(
                 kind=kind,
                 route=route,
             )
-        if upgrade_result.get("exit_code") != 0:
+        if upgrade_result is not None and _provider_result_failed(upgrade_result):
             error_payload = _provider_error_payload("simc", upgrade_result)
             _fail_talent_route(
                 ctx,
                 code=str(error_payload.get("code") or "packet_upgrade_failed"),
                 message=str(error_payload.get("message") or "simc validate-talent-transport failed while upgrading the packet."),
+                source=source,
+                kind=kind,
+                route=route,
+                provider_result=upgrade_result,
+            )
+        if packet is None:
+            _fail_talent_route(
+                ctx,
+                code="packet_upgrade_failed",
+                message="simc validate-talent-transport did not return an upgraded talent transport packet.",
                 source=source,
                 kind=kind,
                 route=route,

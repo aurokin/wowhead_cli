@@ -185,7 +185,7 @@ def test_talent_transport_packet_distinguishes_exact_validated_and_raw_only() ->
                 "hero_talents": "117176:1",
             }
         },
-        raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
         validation={"status": "validated"},
     )
     assert validated["transport_status"] == "validated"
@@ -195,7 +195,7 @@ def test_talent_transport_packet_distinguishes_exact_validated_and_raw_only() ->
         spec="Balance",
         confidence="medium",
         source="warcraftlogs_talent_tree",
-        raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
     )
     assert raw_only["transport_status"] == "raw_only"
 
@@ -265,7 +265,7 @@ def test_validate_talent_transport_packet_rejects_empty_simc_split_forms() -> No
         spec="Balance",
         confidence="high",
         source="warcraftlogs_talent_tree",
-        raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
     )
     packet["transport_forms"] = {"simc_split_talents": {"class_talents": "  "}}
 
@@ -283,7 +283,7 @@ def test_validate_talent_transport_packet_rejects_exact_wowhead_ref_without_buil
         spec="Balance",
         confidence="high",
         source="warcraftlogs_talent_tree",
-        raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
     )
     packet["transport_forms"] = {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance"}
     packet["transport_status"] = "exact"
@@ -292,6 +292,27 @@ def test_validate_talent_transport_packet_rejects_exact_wowhead_ref_without_buil
         validate_talent_transport_packet(packet)
     except ValueError as exc:
         assert "build code" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_validate_talent_transport_packet_rejects_exact_identity_mismatch() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="wowhead_talent_calc_url",
+        transport_forms={"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+    )
+    packet["build_identity"]["class_spec_identity"]["identity"] = {
+        "actor_class": "hunter",
+        "spec": "beast_mastery",
+    }
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "must match build_identity.class_spec_identity.identity" in str(exc)
     else:
         raise AssertionError("expected ValueError")
 
@@ -315,13 +336,36 @@ def test_validate_talent_transport_packet_rejects_raw_only_without_usable_rows()
         raise AssertionError("expected ValueError")
 
 
+def test_validate_talent_transport_packet_rejects_incomplete_raw_only_rows() -> None:
+    packet = {
+        "kind": "talent_transport_packet",
+        "transport_status": "raw_only",
+        "build_identity": {
+            "class_spec_identity": {
+                "identity": {"actor_class": "druid", "spec": "balance"},
+            }
+        },
+        "transport_forms": {},
+        "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+        "validation": {"status": "not_validated"},
+        "scope": {},
+    }
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "raw_only status requires usable raw talent_tree_entries evidence" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_refresh_talent_transport_packet_rejects_invalid_transport_forms() -> None:
     packet = talent_transport_packet_payload(
         actor_class="Druid",
         spec="Balance",
         confidence="high",
         source="warcraftlogs_talent_tree",
-        raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
     )
 
     try:

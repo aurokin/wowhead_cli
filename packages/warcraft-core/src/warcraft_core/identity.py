@@ -348,10 +348,22 @@ def _clean_payload_dict(value: dict[str, Any] | None) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _packet_class_spec_identity(build_identity: dict[str, Any]) -> tuple[str | None, str | None]:
+    class_spec_identity = build_identity.get("class_spec_identity")
+    if not isinstance(class_spec_identity, dict):
+        return None, None
+    identity = class_spec_identity.get("identity")
+    if not isinstance(identity, dict):
+        return None, None
+    actor_class = normalize_actor_class(identity.get("actor_class")) if isinstance(identity.get("actor_class"), str) else None
+    spec = normalize_spec_name(identity.get("spec")) if isinstance(identity.get("spec"), str) else None
+    return actor_class, spec
+
+
 def _is_usable_talent_tree_row(row: Any) -> bool:
     if not isinstance(row, dict):
         return False
-    return any(isinstance(row.get(key), int) for key in ("entry", "node_id", "rank"))
+    return all(isinstance(row.get(key), int) for key in ("entry", "node_id", "rank"))
 
 
 def _has_usable_raw_talent_evidence(raw_evidence: dict[str, Any]) -> bool:
@@ -513,6 +525,15 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
         parsed_wowhead_ref = parse_wowhead_talent_calc_ref(wowhead_ref)
         if parsed_wowhead_ref is None or parsed_wowhead_ref["build_code"] is None:
             raise ValueError("Talent transport packet wowhead_talent_calc_url must include an explicit build code.")
+        packet_actor_class, packet_spec = _packet_class_spec_identity(build_identity)
+        if (
+            packet_actor_class is not None
+            and packet_spec is not None
+            and (packet_actor_class != parsed_wowhead_ref["actor_class"] or packet_spec != parsed_wowhead_ref["spec"])
+        ):
+            raise ValueError(
+                "Talent transport packet wowhead_talent_calc_url must match build_identity.class_spec_identity.identity."
+            )
 
     wow_export = transport_forms.get("wow_talent_export")
     if wow_export is not None and not (isinstance(wow_export, str) and wow_export.strip()):

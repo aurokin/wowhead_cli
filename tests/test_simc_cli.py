@@ -305,6 +305,35 @@ def test_simc_identify_build_rejects_malformed_build_packet(tmp_path: Path) -> N
     assert "does not match packet contents" in payload["error"]["message"]
 
 
+def test_simc_identify_build_rejects_exact_packet_identity_mismatch(tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "hunter", "spec": "beast_mastery"},
+                    }
+                },
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(simc_app, ["identify-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert "must match build_identity.class_spec_identity.identity" in payload["error"]["message"]
+
+
 def test_simc_identify_build_rejects_raw_only_build_packet_without_transport_form(tmp_path: Path) -> None:
     packet_path = tmp_path / "raw-only-packet.json"
     packet_path.write_text(
@@ -459,6 +488,35 @@ def test_simc_validate_talent_transport_rejects_malformed_build_packet(tmp_path:
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "invalid_build_packet"
     assert "does not match packet contents" in payload["error"]["message"]
+
+
+def test_simc_validate_talent_transport_rejects_incomplete_raw_only_packet_rows(tmp_path: Path) -> None:
+    packet_path = tmp_path / "bad-rows-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {},
+                "raw_evidence": {
+                    "talent_tree_entries": [{"entry": 103324, "rank": 1}],
+                },
+                "validation": {"status": "not_validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(simc_app, ["validate-talent-transport", "--build-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert "raw_only status requires usable raw talent_tree_entries evidence" in payload["error"]["message"]
 
 
 def test_simc_validate_talent_transport_rejects_null_only_packet_rows(tmp_path: Path) -> None:

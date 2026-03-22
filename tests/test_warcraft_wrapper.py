@@ -2542,6 +2542,32 @@ def test_warcraft_talent_packet_preserves_provider_error_codes(monkeypatch) -> N
     assert payload["error"]["message"] == "Public Warcraft Logs API access requires client credentials."
 
 
+def test_warcraft_talent_packet_preserves_ok_false_provider_errors(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowhead"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_query",
+                    "message": "Buildless Wowhead ref cannot produce an exact packet.",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert payload["error"]["message"] == "Buildless Wowhead ref cannot produce an exact packet."
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+
+
 
 def test_warcraft_talent_packet_rejects_malformed_packet_status(tmp_path: Path) -> None:
     packet_path = tmp_path / "mismatched-status.json"
@@ -2576,7 +2602,7 @@ def test_warcraft_talent_packet_rejects_malformed_transport_forms(tmp_path: Path
                 "transport_status": "validated",
                 "build_identity": {},
                 "transport_forms": {"simc_split_talents": []},
-                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
                 "validation": {"status": "validated"},
                 "scope": {},
             }
@@ -2705,6 +2731,59 @@ def test_warcraft_talent_packet_reports_upgrade_failure(monkeypatch, tmp_path: P
     assert payload["error"]["code"] == "invalid_build_packet"
     assert payload["error"]["message"] == "Build packet did not contain a validated transport form."
     assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    assert payload["provider_result"]["provider"] == "simc"
+
+
+def test_warcraft_talent_packet_preserves_upgrade_failure_with_malformed_updated_packet(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {},
+                "transport_forms": {},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_build_packet",
+                    "message": "Build packet did not contain a validated transport form.",
+                },
+                "updated_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "validated",
+                    "build_identity": {},
+                    "transport_forms": {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert payload["error"]["message"] == "Build packet did not contain a validated transport form."
     assert payload["provider_result"]["provider"] == "simc"
 
 

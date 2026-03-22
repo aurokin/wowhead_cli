@@ -253,7 +253,7 @@ def _packet_talent_tree_rows(packet: dict[str, Any]) -> list[dict[str, Any]]:
             "node_id": node_id if isinstance(node_id, int) else None,
             "rank": rank if isinstance(rank, int) else None,
         }
-        if any(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
+        if all(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
             normalized.append(normalized_row)
     return normalized
 
