@@ -95,6 +95,14 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
 - `warcraft talent-describe` reuses that same routing contract, then hands the final packet to `simc describe-build`
   - use `--packet-out <path>` when you want to keep the exact packet that was described
   - use `--apl-path <apl>` when you want to pin the SimC APL instead of relying on default APL inference
+- end-to-end packet flow:
+  - `warcraftlogs report-player-talents abcdefgh --fight-id 47 --actor-id 1234 --out ./tmp/gubkfc-packet.json`
+  - `simc validate-talent-transport --build-packet ./tmp/gubkfc-packet.json --out ./tmp/gubkfc-packet-validated.json`
+  - `warcraft talent-describe ./tmp/gubkfc-packet-validated.json --apl-path <simc-root>/ActionPriorityLists/default/druid_balance.simc`
+- malformed-packet troubleshooting:
+  - packet producers now fail with `invalid_transport_packet` before they print or write malformed packet JSON
+  - wrapper routes preserve that same `invalid_transport_packet` error instead of hiding it behind a generic wrapper failure
+  - `simc identify-build`, `simc decode-build`, `simc describe-build`, and `simc validate-talent-transport` fail with `invalid_build_packet` when `--build-packet` points at malformed packet JSON
 - `simc` is a phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
 - `simc` includes readonly analysis commands for APL list inspection, graphing, talent gates, and action tracing.
 - `simc` includes an early phase-3 slice for conservative prune, branch-trace, and intent analysis.
@@ -260,6 +268,7 @@ Wowhead command behavior:
   - it emits an exact `talent_transport_packet` using the explicit talent-calc state URL
   - it preserves page metadata and listed embedded builds alongside that packet
   - add `--out <path>` when you want to save just the exact packet JSON for wrapper handoff or parity checks
+  - if packet validation fails, the command stops with `invalid_transport_packet` instead of printing or writing malformed packet JSON
 - `profession-tree` decodes profession tree state URLs into:
   - profession slug
   - current loadout code
@@ -606,6 +615,7 @@ EOF
   - when local SimulationCraft trait data can resolve every row and the reconstructed build round-trips, it also emits validated `simc_split_talents`
   - otherwise it stays `raw_only` and reports why validation could not be proven
   - add `--out <path>` when you want the command to write just the packet JSON for a later `simc` or wrapper handoff
+  - if packet validation fails, the command stops with `invalid_transport_packet` instead of printing or writing malformed packet JSON
 - `report-master-data` exposes report actor and ability catalogs, which is often the most useful companion surface for deeper report analysis
 - `report-table` and `report-graph` accept friendly enum-like filters such as `damage-done` and normalize them to the official GraphQL enum values
 - `report-rankings` exposes the official report rankings JSON with typed query metadata
@@ -723,10 +733,12 @@ SimulationCraft behavior:
   - exact forms such as embedded Wowhead URLs or WoW export strings are preferred first
   - validated reconstructed forms such as `simc_split_talents` are used when no exact form exists
   - packet provenance is preserved on the returned `build_spec.transport_packet` block
+  - malformed packet files now fail consistently with `invalid_build_packet`
 - `validate-talent-transport` is the reusable packet-validation primitive:
   - use `--build-packet <path>` when another integration already emitted a raw scoped packet
   - or pass repeated `--talent-row entry_id:node_id:rank` with explicit `--actor-class` and `--spec`
   - it keeps the raw rows visible, resolves entries through local SimC trait data, and only emits `simc_split_talents` when the reconstructed build round-trips cleanly
+  - malformed packet files also fail with `invalid_build_packet`, matching the other exact-build packet entrypoints
 - `--talents` accepts the same common consumer inputs as `--build-text` for exact-build commands:
   - bare WoW talent export strings
   - Wowhead talent-calc URLs
