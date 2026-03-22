@@ -1772,7 +1772,7 @@ def describe_build_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
-    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or talent-calc URL."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or Wowhead talent-calc URL with build code."),
     talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
