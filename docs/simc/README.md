@@ -141,6 +141,11 @@ Recent usability improvement:
   - or repeated `--talent-row entry_id:node_id:rank` values with explicit class/spec
   - it resolves rows through local SimC generated trait data
   - it only emits validated `simc_split_talents` when the reconstructed build round-trips
+- malformed packet files now fail consistently with `invalid_build_packet` across:
+  - `identify-build --build-packet`
+  - `decode-build --build-packet`
+  - `describe-build --build-packet`
+  - `validate-talent-transport --build-packet`
 - `describe-build` now sits above that exact-build layer as the default “what is this build doing?” command
 - it keeps the summary evidence-backed by combining:
   - resolved build identity

@@ -542,6 +542,11 @@ Current talent-transport lane:
 - when local SimulationCraft trait data resolves every entry and the reconstructed build round-trips, it also emits validated `simc_split_talents`
 - when that proof does not hold, it stays `raw_only` and reports the validation failure reason in the packet
 - add `--out <path>` when you want to save just the packet JSON for follow-up `simc` validation or wrapper handoff
+- typical follow-up flow:
+  - `warcraftlogs report-player-talents <report> --fight-id <id> --actor-id <id> --out ./tmp/actor-packet.json`
+  - `simc validate-talent-transport --build-packet ./tmp/actor-packet.json --out ./tmp/actor-packet-validated.json`
+  - `warcraft talent-describe ./tmp/actor-packet-validated.json --apl-path <apl>`
+- if packet validation fails, `report-player-talents` stops with `invalid_transport_packet` before printing or writing malformed packet JSON
 
 ### Deep Encounter Analytics
 

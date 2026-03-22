@@ -219,6 +219,7 @@ Current tool state:
   - it emits an exact `talent_transport_packet` from the explicit calculator ref
   - it keeps the cited state URL, page metadata, and listed embedded builds next to the packet
   - add `--out <path>` when you want to save just the exact packet JSON for wrapper handoff or parity checks
+  - if packet validation fails, it stops with `invalid_transport_packet` before printing or writing malformed packet JSON
 - `profession-tree` is now a real route-state decoder and extracts:
   - profession slug
   - loadout code
