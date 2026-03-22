@@ -5,6 +5,7 @@ from pathlib import Path
 
 import httpx
 from method_cli.main import app as method_app
+import typer
 from typer.testing import CliRunner
 from warcraft_cli.main import app as warcraft_app
 from warcraft_content.article_bundle import write_article_bundle
@@ -19,6 +20,10 @@ def _disable_wowhead_page_fetch(monkeypatch) -> None:  # noqa: ANN001
         raise httpx.ConnectError("network disabled", request=httpx.Request("GET", page_url))
 
     monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+
+
+def _disable_wowhead_client_init(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr("wowhead_cli.main._client", lambda ctx: (_ for _ in ()).throw(typer.Exit(1)))
 
 
 def _simc_build_input_summary(args: list[str]) -> dict[str, object]:
@@ -2294,6 +2299,17 @@ def test_warcraft_talent_packet_routes_explicit_wowhead_ref(monkeypatch) -> None
     assert calls == [("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "10"])]
 
 
+def test_warcraft_talent_packet_routes_explicit_wowhead_ref_without_client_init(monkeypatch) -> None:
+    _disable_wowhead_client_init(monkeypatch)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123", "--no-validate"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["talent_transport_packet"]["transport_status"] == "exact"
+    assert "listed_builds" not in payload["producer_result"]["payload"]
+
+
 def test_warcraft_talent_packet_passes_wowhead_listed_build_limit_and_expansion(monkeypatch) -> None:
     calls: list[tuple[str, list[str], str | None]] = []
 
@@ -2436,6 +2452,34 @@ def test_warcraft_talent_packet_routes_warcraftlogs_and_upgrades(monkeypatch) ->
     assert calls[1][1][:2] == ["validate-talent-transport", "--build-packet"]
 
 
+def test_warcraft_talent_packet_preserves_missing_talent_tree_for_non_dict_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _EndToEndWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._player_detail_actor",
+        lambda details_payload, actor_id: {
+            "id": actor_id,
+            "combatant_info": {
+                "talentTree": [
+                    {"id": 103324, "nodeID": 82244, "rank": 1},
+                    "bad-row",
+                ]
+            },
+            "class_spec_identity": {
+                "identity": {"actor_class": "paladin", "spec": "retribution"},
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_talent_tree"
+    assert "incomplete combatant_info.talentTree rows" in payload["error"]["message"]
+
+
 def test_warcraft_talent_packet_upgrades_packet_file_and_writes_output(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "raw-packet.json"
     out_path = tmp_path / "validated-packet.json"
@@ -2461,6 +2505,7 @@ def test_warcraft_talent_packet_upgrades_packet_file_and_writes_output(monkeypat
             "provider": provider,
             "exit_code": 0,
             "payload": {
+                "input": {"source": "build_packet", "build_packet": args[2]},
                 "updated_packet": {
                     **packet,
                     "transport_status": "validated",
@@ -2479,6 +2524,7 @@ def test_warcraft_talent_packet_upgrades_packet_file_and_writes_output(monkeypat
     assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
     assert payload["written_packet_path"] == str(out_path.resolve())
     assert payload["talent_transport_packet"]["transport_status"] == "validated"
+    assert "build_packet" not in payload["upgrade_result"]["payload"]["input"]
     written = json.loads(out_path.read_text())
     assert written["transport_status"] == "validated"
 
@@ -3722,6 +3768,7 @@ def test_warcraft_talent_describe_packet_out_changes_after_validation_upgrade(mo
         ["talent-describe", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--apl-path", str(apl_path), "--packet-out", str(wrapper_path)],
     )
     assert wrapper_result.exit_code == 0
+    wrapper_payload = json.loads(wrapper_result.stdout)
 
     direct_packet = json.loads(direct_path.read_text())
     wrapper_packet = json.loads(wrapper_path.read_text())
@@ -3729,6 +3776,8 @@ def test_warcraft_talent_describe_packet_out_changes_after_validation_upgrade(mo
     assert direct_packet["transport_status"] == "raw_only"
     assert wrapper_packet["transport_status"] == "validated"
     assert wrapper_packet["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
+    assert "build_packet" not in wrapper_payload["upgrade_result"]["payload"]["input"]
+    assert wrapper_payload["describe_result"]["payload"]["build_spec"]["transport_packet"]["path"] == str(wrapper_path.resolve())
 
 
 def test_warcraft_talent_packet_file_reuse_stays_exact_without_validation(monkeypatch, tmp_path: Path) -> None:

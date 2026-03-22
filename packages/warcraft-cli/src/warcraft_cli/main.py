@@ -818,10 +818,7 @@ def _normalize_upgrade_result_build_packet_path(
     normalized_result = dict(upgrade_result)
     normalized_payload = dict(payload)
     normalized_input = dict(input_payload)
-    if stable_packet_path is not None:
-        normalized_input["build_packet"] = stable_packet_path
-    else:
-        normalized_input.pop("build_packet", None)
+    normalized_input.pop("build_packet", None)
     normalized_payload["input"] = normalized_input
     normalized_result["payload"] = normalized_payload
     return normalized_result

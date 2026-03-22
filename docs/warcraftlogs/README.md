@@ -539,11 +539,12 @@ Current talent-transport lane:
   - one fight
   - one actor id
   - for normal multi-fight reports, it needs encounter scope via `--fight-id` or a report URL that already includes `#fight=<id>`
-  - when the selected actor includes usable `combatant_info.talentTree` rows, it emits the scoped talent transport packet from that evidence
+  - it only emits the scoped talent transport packet when every selected `combatant_info.talentTree` row is fully formed
   - the packet preserves normalized raw talent rows as `entry/node_id/rank` evidence from that source tree
 - when local SimulationCraft trait data resolves every entry and the reconstructed build round-trips, it also emits validated `simc_split_talents`
 - when that proof does not hold, it stays `raw_only` and reports the validation failure reason in the packet
 - add `--out <path>` when you want to save just the packet JSON for follow-up `simc` validation or wrapper handoff
+- malformed or incomplete talent-tree rows fail with `missing_talent_tree` instead of emitting a partial packet
 - typical follow-up flow:
   - `warcraftlogs report-player-talents <report> --fight-id <id> --actor-id <id> --out ./tmp/actor-packet.json`
   - `simc validate-talent-transport --build-packet ./tmp/actor-packet.json --out ./tmp/actor-packet-validated.json`

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import httpx
+import typer
 from typer.testing import CliRunner
 
 from wowhead_cli.main import (
@@ -892,6 +893,46 @@ def test_talent_calc_packet_command_does_not_require_page_fetch_for_exact_ref(mo
     assert payload["page"]["canonical_url"].endswith("/talent-calc/druid/balance/ABC123")
     assert "listed_builds" not in payload
     assert payload["talent_transport_packet"]["transport_status"] == "exact"
+
+
+def test_talent_calc_packet_command_does_not_require_client_init_for_exact_ref(monkeypatch, tmp_path: Path) -> None:
+    out_path = tmp_path / "exact-packet.json"
+    monkeypatch.setattr("wowhead_cli.main._client", lambda ctx: (_ for _ in ()).throw(typer.Exit(1)))
+    stdout_result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123"])
+    assert stdout_result.exit_code == 0
+    stdout_payload = json.loads(stdout_result.stdout)
+    assert stdout_payload["tool"]["state_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert stdout_payload["talent_transport_packet"]["transport_status"] == "exact"
+    assert "listed_builds" not in stdout_payload
+
+    out_result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(out_path)])
+    assert out_result.exit_code == 0
+    out_payload = json.loads(out_result.stdout)
+    assert out_payload["written_packet_path"] == str(out_path.resolve())
+    assert json.loads(out_path.read_text()) == out_payload["talent_transport_packet"] == stdout_payload["talent_transport_packet"]
+
+
+def test_talent_calc_packet_command_falls_back_on_http_status_error(monkeypatch, tmp_path: Path) -> None:
+    out_path = tmp_path / "exact-packet.json"
+
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        request = httpx.Request("GET", page_url)
+        response = httpx.Response(503, request=request)
+        raise httpx.HTTPStatusError("service unavailable", request=request, response=response)
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+
+    stdout_result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123"])
+    assert stdout_result.exit_code == 0
+    stdout_payload = json.loads(stdout_result.stdout)
+    assert stdout_payload["talent_transport_packet"]["transport_status"] == "exact"
+    assert "listed_builds" not in stdout_payload
+
+    out_result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(out_path)])
+    assert out_result.exit_code == 0
+    out_payload = json.loads(out_result.stdout)
+    assert out_payload["written_packet_path"] == str(out_path.resolve())
+    assert json.loads(out_path.read_text()) == out_payload["talent_transport_packet"] == stdout_payload["talent_transport_packet"]
 
 
 def test_talent_calc_packet_command_normalizes_write_failure(monkeypatch, tmp_path: Path) -> None:

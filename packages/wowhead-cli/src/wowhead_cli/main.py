@@ -3026,7 +3026,12 @@ def _enrich_talent_calc_payload_with_page_data(
     fail_on_fetch_error: bool,
 ) -> dict[str, Any]:
     state_url = str(payload["tool"]["state_url"])
-    client = _client(ctx)
+    try:
+        client = _client(ctx)
+    except typer.Exit:
+        if fail_on_fetch_error:
+            raise
+        return payload
     try:
         html = client.page_html(state_url)
     except httpx.HTTPStatusError as exc:

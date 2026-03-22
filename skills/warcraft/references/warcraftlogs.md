@@ -154,9 +154,10 @@ Best fits:
   - use it when you need one actor's selected talents for one explicit fight
   - it returns a scoped `talent_transport_packet` sourced from `combatant_info.talentTree`
   - for normal multi-fight reports, give it `--fight-id` or a report URL that already includes `#fight=<id>`
-  - when the actor includes usable tree rows, it keeps normalized raw `entry/node_id/rank` rows from the source tree as evidence
+  - it only emits a packet when every selected talent-tree row is fully formed, and then keeps normalized raw `entry/node_id/rank` rows from the source tree as evidence
   - when local SimulationCraft trait data resolves every entry and the reconstructed build round-trips, it also includes validated `simc_split_talents`
   - otherwise it stays `raw_only` and tells you why validation could not be proven
+  - malformed or incomplete talent-tree rows fail with `missing_talent_tree` instead of emitting a partial packet
 - `report-fights` is still the stable broad fight-list surface; use it to get fight IDs first, then move to `report-player-details`, `report-events`, `report-table`, or `report-graph` for deeper filtered analysis
 - `report-table` and `report-graph` accept user-friendly enum filters like `damage-done` and normalize them for the API
 - `report-events` intentionally requires a narrowed slice such as `--fight-id`, `--encounter-id`, `--start-time`, or `--end-time`

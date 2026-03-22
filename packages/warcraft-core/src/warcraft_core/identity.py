@@ -520,6 +520,7 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
         raise ValueError("Talent transport packet scope must be an object.")
 
     wowhead_ref = transport_forms.get("wowhead_talent_calc_url")
+    parsed_wowhead_ref: dict[str, str | None] | None = None
     if wowhead_ref is not None:
         if not (isinstance(wowhead_ref, str) and wowhead_ref.strip()):
             raise ValueError("Talent transport packet wowhead_talent_calc_url must be a non-empty string.")
@@ -541,6 +542,16 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
     wow_export = transport_forms.get("wow_talent_export")
     if wow_export is not None and not (isinstance(wow_export, str) and wow_export.strip()):
         raise ValueError("Talent transport packet wow_talent_export must be a non-empty string.")
+    if (
+        parsed_wowhead_ref is not None
+        and isinstance(wow_export, str)
+        and wow_export.strip()
+        and wow_export.strip() != parsed_wowhead_ref["build_code"]
+    ):
+        raise ValueError(
+            "Talent transport packet exact transport forms must agree when both "
+            "wowhead_talent_calc_url and wow_talent_export are present."
+        )
 
     split = transport_forms.get("simc_split_talents")
     if split is not None:

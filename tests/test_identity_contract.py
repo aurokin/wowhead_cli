@@ -341,6 +341,32 @@ def test_validate_talent_transport_packet_rejects_partial_exact_identity_mismatc
         raise AssertionError("expected ValueError")
 
 
+def test_validate_talent_transport_packet_rejects_conflicting_exact_transport_forms() -> None:
+    packet = {
+        "kind": "talent_transport_packet",
+        "transport_status": "exact",
+        "build_identity": {
+            "class_spec_identity": {
+                "identity": {"actor_class": "druid", "spec": "balance"},
+            }
+        },
+        "transport_forms": {
+            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+            "wow_talent_export": "XYZ789",
+        },
+        "raw_evidence": {},
+        "validation": {},
+        "scope": {},
+    }
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "exact transport forms must agree" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_validate_talent_transport_packet_rejects_raw_only_without_usable_rows() -> None:
     packet = talent_transport_packet_payload(
         actor_class="Druid",

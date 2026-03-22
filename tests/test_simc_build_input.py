@@ -346,6 +346,54 @@ def test_load_build_spec_extracts_wow_export_transport_form_from_packet(tmp_path
     assert spec.transport_form == "wow_talent_export"
 
 
+def test_load_build_spec_rejects_conflicting_exact_transport_forms(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+            "wow_talent_export": "XYZ789"
+          },
+          "raw_evidence": {
+            "reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+          },
+          "validation": {},
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    try:
+        load_build_spec(
+            apl_path=None,
+            profile_path=None,
+            build_file=None,
+            build_text=None,
+            talents=None,
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+            actor_class=None,
+            spec_name=None,
+            build_packet=str(packet_path),
+        )
+    except ValueError as exc:
+        assert "exact transport forms must agree" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_parse_debug_talents_ignores_selection_tree() -> None:
     output = (FIXTURES / "dh_decode_debug.txt").read_text()
     talents = parse_debug_talents(output)

@@ -93,7 +93,7 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
   - explicit Warcraft Logs report refs route to `warcraftlogs report-player-talents` and can auto-upgrade through `simc`
   - existing packet JSON files can be re-emitted or upgraded without choosing a provider first
 - `warcraft talent-describe` reuses that same routing contract, then hands the final packet to `simc describe-build`
-  - use `--packet-out <path>` when you want to keep the exact packet that was described
+  - use `--packet-out <path>` when you want to keep the final routed packet that was described, including any validation upgrade
   - use `--apl-path <apl>` when you want to pin the SimC APL instead of relying on default APL inference
 - end-to-end packet flow:
   - `warcraftlogs report-player-talents abcdefgh --fight-id 47 --actor-id 1234 --out ./tmp/gubkfc-packet.json`
@@ -266,7 +266,7 @@ Wowhead command behavior:
   - listed embedded builds when the page exposes them
 - `talent-calc-packet` is the narrow exact-build producer for explicit Wowhead refs:
   - it emits an exact `talent_transport_packet` using the explicit talent-calc state URL
-  - it preserves page metadata and listed embedded builds alongside that packet
+  - it preserves page metadata and listed embedded builds alongside that packet when page fetch succeeds; those fields are best-effort and may be absent on fetch/cache failures
   - add `--out <path>` when you want to save just the exact packet JSON for wrapper handoff or parity checks
   - if packet validation fails, the command stops with `invalid_transport_packet` instead of printing or writing malformed packet JSON
 - `profession-tree` decodes profession tree state URLs into:
@@ -611,11 +611,12 @@ EOF
   - one fight
   - one actor id
   - for normal multi-fight reports, supply encounter scope via `--fight-id` or a scoped report URL
-  - when the selected actor includes usable `combatant_info.talentTree` rows, it emits a `talent_transport_packet` built from that evidence
+  - it only emits a packet when every selected `combatant_info.talentTree` row is fully formed
   - it preserves normalized raw talent-tree rows as `entry/node_id/rank` evidence from `combatant_info.talentTree`
   - when local SimulationCraft trait data can resolve every row and the reconstructed build round-trips, it also emits validated `simc_split_talents`
   - otherwise it stays `raw_only` and reports why validation could not be proven
   - add `--out <path>` when you want the command to write just the packet JSON for a later `simc` or wrapper handoff
+  - malformed or incomplete talent-tree rows fail with `missing_talent_tree` instead of emitting a partial packet
   - if packet validation fails, the command stops with `invalid_transport_packet` instead of printing or writing malformed packet JSON
 - `report-master-data` exposes report actor and ability catalogs, which is often the most useful companion surface for deeper report analysis
 - `report-table` and `report-graph` accept friendly enum-like filters such as `damage-done` and normalize them to the official GraphQL enum values
