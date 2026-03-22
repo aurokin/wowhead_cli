@@ -380,6 +380,44 @@ def _load_identified_build_spec(
     return identify_build(paths, unresolved_spec)
 
 
+def _load_identified_build_spec_or_fail(
+    ctx: typer.Context,
+    paths: RepoPaths,
+    *,
+    apl_path: str | Path | None,
+    profile_path: str | None,
+    build_file: str | None,
+    build_text: str | None,
+    talents: str | None,
+    class_talents: str | None,
+    spec_talents: str | None,
+    hero_talents: str | None,
+    actor_class: str | None,
+    spec_name: str | None,
+    build_packet: str | None = None,
+) -> tuple[Any, Any]:
+    try:
+        return _load_identified_build_spec(
+            paths,
+            apl_path=apl_path,
+            profile_path=profile_path,
+            build_file=build_file,
+            build_packet=build_packet,
+            build_text=build_text,
+            talents=talents,
+            class_talents=class_talents,
+            spec_talents=spec_talents,
+            hero_talents=hero_talents,
+            actor_class=actor_class,
+            spec_name=spec_name,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        if build_packet:
+            _fail(ctx, "invalid_build_packet", str(exc))
+            raise AssertionError("unreachable") from exc
+        raise
+
+
 def _prune_context_payload(resolution: Any, context: PruneContext) -> dict[str, Any]:
     return {
         "actor_class": resolution.actor_class,
@@ -756,7 +794,8 @@ def decode_build_command(
     spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
 ) -> None:
     paths = _repo_paths(ctx)
-    build_spec, identity = _load_identified_build_spec(
+    build_spec, identity = _load_identified_build_spec_or_fail(
+        ctx,
         paths,
         apl_path=apl_path,
         profile_path=profile_path,
@@ -837,7 +876,8 @@ def identify_build_command(
     spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
 ) -> None:
     paths = _repo_paths(ctx)
-    build_spec, identity = _load_identified_build_spec(
+    build_spec, identity = _load_identified_build_spec_or_fail(
+        ctx,
         paths,
         apl_path=apl_path,
         profile_path=profile_path,
@@ -1727,7 +1767,8 @@ def describe_build_command(
     disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
 ) -> None:
     paths = _repo_paths(ctx)
-    build_spec, identity = _load_identified_build_spec(
+    build_spec, identity = _load_identified_build_spec_or_fail(
+        ctx,
         paths,
         apl_path=apl_path,
         profile_path=profile_path,
