@@ -550,6 +550,55 @@ def test_simc_validate_talent_transport_can_write_upgraded_packet(monkeypatch, t
     assert written["transport_forms"]["simc_split_talents"]["class_talents"] == "103324:1"
 
 
+def test_simc_validate_talent_transport_normalizes_write_failure(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    out_dir = tmp_path / "out-dir"
+    out_dir.mkdir()
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "raw_evidence": {
+                    "talent_tree_entries": [
+                        {"entry": 103324, "node_id": 82244, "rank": 1},
+                    ]
+                },
+                "transport_forms": {},
+                "validation": {"status": "not_validated"},
+                "scope": {},
+            }
+        )
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        simc_app,
+        ["validate-talent-transport", "--build-packet", str(packet_path), "--out", str(out_dir)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "transport_packet_write_failed"
+
+
 def test_simc_validate_talent_transport_accepts_inline_rows(monkeypatch) -> None:
     def fake_validate(**kwargs):  # noqa: ANN001
         assert kwargs["actor_class"] == "druid"

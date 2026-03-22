@@ -2164,8 +2164,8 @@ def test_warcraft_packet_handoff_from_warcraftlogs_to_simc(monkeypatch, tmp_path
                             "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
                             "combatant_info": {
                                 "talentTree": [
-                                    {"id": 103324, "guid": 82244, "rank": 1},
-                                    {"id": 109839, "guid": 88206, "rank": 1},
+                                    {"id": 103324, "nodeID": 82244, "rank": 1},
+                                    {"id": 109839, "nodeID": 88206, "rank": 1},
                                 ]
                             },
                         }
@@ -2687,7 +2687,13 @@ def test_warcraft_talent_packet_reports_upgrade_failure(monkeypatch, tmp_path: P
         return {
             "provider": provider,
             "exit_code": 1,
-            "payload": {"ok": False},
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_build_packet",
+                    "message": "Build packet did not contain a validated transport form.",
+                },
+            },
             "stdout": "",
         }
 
@@ -2696,7 +2702,8 @@ def test_warcraft_talent_packet_reports_upgrade_failure(monkeypatch, tmp_path: P
     result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
-    assert payload["error"]["code"] == "packet_upgrade_failed"
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert payload["error"]["message"] == "Build packet did not contain a validated transport form."
     assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
     assert payload["provider_result"]["provider"] == "simc"
 
@@ -2791,7 +2798,13 @@ def test_warcraft_talent_describe_reports_simc_failure(monkeypatch, tmp_path: Pa
         return {
             "provider": provider,
             "exit_code": 1,
-            "payload": {"ok": False},
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "apl_not_found",
+                    "message": "APL path did not exist.",
+                },
+            },
             "stdout": "",
         }
 
@@ -2803,7 +2816,9 @@ def test_warcraft_talent_describe_reports_simc_failure(monkeypatch, tmp_path: Pa
     )
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
-    assert payload["error"]["code"] == "describe_build_failed"
+    assert payload["error"]["code"] == "apl_not_found"
+    assert payload["error"]["message"] == "APL path did not exist."
+    assert payload["kind"] == "talent_describe"
     assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
     assert payload["provider_result"]["provider"] == "simc"
 
@@ -2836,7 +2851,13 @@ def test_warcraft_talent_describe_does_not_write_packet_out_on_failure(monkeypat
         lambda provider, args, *, expansion=None: {
             "provider": provider,
             "exit_code": 1,
-            "payload": {"ok": False},
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "apl_not_found",
+                    "message": "APL path did not exist.",
+                },
+            },
             "stdout": "",
         },
     )
@@ -2855,8 +2876,16 @@ def test_warcraft_talent_describe_does_not_write_packet_out_on_failure(monkeypat
     )
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
-    assert payload["error"]["code"] == "describe_build_failed"
+    assert payload["error"]["code"] == "apl_not_found"
     assert not out_path.exists()
+
+
+def test_warcraft_talent_describe_uses_stable_error_kind_for_route_failures() -> None:
+    result = runner.invoke(warcraft_app, ["talent-describe", "abcd1234"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "unsupported_talent_source"
 
 
 def test_warcraft_talent_packet_normalizes_packet_write_failure(monkeypatch, tmp_path: Path) -> None:
@@ -3624,6 +3653,60 @@ def test_warcraft_talent_round_trip_warcraftlogs_packet_to_describe(monkeypatch,
     assert transport_packet["transport_form"] == "simc_split_talents"
     assert transport_packet["transport_status"] == "validated"
     assert transport_packet["path"] == str(packet_path.resolve())
+
+
+def test_warcraft_talent_describe_hides_stale_packet_path_after_in_memory_upgrade(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "transport_forms": {},
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="simc_split_talents",
+        transport_status="validated",
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
+    assert transport_packet["transport_form"] == "simc_split_talents"
+    assert transport_packet["transport_status"] == "validated"
+    assert "path" not in transport_packet
 
 
 def test_warcraft_passthrough_to_raiderio(monkeypatch) -> None:

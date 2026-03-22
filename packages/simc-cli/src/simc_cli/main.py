@@ -92,6 +92,19 @@ def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1, extra
     raise typer.Exit(status)
 
 
+def _write_packet_json_or_fail(ctx: typer.Context, *, out: str | None, packet: dict[str, Any]) -> str | None:
+    if not out:
+        return None
+    try:
+        output_path = Path(out).expanduser().resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(packet, indent=2) + "\n")
+        return str(output_path)
+    except OSError as exc:
+        _fail(ctx, "transport_packet_write_failed", f"Failed to write talent transport packet: {exc}")
+        raise AssertionError("unreachable")
+
+
 def _repo_paths(ctx: typer.Context) -> RepoPaths:
     return discover_repo(_cfg(ctx).repo_root)
 
@@ -972,11 +985,7 @@ def validate_talent_transport_command(
             validation=validation,
         )
         transport_status = updated_packet["transport_status"] if isinstance(updated_packet.get("transport_status"), str) else transport_status
-        if out:
-            output_path = Path(out).expanduser().resolve()
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(json.dumps(updated_packet, indent=2) + "\n")
-            written_packet_path = str(output_path)
+        written_packet_path = _write_packet_json_or_fail(ctx, out=out, packet=updated_packet)
     _emit(
         ctx,
         {

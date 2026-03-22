@@ -611,7 +611,7 @@ EOF
   - one fight
   - one actor id
   - for normal multi-fight reports, supply encounter scope via `--fight-id` or a scoped report URL
-  - it emits a `talent_transport_packet` built from `combatant_info.talentTree`
+  - when the selected actor includes usable `combatant_info.talentTree` rows, it emits a `talent_transport_packet` built from that evidence
   - it preserves normalized raw talent-tree rows as `entry/node_id/rank` evidence from `combatant_info.talentTree`
   - when local SimulationCraft trait data can resolve every row and the reconstructed build round-trips, it also emits validated `simc_split_talents`
   - otherwise it stays `raw_only` and reports why validation could not be proven

@@ -759,9 +759,12 @@ def _stable_transport_packet_path(
     *,
     route: dict[str, Any],
     written_packet_path: str | None,
+    upgraded: bool,
 ) -> str | None:
     if isinstance(written_packet_path, str) and written_packet_path.strip():
         return written_packet_path
+    if upgraded:
+        return None
     packet_path = route.get("packet_path")
     return packet_path if isinstance(packet_path, str) and packet_path.strip() else None
 
@@ -899,6 +902,7 @@ def _transport_packet_from_provider_result(
     route: dict[str, Any],
     provider_result: dict[str, Any],
     command_name: str,
+    kind: str,
 ) -> dict[str, Any]:
     producer_payload = provider_result.get("payload") if isinstance(provider_result.get("payload"), dict) else {}
     if provider_result.get("exit_code") != 0:
@@ -910,7 +914,7 @@ def _transport_packet_from_provider_result(
             code=error_code,
             message=error_message,
             source=source,
-            kind="talent_transport",
+            kind=kind,
             route=route,
             provider_result=provider_result,
         )
@@ -922,7 +926,7 @@ def _transport_packet_from_provider_result(
             code="missing_transport_packet",
             message=f"{command_name} did not return a talent transport packet.",
             source=source,
-            kind="talent_transport",
+            kind=kind,
             route=route,
             provider_result=provider_result,
         )
@@ -934,7 +938,7 @@ def _transport_packet_from_provider_result(
             code="invalid_transport_packet",
             message=f"{command_name} returned an invalid talent transport packet: {exc}",
             source=source,
-            kind="talent_transport",
+            kind=kind,
             route=route,
             provider_result=provider_result,
         )
@@ -946,6 +950,7 @@ def _wowhead_transport_packet(
     source: str,
     listed_build_limit: int,
     requested_expansion: str | None,
+    kind: str,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     route = {"kind": "wowhead_talent_calc", "provider": "wowhead"}
     producer_result = provider_invoke(
@@ -959,6 +964,7 @@ def _wowhead_transport_packet(
         route=route,
         provider_result=producer_result,
         command_name="wowhead talent-calc-packet",
+        kind=kind,
     )
     return route, producer_result, packet
 
@@ -971,6 +977,7 @@ def _warcraftlogs_transport_packet(
     fight_id: int | None,
     allow_unlisted: bool,
     requested_expansion: str | None,
+    kind: str,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     route = {
         "kind": "warcraftlogs_report_actor",
@@ -991,6 +998,7 @@ def _warcraftlogs_transport_packet(
         route=route,
         provider_result=producer_result,
         command_name="warcraftlogs report-player-talents",
+        kind=kind,
     )
     return route, producer_result, packet
 
@@ -1003,6 +1011,7 @@ def _maybe_upgrade_transport_packet(
     packet: dict[str, Any],
     validate: bool,
     requested_expansion: str | None,
+    kind: str,
 ) -> tuple[str | None, bool, dict[str, Any] | None, dict[str, Any]]:
     source_status = packet.get("transport_status") if isinstance(packet.get("transport_status"), str) else None
     upgrade_result: dict[str, Any] | None = None
@@ -1016,16 +1025,17 @@ def _maybe_upgrade_transport_packet(
                 code="packet_upgrade_failed",
                 message=f"simc validate-talent-transport returned an invalid upgraded packet: {exc}",
                 source=source,
-                kind="talent_transport",
+                kind=kind,
                 route=route,
             )
         if upgrade_result.get("exit_code") != 0:
+            error_payload = _provider_error_payload("simc", upgrade_result)
             _fail_talent_route(
                 ctx,
-                code="packet_upgrade_failed",
-                message="simc validate-talent-transport failed while upgrading the packet.",
+                code=str(error_payload.get("code") or "packet_upgrade_failed"),
+                message=str(error_payload.get("message") or "simc validate-talent-transport failed while upgrading the packet."),
                 source=source,
-                kind="talent_transport",
+                kind=kind,
                 route=route,
                 provider_result=upgrade_result,
             )
@@ -1041,6 +1051,7 @@ def _resolve_talent_transport(
     allow_unlisted: bool,
     listed_build_limit: int,
     validate: bool,
+    kind: str = "talent_transport",
 ) -> dict[str, Any]:
     requested_expansion = _requested_expansion(ctx)
     route: dict[str, Any]
@@ -1053,7 +1064,7 @@ def _resolve_talent_transport(
             code="invalid_transport_packet",
             message=str(exc),
             source=source,
-            kind="talent_transport",
+            kind=kind,
         )
     if packet_file is not None:
         packet, packet_path = packet_file
@@ -1068,7 +1079,7 @@ def _resolve_talent_transport(
             code="invalid_transport_packet",
             message=f"Talent transport packet file was not found: {source}",
             source=source,
-            kind="talent_transport",
+            kind=kind,
         )
     elif _looks_like_wowhead_talent_calc_reference(source):
         route, producer_result, packet = _wowhead_transport_packet(
@@ -1076,6 +1087,7 @@ def _resolve_talent_transport(
             source=source,
             listed_build_limit=listed_build_limit,
             requested_expansion=requested_expansion,
+            kind=kind,
         )
     elif actor_id is not None and _looks_like_warcraftlogs_report_reference(source):
         route, producer_result, packet = _warcraftlogs_transport_packet(
@@ -1085,6 +1097,7 @@ def _resolve_talent_transport(
             fight_id=fight_id,
             allow_unlisted=allow_unlisted,
             requested_expansion=requested_expansion,
+            kind=kind,
         )
     else:
         _fail_talent_route(
@@ -1095,7 +1108,7 @@ def _resolve_talent_transport(
                 "or a local talent transport packet JSON path."
             ),
             source=source,
-            kind="talent_transport",
+            kind=kind,
         )
 
     source_status, upgrade_attempted, upgrade_result, packet = _maybe_upgrade_transport_packet(
@@ -1105,6 +1118,7 @@ def _resolve_talent_transport(
         packet=packet,
         validate=validate,
         requested_expansion=requested_expansion,
+        kind=kind,
     )
     final_status = packet.get("transport_status") if isinstance(packet.get("transport_status"), str) else None
     return {
@@ -2000,6 +2014,7 @@ def talent_packet(
         allow_unlisted=allow_unlisted,
         listed_build_limit=listed_build_limit,
         validate=validate,
+        kind="talent_transport",
     )
     packet = resolved["talent_transport_packet"]
     written_packet_path = _write_transport_packet_or_fail(
@@ -2080,6 +2095,7 @@ def talent_describe(
         allow_unlisted=allow_unlisted,
         listed_build_limit=listed_build_limit,
         validate=validate,
+        kind="talent_describe",
     )
     packet = resolved["talent_transport_packet"]
     describe_result = _describe_transport_packet_with_simc(
@@ -2093,10 +2109,11 @@ def talent_describe(
         inactive_limit=inactive_limit,
     )
     if describe_result.get("exit_code") != 0:
+        error_payload = _provider_error_payload("simc", describe_result)
         _fail_talent_route(
             ctx,
-            code="describe_build_failed",
-            message="simc describe-build failed for the routed talent transport packet.",
+            code=str(error_payload.get("code") or "describe_build_failed"),
+            message=str(error_payload.get("message") or "simc describe-build failed for the routed talent transport packet."),
             source=source,
             kind="talent_describe",
             route=resolved["route"],
@@ -2111,7 +2128,11 @@ def talent_describe(
         route=resolved["route"],
         provider_result=describe_result,
     )
-    stable_packet_path = _stable_transport_packet_path(route=resolved["route"], written_packet_path=written_packet_path)
+    stable_packet_path = _stable_transport_packet_path(
+        route=resolved["route"],
+        written_packet_path=written_packet_path,
+        upgraded=bool(resolved["upgraded"]),
+    )
     describe_result = _normalize_describe_transport_packet_path(
         describe_result,
         stable_packet_path=stable_packet_path,

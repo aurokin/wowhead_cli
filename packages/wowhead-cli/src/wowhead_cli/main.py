@@ -5142,10 +5142,14 @@ def talent_calc_packet(
     )
     written_packet_path: str | None = None
     if isinstance(out, str) and out.strip():
-        output_path = Path(out).expanduser().resolve()
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(packet, indent=2) + "\n", encoding="utf-8")
-        written_packet_path = str(output_path)
+        try:
+            output_path = Path(out).expanduser().resolve()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(packet, indent=2) + "\n", encoding="utf-8")
+            written_packet_path = str(output_path)
+        except OSError as exc:
+            _fail(ctx, "transport_packet_write_failed", f"Failed to write talent transport packet: {exc}")
+            raise AssertionError("unreachable")
     _emit(
         ctx,
         {

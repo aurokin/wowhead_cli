@@ -878,6 +878,21 @@ def test_talent_calc_packet_command_can_write_exact_transport_packet(monkeypatch
     assert written_packet["transport_status"] == "exact"
 
 
+def test_talent_calc_packet_command_normalizes_write_failure(monkeypatch, tmp_path: Path) -> None:
+    out_dir = tmp_path / "out-dir"
+    out_dir.mkdir()
+
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(out_dir)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "transport_packet_write_failed"
+
+
 def test_talent_calc_packet_command_rejects_ref_without_build_code(monkeypatch) -> None:
     def fake_page_html(self, page_url: str):  # noqa: ANN001
         assert page_url.endswith("/talent-calc/druid/balance")

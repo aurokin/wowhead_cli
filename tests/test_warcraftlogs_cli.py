@@ -2427,6 +2427,32 @@ def test_warcraftlogs_report_player_talents_rejects_null_only_talent_rows(monkey
     assert payload["error"]["code"] == "missing_talent_tree"
 
 
+def test_warcraftlogs_report_player_talents_rejects_incomplete_talent_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._player_detail_actor",
+        lambda details_payload, actor_id: {
+            "id": actor_id,
+            "combatant_info": {
+                "talentTree": [
+                    {"id": None, "nodeID": None, "rank": 1},
+                ]
+            },
+            "class_spec_identity": {
+                "identity": {"actor_class": "paladin", "spec": "retribution"},
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_talent_tree"
+
+
 def test_warcraftlogs_report_player_talents_emits_validated_split_transport(monkeypatch) -> None:
     monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
     monkeypatch.setattr(
@@ -2489,6 +2515,34 @@ def test_warcraftlogs_report_player_talents_can_write_transport_packet(monkeypat
     assert written_packet["kind"] == "talent_transport_packet"
     assert written_packet["transport_status"] == "validated"
     assert written_packet["scope"] == {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9}
+
+
+def test_warcraftlogs_report_player_talents_normalizes_write_failure(monkeypatch, tmp_path: Path) -> None:
+    out_dir = tmp_path / "out-dir"
+    out_dir.mkdir()
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--out", str(out_dir)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "transport_packet_write_failed"
 
 
 def test_warcraftlogs_report_player_talents_rejects_invalid_transport_packet(monkeypatch) -> None:

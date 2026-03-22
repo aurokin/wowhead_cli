@@ -1419,7 +1419,7 @@ def _normalized_talent_tree_rows(actor: dict[str, Any]) -> list[dict[str, Any]]:
             "node_id": row.get("nodeID") if isinstance(row.get("nodeID"), int) else None,
             "rank": row.get("rank") if isinstance(row.get("rank"), int) else None,
         }
-        if any(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
+        if all(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
             normalized_rows.append(normalized_row)
     return normalized_rows
 
@@ -1458,10 +1458,13 @@ def _player_talent_source_notes(transport_forms: dict[str, Any]) -> list[str]:
 def _write_transport_packet_json(out: str | None, transport_packet: dict[str, Any]) -> str | None:
     if not out:
         return None
-    output_path = Path(out).expanduser().resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(transport_packet, indent=2) + "\n")
-    return str(output_path)
+    try:
+        output_path = Path(out).expanduser().resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(transport_packet, indent=2) + "\n")
+        return str(output_path)
+    except OSError as exc:
+        raise WarcraftLogsClientError("transport_packet_write_failed", str(exc)) from exc
 
 
 def _player_talent_transport_packet(
@@ -4130,7 +4133,11 @@ def report_player_talents(
         ),
         command_name="warcraftlogs report-player-talents",
     )
-    written_packet_path = _write_transport_packet_json(out, transport_packet)
+    try:
+        written_packet_path = _write_transport_packet_json(out, transport_packet)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
 
     _emit(
         ctx,
