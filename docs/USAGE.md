@@ -264,7 +264,7 @@ Wowhead command behavior:
   - current build code
   - shared `build_identity` metadata that can be handed off directly into `simc`
   - listed embedded builds when the page exposes them
-- `talent-calc-packet` is the narrow exact-build producer for explicit Wowhead refs:
+- `talent-calc-packet` is the narrow exact-build producer for explicit Wowhead refs with build codes:
   - it emits an exact `talent_transport_packet` using the explicit talent-calc state URL
   - it preserves page metadata and listed embedded builds alongside that packet when page fetch succeeds; those fields are best-effort and may be absent on fetch/cache failures
   - add `--out <path>` when you want to save just the exact packet JSON for wrapper handoff or parity checks
