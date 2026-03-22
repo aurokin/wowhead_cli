@@ -839,7 +839,9 @@ def _upgrade_transport_packet_with_simc(
     if _provider_result_failed(result):
         return result, None
     payload = result.get("payload") if isinstance(result.get("payload"), dict) else {}
-    updated_packet = payload.get("updated_packet") if isinstance(payload.get("updated_packet"), dict) else packet
+    updated_packet = payload.get("updated_packet") if isinstance(payload.get("updated_packet"), dict) else None
+    if updated_packet is None:
+        return result, None
     return result, validate_talent_transport_packet(updated_packet)
 
 
@@ -2125,7 +2127,7 @@ def talent_describe(
         priority_limit=priority_limit,
         inactive_limit=inactive_limit,
     )
-    if describe_result.get("exit_code") != 0:
+    if _provider_result_failed(describe_result):
         error_payload = _provider_error_payload("simc", describe_result)
         _fail_talent_route(
             ctx,

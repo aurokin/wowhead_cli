@@ -68,7 +68,8 @@ def parse_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
         return None
     parsed = urlparse(candidate)
     if parsed.scheme and parsed.netloc:
-        if "wowhead.com" not in parsed.netloc:
+        hostname = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""
+        if hostname != "wowhead.com" and not hostname.endswith(".wowhead.com"):
             return None
         reference_url = urlunparse(parsed._replace(query="", fragment=""))
     else:
@@ -528,8 +529,10 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
         packet_actor_class, packet_spec = _packet_class_spec_identity(build_identity)
         if (
             packet_actor_class is not None
-            and packet_spec is not None
-            and (packet_actor_class != parsed_wowhead_ref["actor_class"] or packet_spec != parsed_wowhead_ref["spec"])
+            and packet_actor_class != parsed_wowhead_ref["actor_class"]
+        ) or (
+            packet_spec is not None
+            and packet_spec != parsed_wowhead_ref["spec"]
         ):
             raise ValueError(
                 "Talent transport packet wowhead_talent_calc_url must match build_identity.class_spec_identity.identity."
@@ -543,6 +546,14 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
     if split is not None:
         if not isinstance(split, dict):
             raise ValueError("Talent transport packet simc_split_talents must be an object.")
+        for key in ("class_talents", "spec_talents", "hero_talents"):
+            if key not in split or split.get(key) is None:
+                continue
+            value = split.get(key)
+            if not (isinstance(value, str) and value.strip()):
+                raise ValueError(
+                    f"Talent transport packet simc_split_talents.{key} must be a non-empty string when present."
+                )
         if not any(isinstance(split.get(key), str) and split.get(key).strip() for key in ("class_talents", "spec_talents", "hero_talents")):
             raise ValueError(
                 "Talent transport packet simc_split_talents must include at least one non-empty class/spec/hero string."

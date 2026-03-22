@@ -2787,6 +2787,47 @@ def test_warcraft_talent_packet_preserves_upgrade_failure_with_malformed_updated
     assert payload["provider_result"]["provider"] == "simc"
 
 
+def test_warcraft_talent_packet_rejects_successful_validate_without_updated_packet(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {},
+                "transport_forms": {},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "validate_talent_transport",
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "packet_upgrade_failed"
+    assert payload["error"]["message"] == "simc validate-talent-transport did not return an upgraded talent transport packet."
+    assert payload["provider_result"]["provider"] == "simc"
+
+
 
 def test_warcraft_talent_describe_preserves_wowhead_invalid_transport_packet_error(monkeypatch) -> None:
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
@@ -2899,6 +2940,56 @@ def test_warcraft_talent_describe_reports_simc_failure(monkeypatch, tmp_path: Pa
     assert payload["error"]["message"] == "APL path did not exist."
     assert payload["kind"] == "talent_describe"
     assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    assert payload["provider_result"]["provider"] == "simc"
+
+
+def test_warcraft_talent_describe_preserves_ok_false_simc_failure(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                },
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        "warcraft_cli.main.provider_invoke",
+        lambda provider, args, *, expansion=None: {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "describe_build_failed",
+                    "message": "Unable to resolve build against the supplied APL.",
+                },
+            },
+            "stdout": "",
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--no-validate", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "describe_build_failed"
+    assert payload["error"]["message"] == "Unable to resolve build against the supplied APL."
+    assert payload["kind"] == "talent_describe"
     assert payload["provider_result"]["provider"] == "simc"
 
 

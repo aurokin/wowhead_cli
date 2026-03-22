@@ -117,6 +117,10 @@ def test_parse_wowhead_talent_calc_ref_supports_prefixed_paths_and_relative_urls
     }
 
 
+def test_parse_wowhead_talent_calc_ref_rejects_non_wowhead_domains() -> None:
+    assert parse_wowhead_talent_calc_ref("https://notwowhead.com/talent-calc/druid/balance/ABC123") is None
+
+
 def test_build_reference_payload_only_accepts_explicit_wowhead_talent_calc_urls() -> None:
     payload = build_reference_payload(
         ref="https://www.wowhead.com/talent-calc/druid/balance/ABC123",
@@ -317,6 +321,26 @@ def test_validate_talent_transport_packet_rejects_exact_identity_mismatch() -> N
         raise AssertionError("expected ValueError")
 
 
+def test_validate_talent_transport_packet_rejects_partial_exact_identity_mismatch() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="wowhead_talent_calc_url",
+        transport_forms={"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+    )
+    packet["build_identity"]["class_spec_identity"]["identity"] = {
+        "actor_class": "hunter",
+    }
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "must match build_identity.class_spec_identity.identity" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_validate_talent_transport_packet_rejects_raw_only_without_usable_rows() -> None:
     packet = talent_transport_packet_payload(
         actor_class="Druid",
@@ -376,5 +400,30 @@ def test_refresh_talent_transport_packet_rejects_invalid_transport_forms() -> No
         )
     except ValueError as exc:
         assert "simc_split_talents" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_validate_talent_transport_packet_rejects_invalid_split_field_types() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="warcraftlogs_talent_tree",
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+    )
+    packet["transport_forms"] = {
+        "simc_split_talents": {
+            "class_talents": "103324:1",
+            "spec_talents": 42,
+        }
+    }
+    packet["transport_status"] = "validated"
+    packet["validation"] = {"status": "validated"}
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "simc_split_talents.spec_talents" in str(exc)
     else:
         raise AssertionError("expected ValueError")
