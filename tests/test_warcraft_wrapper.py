@@ -2417,6 +2417,16 @@ def test_warcraft_talent_packet_rejects_invalid_packet_file(tmp_path: Path) -> N
     assert payload["source"] == str(packet_path)
 
 
+def test_warcraft_talent_packet_rejects_missing_packet_path_like_input(tmp_path: Path) -> None:
+    packet_path = tmp_path / "missing-packet.json"
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == f"Talent transport packet file was not found: {packet_path}"
+
+
 
 def test_warcraft_talent_packet_fails_when_provider_omits_packet(monkeypatch) -> None:
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
@@ -2497,6 +2507,31 @@ def test_warcraft_talent_packet_preserves_warcraftlogs_invalid_transport_packet_
         "allow_unlisted": False,
     }
     assert payload["provider_result"]["provider"] == "warcraftlogs"
+
+
+def test_warcraft_talent_packet_preserves_provider_error_codes(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "warcraftlogs"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "missing_public_auth",
+                    "message": "Public Warcraft Logs API access requires client credentials.",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "9"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_public_auth"
+    assert payload["error"]["message"] == "Public Warcraft Logs API access requires client credentials."
 
 
 
@@ -2763,6 +2798,57 @@ def test_warcraft_talent_describe_reports_simc_failure(monkeypatch, tmp_path: Pa
     assert payload["error"]["code"] == "describe_build_failed"
     assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
     assert payload["provider_result"]["provider"] == "simc"
+
+
+def test_warcraft_talent_describe_does_not_write_packet_out_on_failure(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    apl_path = tmp_path / "balance.simc"
+    out_path = tmp_path / "described-packet.json"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                },
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        "warcraft_cli.main.provider_invoke",
+        lambda provider, args, *, expansion=None: {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {"ok": False},
+            "stdout": "",
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        [
+            "talent-describe",
+            str(packet_path),
+            "--no-validate",
+            "--apl-path",
+            str(apl_path),
+            "--packet-out",
+            str(out_path),
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "describe_build_failed"
+    assert not out_path.exists()
 
 
 def test_warcraft_talent_describe_routes_wowhead_ref_to_simc(monkeypatch) -> None:

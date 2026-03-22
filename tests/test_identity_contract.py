@@ -152,6 +152,15 @@ def test_build_reference_transport_packet_payload_marks_explicit_refs_as_exact()
     assert payload["scope"] == {"type": "guide_build_reference_handoff"}
 
 
+def test_build_reference_transport_packet_payload_requires_build_code() -> None:
+    payload = build_reference_transport_packet_payload(
+        ref="https://www.wowhead.com/talent-calc/druid/balance",
+        provider="warcraft",
+        source="guide_build_reference_handoff",
+    )
+    assert payload is None
+
+
 def test_talent_transport_packet_distinguishes_exact_validated_and_raw_only() -> None:
     exact = talent_transport_packet_payload(
         actor_class="Druid",
@@ -240,7 +249,7 @@ def test_validate_talent_transport_packet_rejects_mismatched_status() -> None:
         source="wowhead_talent_calc_url",
         transport_forms={"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
     )
-    packet["transport_status"] = "raw_only"
+    packet["transport_status"] = "validated"
 
     try:
         validate_talent_transport_packet(packet)
@@ -264,6 +273,44 @@ def test_validate_talent_transport_packet_rejects_empty_simc_split_forms() -> No
         validate_talent_transport_packet(packet)
     except ValueError as exc:
         assert "simc_split_talents" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_validate_talent_transport_packet_rejects_exact_wowhead_ref_without_build_code() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="warcraftlogs_talent_tree",
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+    )
+    packet["transport_forms"] = {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance"}
+    packet["transport_status"] = "exact"
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "build code" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_validate_talent_transport_packet_rejects_raw_only_without_usable_rows() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="warcraftlogs_talent_tree",
+        raw_evidence={"source_contract": "warcraftlogs_talent_tree"},
+    )
+    assert packet["transport_status"] == "unknown"
+    packet["transport_status"] = "raw_only"
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "raw_only status requires usable raw talent_tree_entries evidence" in str(exc)
     else:
         raise AssertionError("expected ValueError")
 

@@ -680,6 +680,16 @@ def _looks_like_warcraftlogs_report_reference(value: str) -> bool:
     return 8 <= len(text) <= 32 and text.isalnum() and any(ch.isalpha() for ch in text) and any(ch.isdigit() for ch in text)
 
 
+def _looks_like_transport_packet_path_input(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if lowered.endswith(".json"):
+        return True
+    return text.startswith(("./", "../", "~/")) or "\\" in text
+
+
 def _load_transport_packet_file(source: str) -> tuple[dict[str, Any], str] | None:
     path = Path(source).expanduser()
     if not path.exists() or not path.is_file():
@@ -815,7 +825,7 @@ def _transport_packet_from_provider_result(
         error_message = error_payload.get("message") if isinstance(error_payload.get("message"), str) else f"{command_name} failed."
         _fail_talent_route(
             ctx,
-            code=error_code if error_code == "invalid_transport_packet" else "provider_command_failed",
+            code=error_code,
             message=error_message,
             source=source,
             kind="talent_transport",
@@ -970,6 +980,14 @@ def _resolve_talent_transport(
             "provider": None,
             "packet_path": packet_path,
         }
+    elif _looks_like_transport_packet_path_input(source):
+        _fail_talent_route(
+            ctx,
+            code="invalid_transport_packet",
+            message=f"Talent transport packet file was not found: {source}",
+            source=source,
+            kind="talent_transport",
+        )
     elif _looks_like_wowhead_talent_calc_reference(source):
         route, producer_result, packet = _wowhead_transport_packet(
             ctx,
@@ -1974,7 +1992,6 @@ def talent_describe(
         validate=validate,
     )
     packet = resolved["talent_transport_packet"]
-    written_packet_path = _write_transport_packet(packet_out, packet) if isinstance(packet_out, str) and packet_out.strip() else None
     describe_result = _describe_transport_packet_with_simc(
         packet,
         expansion=resolved["requested_expansion"],
@@ -1995,6 +2012,7 @@ def talent_describe(
             route=resolved["route"],
             provider_result=describe_result,
         )
+    written_packet_path = _write_transport_packet(packet_out, packet) if isinstance(packet_out, str) and packet_out.strip() else None
     _emit(
         {
             "provider": "warcraft",

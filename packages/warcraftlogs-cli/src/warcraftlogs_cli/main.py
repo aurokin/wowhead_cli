@@ -1414,13 +1414,13 @@ def _normalized_talent_tree_rows(actor: dict[str, Any]) -> list[dict[str, Any]]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        normalized_rows.append(
-            {
-                "entry": row.get("id") if isinstance(row.get("id"), int) else None,
-                "node_id": row.get("nodeID") if isinstance(row.get("nodeID"), int) else None,
-                "rank": row.get("rank") if isinstance(row.get("rank"), int) else None,
-            }
-        )
+        normalized_row = {
+            "entry": row.get("id") if isinstance(row.get("id"), int) else None,
+            "node_id": row.get("nodeID") if isinstance(row.get("nodeID"), int) else None,
+            "rank": row.get("rank") if isinstance(row.get("rank"), int) else None,
+        }
+        if any(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
+            normalized_rows.append(normalized_row)
     return normalized_rows
 
 

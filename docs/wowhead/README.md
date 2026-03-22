@@ -216,7 +216,7 @@ Current tool state:
   - build code
   - embedded listed builds when the page exposes them
 - `talent-calc-packet` is the first exact talent transport producer on the Wowhead side:
-  - it emits an exact `talent_transport_packet` from the explicit calculator ref
+  - it emits an exact `talent_transport_packet` only when the explicit calculator ref includes a build code
   - it keeps the cited state URL, page metadata, and listed embedded builds next to the packet
   - add `--out <path>` when you want to save just the exact packet JSON for wrapper handoff or parity checks
   - if packet validation fails, it stops with `invalid_transport_packet` before printing or writing malformed packet JSON

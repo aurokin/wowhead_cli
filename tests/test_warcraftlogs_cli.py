@@ -2400,6 +2400,33 @@ def test_warcraftlogs_report_player_talents_emits_raw_transport_packet(monkeypat
     assert payload["talent_transport_packet"]["validation"]["status"] == "not_validated"
 
 
+def test_warcraftlogs_report_player_talents_rejects_null_only_talent_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._player_detail_actor",
+        lambda details_payload, actor_id: {
+            "id": actor_id,
+            "combatant_info": {
+                "talentTree": [
+                    {"id": None, "nodeID": None, "rank": None},
+                    {"name": "bad row"},
+                ]
+            },
+            "class_spec_identity": {
+                "identity": {"actor_class": "paladin", "spec": "retribution"},
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_talent_tree"
+
+
 def test_warcraftlogs_report_player_talents_emits_validated_split_transport(monkeypatch) -> None:
     monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
     monkeypatch.setattr(

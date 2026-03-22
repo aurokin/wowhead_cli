@@ -136,6 +136,7 @@ Recent usability improvement:
   - SimC-native build/profile text
   - talent transport packet JSON files that carry an exact or validated build transport form
   and report both `source_kind` and the normalized generated SimC profile used for decode/debug flows
+- raw-only packets are still valid evidence, but they are not accepted as direct build-analysis input; upgrade them through `validate-talent-transport` first
 - `validate-talent-transport` is the reusable cross-integration handoff primitive:
   - it accepts a raw `talent_transport_packet` via `--build-packet`
   - or repeated `--talent-row entry_id:node_id:rank` values with explicit class/spec

@@ -305,6 +305,67 @@ def test_simc_identify_build_rejects_malformed_build_packet(tmp_path: Path) -> N
     assert "does not match packet contents" in payload["error"]["message"]
 
 
+def test_simc_identify_build_rejects_raw_only_build_packet_without_transport_form(tmp_path: Path) -> None:
+    packet_path = tmp_path / "raw-only-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {},
+                "raw_evidence": {
+                    "talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}],
+                },
+                "validation": {"status": "not_validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(simc_app, ["identify-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert "validate-talent-transport first" in payload["error"]["message"]
+
+
+def test_simc_identify_build_rejects_build_packet_with_override_inputs(tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(
+        simc_app,
+        ["identify-build", "--build-packet", str(packet_path), "--talents", "XYZ987"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert "Cannot combine --build-packet with other explicit build input options." == payload["error"]["message"]
+
+
 def test_simc_validate_talent_transport_accepts_build_packet(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     packet_path.write_text(
@@ -639,6 +700,35 @@ def test_simc_decode_build_rejects_malformed_build_packet(tmp_path: Path) -> Non
     assert "does not match packet contents" in payload["error"]["message"]
 
 
+def test_simc_decode_build_rejects_raw_only_build_packet_without_transport_form(tmp_path: Path) -> None:
+    packet_path = tmp_path / "raw-only-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {},
+                "raw_evidence": {
+                    "talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}],
+                },
+                "validation": {"status": "not_validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(simc_app, ["decode-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert "validate-talent-transport first" in payload["error"]["message"]
+
+
 def test_simc_describe_build_summarizes_st_and_aoe(monkeypatch, tmp_path: Path) -> None:
     apl_path = tmp_path / "demonhunter_devourer.simc"
     apl_path.write_text("actions=void_ray\n")
@@ -863,6 +953,35 @@ def test_simc_describe_build_rejects_malformed_build_packet(tmp_path: Path) -> N
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "invalid_build_packet"
     assert "does not match packet contents" in payload["error"]["message"]
+
+
+def test_simc_describe_build_rejects_raw_only_build_packet_without_transport_form(tmp_path: Path) -> None:
+    packet_path = tmp_path / "raw-only-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {},
+                "raw_evidence": {
+                    "talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}],
+                },
+                "validation": {"status": "not_validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(simc_app, ["describe-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert "validate-talent-transport first" in payload["error"]["message"]
 
 
 def test_simc_describe_build_uses_leaf_focus_and_full_action_diff(monkeypatch, tmp_path: Path) -> None:

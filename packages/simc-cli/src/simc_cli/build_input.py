@@ -162,13 +162,9 @@ def extract_build_spec_from_packet(path: str) -> BuildSpec:
                 transport_source=resolved_path,
             )
 
-    return BuildSpec(
-        actor_class=actor_class,
-        spec=spec,
-        source_kind="talent_transport_packet",
-        source_notes=source_notes + ["no supported transport form found"],
-        transport_status=transport_status_text,
-        transport_source=resolved_path,
+    raise ValueError(
+        f"Build packet does not include a supported transport form for simc analysis: {resolved_path}. "
+        "Run simc validate-talent-transport first for raw_only packets."
     )
 
 
@@ -432,6 +428,22 @@ def load_build_spec(
     spec_name: str | None,
     build_packet: str | None = None,
 ) -> BuildSpec:
+    if build_packet and any(
+        value
+        for value in (
+            profile_path,
+            build_file,
+            build_text,
+            talents,
+            class_talents,
+            spec_talents,
+            hero_talents,
+            actor_class,
+            spec_name,
+        )
+    ):
+        raise ValueError("Cannot combine --build-packet with other explicit build input options.")
+
     inferred = BuildSpec()
     if apl_path:
         inferred_class, inferred_spec = infer_actor_and_spec_from_apl(apl_path)

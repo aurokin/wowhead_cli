@@ -188,7 +188,12 @@ def test_load_build_spec_extracts_exact_transport_form_from_packet(tmp_path: Pat
               "spec_talents": "109839:1",
               "hero_talents": "117176:1"
             }
-          }
+          },
+          "raw_evidence": {
+            "reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+          },
+          "validation": {},
+          "scope": {}
         }
         """.strip()
     )
@@ -236,7 +241,16 @@ def test_load_build_spec_extracts_split_transport_form_from_packet(tmp_path: Pat
               "spec_talents": "109839:1",
               "hero_talents": "117176:1"
             }
-          }
+          },
+          "raw_evidence": {
+            "talent_tree_entries": [
+              {"entry": 103324, "node_id": 82244, "rank": 1}
+            ]
+          },
+          "validation": {
+            "status": "validated"
+          },
+          "scope": {}
         }
         """.strip()
     )

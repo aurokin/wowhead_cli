@@ -348,6 +348,17 @@ def _clean_payload_dict(value: dict[str, Any] | None) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _is_usable_talent_tree_row(row: Any) -> bool:
+    if not isinstance(row, dict):
+        return False
+    return any(isinstance(row.get(key), int) for key in ("entry", "node_id", "rank"))
+
+
+def _has_usable_raw_talent_evidence(raw_evidence: dict[str, Any]) -> bool:
+    rows = raw_evidence.get("talent_tree_entries")
+    return isinstance(rows, list) and any(_is_usable_talent_tree_row(row) for row in rows)
+
+
 def _talent_transport_payload_parts(
     *,
     transport_forms: dict[str, Any] | None,
@@ -377,7 +388,7 @@ def build_reference_transport_packet_payload(
     scope: dict[str, Any] | None = None,
 ) -> dict[str, object] | None:
     parsed = parse_wowhead_talent_calc_ref(ref)
-    if parsed is None:
+    if parsed is None or parsed["build_code"] is None:
         return None
     cleaned_source_urls = _clean_notes(list(source_urls or []))
     raw_evidence: dict[str, Any] = {
@@ -496,8 +507,12 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
         raise ValueError("Talent transport packet scope must be an object.")
 
     wowhead_ref = transport_forms.get("wowhead_talent_calc_url")
-    if wowhead_ref is not None and not (isinstance(wowhead_ref, str) and wowhead_ref.strip()):
-        raise ValueError("Talent transport packet wowhead_talent_calc_url must be a non-empty string.")
+    if wowhead_ref is not None:
+        if not (isinstance(wowhead_ref, str) and wowhead_ref.strip()):
+            raise ValueError("Talent transport packet wowhead_talent_calc_url must be a non-empty string.")
+        parsed_wowhead_ref = parse_wowhead_talent_calc_ref(wowhead_ref)
+        if parsed_wowhead_ref is None or parsed_wowhead_ref["build_code"] is None:
+            raise ValueError("Talent transport packet wowhead_talent_calc_url must include an explicit build code.")
 
     wow_export = transport_forms.get("wow_talent_export")
     if wow_export is not None and not (isinstance(wow_export, str) and wow_export.strip()):
@@ -517,6 +532,8 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
         raw_evidence=raw_evidence,
         validation=validation,
     )
+    if transport_status == "raw_only" and not _has_usable_raw_talent_evidence(raw_evidence):
+        raise ValueError("Talent transport packet raw_only status requires usable raw talent_tree_entries evidence.")
     if transport_status != expected_status:
         raise ValueError(
             f"Talent transport packet transport_status {transport_status!r} does not match packet contents; expected {expected_status!r}."
@@ -534,6 +551,6 @@ def _talent_transport_status(
         return "exact"
     if transport_forms.get("simc_split_talents") and validation.get("status") == "validated":
         return "validated"
-    if raw_evidence:
+    if _has_usable_raw_talent_evidence(raw_evidence):
         return "raw_only"
     return "unknown"

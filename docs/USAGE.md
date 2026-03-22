@@ -732,6 +732,7 @@ SimulationCraft behavior:
 - `identify-build`, `decode-build`, and `describe-build` also accept `--build-packet <path>` for talent transport packet JSON:
   - exact forms such as embedded Wowhead URLs or WoW export strings are preferred first
   - validated reconstructed forms such as `simc_split_talents` are used when no exact form exists
+  - raw-only packets must be upgraded through `simc validate-talent-transport` before they can drive build analysis
   - packet provenance is preserved on the returned `build_spec.transport_packet` block
   - malformed packet files now fail consistently with `invalid_build_packet`
 - `validate-talent-transport` is the reusable packet-validation primitive:
