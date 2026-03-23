@@ -2913,16 +2913,21 @@ def _normalize_tool_ref(ref: str, *, tool_slug: str, expansion: ExpansionProfile
         return raw
     normalized = raw.lstrip("/")
     if tool_slug == "talent-calc":
-        parts = [part for part in normalized.split("/") if part]
+        raw_parts = normalized.split("/")
+        if raw_parts and raw_parts[-1] == "":
+            raw_parts = raw_parts[:-1]
+        if any(part == "" for part in raw_parts):
+            raise ValueError("talent-calc reference must not include empty path segments.")
+        parts = raw_parts
         has_expansion_prefix = bool(parts and parts[0] in EXPANSION_PREFIXES)
         if parts and parts[0] in EXPANSION_PREFIXES:
             parts = parts[1:]
         if not parts:
             raise ValueError("talent-calc reference cannot be empty.")
         if parts[0] == "talent-calc":
-            if len(parts) < 3 or parts[1] not in known_talent_calc_classes:
+            if len(parts) not in {3, 4} or parts[1] not in known_talent_calc_classes:
                 raise ValueError("talent-calc reference must be a Wowhead talent-calc path or class/spec ref.")
-        elif parts[0] not in known_talent_calc_classes:
+        elif parts[0] not in known_talent_calc_classes or len(parts) not in {2, 3}:
             raise ValueError("talent-calc reference must be a Wowhead talent-calc path or class/spec ref.")
         if has_expansion_prefix:
             return tool_url(normalized, expansion="retail")
@@ -2933,11 +2938,20 @@ def _normalize_tool_ref(ref: str, *, tool_slug: str, expansion: ExpansionProfile
 
 def _parse_talent_calc_state(state_url: str) -> dict[str, Any]:
     parsed = urlparse(state_url)
-    parts = [part for part in parsed.path.split("/") if part]
+    raw_parts = parsed.path.split("/")
+    if raw_parts and raw_parts[0] == "":
+        raw_parts = raw_parts[1:]
+    if raw_parts and raw_parts[-1] == "":
+        raw_parts = raw_parts[:-1]
+    if any(part == "" for part in raw_parts):
+        raise ValueError("Talent calculator URL must not include empty path segments.")
+    parts = raw_parts
     if parts and parts[0] in EXPANSION_PREFIXES:
         parts = parts[1:]
     if not parts or parts[0] != "talent-calc":
         raise ValueError("Talent calculator URL must point to /talent-calc.")
+    if len(parts) not in {3, 4}:
+        raise ValueError("Talent calculator URL must use /talent-calc/<class>/<spec>[/<build-code>].")
     class_slug = parts[1] if len(parts) > 1 else None
     spec_slug = parts[2] if len(parts) > 2 else None
     build_code = parts[3] if len(parts) > 3 else None

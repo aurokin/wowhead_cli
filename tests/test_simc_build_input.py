@@ -60,6 +60,11 @@ def test_parse_wowhead_talent_calc_ref_supports_relative_paths() -> None:
     assert spec.talents == "XYZ987"
 
 
+def test_parse_wowhead_talent_calc_ref_rejects_empty_or_extra_path_segments() -> None:
+    assert parse_wowhead_talent_calc_ref("https://www.wowhead.com/talent-calc/druid//balance/ABC123") is None
+    assert parse_wowhead_talent_calc_ref("https://www.wowhead.com/talent-calc/druid/balance/ABC123/extra") is None
+
+
 def test_extract_build_spec_from_profile_lines() -> None:
     text = """
     demonhunter="example"
@@ -182,12 +187,7 @@ def test_load_build_spec_extracts_exact_transport_form_from_packet(tmp_path: Pat
             }
           },
           "transport_forms": {
-            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
-            "simc_split_talents": {
-              "class_talents": "103324:1",
-              "spec_talents": "109839:1",
-              "hero_talents": "117176:1"
-            }
+            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
           },
           "raw_evidence": {
             "reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
@@ -218,6 +218,54 @@ def test_load_build_spec_extracts_exact_transport_form_from_packet(tmp_path: Pat
     assert spec.source_kind == "wowhead_talent_calc_url"
     assert spec.transport_form == "wowhead_talent_calc_url"
     assert any("talent transport packet" in note for note in spec.source_notes)
+
+
+def test_load_build_spec_rejects_packet_that_mixes_exact_and_split_forms(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+            "simc_split_talents": {
+              "class_talents": "103324:1"
+            }
+          },
+          "raw_evidence": {
+            "reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+          },
+          "validation": {
+            "status": "validated"
+          },
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    with pytest.raises(ValueError, match="must not mix exact transport forms with simc_split_talents"):
+        load_build_spec(
+            apl_path=None,
+            profile_path=None,
+            build_file=None,
+            build_text=None,
+            talents=None,
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+            actor_class=None,
+            spec_name=None,
+            build_packet=str(packet_path),
+        )
 
 
 def test_load_build_spec_rejects_buildless_wowhead_talent_calc_url() -> None:
@@ -289,13 +337,14 @@ def test_load_build_spec_extracts_split_transport_form_from_packet(tmp_path: Pat
         build_packet=str(packet_path),
     )
 
-    assert spec.actor_class == "druid"
-    assert spec.spec == "balance"
+    assert spec.actor_class is None
+    assert spec.spec is None
     assert spec.class_talents == "103324:1"
     assert spec.spec_talents == "109839:1"
     assert spec.hero_talents == "117176:1"
     assert spec.source_kind == "simc_split_talents"
     assert spec.transport_form == "simc_split_talents"
+    assert "class/spec metadata came from packet contents and was not independently validated" in spec.source_notes
 
 
 def test_load_build_spec_extracts_wow_export_transport_form_from_packet(tmp_path: Path) -> None:
@@ -627,6 +676,41 @@ def test_identify_build_probes_supported_specs(tmp_path: Path) -> None:
     assert "identified by SimC probe" in identified.source_notes
     assert identity.source == "simc_probe"
     assert identity.candidates == [("demonhunter", "devourer")]
+
+
+def test_identify_build_probes_simc_split_talent_packets_instead_of_trusting_packet_metadata(tmp_path: Path) -> None:
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    build_spec = BuildSpec(
+        actor_class=None,
+        spec=None,
+        class_talents="103324:1",
+        spec_talents="109839:1",
+        hero_talents="117176:1",
+        source_kind="simc_split_talents",
+        source_notes=["talent transport packet"],
+    )
+
+    with patch("simc_cli.build_input.supported_specs", return_value=[("monk", "mistweaver"), ("druid", "balance")]):
+        with patch("simc_cli.build_input.decode_build") as mocked_decode:
+            mocked_decode.side_effect = [
+                RuntimeError("failed"),
+                type("Resolution", (), {"enabled_talents": {"stellar_flare"}})(),
+            ]
+            identified, identity = identify_build(repo, build_spec)
+
+    assert identified.actor_class == "druid"
+    assert identified.spec == "balance"
+    assert identity.source == "simc_probe"
+    assert identity.confidence == "high"
+    assert identity.candidates == [("druid", "balance")]
 
 
 def test_identify_build_returns_none_when_probe_finds_no_matches(tmp_path: Path) -> None:

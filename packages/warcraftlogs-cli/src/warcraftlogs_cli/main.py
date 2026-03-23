@@ -1417,9 +1417,9 @@ def _normalized_talent_tree_rows(actor: dict[str, Any]) -> tuple[list[dict[str, 
             had_invalid_rows = True
             continue
         normalized_row = {
-            "entry": row.get("id") if isinstance(row.get("id"), int) else None,
-            "node_id": row.get("nodeID") if isinstance(row.get("nodeID"), int) else None,
-            "rank": row.get("rank") if isinstance(row.get("rank"), int) else None,
+            "entry": row.get("id") if isinstance(row.get("id"), int) and not isinstance(row.get("id"), bool) else None,
+            "node_id": row.get("nodeID") if isinstance(row.get("nodeID"), int) and not isinstance(row.get("nodeID"), bool) else None,
+            "rank": row.get("rank") if isinstance(row.get("rank"), int) and not isinstance(row.get("rank"), bool) else None,
         }
         if all(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
             normalized_rows.append(normalized_row)

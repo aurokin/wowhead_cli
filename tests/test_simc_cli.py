@@ -385,6 +385,67 @@ def test_simc_identify_build_probes_wow_export_packet_instead_of_trusting_packet
     assert payload["identity"]["candidates"] == [{"actor_class": "druid", "spec": "balance"}]
 
 
+def test_simc_identify_build_probes_split_packet_instead_of_trusting_packet_identity(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "validated",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "priest", "spec": "shadow"},
+                    }
+                },
+                "transport_forms": {
+                    "simc_split_talents": {
+                        "class_talents": "103324:1",
+                        "spec_talents": "109839:1",
+                        "hero_talents": "117176:1",
+                    }
+                },
+                "raw_evidence": {
+                    "talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}],
+                },
+                "validation": {"status": "validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    monkeypatch.setattr("simc_cli.main._repo_paths", lambda _ctx: repo)
+    monkeypatch.setattr(
+        "simc_cli.build_input.supported_specs",
+        lambda _repo: [("priest", "shadow"), ("druid", "balance")],
+    )
+    monkeypatch.setattr(
+        "simc_cli.build_input.decode_build",
+        lambda _repo, build_spec: (
+            (_ for _ in ()).throw(RuntimeError("wrong spec"))
+            if (build_spec.actor_class, build_spec.spec) == ("priest", "shadow")
+            else type("Resolution", (), {"enabled_talents": {"moonkin_form"}})()
+        ),
+    )
+
+    result = runner.invoke(simc_app, ["identify-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["actor_class"] == "druid"
+    assert payload["build_spec"]["spec"] == "balance"
+    assert payload["build_spec"]["source_kind"] == "simc_split_talents"
+    assert payload["identity"]["source"] == "simc_probe"
+    assert payload["identity"]["candidates"] == [{"actor_class": "druid", "spec": "balance"}]
+
+
 def test_simc_identify_build_rejects_malformed_build_packet(tmp_path: Path) -> None:
     packet_path = tmp_path / "bad-packet.json"
     packet_path.write_text(

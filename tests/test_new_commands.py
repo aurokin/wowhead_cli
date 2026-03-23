@@ -852,6 +852,22 @@ def test_talent_calc_command_supports_expansion_prefixed_relative_ref(monkeypatc
     assert payload["tool"]["build_code"] == "XYZ987"
 
 
+def test_talent_calc_command_rejects_empty_segment_ref() -> None:
+    result = runner.invoke(app, ["talent-calc", "druid//balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must not include empty path segments."
+
+
+def test_talent_calc_command_rejects_trailing_extra_segment_ref() -> None:
+    result = runner.invoke(app, ["talent-calc", "https://www.wowhead.com/talent-calc/druid/balance/ABC123/extra"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "Talent calculator URL must use /talent-calc/<class>/<spec>[/<build-code>]."
+
+
 def test_talent_calc_packet_command_emits_exact_transport_packet(monkeypatch) -> None:
     def fake_page_html(self, page_url: str):  # noqa: ANN001
         assert page_url.endswith("/talent-calc/druid/balance/ABC123")
@@ -1015,6 +1031,22 @@ def test_talent_calc_packet_command_rejects_nested_talent_calc_non_url_ref() -> 
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "invalid_tool_ref"
     assert payload["error"]["message"] == "talent-calc reference must be a Wowhead talent-calc path or class/spec ref."
+
+
+def test_talent_calc_packet_command_rejects_empty_segment_ref() -> None:
+    result = runner.invoke(app, ["talent-calc-packet", "druid//balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must not include empty path segments."
+
+
+def test_talent_calc_packet_command_rejects_trailing_extra_segment_ref() -> None:
+    result = runner.invoke(app, ["talent-calc-packet", "https://www.wowhead.com/talent-calc/druid/balance/ABC123/extra"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "Talent calculator URL must use /talent-calc/<class>/<spec>[/<build-code>]."
 
 
 def test_talent_calc_packet_command_rejects_buried_real_wowhead_path() -> None:

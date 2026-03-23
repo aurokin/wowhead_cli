@@ -52,6 +52,17 @@ def _is_transport_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _split_reference_path_parts(path: str) -> list[str] | None:
+    parts = path.split("/")
+    if parts and parts[0] == "":
+        parts = parts[1:]
+    if parts and parts[-1] == "":
+        parts = parts[:-1]
+    if any(part == "" for part in parts):
+        return None
+    return parts
+
+
 def normalize_actor_class(value: str | None) -> str | None:
     text = _clean_text(value)
     if text is None:
@@ -97,12 +108,14 @@ def parse_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
     else:
         reference_url = urljoin("https://www.wowhead.com", candidate if candidate.startswith("/") else f"/{candidate}")
         parsed = urlparse(reference_url)
-    path_parts = [part for part in parsed.path.split("/") if part]
+    path_parts = _split_reference_path_parts(parsed.path)
+    if path_parts is None:
+        return None
     if path_parts and path_parts[0] in WOWHEAD_EXPANSION_PREFIXES:
         path_parts = path_parts[1:]
     if not path_parts or path_parts[0] != WOWHEAD_TALENT_CALC_SEGMENT:
         return None
-    if len(path_parts) < 3:
+    if len(path_parts) not in {3, 4}:
         return None
     actor_class = normalize_actor_class(path_parts[1])
     spec = normalize_spec_name(path_parts[2])
@@ -590,6 +603,10 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
         if not any(isinstance(split.get(key), str) and split.get(key).strip() for key in ("class_talents", "spec_talents", "hero_talents")):
             raise ValueError(
                 "Talent transport packet simc_split_talents must include at least one non-empty class/spec/hero string."
+            )
+        if parsed_wowhead_ref is not None or (isinstance(wow_export, str) and wow_export.strip()):
+            raise ValueError(
+                "Talent transport packet must not mix exact transport forms with simc_split_talents."
             )
 
     expected_status = _talent_transport_status(

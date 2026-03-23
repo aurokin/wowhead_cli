@@ -126,6 +126,11 @@ def test_parse_wowhead_talent_calc_ref_rejects_buried_talent_calc_segments() -> 
     assert parse_wowhead_talent_calc_ref("https://www.wowhead.com/items/talent-calc/druid/balance/ABC123") is None
 
 
+def test_parse_wowhead_talent_calc_ref_rejects_empty_or_extra_segments() -> None:
+    assert parse_wowhead_talent_calc_ref("https://www.wowhead.com/talent-calc/druid//balance/ABC123") is None
+    assert parse_wowhead_talent_calc_ref("https://www.wowhead.com/talent-calc/druid/balance/ABC123/extra") is None
+
+
 def test_build_reference_payload_only_accepts_explicit_wowhead_talent_calc_urls() -> None:
     payload = build_reference_payload(
         ref="https://www.wowhead.com/talent-calc/druid/balance/ABC123",
@@ -264,6 +269,24 @@ def test_validate_talent_transport_packet_rejects_mismatched_status() -> None:
         validate_talent_transport_packet(packet)
     except ValueError as exc:
         assert "does not match packet contents" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_validate_talent_transport_packet_rejects_mixed_exact_and_split_forms() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="wowhead_talent_calc_url",
+        transport_forms={"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+    )
+    packet["transport_forms"]["simc_split_talents"] = {"class_talents": "103324:1"}
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "must not mix exact transport forms with simc_split_talents" in str(exc)
     else:
         raise AssertionError("expected ValueError")
 

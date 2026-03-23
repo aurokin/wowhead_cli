@@ -2548,6 +2548,34 @@ def test_warcraftlogs_report_player_talents_rejects_non_dict_talent_rows(monkeyp
     assert "incomplete combatant_info.talentTree rows" in payload["error"]["message"]
 
 
+def test_warcraftlogs_report_player_talents_rejects_boolean_talent_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._player_detail_actor",
+        lambda details_payload, actor_id: {
+            "id": actor_id,
+            "combatant_info": {
+                "talentTree": [
+                    {"id": 103324, "nodeID": 82244, "rank": 1},
+                    {"id": True, "nodeID": 88206, "rank": 1},
+                ]
+            },
+            "class_spec_identity": {
+                "identity": {"actor_class": "paladin", "spec": "retribution"},
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_talent_tree"
+    assert "incomplete combatant_info.talentTree rows" in payload["error"]["message"]
+
+
 def test_warcraftlogs_report_player_talents_rejects_incomplete_talent_rows(monkeypatch) -> None:
     monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
     monkeypatch.setattr(

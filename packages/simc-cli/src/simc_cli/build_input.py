@@ -96,8 +96,6 @@ def _identity_value(packet: dict[str, Any], key: str) -> str | None:
 
 def extract_build_spec_from_packet(path: str) -> BuildSpec:
     packet, resolved_path = _load_build_packet(path)
-    actor_class = _identity_value(packet, "actor_class")
-    spec = _identity_value(packet, "spec")
     transport_forms = packet.get("transport_forms") if isinstance(packet.get("transport_forms"), dict) else {}
     source_notes = [f"build packet: {resolved_path}", "talent transport packet"]
     source = packet.get("source")
@@ -153,10 +151,15 @@ def extract_build_spec_from_packet(path: str) -> BuildSpec:
         spec_talents = split.get("spec_talents")
         hero_talents = split.get("hero_talents")
         if any(isinstance(value, str) and value.strip() for value in (class_talents, spec_talents, hero_talents)):
-            source_notes.append("transport form: simc_split_talents")
+            source_notes.extend(
+                [
+                    "transport form: simc_split_talents",
+                    "class/spec metadata came from packet contents and was not independently validated",
+                ]
+            )
             return BuildSpec(
-                actor_class=actor_class,
-                spec=spec,
+                actor_class=None,
+                spec=None,
                 class_talents=class_talents.strip() if isinstance(class_talents, str) and class_talents.strip() else None,
                 spec_talents=spec_talents.strip() if isinstance(spec_talents, str) and spec_talents.strip() else None,
                 hero_talents=hero_talents.strip() if isinstance(hero_talents, str) and hero_talents.strip() else None,

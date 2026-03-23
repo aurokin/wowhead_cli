@@ -3483,6 +3483,35 @@ def test_warcraft_talent_describe_rejects_nested_talent_calc_non_url_ref(tmp_pat
     )
 
 
+def test_warcraft_talent_describe_rejects_empty_segment_wowhead_ref(tmp_path: Path) -> None:
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "druid//balance/ABC123", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "Talent transport packet file was not found: druid//balance/ABC123"
+
+
+def test_warcraft_talent_describe_rejects_wowhead_ref_with_trailing_extra_segment(tmp_path: Path) -> None:
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "https://www.wowhead.com/talent-calc/druid/balance/ABC123/extra", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "unsupported_talent_source"
+
+
 def test_warcraft_talent_describe_rejects_fake_host_wowhead_like_input(tmp_path: Path) -> None:
     apl_path = tmp_path / "balance.simc"
     apl_path.write_text("actions=wrath\n")
