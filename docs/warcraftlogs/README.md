@@ -62,6 +62,7 @@ Implemented today:
   - `warcraftlogs report-fights`
   - `warcraftlogs report-master-data`
   - `warcraftlogs report-player-details`
+  - `warcraftlogs report-player-talents`
   - `warcraftlogs report-events`
   - `warcraftlogs report-table`
   - `warcraftlogs report-graph`
@@ -518,6 +519,7 @@ Ranking support should include:
 - `warcraftlogs report-graph <code>`
 - `warcraftlogs report-rankings <code>`
 - `warcraftlogs report-player-details <code>`
+- `warcraftlogs report-player-talents <report-url-or-code> --fight-id <id> --actor-id <id>`
 - `warcraftlogs report-master-data <code>`
 
 These commands should support:
@@ -530,6 +532,24 @@ These commands should support:
 - pagination via `nextPageTimestamp`
 - translation toggle
 - low-bandwidth toggles when the user does not need actor/ability expansion
+
+Current talent-transport lane:
+- `report-player-talents` is intentionally narrow:
+  - one report
+  - one fight
+  - one actor id
+  - for normal multi-fight reports, it needs encounter scope via `--fight-id` or a report URL that already includes `#fight=<id>`
+  - it only emits the scoped talent transport packet when every selected `combatant_info.talentTree` row is fully formed
+  - the packet preserves normalized raw talent rows as `entry/node_id/rank` evidence from that source tree
+- when local SimulationCraft trait data resolves every entry and the reconstructed build round-trips, it also emits validated `simc_split_talents`
+- when that proof does not hold, it stays `raw_only` and reports the validation failure reason in the packet
+- add `--out <path>` when you want to save just the packet JSON for follow-up `simc` validation or wrapper handoff
+- malformed or incomplete talent-tree rows fail with `missing_talent_tree` instead of emitting a partial packet
+- typical follow-up flow:
+  - `warcraftlogs report-player-talents <report> --fight-id <id> --actor-id <id> --out ./tmp/actor-packet.json`
+  - `simc validate-talent-transport --build-packet ./tmp/actor-packet.json --out ./tmp/actor-packet-validated.json`
+  - `warcraft talent-describe ./tmp/actor-packet-validated.json --apl-path <apl>`
+- if packet validation fails, `report-player-talents` stops with `invalid_transport_packet` before printing or writing malformed packet JSON
 
 ### Deep Encounter Analytics
 

@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 
+import httpx
+import typer
 from typer.testing import CliRunner
 
 from wowhead_cli.main import (
@@ -833,6 +835,164 @@ def test_talent_calc_command_decodes_url_and_embedded_builds(monkeypatch) -> Non
     assert payload["build_identity"]["class_spec_identity"]["identity"] == {"actor_class": "druid", "spec": "balance"}
     assert payload["listed_builds"]["count"] == 2
     assert payload["listed_builds"]["items"][0]["name"] == "Leveling"
+
+
+def test_talent_calc_packet_command_emits_exact_transport_packet(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "5"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "wowhead"
+    assert payload["kind"] == "talent_calc_packet"
+    assert payload["tool"]["state_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert payload["talent_transport_packet"]["transport_status"] == "exact"
+    assert (
+        payload["talent_transport_packet"]["transport_forms"]["wowhead_talent_calc_url"]
+        == "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+    )
+    assert payload["talent_transport_packet"]["build_identity"]["class_spec_identity"]["identity"] == {
+        "actor_class": "druid",
+        "spec": "balance",
+    }
+    assert payload["talent_transport_packet"]["scope"] == {"type": "wowhead_talent_calc", "expansion": "retail"}
+    assert payload["listed_builds"]["count"] == 2
+
+
+def test_talent_calc_packet_command_can_write_exact_transport_packet(monkeypatch, tmp_path: Path) -> None:
+    out_path = tmp_path / "balance-packet.json"
+
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(out_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["written_packet_path"] == str(out_path.resolve())
+
+    written_packet = json.loads(out_path.read_text())
+    assert written_packet == payload["talent_transport_packet"]
+    assert written_packet["transport_status"] == "exact"
+
+
+def test_talent_calc_packet_command_does_not_require_page_fetch_for_exact_ref(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        raise httpx.ConnectError("network down", request=httpx.Request("GET", page_url))
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool"]["state_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert payload["tool"]["page_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert payload["page"]["canonical_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert "listed_builds" not in payload
+    assert payload["talent_transport_packet"]["transport_status"] == "exact"
+
+
+def test_talent_calc_packet_command_does_not_require_client_init_for_exact_ref(monkeypatch, tmp_path: Path) -> None:
+    out_path = tmp_path / "exact-packet.json"
+    monkeypatch.setattr("wowhead_cli.main._client", lambda ctx: (_ for _ in ()).throw(typer.Exit(1)))
+    stdout_result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123"])
+    assert stdout_result.exit_code == 0
+    stdout_payload = json.loads(stdout_result.stdout)
+    assert stdout_payload["tool"]["state_url"].endswith("/talent-calc/druid/balance/ABC123")
+    assert stdout_payload["talent_transport_packet"]["transport_status"] == "exact"
+    assert "listed_builds" not in stdout_payload
+
+    out_result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(out_path)])
+    assert out_result.exit_code == 0
+    out_payload = json.loads(out_result.stdout)
+    assert out_payload["written_packet_path"] == str(out_path.resolve())
+    assert json.loads(out_path.read_text()) == out_payload["talent_transport_packet"] == stdout_payload["talent_transport_packet"]
+
+
+def test_talent_calc_packet_command_falls_back_on_http_status_error(monkeypatch, tmp_path: Path) -> None:
+    out_path = tmp_path / "exact-packet.json"
+
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        request = httpx.Request("GET", page_url)
+        response = httpx.Response(503, request=request)
+        raise httpx.HTTPStatusError("service unavailable", request=request, response=response)
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+
+    stdout_result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123"])
+    assert stdout_result.exit_code == 0
+    stdout_payload = json.loads(stdout_result.stdout)
+    assert stdout_payload["talent_transport_packet"]["transport_status"] == "exact"
+    assert "listed_builds" not in stdout_payload
+
+    out_result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(out_path)])
+    assert out_result.exit_code == 0
+    out_payload = json.loads(out_result.stdout)
+    assert out_payload["written_packet_path"] == str(out_path.resolve())
+    assert json.loads(out_path.read_text()) == out_payload["talent_transport_packet"] == stdout_payload["talent_transport_packet"]
+
+
+def test_talent_calc_packet_command_normalizes_write_failure(monkeypatch, tmp_path: Path) -> None:
+    out_dir = tmp_path / "out-dir"
+    out_dir.mkdir()
+
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(out_dir)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "transport_packet_write_failed"
+
+
+def test_talent_calc_packet_command_rejects_ref_without_build_code(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/talent-calc/druid/balance")
+        return SAMPLE_TALENT_CALC_HTML.replace("/talent-calc/druid/balance/ABC123", "/talent-calc/druid/balance")
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+
+
+def test_talent_calc_packet_command_rejects_non_wowhead_absolute_url() -> None:
+    result = runner.invoke(app, ["talent-calc-packet", "https://notwowhead.com/talent-calc/druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc URL must point to wowhead.com."
+
+
+def test_talent_calc_packet_command_rejects_invalid_transport_packet(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    monkeypatch.setattr(
+        "wowhead_cli.main.build_reference_transport_packet_payload",
+        lambda **kwargs: {
+            "kind": "talent_transport_packet",
+            "transport_status": "validated",
+            "build_identity": {},
+            "transport_forms": {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+            "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+            "validation": {},
+            "scope": {},
+        },
+    )
+
+    result = runner.invoke(app, ["talent-calc-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
 
 
 def test_profession_tree_command_decodes_url(monkeypatch) -> None:

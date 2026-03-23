@@ -39,6 +39,7 @@ Best fits:
   - `warcraftlogs report <code>`
   - `warcraftlogs report-fights <code>`
   - `warcraftlogs report-player-details <code> --fight-id ...`
+  - `warcraftlogs report-player-talents <report-url-or-code> --fight-id ... --actor-id ...`
   - `warcraftlogs report-master-data <code>`
   - `warcraftlogs report-events <code> --fight-id ...`
   - `warcraftlogs report-table <code> --data-type damage-done --fight-id ...`
@@ -116,6 +117,7 @@ Best fits:
   - `warcraftlogs report-encounter-damage-target-summary 'https://www.warcraftlogs.com/reports/<code>#fight=47' --window-start-ms 30000 --window-end-ms 90000`
   - `warcraftlogs report-encounter-damage-breakdown 'https://www.warcraftlogs.com/reports/<code>#fight=47' --window-start-ms 30000 --window-end-ms 90000`
   - `warcraftlogs report-player-details <code> --fight-id 47`
+  - `warcraftlogs report-player-talents <code> --fight-id 47 --actor-id 1739`
   - `warcraftlogs report-master-data <code> --actor-type Player`
   - `warcraftlogs report-events <code> --fight-id 47 --limit 100`
   - `warcraftlogs report-table <code> --data-type damage-done --fight-id 47`
@@ -148,6 +150,14 @@ Best fits:
 - `report-encounter-damage-target-summary` is the target-grouped sibling; use it when the question is really about damage on explicit encounter targets or adds
 - those encounter-scoped commands surface the resolved absolute `start_time` and `end_time` in the payload so the agent does not have to derive report timestamps manually
 - `report-player-details` is the easiest way to inspect the participants in a report slice before deeper event/table work
+- `report-player-talents` is the first narrow build-transport lane:
+  - use it when you need one actor's selected talents for one explicit fight
+  - it returns a scoped `talent_transport_packet` sourced from `combatant_info.talentTree`
+  - for normal multi-fight reports, give it `--fight-id` or a report URL that already includes `#fight=<id>`
+  - it only emits a packet when every selected talent-tree row is fully formed, and then keeps normalized raw `entry/node_id/rank` rows from the source tree as evidence
+  - when local SimulationCraft trait data resolves every entry and the reconstructed build round-trips, it also includes validated `simc_split_talents`
+  - otherwise it stays `raw_only` and tells you why validation could not be proven
+  - malformed or incomplete talent-tree rows fail with `missing_talent_tree` instead of emitting a partial packet
 - `report-fights` is still the stable broad fight-list surface; use it to get fight IDs first, then move to `report-player-details`, `report-events`, `report-table`, or `report-graph` for deeper filtered analysis
 - `report-table` and `report-graph` accept user-friendly enum filters like `damage-done` and normalize them for the API
 - `report-events` intentionally requires a narrowed slice such as `--fight-id`, `--encounter-id`, `--start-time`, or `--end-time`

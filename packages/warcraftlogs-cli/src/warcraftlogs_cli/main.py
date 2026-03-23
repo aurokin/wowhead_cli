@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import secrets
 import shlex
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 import re
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import typer
+from simc_cli.talent_transport import validate_talent_tree_transport
 from warcraft_core.analytics import numeric_summary
 from warcraft_core.auth import (
     delete_provider_auth_state,
@@ -24,6 +27,8 @@ from warcraft_core.identity import (
     class_spec_identity_payload,
     encounter_identity_payload,
     report_actor_identity_payload,
+    talent_transport_packet_payload,
+    validate_talent_transport_packet,
 )
 from warcraft_core.output import emit
 from warcraft_core.paths import provider_state_path
@@ -74,6 +79,14 @@ def _emit(ctx: typer.Context, payload: dict[str, Any], *, err: bool = False) -> 
 def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> None:
     _emit(ctx, {"ok": False, "error": {"code": code, "message": message}}, err=True)
     raise typer.Exit(status)
+
+
+def _validated_transport_packet(ctx: typer.Context, packet: Any, *, command_name: str) -> dict[str, Any]:
+    try:
+        return validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        _fail(ctx, "invalid_transport_packet", f"{command_name} produced an invalid talent transport packet: {exc}")
+        raise AssertionError("unreachable")
 
 
 def _utc_now_z() -> str:
@@ -1376,12 +1389,123 @@ def _matching_spec_players(report: dict[str, Any], *, spec_name: str) -> list[di
 
 def _all_player_detail_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
     details = _report_player_details_payload(report)["player_details"]["roles"]
+    return _all_player_detail_rows_from_roles(details)
+
+
+def _all_player_detail_rows_from_roles(details: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for role, actors in details.items():
         for actor in actors:
             if isinstance(actor, dict):
                 rows.append({"role": role, **actor})
     return rows
+
+
+def _player_detail_actor(details_payload: dict[str, Any], actor_id: int) -> dict[str, Any] | None:
+    player_details = details_payload.get("player_details") if isinstance(details_payload.get("player_details"), dict) else {}
+    roles = player_details.get("roles") if isinstance(player_details.get("roles"), dict) else {}
+    return next((row for row in _all_player_detail_rows_from_roles(roles) if row.get("id") == actor_id), None)
+
+
+def _normalized_talent_tree_rows(actor: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
+    combatant_info = actor.get("combatant_info") if isinstance(actor.get("combatant_info"), dict) else {}
+    rows = combatant_info.get("talentTree") if isinstance(combatant_info.get("talentTree"), list) else []
+    normalized_rows: list[dict[str, Any]] = []
+    had_invalid_rows = False
+    for row in rows:
+        if not isinstance(row, dict):
+            had_invalid_rows = True
+            continue
+        normalized_row = {
+            "entry": row.get("id") if isinstance(row.get("id"), int) else None,
+            "node_id": row.get("nodeID") if isinstance(row.get("nodeID"), int) else None,
+            "rank": row.get("rank") if isinstance(row.get("rank"), int) else None,
+        }
+        if all(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
+            normalized_rows.append(normalized_row)
+        else:
+            had_invalid_rows = True
+    return normalized_rows, had_invalid_rows
+
+
+def _player_talent_transport_identity(actor: dict[str, Any]) -> tuple[str | None, str | None]:
+    class_spec_identity = actor.get("class_spec_identity") if isinstance(actor.get("class_spec_identity"), dict) else {}
+    identity = class_spec_identity.get("identity") if isinstance(class_spec_identity.get("identity"), dict) else {}
+    actor_class = identity.get("actor_class") if isinstance(identity.get("actor_class"), str) else None
+    spec = identity.get("spec") if isinstance(identity.get("spec"), str) else None
+    return actor_class, spec
+
+
+def _player_talent_transport_validation(
+    actor: dict[str, Any],
+    *,
+    raw_rows: list[dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    if raw_rows is None:
+        raw_rows, _ = _normalized_talent_tree_rows(actor)
+    actor_class, spec = _player_talent_transport_identity(actor)
+    validation_result = validate_talent_tree_transport(
+        actor_class=actor_class,
+        spec=spec,
+        talent_tree_rows=raw_rows,
+    )
+    transport_forms = validation_result.get("transport_forms") if isinstance(validation_result.get("transport_forms"), dict) else {}
+    validation = validation_result.get("validation") if isinstance(validation_result.get("validation"), dict) else {}
+    return raw_rows, transport_forms, validation
+
+
+def _player_talent_source_notes(transport_forms: dict[str, Any]) -> list[str]:
+    source_notes = [
+        "raw talents came from combatant_info.talentTree",
+        "one report, one fight, one actor scope",
+    ]
+    if transport_forms.get("simc_split_talents"):
+        source_notes.append("validated simc_split_talents via local SimulationCraft trait data")
+    return source_notes
+
+
+def _write_transport_packet_json(out: str | None, transport_packet: dict[str, Any]) -> str | None:
+    if not out:
+        return None
+    try:
+        output_path = Path(out).expanduser().resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(transport_packet, indent=2) + "\n")
+        return str(output_path)
+    except OSError as exc:
+        raise WarcraftLogsClientError("transport_packet_write_failed", str(exc)) from exc
+
+
+def _player_talent_transport_packet(
+    actor: dict[str, Any],
+    *,
+    report_code: str,
+    fight_id: int,
+    actor_id: int,
+    raw_rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    actor_class, spec = _player_talent_transport_identity(actor)
+    raw_rows, transport_forms, validation = _player_talent_transport_validation(actor, raw_rows=raw_rows)
+    return talent_transport_packet_payload(
+        actor_class=actor_class,
+        spec=spec,
+        confidence="high" if actor_class and spec else "none",
+        source="warcraftlogs_talent_tree",
+        provider="warcraftlogs",
+        source_notes=_player_talent_source_notes(transport_forms),
+        transport_forms=transport_forms,
+        raw_evidence={
+            "source_contract": "warcraftlogs_combatant_info_talentTree",
+            "talent_tree_entries": raw_rows,
+        },
+        validation=validation,
+        scope={
+            "type": "report_fight_actor",
+            "report_code": report_code,
+            "fight_id": fight_id,
+            "actor_id": actor_id,
+        },
+    )
 
 
 def _duration_bucket_rows(values: list[float], *, bucket_seconds: int) -> list[dict[str, Any]]:
@@ -3956,6 +4080,93 @@ def report_encounter_players(
                 report_code=ref.code,
                 fight_id=fight.get("id") if isinstance(fight.get("id"), int) else None,
             ),
+        },
+    )
+
+
+@app.command("report-player-talents")
+def report_player_talents(
+    ctx: typer.Context,
+    reference: str,
+    actor_id: int = typer.Option(..., "--actor-id", help="Report-local actor ID scoped to the selected fight."),
+    fight_id: int | None = typer.Option(None, "--fight-id", help="Override or supply a fight ID when the report reference does not include one."),
+    allow_unlisted: bool = typer.Option(False, "--allow-unlisted", help="Allow lookup of unlisted reports."),
+    out: str | None = typer.Option(None, "--out", help="Optional path to write the scoped talent transport packet JSON."),
+) -> None:
+    client = _client(ctx)
+    try:
+        ref, report, fight, encounter = _resolve_encounter_scope(
+            ctx,
+            client=client,
+            reference=reference,
+            fight_id=fight_id,
+            allow_unlisted=allow_unlisted,
+        )
+        payload = client.report_player_details(
+            code=ref.code,
+            allow_unlisted=allow_unlisted,
+            options=ReportPlayerDetailsOptions(
+                encounter_id=fight.get("encounterID") if isinstance(fight.get("encounterID"), int) else None,
+                fight_ids=[int(fight["id"])] if isinstance(fight.get("id"), int) else None,
+                include_combatant_info=True,
+                kill_type=_kill_type_for_fight(fight),
+            ),
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+
+    details_payload = _report_player_details_payload(
+        payload,
+        report_code=ref.code,
+        fight_id=fight.get("id") if isinstance(fight.get("id"), int) else None,
+    )
+    actor = _player_detail_actor(details_payload, actor_id)
+    if not isinstance(actor, dict):
+        _fail(ctx, "not_found", f"Actor ID {actor_id} was not present in the selected fight.")
+        return
+
+    talent_rows, had_invalid_talent_rows = _normalized_talent_tree_rows(actor)
+    if not talent_rows:
+        _fail(ctx, "missing_talent_tree", f"Actor ID {actor_id} did not include combatant_info.talentTree in the selected fight.")
+        return
+    if had_invalid_talent_rows:
+        _fail(
+            ctx,
+            "missing_talent_tree",
+            f"Actor ID {actor_id} included incomplete combatant_info.talentTree rows in the selected fight.",
+        )
+        return
+
+    transport_packet = _validated_transport_packet(
+        ctx,
+        _player_talent_transport_packet(
+            actor,
+            report_code=ref.code,
+            fight_id=int(fight["id"]),
+            actor_id=actor_id,
+            raw_rows=talent_rows,
+        ),
+        command_name="warcraftlogs report-player-talents",
+    )
+    try:
+        written_packet_path = _write_transport_packet_json(out, transport_packet)
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+
+    _emit(
+        ctx,
+        {
+            "ok": True,
+            "provider": "warcraftlogs",
+            "kind": "report_player_talents",
+            **_encounter_summary_payload(ref=ref, report=report, fight=fight, encounter=encounter),
+            "player": actor,
+            "talent_transport_packet": transport_packet,
+            "written_packet_path": written_packet_path,
         },
     )
 

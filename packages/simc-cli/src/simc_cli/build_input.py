@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-from warcraft_core.identity import parse_wowhead_talent_calc_ref as parse_shared_wowhead_talent_calc_ref
+from warcraft_core.identity import (
+    parse_wowhead_talent_calc_ref as parse_shared_wowhead_talent_calc_ref,
+    validate_talent_transport_packet,
+)
 
 from simc_cli.repo import RepoPaths
 
@@ -43,6 +48,9 @@ class BuildSpec:
     hero_talents: str | None = None
     source_kind: str | None = None
     source_notes: list[str] = field(default_factory=list)
+    transport_form: str | None = None
+    transport_status: str | None = None
+    transport_source: str | None = None
 
 
 @dataclass(slots=True)
@@ -64,6 +72,100 @@ class BuildResolution:
     source_kind: str | None
     generated_profile_text: str | None
     source_notes: list[str]
+
+
+def _load_build_packet(path: str) -> tuple[dict[str, Any], str]:
+    resolved = Path(path).expanduser().resolve()
+    raw = json.loads(resolved.read_text())
+    packet = validate_talent_transport_packet(raw)
+    return packet, str(resolved)
+
+
+def _identity_value(packet: dict[str, Any], key: str) -> str | None:
+    build_identity = packet.get("build_identity")
+    if isinstance(build_identity, dict):
+        class_spec_identity = build_identity.get("class_spec_identity")
+        if isinstance(class_spec_identity, dict):
+            identity = class_spec_identity.get("identity")
+            if isinstance(identity, dict):
+                value = identity.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+    return None
+
+
+def extract_build_spec_from_packet(path: str) -> BuildSpec:
+    packet, resolved_path = _load_build_packet(path)
+    actor_class = _identity_value(packet, "actor_class")
+    spec = _identity_value(packet, "spec")
+    transport_forms = packet.get("transport_forms") if isinstance(packet.get("transport_forms"), dict) else {}
+    source_notes = [f"build packet: {resolved_path}", "talent transport packet"]
+    source = packet.get("source")
+    if isinstance(source, dict):
+        provider = source.get("provider")
+        packet_source = source.get("source")
+        if isinstance(provider, str) and provider.strip():
+            source_notes.append(f"packet provider: {provider.strip()}")
+        if isinstance(packet_source, str) and packet_source.strip():
+            source_notes.append(f"packet source: {packet_source.strip()}")
+    transport_status = packet.get("transport_status")
+    transport_status_text = transport_status.strip() if isinstance(transport_status, str) and transport_status.strip() else None
+
+    wowhead_ref = transport_forms.get("wowhead_talent_calc_url")
+    if isinstance(wowhead_ref, str) and wowhead_ref.strip():
+        parsed = parse_wowhead_talent_calc_ref(wowhead_ref)
+        if parsed is None or not parsed.talents:
+            raise ValueError(f"Invalid wowhead_talent_calc_url transport form in build packet: {resolved_path}")
+        source_notes.append("transport form: wowhead_talent_calc_url")
+        return BuildSpec(
+            actor_class=parsed.actor_class,
+            spec=parsed.spec,
+            talents=parsed.talents,
+            source_kind="wowhead_talent_calc_url",
+            source_notes=source_notes,
+            transport_form="wowhead_talent_calc_url",
+            transport_status=transport_status_text,
+            transport_source=resolved_path,
+        )
+
+    wow_export = transport_forms.get("wow_talent_export")
+    if isinstance(wow_export, str) and wow_export.strip():
+        source_notes.append("transport form: wow_talent_export")
+        return BuildSpec(
+            actor_class=actor_class,
+            spec=spec,
+            talents=wow_export.strip(),
+            source_kind="wow_talent_export",
+            source_notes=source_notes,
+            transport_form="wow_talent_export",
+            transport_status=transport_status_text,
+            transport_source=resolved_path,
+        )
+
+    split = transport_forms.get("simc_split_talents")
+    if isinstance(split, dict):
+        class_talents = split.get("class_talents")
+        spec_talents = split.get("spec_talents")
+        hero_talents = split.get("hero_talents")
+        if any(isinstance(value, str) and value.strip() for value in (class_talents, spec_talents, hero_talents)):
+            source_notes.append("transport form: simc_split_talents")
+            return BuildSpec(
+                actor_class=actor_class,
+                spec=spec,
+                class_talents=class_talents.strip() if isinstance(class_talents, str) and class_talents.strip() else None,
+                spec_talents=spec_talents.strip() if isinstance(spec_talents, str) and spec_talents.strip() else None,
+                hero_talents=hero_talents.strip() if isinstance(hero_talents, str) and hero_talents.strip() else None,
+                source_kind="simc_split_talents",
+                source_notes=source_notes,
+                transport_form="simc_split_talents",
+                transport_status=transport_status_text,
+                transport_source=resolved_path,
+            )
+
+    raise ValueError(
+        f"Build packet does not include a supported transport form for simc analysis: {resolved_path}. "
+        "Run simc validate-talent-transport first for raw_only packets."
+    )
 
 
 @dataclass(slots=True)
@@ -105,8 +207,21 @@ def _normalize_spec_name(value: str | None) -> str | None:
     return normalized or None
 
 
+def _raw_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
+    return parse_shared_wowhead_talent_calc_ref(ref)
+
+
+def _ensure_exact_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
+    parsed = _raw_wowhead_talent_calc_ref(ref)
+    if parsed is None:
+        return None
+    if not parsed["build_code"]:
+        raise ValueError("Wowhead talent-calc URLs must include a build code for simc analysis.")
+    return parsed
+
+
 def parse_wowhead_talent_calc_ref(ref: str) -> BuildSpec | None:
-    parsed = parse_shared_wowhead_talent_calc_ref(ref)
+    parsed = _ensure_exact_wowhead_talent_calc_ref(ref)
     if parsed is None:
         return None
 
@@ -127,8 +242,10 @@ def detect_build_text_source_kind(text: str) -> str | None:
     non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not non_empty_lines:
         return None
-    if len(non_empty_lines) == 1 and parse_wowhead_talent_calc_ref(non_empty_lines[0]) is not None:
-        return "wowhead_talent_calc_url"
+    if len(non_empty_lines) == 1:
+        shared_ref = _raw_wowhead_talent_calc_ref(non_empty_lines[0])
+        if shared_ref is not None:
+            return "wowhead_talent_calc_url"
     if len(non_empty_lines) == 1 and "=" not in non_empty_lines[0]:
         return "wow_talent_export"
 
@@ -162,6 +279,9 @@ def extract_build_spec_from_text(text: str) -> BuildSpec:
     spec.source_kind = detect_build_text_source_kind(text)
     non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(non_empty_lines) == 1:
+        shared_ref = _raw_wowhead_talent_calc_ref(non_empty_lines[0])
+        if shared_ref is not None and not shared_ref["build_code"]:
+            raise ValueError("Wowhead talent-calc URLs must include a build code for simc analysis.")
         wowhead_ref = parse_wowhead_talent_calc_ref(non_empty_lines[0])
         if wowhead_ref is not None:
             return wowhead_ref
@@ -216,6 +336,12 @@ def merge_build_specs(*specs: BuildSpec) -> BuildSpec:
             merged.hero_talents = spec.hero_talents
         if spec.source_kind:
             merged.source_kind = spec.source_kind
+        if spec.transport_form:
+            merged.transport_form = spec.transport_form
+        if spec.transport_status:
+            merged.transport_status = spec.transport_status
+        if spec.transport_source:
+            merged.transport_source = spec.transport_source
         merged.source_notes.extend(spec.source_notes)
     return merged
 
@@ -281,6 +407,9 @@ def normalize_talents_input(value: str | None) -> str | None:
     stripped = value.strip()
     if stripped.startswith("talents="):
         return stripped.split("=", 1)[1].strip()
+    shared_ref = _raw_wowhead_talent_calc_ref(stripped)
+    if shared_ref is not None and not shared_ref["build_code"]:
+        raise ValueError("Wowhead talent-calc URLs must include a build code for simc analysis.")
     wowhead_ref = parse_wowhead_talent_calc_ref(stripped)
     if wowhead_ref is not None and wowhead_ref.talents:
         return wowhead_ref.talents
@@ -299,7 +428,7 @@ def detect_talents_option_source_kind(
     if not talents:
         return None
     stripped = talents.strip()
-    if parse_wowhead_talent_calc_ref(stripped) is not None:
+    if _raw_wowhead_talent_calc_ref(stripped) is not None:
         return "wowhead_talent_calc_url"
     if stripped.startswith("talents="):
         return "simc_profile"
@@ -318,7 +447,24 @@ def load_build_spec(
     hero_talents: str | None,
     actor_class: str | None,
     spec_name: str | None,
+    build_packet: str | None = None,
 ) -> BuildSpec:
+    if build_packet and any(
+        value
+        for value in (
+            profile_path,
+            build_file,
+            build_text,
+            talents,
+            class_talents,
+            spec_talents,
+            hero_talents,
+            actor_class,
+            spec_name,
+        )
+    ):
+        raise ValueError("Cannot combine --build-packet with other explicit build input options.")
+
     inferred = BuildSpec()
     if apl_path:
         inferred_class, inferred_spec = infer_actor_and_spec_from_apl(apl_path)
@@ -361,12 +507,16 @@ def load_build_spec(
         from_build_file = extract_build_spec_from_text(resolved.read_text())
         from_build_file.source_notes.append(f"build file: {resolved}")
 
+    from_build_packet = BuildSpec()
+    if build_packet:
+        from_build_packet = extract_build_spec_from_packet(build_packet)
+
     from_build_text = BuildSpec()
     if build_text:
         from_build_text = extract_build_spec_from_text(build_text)
         from_build_text.source_notes.append("inline build text")
 
-    return merge_build_specs(inferred, from_profile, from_build_file, from_build_text, from_talents_option, explicit)
+    return merge_build_specs(inferred, from_profile, from_build_file, from_build_packet, from_build_text, from_talents_option, explicit)
 
 
 def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, BuildIdentity]:

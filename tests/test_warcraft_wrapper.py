@@ -3,12 +3,235 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
 from method_cli.main import app as method_app
+import typer
 from typer.testing import CliRunner
 from warcraft_cli.main import app as warcraft_app
 from warcraft_content.article_bundle import write_article_bundle
+from warcraftlogs_cli.main import app as warcraftlogs_app
+from wowhead_cli.main import app as wowhead_app
 
 runner = CliRunner()
+
+
+def _disable_wowhead_page_fetch(monkeypatch) -> None:  # noqa: ANN001
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        raise httpx.ConnectError("network disabled", request=httpx.Request("GET", page_url))
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+
+
+def _disable_wowhead_client_init(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr("wowhead_cli.main._client", lambda ctx: (_ for _ in ()).throw(typer.Exit(1)))
+
+
+def _simc_build_input_summary(args: list[str]) -> dict[str, object]:
+    summary: dict[str, object] = {"command": args[0], "args": args}
+    if "--build-packet" in args:
+        packet = json.loads(Path(args[args.index("--build-packet") + 1]).read_text())
+        transport_forms = packet.get("transport_forms") if isinstance(packet.get("transport_forms"), dict) else {}
+        summary["build_input"] = "packet"
+        summary["packet_transport_status"] = packet["transport_status"]
+        summary["packet_transport_url"] = transport_forms.get("wowhead_talent_calc_url")
+        summary["packet_transport_form_keys"] = sorted(transport_forms)
+    elif "--build-text" in args:
+        summary["build_input"] = "text"
+        summary["build_text"] = args[args.index("--build-text") + 1]
+    return summary
+
+
+class _EndToEndWarcraftLogsClient:
+    def close(self) -> None:
+        return None
+
+    def report(self, *, code: str, allow_unlisted: bool = False) -> dict[str, object]:
+        assert code == "abcd1234"
+        return {
+            "code": "abcd1234",
+            "title": "Manaforge Omega - Liquid",
+            "startTime": 123,
+            "endTime": 456,
+            "visibility": "public",
+            "archiveStatus": {
+                "isArchived": True,
+                "isAccessible": True,
+                "archiveDate": 789,
+            },
+            "segments": 1,
+            "exportedSegments": 0,
+            "zone": {"id": 38, "name": "Manaforge Omega"},
+        }
+
+    def report_fights(
+        self,
+        *,
+        code: str,
+        difficulty: int | None = None,
+        allow_unlisted: bool = False,
+        ttl_override: int | None = None,
+    ) -> dict[str, object]:
+        assert code == "abcd1234"
+        return {
+            "code": "abcd1234",
+            "title": "Manaforge Omega - Liquid",
+            "zone": {"id": 38, "name": "Manaforge Omega"},
+            "fights": [
+                {
+                    "id": 1,
+                    "name": "Dimensius, the All-Devouring",
+                    "encounterID": 3012,
+                    "difficulty": 5,
+                    "kill": True,
+                    "completeRaid": False,
+                    "startTime": 100000,
+                    "endTime": 200000,
+                    "fightPercentage": 100,
+                    "bossPercentage": 0,
+                    "averageItemLevel": 685.2,
+                    "size": 20,
+                }
+            ],
+        }
+
+    def encounter(self, *, encounter_id: int) -> dict[str, object]:
+        assert encounter_id == 3012
+        return {
+            "id": 3012,
+            "name": "Dimensius, the All-Devouring",
+            "journalID": 9001,
+            "zone": {"id": 38, "name": "Manaforge Omega", "expansion": {"id": 12, "name": "Midnight"}},
+        }
+
+    def report_player_details(self, *, code: str, allow_unlisted: bool = False, options, ttl_override: int | None = None) -> dict[str, object]:  # noqa: ANN001
+        assert code == "abcd1234"
+        assert options.fight_ids == [1]
+        return {
+            "code": "abcd1234",
+            "title": "Manaforge Omega - Liquid",
+            "zone": {"id": 38, "name": "Manaforge Omega"},
+            "playerDetails": {
+                "data": {
+                    "tanks": [],
+                    "healers": [],
+                    "dps": [
+                        {
+                            "name": "Auropower",
+                            "id": 9,
+                            "type": "Paladin",
+                            "specs": [{"spec": "Retribution", "count": 1}],
+                            "combatantInfo": {
+                                "talentTree": [
+                                    {"id": 103324, "nodeID": 82244, "rank": 1},
+                                    {"id": 109839, "nodeID": 88206, "rank": 1},
+                                    {"id": 117176, "nodeID": 94585, "rank": 1},
+                                ]
+                            },
+                        }
+                    ],
+                }
+            },
+        }
+
+
+
+def _patch_simc_describe_pipeline(
+    monkeypatch,
+    *,
+    transport_form: str,
+    transport_status: str,
+) -> None:
+    def fake_loader(_paths, **kwargs):  # noqa: ANN001
+        build_packet = kwargs["build_packet"]
+        assert isinstance(build_packet, str) and build_packet
+        split_class = "103324:1" if transport_form == "simc_split_talents" else None
+        split_spec = "109839:1" if transport_form == "simc_split_talents" else None
+        split_hero = "117176:1" if transport_form == "simc_split_talents" else None
+        return (
+            type(
+                "BuildSpec",
+                (),
+                {
+                    "actor_class": "druid",
+                    "spec": "balance",
+                    "talents": None,
+                    "class_talents": split_class,
+                    "spec_talents": split_spec,
+                    "hero_talents": split_hero,
+                    "source_kind": transport_form,
+                    "source_notes": ["talent transport packet"],
+                    "transport_form": transport_form,
+                    "transport_status": transport_status,
+                    "transport_source": build_packet,
+                },
+            )(),
+            type(
+                "BuildIdentity",
+                (),
+                {
+                    "actor_class": "druid",
+                    "spec": "balance",
+                    "confidence": "high",
+                    "source": transport_form,
+                    "candidate_count": 1,
+                    "candidates": [("druid", "balance")],
+                    "source_notes": ["talent transport packet"],
+                },
+            )(),
+        )
+
+    monkeypatch.setattr("simc_cli.main._load_identified_build_spec", fake_loader)
+
+    resolution = type(
+        "Resolution",
+        (),
+        {
+            "actor_class": "druid",
+            "spec": "balance",
+            "source_kind": transport_form,
+            "enabled_talents": {"moonkin_form"},
+            "talents_by_tree": {"class": [], "spec": [], "hero": [], "selection": []},
+            "source_notes": ["talent transport packet"],
+        },
+    )()
+
+    def fake_resolve_prune_context(_paths, _apl, option_values, targets):  # noqa: ANN001
+        assert isinstance(option_values["build_packet"], str)
+        context = type(
+            "Context",
+            (),
+            {
+                "targets": targets,
+                "enabled_talents": {"moonkin_form"},
+                "disabled_talents": set(),
+                "talent_sources": {},
+            },
+        )()
+        return context, resolution
+
+    monkeypatch.setattr("simc_cli.main._resolve_prune_context", fake_resolve_prune_context)
+    monkeypatch.setattr(
+        "simc_cli.main._describe_target_payload",
+        lambda _resolved, context, *, start_list, priority_limit, inactive_limit: {
+            "targets": context.targets,
+            "focus_list": "default",
+            "focus_path": ["default"],
+            "focus_resolution": "direct",
+            "active_priority": [],
+            "inactive_priority": [],
+            "active_action_names": ["moonfire"],
+            "inactive_action_names": [],
+            "talent_tree": {
+                "class": {"selected": [], "skipped": []},
+                "spec": {"selected": [], "skipped": []},
+                "hero": {"selected": [], "skipped": []},
+            },
+            "inactive_talents": [],
+            "active_talents": [],
+            "explained_intent": {"setup": [], "helpers": [], "burst": [], "priorities": []},
+            "runtime_sensitive": [],
+        },
+    )
 
 
 def _comparison_payload(
@@ -129,6 +352,7 @@ def test_warcraft_doctor_reports_ready_and_stubbed_providers() -> None:
     assert providers["warcraft-wiki"]["details"]["capabilities"]["article"] == "ready"
     assert providers["wowprogress"]["details"]["capabilities"]["leaderboard"] == "ready"
     assert providers["simc"]["details"]["capabilities"]["decode_build"] == "ready"
+    assert providers["simc"]["details"]["capabilities"]["validate_talent_transport"] == "ready"
     assert providers["warcraftlogs"]["auth"]["required"] is True
     assert providers["simc"]["wrapper_surfaces"]["search"]["ready"] is False
     assert providers["simc"]["wrapper_surfaces"]["search"]["status"] == "coming_soon"
@@ -727,7 +951,7 @@ def test_warcraft_guide_compare_query_can_include_simc_build_handoff(
         }
 
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
-        invoke_calls.append((provider, args))
+        invoke_calls.append({"provider": provider, **(_simc_build_input_summary(args) if provider == "simc" else {"args": args})})
         if provider in {"method", "wowhead"}:
             export_dir = Path(args[3])
             payload = _comparison_payload(
@@ -781,25 +1005,28 @@ def test_warcraft_guide_compare_query_can_include_simc_build_handoff(
     assert handoff["build_reference_count"] == 1
     assert handoff["apl_path"] == str(apl_path)
     assert len(handoff["builds"][0]["sources"]) == 2
+    assert handoff["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
     assert handoff["builds"][0]["simc"]["identify"]["payload"]["kind"] == "identify-build"
     assert handoff["builds"][0]["simc"]["decode"]["payload"]["kind"] == "decode-build"
     assert handoff["builds"][0]["simc"]["describe"]["payload"]["kind"] == "describe-build"
-    assert invoke_calls == [
-        ("method", ["guide-export", "mistweaver-monk", "--out", str(tmp_path / "orchestrated" / "method")]),
-        ("wowhead", ["guide-export", "mistweaver-monk", "--out", str(tmp_path / "orchestrated" / "wowhead")]),
-        ("simc", ["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]),
-        ("simc", ["decode-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]),
-        (
-            "simc",
-            [
-                "describe-build",
-                "--apl-path",
-                str(apl_path),
-                "--build-text",
-                "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123",
-            ],
-        ),
-    ]
+    assert invoke_calls[0] == {
+        "provider": "method",
+        "args": ["guide-export", "mistweaver-monk", "--out", str(tmp_path / "orchestrated" / "method")],
+    }
+    assert invoke_calls[1] == {
+        "provider": "wowhead",
+        "args": ["guide-export", "mistweaver-monk", "--out", str(tmp_path / "orchestrated" / "wowhead")],
+    }
+    assert invoke_calls[2]["provider"] == "simc"
+    assert invoke_calls[2]["command"] == "identify-build"
+    assert invoke_calls[2]["build_input"] == "packet"
+    assert invoke_calls[2]["packet_transport_status"] == "exact"
+    assert invoke_calls[2]["packet_transport_url"] == "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"
+    assert invoke_calls[3]["command"] == "decode-build"
+    assert invoke_calls[3]["build_input"] == "packet"
+    assert invoke_calls[4]["command"] == "describe-build"
+    assert invoke_calls[4]["build_input"] == "packet"
+    assert invoke_calls[4]["args"][1:3] == ["--apl-path", str(apl_path)]
 
 
 def test_warcraft_guide_builds_simc_reads_bundle_build_refs(monkeypatch, tmp_path: Path) -> None:
@@ -817,9 +1044,12 @@ def test_warcraft_guide_builds_simc_reads_bundle_build_refs(monkeypatch, tmp_pat
         export_dir=bundle_dir,
     )
 
+    invoke_calls: list[dict[str, object]] = []
+
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
         assert provider == "simc"
         assert args[0] in {"identify-build", "decode-build"}
+        invoke_calls.append(_simc_build_input_summary(args))
         return {
             "provider": provider,
             "exit_code": 0,
@@ -848,11 +1078,23 @@ def test_warcraft_guide_builds_simc_reads_bundle_build_refs(monkeypatch, tmp_pat
     assert payload["summary"]["identify_success_count"] == 1
     assert payload["summary"]["decode_success_count"] == 1
     assert payload["builds"][0]["reference"]["build_code"] == "ABC123"
+    assert payload["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
+    assert (
+        payload["builds"][0]["talent_transport_packet"]["transport_forms"]["wowhead_talent_calc_url"]
+        == "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"
+    )
     assert payload["builds"][0]["evidence"]["explicit_build_reference_only"] is True
     assert payload["builds"][0]["evidence"]["provider_count"] == 1
     assert payload["builds"][0]["simc"]["identify"]["payload"]["kind"] == "identify_build"
     assert payload["builds"][0]["simc"]["decode"]["payload"]["kind"] == "decode_build"
     assert payload["builds"][0]["simc"]["describe"] is None
+    assert len(invoke_calls) == 2
+    assert invoke_calls[0]["command"] == "identify-build"
+    assert invoke_calls[0]["build_input"] == "packet"
+    assert invoke_calls[0]["packet_transport_status"] == "exact"
+    assert invoke_calls[0]["packet_transport_url"] == "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"
+    assert invoke_calls[1]["command"] == "decode-build"
+    assert invoke_calls[1]["build_input"] == "packet"
 
 
 def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
@@ -913,10 +1155,10 @@ def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
         encoding="utf-8",
     )
 
-    invoke_calls: list[list[str]] = []
+    invoke_calls: list[dict[str, object]] = []
 
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
-        invoke_calls.append(args)
+        invoke_calls.append(_simc_build_input_summary(args))
         return {
             "provider": provider,
             "exit_code": 0,
@@ -939,9 +1181,14 @@ def test_warcraft_guide_builds_simc_reads_orchestration_root_and_dedupes_builds(
     assert payload["citations"]["bundle_paths"] == [str(method_dir), str(wowhead_dir)]
     assert len(payload["builds"][0]["sources"]) == 2
     assert payload["builds"][0]["evidence"]["provider_count"] == 2
+    assert payload["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
     assert payload["builds"][0]["simc"]["decode"] is None
     assert payload["builds"][0]["simc"]["describe"] is None
-    assert invoke_calls == [["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"]]
+    assert len(invoke_calls) == 1
+    assert invoke_calls[0]["command"] == "identify-build"
+    assert invoke_calls[0]["build_input"] == "packet"
+    assert invoke_calls[0]["packet_transport_status"] == "exact"
+    assert invoke_calls[0]["packet_transport_url"] == "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"
 
 
 def test_warcraft_guide_builds_simc_can_include_describe_build_with_apl(
@@ -964,10 +1211,10 @@ def test_warcraft_guide_builds_simc_can_include_describe_build_with_apl(
         export_dir=bundle_dir,
     )
 
-    invoke_calls: list[list[str]] = []
+    invoke_calls: list[dict[str, object]] = []
 
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
-        invoke_calls.append(args)
+        invoke_calls.append(_simc_build_input_summary(args))
         return {
             "provider": provider,
             "exit_code": 0,
@@ -986,18 +1233,67 @@ def test_warcraft_guide_builds_simc_can_include_describe_build_with_apl(
     payload = json.loads(result.stdout)
     assert payload["apl_path"] == str(apl_path)
     assert payload["summary"]["describe_success_count"] == 1
+    assert payload["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
     assert payload["builds"][0]["simc"]["describe"]["payload"]["kind"] == "describe-build"
-    assert invoke_calls == [
-        ["identify-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"],
-        ["decode-build", "--build-text", "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"],
-        [
-            "describe-build",
-            "--apl-path",
-            str(apl_path),
-            "--build-text",
-            "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123",
-        ],
-    ]
+    assert len(invoke_calls) == 3
+    assert invoke_calls[0]["command"] == "identify-build"
+    assert invoke_calls[0]["build_input"] == "packet"
+    assert invoke_calls[1]["command"] == "decode-build"
+    assert invoke_calls[1]["build_input"] == "packet"
+    assert invoke_calls[2]["command"] == "describe-build"
+    assert invoke_calls[2]["build_input"] == "packet"
+    assert invoke_calls[2]["args"][1:3] == ["--apl-path", str(apl_path)]
+
+
+def test_warcraft_guide_builds_simc_hides_deleted_temp_packet_paths(monkeypatch, tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "method-guide"
+    apl_path = tmp_path / "monk_mistweaver.simc"
+    apl_path.write_text("actions=spinning_crane_kick\n", encoding="utf-8")
+    write_article_bundle(
+        _comparison_payload(
+            provider="method",
+            slug="mistweaver-monk",
+            page_url="https://www.method.gg/guides/mistweaver-monk/talents",
+            page_title="Method Talents",
+            analysis_tags=["builds_talents", "talent_recommendations"],
+            build_code="ABC123",
+        ),
+        provider="method",
+        export_dir=bundle_dir,
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        packet_path = args[args.index("--build-packet") + 1]
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": "simc",
+                "kind": args[0],
+                "build_spec": {
+                    "transport_packet": {
+                        "path": packet_path,
+                        "transport_form": "wowhead_talent_calc_url",
+                        "transport_status": "exact",
+                    }
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["guide-builds-simc", str(bundle_dir), "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    simc_payloads = payload["builds"][0]["simc"]
+    assert "path" not in simc_payloads["identify"]["payload"]["build_spec"]["transport_packet"]
+    assert "path" not in simc_payloads["decode"]["payload"]["build_spec"]["transport_packet"]
+    assert "path" not in simc_payloads["describe"]["payload"]["build_spec"]["transport_packet"]
 
 
 def test_warcraft_guide_compare_query_fails_when_too_few_guides_export(
@@ -1855,6 +2151,2284 @@ def test_warcraft_passthrough_to_simc(monkeypatch, tmp_path) -> None:
     assert payload["provider"] == "simc"
     assert payload["status"] == "completed"
     assert payload["version"] == "SimulationCraft 1201"
+
+
+def test_warcraft_passthrough_to_simc_validate_talent_transport(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": None,
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        [
+            "simc",
+            "validate-talent-transport",
+            "--actor-class",
+            "druid",
+            "--spec",
+            "balance",
+            "--talent-row",
+            "103324:82244:1",
+            "--talent-row",
+            "109839:88206:1",
+        ],
+    )
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "simc"
+    assert payload["kind"] == "validate_talent_transport"
+    assert payload["transport_status"] == "validated"
+    assert payload["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
+
+
+def test_warcraft_packet_handoff_from_warcraftlogs_to_simc(monkeypatch, tmp_path: Path) -> None:
+    raw_packet_path = tmp_path / "raw-packet.json"
+    validated_packet_path = tmp_path / "validated-packet.json"
+
+    class _PacketClient:
+        def report_player_details(self, **kwargs):  # noqa: ANN003, ANN201
+            return {}
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _PacketClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._resolve_encounter_scope",
+        lambda ctx, *, client, reference, fight_id, allow_unlisted: (
+            type("Ref", (), {"code": "abcd1234", "fight_id": 1, "source_url": None})(),
+            {"code": "abcd1234", "title": "Test Report", "startTime": 1, "endTime": 2},
+            {"id": 1, "encounterID": 3012, "name": "Dimensius", "kill": True, "difficulty": 5, "startTime": 0, "endTime": 1},
+            {"id": 3012, "journalID": 3001, "name": "Dimensius", "zone": {"id": 38, "name": "Nerub-ar Palace", "expansion": {"id": 10, "name": "Retail"}}},
+        ),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._report_player_details_payload",
+        lambda payload, *, report_code=None, fight_id=None: {
+            "player_details": {
+                "roles": {
+                    "dps": [
+                        {
+                            "id": 9,
+                            "name": "gubkfc",
+                            "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                            "combatant_info": {
+                                "talentTree": [
+                                    {"id": 103324, "nodeID": 82244, "rank": 1},
+                                    {"id": 109839, "nodeID": 88206, "rank": 1},
+                                ]
+                            },
+                        }
+                    ]
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "simc_trait_resolution_incomplete",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": None,
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    export_result = runner.invoke(
+        warcraft_app,
+        [
+            "warcraftlogs",
+            "report-player-talents",
+            "abcd1234",
+            "--fight-id",
+            "1",
+            "--actor-id",
+            "9",
+            "--out",
+            str(raw_packet_path),
+        ],
+    )
+    assert export_result.exit_code == 0
+    export_payload = json.loads(export_result.stdout)
+    assert export_payload["written_packet_path"] == str(raw_packet_path.resolve())
+
+    validate_result = runner.invoke(
+        warcraft_app,
+        [
+            "simc",
+            "validate-talent-transport",
+            "--build-packet",
+            str(raw_packet_path),
+            "--out",
+            str(validated_packet_path),
+        ],
+    )
+    assert validate_result.exit_code == 0
+    validate_payload = json.loads(validate_result.stdout)
+    assert validate_payload["transport_status"] == "validated"
+    assert validate_payload["written_packet_path"] == str(validated_packet_path.resolve())
+
+    written_packet = json.loads(validated_packet_path.read_text())
+    assert written_packet["transport_status"] == "validated"
+    assert written_packet["source"] == {"provider": "warcraftlogs", "source": "warcraftlogs_talent_tree"}
+    assert written_packet["scope"] == {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9}
+    assert written_packet["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
+
+
+def test_warcraft_talent_packet_routes_explicit_wowhead_ref(monkeypatch) -> None:
+    calls: list[tuple[str, list[str]]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        calls.append((provider, args))
+        assert provider == "wowhead"
+        return {
+            "provider": "wowhead",
+            "exit_code": 0,
+            "payload": {
+                "provider": "wowhead",
+                "kind": "talent_calc_packet",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "exact",
+                    "transport_forms": {
+                        "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                    },
+                    "build_identity": {
+                        "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                    },
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "warcraft"
+    assert payload["kind"] == "talent_transport"
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["source_packet_status"] == "exact"
+    assert payload["upgrade_attempted"] is False
+    assert payload["upgraded"] is False
+    assert payload["talent_transport_packet"]["transport_forms"]["wowhead_talent_calc_url"] == "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+    assert calls == [("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "10"])]
+
+
+def test_warcraft_talent_packet_routes_explicit_wowhead_ref_without_client_init(monkeypatch) -> None:
+    _disable_wowhead_client_init(monkeypatch)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123", "--no-validate"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["talent_transport_packet"]["transport_status"] == "exact"
+    assert "listed_builds" not in payload["producer_result"]["payload"]
+
+
+def test_warcraft_talent_packet_passes_wowhead_listed_build_limit_and_expansion(monkeypatch) -> None:
+    calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        calls.append((provider, args, expansion))
+        return {
+            "provider": "wowhead",
+            "exit_code": 0,
+            "payload": {
+                "provider": "wowhead",
+                "kind": "talent_calc_packet",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "exact",
+                    "transport_forms": {
+                        "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                    },
+                    "build_identity": {
+                        "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                    },
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {"type": "wowhead_talent_calc", "expansion": "wotlk"},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["--expansion", "wotlk", "talent-packet", "druid/balance/ABC123", "--listed-build-limit", "3"],
+    )
+    assert result.exit_code == 0
+    assert calls == [("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "3"], "wotlk")]
+
+
+def test_warcraft_talent_packet_passes_allow_unlisted_to_warcraftlogs(monkeypatch) -> None:
+    calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        calls.append((provider, args, expansion))
+        return {
+            "provider": "warcraftlogs",
+            "exit_code": 0,
+            "payload": {
+                "provider": "warcraftlogs",
+                "kind": "report_player_talents",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "raw_only",
+                    "build_identity": {},
+                    "transport_forms": {},
+                    "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                    "validation": {"status": "not_validated"},
+                    "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "abcd1234", "--actor-id", "9", "--fight-id", "1", "--allow-unlisted", "--no-validate"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"]["allow_unlisted"] is True
+    assert calls == [("warcraftlogs", ["report-player-talents", "abcd1234", "--actor-id", "9", "--fight-id", "1", "--allow-unlisted"], None)]
+
+
+def test_warcraft_talent_packet_routes_warcraftlogs_and_upgrades(monkeypatch) -> None:
+    calls: list[tuple[str, list[str]]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        calls.append((provider, args))
+        if provider == "warcraftlogs":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "report_player_talents",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "raw_only",
+                        "build_identity": {},
+                        "transport_forms": {},
+                        "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                        "validation": {"status": "not_validated"},
+                        "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+                    },
+                },
+                "stdout": "",
+            }
+        packet = json.loads(Path(args[2]).read_text())
+        assert provider == "simc"
+        assert args[:2] == ["validate-talent-transport", "--build-packet"]
+        assert packet["transport_status"] == "raw_only"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "validate_talent_transport",
+                "input": {"source": "build_packet", "build_packet": args[2]},
+                "updated_packet": {
+                    **packet,
+                    "transport_status": "validated",
+                    "transport_forms": {"simc_split_talents": {"class_talents": "103324:1"}},
+                    "validation": {"status": "validated", "source": "simc_trait_data_round_trip"},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "9"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+    assert payload["source_packet_status"] == "raw_only"
+    assert payload["upgrade_attempted"] is True
+    assert payload["upgraded"] is True
+    assert payload["talent_transport_packet"]["transport_status"] == "validated"
+    assert payload["talent_transport_packet"]["transport_forms"]["simc_split_talents"]["class_talents"] == "103324:1"
+    assert "build_packet" not in payload["upgrade_result"]["payload"]["input"]
+    assert calls[0] == ("warcraftlogs", ["report-player-talents", "abcd1234", "--actor-id", "9", "--fight-id", "1"])
+    assert calls[1][0] == "simc"
+    assert calls[1][1][:2] == ["validate-talent-transport", "--build-packet"]
+
+
+def test_warcraft_talent_packet_preserves_missing_talent_tree_for_non_dict_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _EndToEndWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main._player_detail_actor",
+        lambda details_payload, actor_id: {
+            "id": actor_id,
+            "combatant_info": {
+                "talentTree": [
+                    {"id": 103324, "nodeID": 82244, "rank": 1},
+                    "bad-row",
+                ]
+            },
+            "class_spec_identity": {
+                "identity": {"actor_class": "paladin", "spec": "retribution"},
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_talent_tree"
+    assert "incomplete combatant_info.talentTree rows" in payload["error"]["message"]
+
+
+def test_warcraft_talent_packet_upgrades_packet_file_and_writes_output(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    out_path = tmp_path / "validated-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {},
+                "transport_forms": {},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        packet = json.loads(Path(args[2]).read_text())
+        assert provider == "simc"
+        assert packet["transport_status"] == "raw_only"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "input": {"source": "build_packet", "build_packet": args[2]},
+                "updated_packet": {
+                    **packet,
+                    "transport_status": "validated",
+                    "transport_forms": {"simc_split_talents": {"class_talents": "103324:1"}},
+                    "validation": {"status": "validated", "source": "simc_trait_data_round_trip"},
+                }
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path), "--out", str(out_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    assert payload["written_packet_path"] == str(out_path.resolve())
+    assert payload["talent_transport_packet"]["transport_status"] == "validated"
+    assert "build_packet" not in payload["upgrade_result"]["payload"]["input"]
+    written = json.loads(out_path.read_text())
+    assert written["transport_status"] == "validated"
+
+
+def test_warcraft_talent_packet_requires_explicit_source_contract() -> None:
+    result = runner.invoke(warcraft_app, ["talent-packet", "abcd1234"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "unsupported_talent_source"
+
+
+def test_warcraft_talent_packet_rejects_non_wowhead_absolute_url() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "https://notwowhead.com/talent-calc/druid/balance/ABC123"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "unsupported_talent_source"
+
+
+def test_warcraft_talent_packet_rejects_fake_host_wowhead_like_input() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "notwowhead.com/talent-calc/druid/balance/ABC123"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == (
+        "Talent transport packet file was not found: notwowhead.com/talent-calc/druid/balance/ABC123"
+    )
+
+
+def test_warcraft_talent_packet_accepts_hyphenated_wowhead_class_slug(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowhead"
+        assert args == ["talent-calc-packet", "death-knight/frost/ABC123", "--listed-build-limit", "10"]
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "exact",
+                    "build_identity": {
+                        "class_spec_identity": {"identity": {"actor_class": "deathknight", "spec": "frost"}}
+                    },
+                    "transport_forms": {
+                        "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/death-knight/frost/ABC123"
+                    },
+                    "raw_evidence": {
+                        "reference_url": "https://www.wowhead.com/talent-calc/death-knight/frost/ABC123"
+                    },
+                    "validation": {},
+                    "scope": {},
+                }
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "death-knight/frost/ABC123", "--no-validate"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["talent_transport_packet"]["transport_status"] == "exact"
+
+
+def test_warcraft_talent_packet_rejects_invalid_packet_file(tmp_path: Path) -> None:
+    packet_path = tmp_path / "broken-packet.json"
+    packet_path.write_text("{not json}\n")
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["source"] == str(packet_path)
+
+
+def test_warcraft_talent_packet_rejects_missing_packet_path_like_input(tmp_path: Path) -> None:
+    packet_path = tmp_path / "missing-packet.json"
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == f"Talent transport packet file was not found: {packet_path}"
+
+
+def test_warcraft_talent_packet_rejects_unscoped_relative_packet_like_input() -> None:
+    result = runner.invoke(warcraft_app, ["talent-packet", "tmp/foo"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "Talent transport packet file was not found: tmp/foo"
+
+
+def test_warcraft_talent_packet_rejects_path_containing_talent_calc_segment() -> None:
+    result = runner.invoke(warcraft_app, ["talent-packet", "tmp/talent-calc/druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "Talent transport packet file was not found: tmp/talent-calc/druid/balance/ABC123"
+
+
+
+def test_warcraft_talent_packet_fails_when_provider_omits_packet(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowhead"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {"provider": provider, "kind": "talent_calc_packet"},
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_transport_packet"
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+
+
+
+def test_warcraft_talent_packet_preserves_wowhead_invalid_transport_packet_error(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowhead"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_transport_packet",
+                    "message": "wowhead talent-calc-packet produced an invalid talent transport packet: invalid test packet",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "wowhead talent-calc-packet produced an invalid talent transport packet: invalid test packet"
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["provider_result"]["provider"] == "wowhead"
+
+
+
+def test_warcraft_talent_packet_preserves_warcraftlogs_invalid_transport_packet_error(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "warcraftlogs"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_transport_packet",
+                    "message": "warcraftlogs report-player-talents produced an invalid talent transport packet: invalid test packet",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "9"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "warcraftlogs report-player-talents produced an invalid talent transport packet: invalid test packet"
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+    assert payload["provider_result"]["provider"] == "warcraftlogs"
+
+
+def test_warcraft_talent_packet_preserves_provider_error_codes(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "warcraftlogs"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "missing_public_auth",
+                    "message": "Public Warcraft Logs API access requires client credentials.",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "9"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "missing_public_auth"
+    assert payload["error"]["message"] == "Public Warcraft Logs API access requires client credentials."
+
+
+def test_warcraft_talent_packet_preserves_warcraftlogs_not_found(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "warcraftlogs"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "not_found",
+                    "message": "Actor ID 999 was not present in the selected fight.",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "999"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "not_found"
+    assert payload["error"]["message"] == "Actor ID 999 was not present in the selected fight."
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 999,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+
+
+def test_warcraft_talent_packet_preserves_ok_false_provider_errors(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowhead"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_query",
+                    "message": "Buildless Wowhead ref cannot produce an exact packet.",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert payload["error"]["message"] == "Buildless Wowhead ref cannot produce an exact packet."
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+
+
+
+def test_warcraft_talent_packet_rejects_malformed_packet_status(tmp_path: Path) -> None:
+    packet_path = tmp_path / "mismatched-status.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "build_identity": {},
+                "transport_forms": {},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "rank": 1}]},
+                "validation": {},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert "does not match packet contents" in payload["error"]["message"]
+
+
+
+def test_warcraft_talent_packet_rejects_malformed_transport_forms(tmp_path: Path) -> None:
+    packet_path = tmp_path / "bad-forms.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "validated",
+                "build_identity": {},
+                "transport_forms": {"simc_split_talents": []},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert "simc_split_talents" in payload["error"]["message"]
+
+
+
+def test_warcraft_talent_packet_rejects_invalid_provider_packet(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowhead"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "validated",
+                    "build_identity": {},
+                    "transport_forms": {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {},
+                }
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["provider_result"]["provider"] == "wowhead"
+
+
+
+def test_warcraft_talent_packet_rejects_invalid_upgraded_packet(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {},
+                "transport_forms": {},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "updated_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "validated",
+                    "build_identity": {},
+                    "transport_forms": {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {},
+                }
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "packet_upgrade_failed"
+    assert "invalid upgraded packet" in payload["error"]["message"]
+
+
+def test_warcraft_talent_packet_reports_upgrade_failure(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {},
+                "transport_forms": {},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_build_packet",
+                    "message": "Build packet did not contain a validated transport form.",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert payload["error"]["message"] == "Build packet did not contain a validated transport form."
+    assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    assert payload["provider_result"]["provider"] == "simc"
+
+
+def test_warcraft_talent_packet_preserves_upgrade_failure_with_malformed_updated_packet(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {},
+                "transport_forms": {},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_build_packet",
+                    "message": "Build packet did not contain a validated transport form.",
+                },
+                "updated_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "validated",
+                    "build_identity": {},
+                    "transport_forms": {"wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert payload["error"]["message"] == "Build packet did not contain a validated transport form."
+    assert payload["provider_result"]["provider"] == "simc"
+
+
+def test_warcraft_talent_packet_rejects_successful_validate_without_updated_packet(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {},
+                "transport_forms": {},
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "validate_talent_transport",
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "packet_upgrade_failed"
+    assert payload["error"]["message"] == "simc validate-talent-transport did not return an upgraded talent transport packet."
+    assert payload["provider_result"]["provider"] == "simc"
+
+
+
+def test_warcraft_talent_describe_preserves_wowhead_invalid_transport_packet_error(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowhead"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_transport_packet",
+                    "message": "wowhead talent-calc-packet produced an invalid talent transport packet: invalid test packet",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-describe", "druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "wowhead talent-calc-packet produced an invalid talent transport packet: invalid test packet"
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["provider_result"]["provider"] == "wowhead"
+
+
+
+def test_warcraft_talent_describe_preserves_warcraftlogs_invalid_transport_packet_error(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "warcraftlogs"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "invalid_transport_packet",
+                    "message": "warcraftlogs report-player-talents produced an invalid talent transport packet: invalid test packet",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-describe", "abcd1234", "--fight-id", "1", "--actor-id", "9"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "warcraftlogs report-player-talents produced an invalid talent transport packet: invalid test packet"
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+    assert payload["provider_result"]["provider"] == "warcraftlogs"
+
+
+def test_warcraft_talent_describe_preserves_warcraftlogs_not_found(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "warcraftlogs"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "not_found",
+                    "message": "Actor ID 999 was not present in the selected fight.",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-describe", "abcd1234", "--fight-id", "1", "--actor-id", "999"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "not_found"
+    assert payload["error"]["message"] == "Actor ID 999 was not present in the selected fight."
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 999,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+
+
+
+def test_warcraft_talent_describe_reports_simc_failure(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                },
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+            }
+        )
+    )
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        return {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "apl_not_found",
+                    "message": "APL path did not exist.",
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--no-validate", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "apl_not_found"
+    assert payload["error"]["message"] == "APL path did not exist."
+    assert payload["kind"] == "talent_describe"
+    assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    assert payload["provider_result"]["provider"] == "simc"
+
+
+def test_warcraft_talent_describe_preserves_ok_false_simc_failure(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                },
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        "warcraft_cli.main.provider_invoke",
+        lambda provider, args, *, expansion=None: {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "describe_build_failed",
+                    "message": "Unable to resolve build against the supplied APL.",
+                },
+            },
+            "stdout": "",
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--no-validate", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "describe_build_failed"
+    assert payload["error"]["message"] == "Unable to resolve build against the supplied APL."
+    assert payload["kind"] == "talent_describe"
+    assert payload["provider_result"]["provider"] == "simc"
+
+
+def test_warcraft_talent_describe_does_not_write_packet_out_on_failure(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    apl_path = tmp_path / "balance.simc"
+    out_path = tmp_path / "described-packet.json"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                },
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        "warcraft_cli.main.provider_invoke",
+        lambda provider, args, *, expansion=None: {
+            "provider": provider,
+            "exit_code": 1,
+            "payload": {
+                "ok": False,
+                "error": {
+                    "code": "apl_not_found",
+                    "message": "APL path did not exist.",
+                },
+            },
+            "stdout": "",
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        [
+            "talent-describe",
+            str(packet_path),
+            "--no-validate",
+            "--apl-path",
+            str(apl_path),
+            "--packet-out",
+            str(out_path),
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "apl_not_found"
+    assert not out_path.exists()
+
+
+def test_warcraft_talent_describe_uses_stable_error_kind_for_route_failures() -> None:
+    result = runner.invoke(warcraft_app, ["talent-describe", "abcd1234"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "unsupported_talent_source"
+
+
+def test_warcraft_talent_describe_rejects_non_wowhead_absolute_url() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "https://notwowhead.com/talent-calc/druid/balance/ABC123"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "unsupported_talent_source"
+
+
+def test_warcraft_talent_describe_rejects_fake_host_wowhead_like_input(tmp_path: Path) -> None:
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "notwowhead.com/talent-calc/druid/balance/ABC123", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == (
+        "Talent transport packet file was not found: notwowhead.com/talent-calc/druid/balance/ABC123"
+    )
+
+
+def test_warcraft_talent_describe_accepts_hyphenated_wowhead_class_slug(monkeypatch, tmp_path: Path) -> None:
+    apl_path = tmp_path / "deathknight_frost.simc"
+    apl_path.write_text("actions=obliterate\n")
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        if provider == "wowhead":
+            assert args == ["talent-calc-packet", "death-knight/frost/ABC123", "--listed-build-limit", "10"]
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "build_identity": {
+                            "class_spec_identity": {"identity": {"actor_class": "deathknight", "spec": "frost"}}
+                        },
+                        "transport_forms": {
+                            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/death-knight/frost/ABC123"
+                        },
+                        "raw_evidence": {
+                            "reference_url": "https://www.wowhead.com/talent-calc/death-knight/frost/ABC123"
+                        },
+                        "validation": {},
+                        "scope": {},
+                    }
+                },
+                "stdout": "",
+            }
+        assert provider == "simc"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": "simc",
+                "kind": "describe_build",
+                "build_spec": {
+                    "transport_packet": {
+                        "transport_form": "wowhead_talent_calc_url",
+                        "transport_status": "exact",
+                    }
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "death-knight/frost/ABC123", "--apl-path", str(apl_path), "--no-validate"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["describe_result"]["payload"]["kind"] == "describe_build"
+
+
+def test_warcraft_talent_describe_rejects_path_containing_talent_calc_segment(tmp_path: Path) -> None:
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "tmp/talent-calc/druid/balance/ABC123", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "Talent transport packet file was not found: tmp/talent-calc/druid/balance/ABC123"
+
+
+def test_warcraft_talent_packet_normalizes_packet_write_failure(monkeypatch, tmp_path: Path) -> None:
+    out_dir = tmp_path / "out-dir"
+    out_dir.mkdir()
+    monkeypatch.setattr(
+        "warcraft_cli.main.provider_invoke",
+        lambda provider, args, *, expansion=None: {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": "wowhead",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "exact",
+                    "transport_forms": {
+                        "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                    },
+                    "build_identity": {
+                        "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                    },
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+                },
+            },
+            "stdout": "",
+        },
+    )
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123", "--out", str(out_dir)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "transport_packet_write_failed"
+
+
+def test_warcraft_talent_describe_normalizes_packet_write_failure(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    apl_path = tmp_path / "balance.simc"
+    out_dir = tmp_path / "out-dir"
+    apl_path.write_text("actions=wrath\n")
+    out_dir.mkdir()
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                },
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+            }
+        )
+    )
+    monkeypatch.setattr(
+        "warcraft_cli.main.provider_invoke",
+        lambda provider, args, *, expansion=None: {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "ok": True,
+                "build_spec": {
+                    "transport_packet": {
+                        "path": "/tmp/deleted-packet.json",
+                        "transport_form": "wowhead_talent_calc_url",
+                        "transport_status": "exact",
+                    }
+                },
+            },
+            "stdout": "",
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--no-validate", "--apl-path", str(apl_path), "--packet-out", str(out_dir)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "transport_packet_write_failed"
+
+
+def test_warcraft_talent_describe_routes_wowhead_ref_to_simc(monkeypatch) -> None:
+    provider_calls: list[tuple[str, list[str]]] = []
+    simc_calls: list[dict[str, object]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args))
+        if provider == "wowhead":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "talent_calc_packet",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "transport_forms": {
+                            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                        },
+                        "build_identity": {
+                            "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                        },
+                        "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                        "validation": {},
+                        "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+                    },
+                },
+                "stdout": "",
+            }
+        assert provider == "simc"
+        simc_calls.append(_simc_build_input_summary(args))
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 5},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "druid/balance/ABC123", "--apl-path", "/tmp/druid_balance.simc"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["provider"] == "warcraft"
+    assert payload["kind"] == "talent_describe"
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["source_packet_status"] == "exact"
+    assert payload["upgrade_attempted"] is False
+    assert payload["packet_written_path"] is None
+    assert payload["describe_result"]["payload"]["kind"] == "describe_build"
+    assert provider_calls[0] == ("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "10"])
+    assert simc_calls[0]["command"] == "describe-build"
+    assert simc_calls[0]["packet_transport_status"] == "exact"
+    assert simc_calls[0]["packet_transport_url"] == "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+    assert simc_calls[0]["args"][:4] == ["describe-build", "--targets", "1", "--aoe-targets"]
+    assert "--apl-path" in simc_calls[0]["args"]
+
+
+def test_warcraft_talent_describe_passes_wowhead_listed_build_limit(monkeypatch) -> None:
+    provider_calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args, expansion))
+        if provider == "wowhead":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "talent_calc_packet",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "transport_forms": {
+                            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                        },
+                        "build_identity": {
+                            "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                        },
+                        "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                        "validation": {},
+                        "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+                    },
+                },
+                "stdout": "",
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 3},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "druid/balance/ABC123", "--listed-build-limit", "4"],
+    )
+    assert result.exit_code == 0
+    assert provider_calls[0] == ("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "4"], None)
+
+
+
+def test_warcraft_talent_describe_routes_warcraftlogs_and_upgrades(monkeypatch) -> None:
+    provider_calls: list[tuple[str, list[str]]] = []
+    simc_calls: list[dict[str, object]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args))
+        if provider == "warcraftlogs":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "report_player_talents",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "raw_only",
+                        "build_identity": {},
+                        "transport_forms": {},
+                        "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                        "validation": {"status": "not_validated"},
+                        "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+                    },
+                },
+                "stdout": "",
+            }
+        assert provider == "simc"
+        simc_calls.append(_simc_build_input_summary(args))
+        packet = json.loads(Path(args[args.index("--build-packet") + 1]).read_text())
+        if args[0] == "validate-talent-transport":
+            assert packet["transport_status"] == "raw_only"
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "validate_talent_transport",
+                    "input": {"source": "build_packet", "build_packet": args[args.index("--build-packet") + 1]},
+                    "updated_packet": {
+                        **packet,
+                        "transport_status": "validated",
+                        "transport_forms": {"simc_split_talents": {"class_talents": "103324:1"}},
+                        "validation": {"status": "validated", "source": "simc_trait_data_round_trip"},
+                    },
+                },
+                "stdout": "",
+            }
+        assert args[0] == "describe-build"
+        assert packet["transport_status"] == "validated"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 7},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+    assert payload["source_packet_status"] == "raw_only"
+    assert payload["upgrade_attempted"] is True
+    assert payload["upgraded"] is True
+    assert payload["talent_transport_packet"]["transport_status"] == "validated"
+    assert payload["describe_result"]["payload"]["kind"] == "describe_build"
+    assert provider_calls[0] == ("warcraftlogs", ["report-player-talents", "abcd1234", "--actor-id", "9", "--fight-id", "1"])
+    assert [row["command"] for row in simc_calls] == ["validate-talent-transport", "describe-build"]
+    assert simc_calls[1]["packet_transport_status"] == "validated"
+    assert simc_calls[1]["packet_transport_form_keys"] == ["simc_split_talents"]
+    assert "build_packet" not in payload["upgrade_result"]["payload"]["input"]
+
+
+def test_warcraft_talent_describe_passes_allow_unlisted_and_expansion(monkeypatch) -> None:
+    provider_calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args, expansion))
+        if provider == "warcraftlogs":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "report_player_talents",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "build_identity": {},
+                        "transport_forms": {"wow_talent_export": "ABC123"},
+                        "raw_evidence": {"reference_type": "wow_talent_export"},
+                        "validation": {},
+                        "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+                    },
+                },
+                "stdout": "",
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 6},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["--expansion", "retail", "talent-describe", "abcd1234", "--actor-id", "9", "--fight-id", "1", "--allow-unlisted", "--no-validate"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"]["allow_unlisted"] is True
+    assert provider_calls[0] == (
+        "warcraftlogs",
+        ["report-player-talents", "abcd1234", "--actor-id", "9", "--fight-id", "1", "--allow-unlisted"],
+        "retail",
+    )
+    assert provider_calls[1][2] == "retail"
+
+
+
+def test_warcraft_talent_describe_uses_packet_file_and_can_write_output(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    out_path = tmp_path / "described-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "transport_forms": {
+                    "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                },
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                "validation": {},
+                "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+            }
+        )
+    )
+    simc_calls: list[dict[str, object]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        simc_calls.append(_simc_build_input_summary(args))
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 4},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--packet-out", str(out_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    assert payload["packet_written_path"] == str(out_path.resolve())
+    assert payload["describe_result"]["payload"]["kind"] == "describe_build"
+    assert simc_calls[0]["command"] == "describe-build"
+    assert simc_calls[0]["packet_transport_status"] == "exact"
+    written = json.loads(out_path.read_text())
+    assert written["transport_status"] == "exact"
+
+
+
+def test_warcraft_talent_packet_preserves_wowhead_provider_packet(monkeypatch) -> None:
+    _disable_wowhead_page_fetch(monkeypatch)
+
+    direct_result = runner.invoke(wowhead_app, ["talent-calc-packet", "druid/balance/ABC123"])
+    assert direct_result.exit_code == 0
+    direct_payload = json.loads(direct_result.stdout)
+
+    wrapper_result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123"])
+    assert wrapper_result.exit_code == 0
+    wrapper_payload = json.loads(wrapper_result.stdout)
+
+    assert wrapper_payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert wrapper_payload["talent_transport_packet"] == direct_payload["talent_transport_packet"]
+    assert wrapper_payload["talent_transport_packet"]["transport_status"] == "exact"
+
+
+def test_warcraft_talent_packet_out_matches_wowhead_provider_file(monkeypatch, tmp_path: Path) -> None:
+    direct_path = tmp_path / "wowhead-direct.json"
+    wrapper_path = tmp_path / "wowhead-wrapper.json"
+
+    _disable_wowhead_page_fetch(monkeypatch)
+
+    direct_result = runner.invoke(wowhead_app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(direct_path)])
+    assert direct_result.exit_code == 0
+    wrapper_result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/ABC123", "--out", str(wrapper_path)])
+    assert wrapper_result.exit_code == 0
+
+    assert direct_path.read_text() == wrapper_path.read_text()
+
+
+
+def test_warcraft_talent_packet_preserves_warcraftlogs_provider_packet(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _EndToEndWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    direct_result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert direct_result.exit_code == 0
+    direct_payload = json.loads(direct_result.stdout)
+
+    wrapper_result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "9"],
+    )
+    assert wrapper_result.exit_code == 0
+    wrapper_payload = json.loads(wrapper_result.stdout)
+
+    assert wrapper_payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+    assert wrapper_payload["upgrade_attempted"] is False
+    assert wrapper_payload["talent_transport_packet"] == direct_payload["talent_transport_packet"]
+    assert wrapper_payload["talent_transport_packet"]["transport_status"] == "validated"
+
+
+def test_warcraft_talent_packet_out_matches_warcraftlogs_provider_file(monkeypatch, tmp_path: Path) -> None:
+    direct_path = tmp_path / "warcraftlogs-direct.json"
+    wrapper_path = tmp_path / "warcraftlogs-wrapper.json"
+
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _EndToEndWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    direct_result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--out", str(direct_path)],
+    )
+    assert direct_result.exit_code == 0
+    wrapper_result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--out", str(wrapper_path)],
+    )
+    assert wrapper_result.exit_code == 0
+
+    assert direct_path.read_text() == wrapper_path.read_text()
+
+
+
+def test_warcraft_talent_describe_packet_out_matches_wowhead_provider_file(monkeypatch, tmp_path: Path) -> None:
+    direct_path = tmp_path / "wowhead-direct.json"
+    wrapper_path = tmp_path / "wowhead-described.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    _disable_wowhead_page_fetch(monkeypatch)
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="wowhead_talent_calc_url",
+        transport_status="exact",
+    )
+
+    direct_result = runner.invoke(wowhead_app, ["talent-calc-packet", "druid/balance/ABC123", "--out", str(direct_path)])
+    assert direct_result.exit_code == 0
+    wrapper_result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "druid/balance/ABC123", "--apl-path", str(apl_path), "--packet-out", str(wrapper_path)],
+    )
+    assert wrapper_result.exit_code == 0
+
+    assert direct_path.read_text() == wrapper_path.read_text()
+
+
+
+def test_warcraft_talent_describe_packet_out_changes_after_validation_upgrade(monkeypatch, tmp_path: Path) -> None:
+    direct_path = tmp_path / "warcraftlogs-direct.json"
+    wrapper_path = tmp_path / "warcraftlogs-described.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _EndToEndWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "simc_trait_resolution_incomplete",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="simc_split_talents",
+        transport_status="validated",
+    )
+
+    direct_result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--out", str(direct_path)],
+    )
+    assert direct_result.exit_code == 0
+    wrapper_result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--apl-path", str(apl_path), "--packet-out", str(wrapper_path)],
+    )
+    assert wrapper_result.exit_code == 0
+    wrapper_payload = json.loads(wrapper_result.stdout)
+
+    direct_packet = json.loads(direct_path.read_text())
+    wrapper_packet = json.loads(wrapper_path.read_text())
+    assert direct_path.read_text() != wrapper_path.read_text()
+    assert direct_packet["transport_status"] == "raw_only"
+    assert wrapper_packet["transport_status"] == "validated"
+    assert wrapper_packet["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
+    assert "build_packet" not in wrapper_payload["upgrade_result"]["payload"]["input"]
+    assert wrapper_payload["describe_result"]["payload"]["build_spec"]["transport_packet"]["path"] == str(wrapper_path.resolve())
+
+
+def test_warcraft_talent_packet_file_reuse_stays_exact_without_validation(monkeypatch, tmp_path: Path) -> None:
+    source_path = tmp_path / "wowhead-source.json"
+    routed_path = tmp_path / "wowhead-routed.json"
+    described_path = tmp_path / "wowhead-described.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    _disable_wowhead_page_fetch(monkeypatch)
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="wowhead_talent_calc_url",
+        transport_status="exact",
+    )
+
+    producer_result = runner.invoke(
+        wowhead_app,
+        ["talent-calc-packet", "druid/balance/ABC123", "--out", str(source_path)],
+    )
+    assert producer_result.exit_code == 0
+
+    packet_result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", str(source_path), "--no-validate", "--out", str(routed_path)],
+    )
+    assert packet_result.exit_code == 0
+    describe_result = runner.invoke(
+        warcraft_app,
+        [
+            "talent-describe",
+            str(source_path),
+            "--no-validate",
+            "--apl-path",
+            str(apl_path),
+            "--packet-out",
+            str(described_path),
+        ],
+    )
+    assert describe_result.exit_code == 0
+
+    packet_payload = json.loads(packet_result.stdout)
+    describe_payload = json.loads(describe_result.stdout)
+    assert packet_payload["upgrade_attempted"] is False
+    assert describe_payload["upgrade_attempted"] is False
+    assert source_path.read_text() == routed_path.read_text()
+    assert source_path.read_text() == described_path.read_text()
+
+
+
+def test_warcraft_talent_packet_file_reuse_upgrades_raw_packet_consistently(monkeypatch, tmp_path: Path) -> None:
+    raw_path = tmp_path / "warcraftlogs-raw.json"
+    routed_path = tmp_path / "warcraftlogs-routed.json"
+    described_path = tmp_path / "warcraftlogs-described.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _EndToEndWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "simc_trait_resolution_incomplete",
+            },
+        },
+    )
+    raw_result = runner.invoke(
+        warcraftlogs_app,
+        ["report-player-talents", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--out", str(raw_path)],
+    )
+    assert raw_result.exit_code == 0
+
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="simc_split_talents",
+        transport_status="validated",
+    )
+
+    packet_result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", str(raw_path), "--out", str(routed_path)],
+    )
+    assert packet_result.exit_code == 0
+    describe_result = runner.invoke(
+        warcraft_app,
+        [
+            "talent-describe",
+            str(raw_path),
+            "--apl-path",
+            str(apl_path),
+            "--packet-out",
+            str(described_path),
+        ],
+    )
+    assert describe_result.exit_code == 0
+
+    packet_payload = json.loads(packet_result.stdout)
+    describe_payload = json.loads(describe_result.stdout)
+    raw_packet = json.loads(raw_path.read_text())
+    routed_packet = json.loads(routed_path.read_text())
+    described_packet = json.loads(described_path.read_text())
+
+    assert packet_payload["upgrade_attempted"] is True
+    assert describe_payload["upgrade_attempted"] is True
+    assert raw_packet["transport_status"] == "raw_only"
+    assert routed_packet == described_packet
+    assert routed_packet["transport_status"] == "validated"
+    assert raw_path.read_text() != routed_path.read_text()
+
+
+def test_warcraft_talent_round_trip_wowhead_packet_to_describe(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "wowhead-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    _disable_wowhead_page_fetch(monkeypatch)
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="wowhead_talent_calc_url",
+        transport_status="exact",
+    )
+
+    packet_result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "druid/balance/ABC123", "--out", str(packet_path)],
+    )
+    assert packet_result.exit_code == 0
+    packet_payload = json.loads(packet_result.stdout)
+    assert packet_payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    written_packet = json.loads(packet_path.read_text())
+    assert written_packet["transport_status"] == "exact"
+    assert written_packet["transport_forms"]["wowhead_talent_calc_url"] == "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+
+    describe_result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--apl-path", str(apl_path)],
+    )
+    assert describe_result.exit_code == 0
+    payload = json.loads(describe_result.stdout)
+    assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
+    assert transport_packet["transport_form"] == "wowhead_talent_calc_url"
+    assert transport_packet["transport_status"] == "exact"
+    assert transport_packet["path"] == str(packet_path.resolve())
+
+
+
+def test_warcraft_talent_round_trip_warcraftlogs_packet_to_describe(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "warcraftlogs-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _EndToEndWarcraftLogsClient())
+    monkeypatch.setattr(
+        "warcraftlogs_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "simc_trait_resolution_incomplete",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="simc_split_talents",
+        transport_status="validated",
+    )
+
+    packet_result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "abcd1234", "--fight-id", "1", "--actor-id", "9", "--out", str(packet_path)],
+    )
+    assert packet_result.exit_code == 0
+    packet_payload = json.loads(packet_result.stdout)
+    assert packet_payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": 1,
+        "allow_unlisted": False,
+    }
+    assert packet_payload["source_packet_status"] == "raw_only"
+    assert packet_payload["talent_transport_packet"]["transport_status"] == "validated"
+    written_packet = json.loads(packet_path.read_text())
+    assert written_packet["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
+
+    describe_result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--apl-path", str(apl_path)],
+    )
+    assert describe_result.exit_code == 0
+    payload = json.loads(describe_result.stdout)
+    assert payload["route"] == {"kind": "packet_file", "provider": None, "packet_path": str(packet_path.resolve())}
+    assert payload["talent_transport_packet"]["transport_status"] == "validated"
+    transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
+    assert transport_packet["transport_form"] == "simc_split_talents"
+    assert transport_packet["transport_status"] == "validated"
+    assert transport_packet["path"] == str(packet_path.resolve())
+
+
+def test_warcraft_talent_describe_hides_stale_packet_path_after_in_memory_upgrade(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "transport_forms": {},
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="simc_split_talents",
+        transport_status="validated",
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                    "spec_talents": "109839:1",
+                    "hero_talents": "117176:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
+    assert transport_packet["transport_form"] == "simc_split_talents"
+    assert transport_packet["transport_status"] == "validated"
+    assert "path" not in transport_packet
+
+
+def test_warcraft_talent_describe_hides_stale_packet_path_after_raw_only_refresh(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    packet_path = tmp_path / "raw-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "transport_forms": {},
+                "build_identity": {
+                    "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                },
+                "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                "validation": {"status": "not_validated"},
+                "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+            }
+        )
+    )
+
+    _patch_simc_describe_pipeline(
+        monkeypatch,
+        transport_form="talent_transport_packet",
+        transport_status="raw_only",
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {},
+            "validation": {
+                "status": "raw_only",
+                "reason": "unresolved_talent_entries",
+                "source": "simc_trait_data_round_trip",
+            },
+        },
+    )
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["source_packet_status"] == "raw_only"
+    assert payload["upgraded"] is True
+    assert payload["talent_transport_packet"]["transport_status"] == "raw_only"
+    assert payload["talent_transport_packet"]["validation"] == {
+        "status": "raw_only",
+        "reason": "unresolved_talent_entries",
+        "source": "simc_trait_data_round_trip",
+    }
+    transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
+    assert transport_packet["transport_form"] == "talent_transport_packet"
+    assert transport_packet["transport_status"] == "raw_only"
+    assert "path" not in transport_packet
+
+
+def test_warcraft_talent_packet_rejects_home_relative_missing_packet_path(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    home_dir = tmp_path / "home"
+    home_dir.mkdir()
+    monkeypatch.setenv("HOME", str(home_dir))
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "~/missing-packet.json"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "Talent transport packet file was not found: ~/missing-packet.json"
+
+
+def test_warcraft_talent_describe_rejects_backslash_packet_like_input() -> None:
+    result = runner.invoke(warcraft_app, ["talent-describe", r"tmp\missing-packet.json"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == r"Talent transport packet file was not found: tmp\missing-packet.json"
 
 
 def test_warcraft_passthrough_to_raiderio(monkeypatch) -> None:

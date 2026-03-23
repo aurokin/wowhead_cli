@@ -13,7 +13,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 import typer
 
-from warcraft_core.identity import build_identity_payload
+from warcraft_core.identity import build_identity_payload, build_reference_transport_packet_payload, validate_talent_transport_packet
 from warcraft_content.guide_analysis import extract_section_chunk_analysis_surfaces
 from wowhead_cli.cache import (
     clear_file_cache,
@@ -211,6 +211,14 @@ def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1) -> No
     }
     _emit(ctx, payload, err=True)
     raise typer.Exit(status)
+
+
+def _validated_transport_packet(ctx: typer.Context, packet: Any, *, command_name: str) -> dict[str, Any]:
+    try:
+        return validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        _fail(ctx, "invalid_transport_packet", f"{command_name} produced an invalid talent transport packet: {exc}")
+        raise AssertionError("unreachable")
 
 
 def _load_cache_settings_or_fail(ctx: typer.Context):
@@ -2882,7 +2890,8 @@ def _normalize_tool_ref(ref: str, *, tool_slug: str, expansion: ExpansionProfile
         raise ValueError(f"{tool_slug} reference cannot be empty.")
     parsed = urlparse(raw)
     if parsed.scheme and parsed.netloc:
-        if not parsed.netloc.endswith("wowhead.com"):
+        hostname = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""
+        if hostname != "wowhead.com" and not hostname.endswith(".wowhead.com"):
             raise ValueError(f"{tool_slug} URL must point to wowhead.com.")
         return raw
     normalized = raw.lstrip("/")
@@ -2940,6 +2949,132 @@ def _extract_talent_calc_listed_builds(html: str, *, limit: int) -> dict[str, An
         "count": len(rows),
         "items": rows[:limit],
     }
+
+
+def _load_talent_calc_context(
+    ctx: typer.Context,
+    *,
+    ref: str,
+    listed_build_limit: int,
+) -> tuple[str, dict[str, Any], dict[str, Any], str, dict[str, Any] | None]:
+    cfg = _cfg(ctx)
+    try:
+        state_url = _normalize_tool_ref(ref, tool_slug="talent-calc", expansion=cfg.expansion)
+        state = _parse_talent_calc_state(state_url)
+    except ValueError as exc:
+        _fail(ctx, "invalid_tool_ref", str(exc))
+        raise AssertionError("unreachable")
+    client = _client(ctx)
+    try:
+        html = client.page_html(state_url)
+    except httpx.HTTPStatusError as exc:
+        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+        raise AssertionError("unreachable")
+    except httpx.HTTPError as exc:
+        _fail(ctx, "network_error", str(exc))
+        raise AssertionError("unreachable")
+    metadata = parse_page_metadata(html, fallback_url=state_url)
+    page_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=state_url) or state_url
+    listed_builds = _extract_talent_calc_listed_builds(html, limit=listed_build_limit)
+    return state_url, state, metadata, page_url, listed_builds
+
+
+def _base_talent_calc_payload(
+    ctx: typer.Context,
+    *,
+    ref: str,
+) -> dict[str, Any]:
+    cfg = _cfg(ctx)
+    try:
+        state_url = _normalize_tool_ref(ref, tool_slug="talent-calc", expansion=cfg.expansion)
+        state = _parse_talent_calc_state(state_url)
+    except ValueError as exc:
+        _fail(ctx, "invalid_tool_ref", str(exc))
+        raise AssertionError("unreachable")
+    return {
+        "expansion": cfg.expansion.key,
+        "tool": {
+            "kind": "talent-calc",
+            "input": ref,
+            "state_url": state_url,
+            "page_url": state_url,
+            **state,
+        },
+        "build_identity": build_identity_payload(
+            actor_class=state.get("class_slug"),
+            spec=state.get("spec_slug"),
+            confidence="high" if state.get("class_slug") and state.get("spec_slug") else "none",
+            source="wowhead_talent_calc_url",
+            candidates=[(state.get("class_slug"), state.get("spec_slug"))] if state.get("class_slug") and state.get("spec_slug") else None,
+            source_notes=["class/spec came from the explicit Wowhead talent-calc URL path"],
+        ),
+        "page": {
+            "title": None,
+            "description": None,
+            "canonical_url": state_url,
+        },
+        "citations": {
+            "page": state_url,
+        },
+    }
+
+
+def _enrich_talent_calc_payload_with_page_data(
+    ctx: typer.Context,
+    payload: dict[str, Any],
+    *,
+    listed_build_limit: int,
+    fail_on_fetch_error: bool,
+) -> dict[str, Any]:
+    state_url = str(payload["tool"]["state_url"])
+    try:
+        client = _client(ctx)
+    except typer.Exit:
+        if fail_on_fetch_error:
+            raise
+        return payload
+    try:
+        html = client.page_html(state_url)
+    except httpx.HTTPStatusError as exc:
+        if fail_on_fetch_error:
+            _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
+            raise AssertionError("unreachable")
+        return payload
+    except httpx.HTTPError as exc:
+        if fail_on_fetch_error:
+            _fail(ctx, "network_error", str(exc))
+            raise AssertionError("unreachable")
+        return payload
+    metadata = parse_page_metadata(html, fallback_url=state_url)
+    page_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=state_url) or state_url
+    enriched_payload = dict(payload)
+    enriched_tool = dict(payload["tool"])
+    enriched_tool["page_url"] = page_url
+    enriched_payload["tool"] = enriched_tool
+    enriched_payload["page"] = {
+        "title": metadata.get("title"),
+        "description": metadata.get("description"),
+        "canonical_url": page_url,
+    }
+    listed_builds = _extract_talent_calc_listed_builds(html, limit=listed_build_limit)
+    if listed_builds is not None:
+        enriched_payload["listed_builds"] = listed_builds
+    return enriched_payload
+
+
+def _talent_calc_payload(
+    ctx: typer.Context,
+    *,
+    ref: str,
+    listed_build_limit: int,
+) -> dict[str, Any]:
+    payload = _base_talent_calc_payload(ctx, ref=ref)
+    return _enrich_talent_calc_payload_with_page_data(
+        ctx,
+        payload,
+        listed_build_limit=listed_build_limit,
+        fail_on_fetch_error=True,
+    )
 
 
 def _parse_profession_tree_state(state_url: str) -> dict[str, Any]:
@@ -5029,52 +5164,64 @@ def talent_calc(
         help="Maximum embedded listed builds to return when the page exposes them.",
     ),
 ) -> None:
-    cfg = _cfg(ctx)
-    try:
-        state_url = _normalize_tool_ref(ref, tool_slug="talent-calc", expansion=cfg.expansion)
-        state = _parse_talent_calc_state(state_url)
-    except ValueError as exc:
-        _fail(ctx, "invalid_tool_ref", str(exc))
-    client = _client(ctx)
-    try:
-        html = client.page_html(state_url)
-    except httpx.HTTPStatusError as exc:
-        _fail(ctx, "http_error", f"Wowhead returned HTTP {exc.response.status_code}")
-    except httpx.HTTPError as exc:
-        _fail(ctx, "network_error", str(exc))
-    metadata = parse_page_metadata(html, fallback_url=state_url)
-    canonical_url = _absolute_wowhead_url(metadata.get("canonical_url"), fallback=state_url)
-    listed_builds = _extract_talent_calc_listed_builds(html, limit=listed_build_limit)
+    _emit(ctx, _talent_calc_payload(ctx, ref=ref, listed_build_limit=listed_build_limit))
 
-    payload = {
-        "expansion": cfg.expansion.key,
-        "tool": {
-            "kind": "talent-calc",
-            "input": ref,
-            "state_url": state_url,
-            "page_url": canonical_url or state_url,
-            **state,
-        },
-        "build_identity": build_identity_payload(
-            actor_class=state.get("class_slug"),
-            spec=state.get("spec_slug"),
-            confidence="high" if state.get("class_slug") and state.get("spec_slug") else "none",
+
+@app.command("talent-calc-packet")
+def talent_calc_packet(
+    ctx: typer.Context,
+    ref: str = typer.Argument(
+        ...,
+        help="Wowhead talent calculator URL, path, or class/spec/build ref with a build code such as druid/balance/<code>.",
+    ),
+    listed_build_limit: int = typer.Option(
+        10,
+        "--listed-build-limit",
+        min=1,
+        max=100,
+        help="Maximum embedded listed builds to return when the page exposes them.",
+    ),
+    out: str | None = typer.Option(None, "--out", help="Optional path to write just the exact talent transport packet JSON."),
+) -> None:
+    payload = _base_talent_calc_payload(ctx, ref=ref)
+    payload = _enrich_talent_calc_payload_with_page_data(
+        ctx,
+        payload,
+        listed_build_limit=listed_build_limit,
+        fail_on_fetch_error=False,
+    )
+    packet = _validated_transport_packet(
+        ctx,
+        build_reference_transport_packet_payload(
+            ref=str(payload["tool"]["state_url"]),
+            provider="wowhead",
             source="wowhead_talent_calc_url",
-            candidates=[(state.get("class_slug"), state.get("spec_slug"))] if state.get("class_slug") and state.get("spec_slug") else None,
-            source_notes=["class/spec came from the explicit Wowhead talent-calc URL path"],
+            source_url=str(payload["page"]["canonical_url"]),
+            notes=["exact transport packet came from an explicit Wowhead talent-calc ref"],
+            scope={"type": "wowhead_talent_calc", "expansion": str(payload["expansion"])},
         ),
-        "page": {
-            "title": metadata.get("title"),
-            "description": metadata.get("description"),
-            "canonical_url": canonical_url,
+        command_name="wowhead talent-calc-packet",
+    )
+    written_packet_path: str | None = None
+    if isinstance(out, str) and out.strip():
+        try:
+            output_path = Path(out).expanduser().resolve()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(packet, indent=2) + "\n", encoding="utf-8")
+            written_packet_path = str(output_path)
+        except OSError as exc:
+            _fail(ctx, "transport_packet_write_failed", f"Failed to write talent transport packet: {exc}")
+            raise AssertionError("unreachable")
+    _emit(
+        ctx,
+        {
+            "provider": "wowhead",
+            "kind": "talent_calc_packet",
+            **payload,
+            "talent_transport_packet": packet,
+            "written_packet_path": written_packet_path,
         },
-        "citations": {
-            "page": state_url,
-        },
-    }
-    if listed_builds is not None:
-        payload["listed_builds"] = listed_builds
-    _emit(ctx, payload)
+    )
 
 
 @app.command("profession-tree")

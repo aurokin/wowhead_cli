@@ -166,6 +166,328 @@ def test_load_build_spec_extracts_class_and_spec_from_talents_url() -> None:
     assert spec.source_kind == "wowhead_talent_calc_url"
 
 
+def test_load_build_spec_extracts_exact_transport_form_from_packet(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+            "simc_split_talents": {
+              "class_talents": "103324:1",
+              "spec_talents": "109839:1",
+              "hero_talents": "117176:1"
+            }
+          },
+          "raw_evidence": {
+            "reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+          },
+          "validation": {},
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    spec = load_build_spec(
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=None,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+        build_packet=str(packet_path),
+    )
+
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
+    assert spec.talents == "ABC123"
+    assert spec.source_kind == "wowhead_talent_calc_url"
+    assert spec.transport_form == "wowhead_talent_calc_url"
+    assert any("talent transport packet" in note for note in spec.source_notes)
+
+
+def test_load_build_spec_rejects_buildless_wowhead_talent_calc_url() -> None:
+    try:
+        load_build_spec(
+            apl_path=None,
+            profile_path=None,
+            build_file=None,
+            build_text="https://www.wowhead.com/talent-calc/druid/balance",
+            talents=None,
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+            actor_class=None,
+            spec_name=None,
+        )
+    except ValueError as exc:
+        assert "must include a build code" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_load_build_spec_extracts_split_transport_form_from_packet(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "validated",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "simc_split_talents": {
+              "class_talents": "103324:1",
+              "spec_talents": "109839:1",
+              "hero_talents": "117176:1"
+            }
+          },
+          "raw_evidence": {
+            "talent_tree_entries": [
+              {"entry": 103324, "node_id": 82244, "rank": 1}
+            ]
+          },
+          "validation": {
+            "status": "validated"
+          },
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    spec = load_build_spec(
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=None,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+        build_packet=str(packet_path),
+    )
+
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
+    assert spec.class_talents == "103324:1"
+    assert spec.spec_talents == "109839:1"
+    assert spec.hero_talents == "117176:1"
+    assert spec.source_kind == "simc_split_talents"
+    assert spec.transport_form == "simc_split_talents"
+
+
+def test_load_build_spec_extracts_wow_export_transport_form_from_packet(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "wow_talent_export": "ABC123"
+          },
+          "raw_evidence": {
+            "reference_type": "wow_talent_export"
+          },
+          "validation": {},
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    spec = load_build_spec(
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=None,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+        build_packet=str(packet_path),
+    )
+
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
+    assert spec.talents == "ABC123"
+    assert spec.source_kind == "wow_talent_export"
+    assert spec.transport_form == "wow_talent_export"
+
+
+def test_load_build_spec_uses_apl_inference_when_packet_identity_is_missing(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {}
+            }
+          },
+          "transport_forms": {
+            "wow_talent_export": "ABC123"
+          },
+          "raw_evidence": {
+            "reference_type": "wow_talent_export"
+          },
+          "validation": {},
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    spec = load_build_spec(
+        apl_path=str(apl_path),
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=None,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+        build_packet=str(packet_path),
+    )
+
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
+    assert spec.talents == "ABC123"
+    assert any(note.startswith("inferred from apl:") for note in spec.source_notes)
+
+
+def test_load_build_spec_does_not_override_packet_identity_with_apl_inference(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    apl_path = tmp_path / "evoker_devastation.simc"
+    apl_path.write_text("actions=disintegrate\n")
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "wow_talent_export": "ABC123"
+          },
+          "raw_evidence": {
+            "reference_type": "wow_talent_export"
+          },
+          "validation": {},
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    spec = load_build_spec(
+        apl_path=str(apl_path),
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=None,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=None,
+        spec_name=None,
+        build_packet=str(packet_path),
+    )
+
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
+    assert spec.talents == "ABC123"
+
+
+def test_load_build_spec_rejects_conflicting_exact_transport_forms(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "exact",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+            "wow_talent_export": "XYZ789"
+          },
+          "raw_evidence": {
+            "reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
+          },
+          "validation": {},
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    try:
+        load_build_spec(
+            apl_path=None,
+            profile_path=None,
+            build_file=None,
+            build_text=None,
+            talents=None,
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+            actor_class=None,
+            spec_name=None,
+            build_packet=str(packet_path),
+        )
+    except ValueError as exc:
+        assert "exact transport forms must agree" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
 def test_parse_debug_talents_ignores_selection_tree() -> None:
     output = (FIXTURES / "dh_decode_debug.txt").read_text()
     talents = parse_debug_talents(output)
