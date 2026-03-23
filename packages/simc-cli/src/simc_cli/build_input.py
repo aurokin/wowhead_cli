@@ -137,8 +137,8 @@ def extract_build_spec_from_packet(path: str) -> BuildSpec:
             ]
         )
         return BuildSpec(
-            actor_class=actor_class,
-            spec=spec,
+            actor_class=None,
+            spec=None,
             talents=wow_export.strip(),
             source_kind="wow_talent_export",
             source_notes=source_notes,

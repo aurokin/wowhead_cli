@@ -11,6 +11,23 @@ IdentityConfidence = Literal["none", "low", "medium", "high"]
 TalentTransportStatus = Literal["unknown", "raw_only", "validated", "exact"]
 WOWHEAD_TALENT_CALC_SEGMENT = "talent-calc"
 WOWHEAD_EXPANSION_PREFIXES = frozenset({"classic", "tbc", "wotlk", "cata", "mop-classic", "ptr", "beta", "classic-ptr"})
+WOW_CLASS_SLUGS = frozenset(
+    {
+        "deathknight",
+        "demonhunter",
+        "druid",
+        "evoker",
+        "hunter",
+        "mage",
+        "monk",
+        "paladin",
+        "priest",
+        "rogue",
+        "shaman",
+        "warlock",
+        "warrior",
+    }
+)
 
 
 def _clean_text(value: str | None) -> str | None:
@@ -90,7 +107,7 @@ def parse_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
     actor_class = normalize_actor_class(path_parts[1])
     spec = normalize_spec_name(path_parts[2])
     build_code = path_parts[3] if len(path_parts) > 3 else None
-    if not actor_class or not spec:
+    if not actor_class or actor_class not in WOW_CLASS_SLUGS or not spec:
         return None
     return {
         "actor_class": actor_class,

@@ -2611,6 +2611,20 @@ def test_warcraft_talent_packet_rejects_buried_real_wowhead_talent_calc_path() -
     assert payload["error"]["code"] == "unsupported_talent_source"
 
 
+def test_warcraft_talent_packet_rejects_nested_talent_calc_non_url_ref() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "talent-calc/foo/talent-calc/druid/balance/ABC123"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert (
+        payload["error"]["message"]
+        == "Talent transport packet file was not found: talent-calc/foo/talent-calc/druid/balance/ABC123"
+    )
+
+
 def test_warcraft_talent_packet_rejects_fake_host_wowhead_like_input() -> None:
     result = runner.invoke(
         warcraft_app,
@@ -3409,6 +3423,24 @@ def test_warcraft_talent_describe_rejects_buried_real_wowhead_talent_calc_path(t
     assert payload["error"]["code"] == "unsupported_talent_source"
 
 
+def test_warcraft_talent_describe_rejects_nested_talent_calc_non_url_ref(tmp_path: Path) -> None:
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "talent-calc/foo/talent-calc/druid/balance/ABC123", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert (
+        payload["error"]["message"]
+        == "Talent transport packet file was not found: talent-calc/foo/talent-calc/druid/balance/ABC123"
+    )
+
+
 def test_warcraft_talent_describe_rejects_fake_host_wowhead_like_input(tmp_path: Path) -> None:
     apl_path = tmp_path / "balance.simc"
     apl_path.write_text("actions=wrath\n")
@@ -3647,6 +3679,66 @@ def test_warcraft_talent_describe_routes_wowhead_ref_to_simc(monkeypatch) -> Non
     assert simc_calls[0]["packet_transport_url"] == "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
     assert simc_calls[0]["args"][:4] == ["describe-build", "--targets", "1", "--aoe-targets"]
     assert "--apl-path" in simc_calls[0]["args"]
+
+
+def test_warcraft_talent_describe_hides_deleted_temp_packet_source_notes(monkeypatch, tmp_path: Path) -> None:
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        if provider == "wowhead":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "talent_calc_packet",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "transport_forms": {
+                            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+                        },
+                        "build_identity": {
+                            "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                        },
+                        "raw_evidence": {"reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"},
+                        "validation": {},
+                        "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+                    },
+                },
+                "stdout": "",
+            }
+        assert provider == "simc"
+        packet_path = args[args.index("--build-packet") + 1]
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "build_spec": {
+                    "source_notes": [f"build packet: {packet_path}", "talent transport packet"],
+                    "transport_packet": {
+                        "path": packet_path,
+                        "transport_form": "wowhead_talent_calc_url",
+                        "transport_status": "exact",
+                    },
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "druid/balance/ABC123", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 0
+    build_spec = json.loads(result.stdout)["describe_result"]["payload"]["build_spec"]
+    assert "path" not in build_spec["transport_packet"]
+    assert build_spec["source_notes"] == ["talent transport packet"]
 
 
 def test_warcraft_talent_describe_passes_wowhead_listed_build_limit(monkeypatch) -> None:

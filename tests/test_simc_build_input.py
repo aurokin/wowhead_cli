@@ -339,11 +339,12 @@ def test_load_build_spec_extracts_wow_export_transport_form_from_packet(tmp_path
         build_packet=str(packet_path),
     )
 
-    assert spec.actor_class == "druid"
-    assert spec.spec == "balance"
+    assert spec.actor_class is None
+    assert spec.spec is None
     assert spec.talents == "ABC123"
     assert spec.source_kind == "wow_talent_export"
     assert spec.transport_form == "wow_talent_export"
+    assert "class/spec metadata came from packet contents and was not independently validated" in spec.source_notes
 
 
 def test_identify_build_downgrades_wow_export_packet_metadata_confidence(tmp_path: Path) -> None:
@@ -370,6 +371,10 @@ def test_identify_build_downgrades_wow_export_packet_metadata_confidence(tmp_pat
     assert identified.spec == "shadow"
     assert identity.source == "wow_talent_export"
     assert identity.confidence == "medium"
+
+
+def test_parse_wowhead_talent_calc_ref_rejects_nested_talent_calc_segments() -> None:
+    assert parse_wowhead_talent_calc_ref("talent-calc/foo/talent-calc/druid/balance/ABC123") is None
 
 
 def test_load_build_spec_uses_apl_inference_when_packet_identity_is_missing(tmp_path: Path) -> None:
@@ -418,7 +423,7 @@ def test_load_build_spec_uses_apl_inference_when_packet_identity_is_missing(tmp_
     assert any(note.startswith("inferred from apl:") for note in spec.source_notes)
 
 
-def test_load_build_spec_does_not_override_packet_identity_with_apl_inference(tmp_path: Path) -> None:
+def test_load_build_spec_lets_apl_inference_override_unverified_wow_export_packet_identity(tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     apl_path = tmp_path / "evoker_devastation.simc"
     apl_path.write_text("actions=disintegrate\n")
@@ -461,9 +466,10 @@ def test_load_build_spec_does_not_override_packet_identity_with_apl_inference(tm
         build_packet=str(packet_path),
     )
 
-    assert spec.actor_class == "druid"
-    assert spec.spec == "balance"
+    assert spec.actor_class == "evoker"
+    assert spec.spec == "devastation"
     assert spec.talents == "ABC123"
+    assert any(note.startswith("inferred from apl:") for note in spec.source_notes)
 
 
 def test_load_build_spec_rejects_conflicting_exact_transport_forms(tmp_path: Path) -> None:

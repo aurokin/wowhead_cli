@@ -690,6 +690,8 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
     if url_candidate is not None:
         return parse_wowhead_talent_calc_ref(url_candidate) is not None
     parts = [part for part in text.split("/") if part]
+    if parts and parts[0] in {"classic", "tbc", "wotlk", "cata", "mop-classic", "ptr", "beta", "classic-ptr"}:
+        parts = parts[1:]
     known_classes = {
         "deathknight",
         "death-knight",
@@ -707,7 +709,7 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
         "warlock",
         "warrior",
     }
-    if len(parts) >= 3 and parts[0] == "talent-calc":
+    if len(parts) >= 3 and parts[0] == "talent-calc" and parts[1].strip() in known_classes:
         return True
     return len(parts) >= 2 and parts[0].strip() in known_classes and all(part.strip() for part in parts[:2])
 

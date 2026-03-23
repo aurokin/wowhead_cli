@@ -978,6 +978,14 @@ def test_talent_calc_packet_command_rejects_malformed_non_url_ref() -> None:
     assert payload["error"]["message"] == "talent-calc reference must be a Wowhead talent-calc path or class/spec ref."
 
 
+def test_talent_calc_packet_command_rejects_nested_talent_calc_non_url_ref() -> None:
+    result = runner.invoke(app, ["talent-calc-packet", "talent-calc/foo/talent-calc/druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must be a Wowhead talent-calc path or class/spec ref."
+
+
 def test_talent_calc_packet_command_rejects_buried_real_wowhead_path() -> None:
     result = runner.invoke(app, ["talent-calc-packet", "https://www.wowhead.com/items/talent-calc/druid/balance/ABC123"])
     assert result.exit_code == 1
