@@ -2403,6 +2403,48 @@ def test_warcraft_talent_packet_passes_wowhead_listed_build_limit_and_expansion(
     assert calls == [("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "3"], "wotlk")]
 
 
+def test_warcraft_talent_packet_routes_expansion_prefixed_wowhead_ref(monkeypatch) -> None:
+    calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        calls.append((provider, args, expansion))
+        return {
+            "provider": "wowhead",
+            "exit_code": 0,
+            "payload": {
+                "provider": "wowhead",
+                "kind": "talent_calc_packet",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "exact",
+                    "transport_forms": {
+                        "wowhead_talent_calc_url": "https://www.wowhead.com/cata/talent-calc/hunter/beast-mastery/XYZ987",
+                    },
+                    "build_identity": {
+                        "class_spec_identity": {"identity": {"actor_class": "hunter", "spec": "beast_mastery"}},
+                    },
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/cata/talent-calc/hunter/beast-mastery/XYZ987"},
+                    "validation": {},
+                    "scope": {"type": "wowhead_talent_calc", "expansion": "retail"},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "cata/talent-calc/hunter/beast-mastery/XYZ987", "--no-validate"],
+    )
+    assert result.exit_code == 0
+    assert calls == [
+        ("wowhead", ["talent-calc-packet", "cata/talent-calc/hunter/beast-mastery/XYZ987", "--listed-build-limit", "10"], None)
+    ]
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+
+
 def test_warcraft_talent_packet_passes_allow_unlisted_to_warcraftlogs(monkeypatch) -> None:
     calls: list[tuple[str, list[str], str | None]] = []
 

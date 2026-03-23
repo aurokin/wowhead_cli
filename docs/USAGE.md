@@ -733,6 +733,7 @@ SimulationCraft behavior:
 - `identify-build` is the safest first step when the user pastes a build string or exact Wowhead talent-calc URL with build code; it reports `source_kind`, resolved class/spec, confidence, and any probe candidates before deeper analysis
 - `identify-build`, `decode-build`, and `describe-build` also accept `--build-packet <path>` for talent transport packet JSON:
   - exact forms such as embedded Wowhead URLs or WoW export strings are preferred first
+  - standalone exact `wow_talent_export` packets do not treat packet-supplied class/spec as trusted identity on their own; `simc` still falls back to safer inference or bounded probing when needed
   - validated reconstructed forms such as `simc_split_talents` are used when no exact form exists
   - raw-only packets must be upgraded through `simc validate-talent-transport` before they can drive build analysis
   - the returned `build_spec.transport_packet` block records only the packet `path`, chosen `transport_form`, and `transport_status`; packet provenance continues to live in `source_notes`

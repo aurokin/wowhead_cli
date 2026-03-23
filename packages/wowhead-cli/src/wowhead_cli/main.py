@@ -2914,6 +2914,7 @@ def _normalize_tool_ref(ref: str, *, tool_slug: str, expansion: ExpansionProfile
     normalized = raw.lstrip("/")
     if tool_slug == "talent-calc":
         parts = [part for part in normalized.split("/") if part]
+        has_expansion_prefix = bool(parts and parts[0] in EXPANSION_PREFIXES)
         if parts and parts[0] in EXPANSION_PREFIXES:
             parts = parts[1:]
         if not parts:
@@ -2923,6 +2924,8 @@ def _normalize_tool_ref(ref: str, *, tool_slug: str, expansion: ExpansionProfile
                 raise ValueError("talent-calc reference must be a Wowhead talent-calc path or class/spec ref.")
         elif parts[0] not in known_talent_calc_classes:
             raise ValueError("talent-calc reference must be a Wowhead talent-calc path or class/spec ref.")
+        if has_expansion_prefix:
+            return tool_url(normalized, expansion="retail")
     if not normalized.startswith(f"{tool_slug}/") and normalized != tool_slug:
         normalized = f"{tool_slug}/{normalized}"
     return tool_url(normalized, expansion=expansion)

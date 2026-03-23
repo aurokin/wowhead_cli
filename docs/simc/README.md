@@ -157,6 +157,7 @@ Recent usability improvement:
 - exact-build workflows now auto-resolve class/spec when possible:
   - actor/spec lines and APL paths resolve directly
   - Wowhead talent-calc URLs with build codes provide class/spec directly from the URL path
+  - standalone exact `wow_talent_export` packets preserve the export string, but packet-supplied class/spec still need corroboration from safer inference or a bounded SimC probe
   - talent transport packets preserve provider provenance while still handing the best available exact or validated form into `simc`
   - bare WoW talent exports are identified by bounded local SimC probes against the installed spec set
 - this removes the old agent failure mode where a valid user talent export was rejected just because the consumer did not already know the engine-facing class/spec labels
