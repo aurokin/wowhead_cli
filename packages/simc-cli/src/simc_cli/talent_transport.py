@@ -268,8 +268,7 @@ def validate_talent_tree_transport(
             spec_candidates = [
                 candidate for candidate in candidates if not any(candidate.spec_ids) or spec_id in candidate.spec_ids
             ]
-            if spec_candidates:
-                candidates = spec_candidates
+            candidates = spec_candidates
         if len(candidates) != 1:
             unresolved_rows.append(
                 {

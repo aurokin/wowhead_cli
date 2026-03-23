@@ -692,7 +692,9 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
     parts = [part for part in text.split("/") if part]
     known_classes = {
         "deathknight",
+        "death-knight",
         "demonhunter",
+        "demon-hunter",
         "druid",
         "evoker",
         "hunter",

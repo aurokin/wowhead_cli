@@ -2597,6 +2597,42 @@ def test_warcraft_talent_packet_rejects_non_wowhead_absolute_url() -> None:
     assert payload["error"]["code"] == "unsupported_talent_source"
 
 
+def test_warcraft_talent_packet_accepts_hyphenated_wowhead_class_slug(monkeypatch) -> None:
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "wowhead"
+        assert args == ["talent-calc-packet", "death-knight/frost/ABC123", "--listed-build-limit", "10"]
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "exact",
+                    "build_identity": {
+                        "class_spec_identity": {"identity": {"actor_class": "deathknight", "spec": "frost"}}
+                    },
+                    "transport_forms": {
+                        "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/death-knight/frost/ABC123"
+                    },
+                    "raw_evidence": {
+                        "reference_url": "https://www.wowhead.com/talent-calc/death-knight/frost/ABC123"
+                    },
+                    "validation": {},
+                    "scope": {},
+                }
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", "death-knight/frost/ABC123", "--no-validate"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["talent_transport_packet"]["transport_status"] == "exact"
+
+
 def test_warcraft_talent_packet_rejects_invalid_packet_file(tmp_path: Path) -> None:
     packet_path = tmp_path / "broken-packet.json"
     packet_path.write_text("{not json}\n")
@@ -3322,6 +3358,64 @@ def test_warcraft_talent_describe_rejects_non_wowhead_absolute_url() -> None:
     payload = json.loads(result.stderr)
     assert payload["kind"] == "talent_describe"
     assert payload["error"]["code"] == "unsupported_talent_source"
+
+
+def test_warcraft_talent_describe_accepts_hyphenated_wowhead_class_slug(monkeypatch, tmp_path: Path) -> None:
+    apl_path = tmp_path / "deathknight_frost.simc"
+    apl_path.write_text("actions=obliterate\n")
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        if provider == "wowhead":
+            assert args == ["talent-calc-packet", "death-knight/frost/ABC123", "--listed-build-limit", "10"]
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "build_identity": {
+                            "class_spec_identity": {"identity": {"actor_class": "deathknight", "spec": "frost"}}
+                        },
+                        "transport_forms": {
+                            "wowhead_talent_calc_url": "https://www.wowhead.com/talent-calc/death-knight/frost/ABC123"
+                        },
+                        "raw_evidence": {
+                            "reference_url": "https://www.wowhead.com/talent-calc/death-knight/frost/ABC123"
+                        },
+                        "validation": {},
+                        "scope": {},
+                    }
+                },
+                "stdout": "",
+            }
+        assert provider == "simc"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": "simc",
+                "kind": "describe_build",
+                "build_spec": {
+                    "transport_packet": {
+                        "transport_form": "wowhead_talent_calc_url",
+                        "transport_status": "exact",
+                    }
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "death-knight/frost/ABC123", "--apl-path", str(apl_path), "--no-validate"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+    assert payload["describe_result"]["payload"]["kind"] == "describe_build"
 
 
 def test_warcraft_talent_packet_normalizes_packet_write_failure(monkeypatch, tmp_path: Path) -> None:

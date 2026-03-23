@@ -13,17 +13,20 @@ def _write_fake_generated_repo(root: Path) -> None:
         """enum specialization_e {
   SPEC_NONE              = 0,
   DRUID_BALANCE          = 102,
+  DRUID_FERAL            = 103,
 };
 """
     )
     (generated / "trait_data.inc").write_text(
-        "static constexpr std::array<trait_data_t, 3> __trait_data_data { {\n"
+        "static constexpr std::array<trait_data_t, 4> __trait_data_data { {\n"
         '  { 1, 11, 103324, 82244, 1, 23, 108329, 29166, 0, 0, 10, 8, 100, "Innervate", '
         "{ 0, 0, 0, 0 }, { 0, 0, 0, 0 }, 0, 0 },\n"
         '  { 2, 11, 109839, 88206, 1, 20, 114844, 394013, 0, 102560, 9, 4, 100, '
         '"Incarnation: Chosen of Elune", { 102, 0, 0, 0 }, { 0, 0, 0, 0 }, 0, 2 },\n'
         '  { 3, 11, 117176, 94585, 1, 0, 122188, 428655, 0, 0, 4, 2, 100, "The Light of Elune", '
         "{ 102, 104, 0, 0 }, { 0, 0, 0, 0 }, 24, 2 },\n"
+        '  { 2, 11, 118888, 95555, 1, 0, 122199, 428700, 0, 0, 4, 2, 100, "Feral Only Talent", '
+        "{ 103, 0, 0, 0 }, { 0, 0, 0, 0 }, 0, 2 },\n"
         "} };\n"
         "static constexpr std::array<std::tuple<unsigned, const char*, unsigned>, 1> __trait_sub_tree_data { {\n"
         '  { 24, "Elune\'s Chosen", 11 },\n'
@@ -82,6 +85,24 @@ def test_validate_talent_tree_transport_stays_unvalidated_when_rows_do_not_resol
         spec="Balance",
         talent_tree_rows=[
             {"entry": 103324, "node_id": 99999, "rank": 1},
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert payload["transport_forms"] == {}
+    assert payload["validation"]["status"] == "not_validated"
+    assert payload["validation"]["reason"] == "simc_trait_resolution_incomplete"
+    assert payload["validation"]["unresolved_entries"][0]["reason"] == "trait_not_found"
+
+
+def test_validate_talent_tree_transport_rejects_rows_for_other_specs(tmp_path: Path) -> None:
+    _write_fake_generated_repo(tmp_path)
+
+    payload = validate_talent_tree_transport(
+        actor_class="Druid",
+        spec="Balance",
+        talent_tree_rows=[
+            {"entry": 118888, "node_id": 95555, "rank": 1},
         ],
         repo_root=tmp_path,
     )
