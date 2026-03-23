@@ -970,6 +970,22 @@ def test_talent_calc_packet_command_rejects_non_wowhead_absolute_url() -> None:
     assert payload["error"]["message"] == "talent-calc URL must point to wowhead.com."
 
 
+def test_talent_calc_packet_command_rejects_malformed_non_url_ref() -> None:
+    result = runner.invoke(app, ["talent-calc-packet", "foo/talent-calc/druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must be a Wowhead talent-calc path or class/spec ref."
+
+
+def test_talent_calc_packet_command_rejects_buried_real_wowhead_path() -> None:
+    result = runner.invoke(app, ["talent-calc-packet", "https://www.wowhead.com/items/talent-calc/druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "Talent calculator URL must point to /talent-calc."
+
+
 def test_talent_calc_packet_command_rejects_invalid_transport_packet(monkeypatch) -> None:
     def fake_page_html(self, page_url: str):  # noqa: ANN001
         assert page_url.endswith("/talent-calc/druid/balance/ABC123")

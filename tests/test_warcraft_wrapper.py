@@ -1272,6 +1272,7 @@ def test_warcraft_guide_builds_simc_hides_deleted_temp_packet_paths(monkeypatch,
                 "provider": "simc",
                 "kind": args[0],
                 "build_spec": {
+                    "source_notes": [f"build packet: {packet_path}", "talent transport packet"],
                     "transport_packet": {
                         "path": packet_path,
                         "transport_form": "wowhead_talent_calc_url",
@@ -1294,6 +1295,9 @@ def test_warcraft_guide_builds_simc_hides_deleted_temp_packet_paths(monkeypatch,
     assert "path" not in simc_payloads["identify"]["payload"]["build_spec"]["transport_packet"]
     assert "path" not in simc_payloads["decode"]["payload"]["build_spec"]["transport_packet"]
     assert "path" not in simc_payloads["describe"]["payload"]["build_spec"]["transport_packet"]
+    assert simc_payloads["identify"]["payload"]["build_spec"]["source_notes"] == ["talent transport packet"]
+    assert simc_payloads["decode"]["payload"]["build_spec"]["source_notes"] == ["talent transport packet"]
+    assert simc_payloads["describe"]["payload"]["build_spec"]["source_notes"] == ["talent transport packet"]
 
 
 def test_warcraft_guide_compare_query_fails_when_too_few_guides_export(
@@ -2597,6 +2601,16 @@ def test_warcraft_talent_packet_rejects_non_wowhead_absolute_url() -> None:
     assert payload["error"]["code"] == "unsupported_talent_source"
 
 
+def test_warcraft_talent_packet_rejects_buried_real_wowhead_talent_calc_path() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "https://www.wowhead.com/items/talent-calc/druid/balance/ABC123"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "unsupported_talent_source"
+
+
 def test_warcraft_talent_packet_rejects_fake_host_wowhead_like_input() -> None:
     result = runner.invoke(
         warcraft_app,
@@ -3374,6 +3388,20 @@ def test_warcraft_talent_describe_rejects_non_wowhead_absolute_url() -> None:
     result = runner.invoke(
         warcraft_app,
         ["talent-describe", "https://notwowhead.com/talent-calc/druid/balance/ABC123"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "unsupported_talent_source"
+
+
+def test_warcraft_talent_describe_rejects_buried_real_wowhead_talent_calc_path(tmp_path: Path) -> None:
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "https://www.wowhead.com/items/talent-calc/druid/balance/ABC123", "--apl-path", str(apl_path)],
     )
     assert result.exit_code == 1
     payload = json.loads(result.stderr)

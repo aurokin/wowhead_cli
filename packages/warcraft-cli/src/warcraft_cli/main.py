@@ -14,7 +14,11 @@ from raiderio_cli.main import app as raiderio_app
 from simc_cli.main import app as simc_app
 from typer.main import get_command
 from warcraft_content.article_bundle import compare_article_bundles, load_article_bundle
-from warcraft_core.identity import build_reference_transport_packet_payload, validate_talent_transport_packet
+from warcraft_core.identity import (
+    build_reference_transport_packet_payload,
+    parse_wowhead_talent_calc_ref,
+    validate_talent_transport_packet,
+)
 from warcraft_core.output import emit
 from warcraft_core.provider_contract import (
     compact_resolve_match,
@@ -684,9 +688,7 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
     elif lowered.startswith(("www.wowhead.com/", "wowhead.com/")):
         url_candidate = f"https://{text}"
     if url_candidate is not None:
-        parsed = urlparse(url_candidate)
-        host = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""
-        return bool(host) and (host == "wowhead.com" or host.endswith(".wowhead.com")) and "talent-calc" in parsed.path.lower()
+        return parse_wowhead_talent_calc_ref(url_candidate) is not None
     parts = [part for part in text.split("/") if part]
     known_classes = {
         "deathknight",
@@ -810,6 +812,18 @@ def _normalize_simc_transport_packet_path(
     normalized_result = dict(result)
     normalized_payload = dict(payload)
     normalized_build_spec = dict(build_spec)
+    source_notes = build_spec.get("source_notes")
+    if isinstance(source_notes, list):
+        normalized_source_notes: list[str] = []
+        for note in source_notes:
+            if not isinstance(note, str):
+                continue
+            if not note.startswith("build packet: "):
+                normalized_source_notes.append(note)
+                continue
+            if stable_packet_path is not None:
+                normalized_source_notes.append(f"build packet: {stable_packet_path}")
+        normalized_build_spec["source_notes"] = normalized_source_notes
     normalized_transport_packet = dict(transport_packet)
     if stable_packet_path is not None:
         normalized_transport_packet["path"] = stable_packet_path

@@ -90,7 +90,7 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
 - each handed-off guide build now also carries an exact `talent_transport_packet`, so explicit Wowhead build refs and raw Warcraft Logs talent trees can travel through the same packet contract
 - `warcraft talent-packet` is the wrapper-level packet router:
   - explicit Wowhead talent-calc refs with build codes route to `wowhead talent-calc-packet`
-  - explicit Warcraft Logs report refs with `--actor-id` route to `warcraftlogs report-player-talents` and can auto-upgrade through `simc`
+  - explicit Warcraft Logs report refs with `--actor-id` route to `warcraftlogs report-player-talents`, but you still need encounter scope via `--fight-id` or a report ref already scoped to one fight; those packets can then auto-upgrade through `simc`
   - existing packet JSON files can be re-emitted or upgraded without choosing a provider first
 - `warcraft talent-describe` reuses that same routing contract, then hands the final packet to `simc describe-build`
   - use `--packet-out <path>` when you want to keep the final routed packet that was described, including any validation upgrade

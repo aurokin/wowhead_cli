@@ -346,6 +346,32 @@ def test_load_build_spec_extracts_wow_export_transport_form_from_packet(tmp_path
     assert spec.transport_form == "wow_talent_export"
 
 
+def test_identify_build_downgrades_wow_export_packet_metadata_confidence(tmp_path: Path) -> None:
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    build_spec = BuildSpec(
+        actor_class="priest",
+        spec="shadow",
+        talents="ABC123",
+        source_kind="wow_talent_export",
+        source_notes=["build packet: /tmp/forged.json", "talent transport packet"],
+    )
+
+    identified, identity = identify_build(repo, build_spec)
+
+    assert identified.actor_class == "priest"
+    assert identified.spec == "shadow"
+    assert identity.source == "wow_talent_export"
+    assert identity.confidence == "medium"
+
+
 def test_load_build_spec_uses_apl_inference_when_packet_identity_is_missing(tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     apl_path = tmp_path / "druid_balance.simc"

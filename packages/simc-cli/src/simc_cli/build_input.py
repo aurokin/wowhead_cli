@@ -130,7 +130,12 @@ def extract_build_spec_from_packet(path: str) -> BuildSpec:
 
     wow_export = transport_forms.get("wow_talent_export")
     if isinstance(wow_export, str) and wow_export.strip():
-        source_notes.append("transport form: wow_talent_export")
+        source_notes.extend(
+            [
+                "transport form: wow_talent_export",
+                "class/spec metadata came from packet contents and was not independently validated",
+            ]
+        )
         return BuildSpec(
             actor_class=actor_class,
             spec=spec,
@@ -525,6 +530,9 @@ def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, B
         confidence = "high"
         if build_spec.source_kind == "wowhead_talent_calc_url":
             source = "wowhead_talent_calc_url"
+        elif build_spec.source_kind == "wow_talent_export":
+            source = "wow_talent_export"
+            confidence = "medium"
         elif any(note.startswith("inferred from apl:") for note in build_spec.source_notes):
             source = "apl_path"
         return (

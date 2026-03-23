@@ -2888,6 +2888,23 @@ def _normalize_tool_ref(ref: str, *, tool_slug: str, expansion: ExpansionProfile
     raw = ref.strip()
     if not raw:
         raise ValueError(f"{tool_slug} reference cannot be empty.")
+    known_talent_calc_classes = {
+        "deathknight",
+        "death-knight",
+        "demonhunter",
+        "demon-hunter",
+        "druid",
+        "evoker",
+        "hunter",
+        "mage",
+        "monk",
+        "paladin",
+        "priest",
+        "rogue",
+        "shaman",
+        "warlock",
+        "warrior",
+    }
     parsed = urlparse(raw)
     if parsed.scheme and parsed.netloc:
         hostname = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""
@@ -2895,6 +2912,12 @@ def _normalize_tool_ref(ref: str, *, tool_slug: str, expansion: ExpansionProfile
             raise ValueError(f"{tool_slug} URL must point to wowhead.com.")
         return raw
     normalized = raw.lstrip("/")
+    if tool_slug == "talent-calc":
+        parts = [part for part in normalized.split("/") if part]
+        if not parts:
+            raise ValueError("talent-calc reference cannot be empty.")
+        if parts[0] != "talent-calc" and parts[0] not in known_talent_calc_classes:
+            raise ValueError("talent-calc reference must be a Wowhead talent-calc path or class/spec ref.")
     if not normalized.startswith(f"{tool_slug}/") and normalized != tool_slug:
         normalized = f"{tool_slug}/{normalized}"
     return tool_url(normalized, expansion=expansion)
