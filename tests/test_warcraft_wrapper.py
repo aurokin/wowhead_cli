@@ -2597,6 +2597,19 @@ def test_warcraft_talent_packet_rejects_non_wowhead_absolute_url() -> None:
     assert payload["error"]["code"] == "unsupported_talent_source"
 
 
+def test_warcraft_talent_packet_rejects_fake_host_wowhead_like_input() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "notwowhead.com/talent-calc/druid/balance/ABC123"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == (
+        "Talent transport packet file was not found: notwowhead.com/talent-calc/druid/balance/ABC123"
+    )
+
+
 def test_warcraft_talent_packet_accepts_hyphenated_wowhead_class_slug(monkeypatch) -> None:
     def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
         assert provider == "wowhead"
@@ -2660,6 +2673,14 @@ def test_warcraft_talent_packet_rejects_unscoped_relative_packet_like_input() ->
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "invalid_transport_packet"
     assert payload["error"]["message"] == "Talent transport packet file was not found: tmp/foo"
+
+
+def test_warcraft_talent_packet_rejects_path_containing_talent_calc_segment() -> None:
+    result = runner.invoke(warcraft_app, ["talent-packet", "tmp/talent-calc/druid/balance/ABC123"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "Talent transport packet file was not found: tmp/talent-calc/druid/balance/ABC123"
 
 
 
@@ -3360,6 +3381,23 @@ def test_warcraft_talent_describe_rejects_non_wowhead_absolute_url() -> None:
     assert payload["error"]["code"] == "unsupported_talent_source"
 
 
+def test_warcraft_talent_describe_rejects_fake_host_wowhead_like_input(tmp_path: Path) -> None:
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "notwowhead.com/talent-calc/druid/balance/ABC123", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == (
+        "Talent transport packet file was not found: notwowhead.com/talent-calc/druid/balance/ABC123"
+    )
+
+
 def test_warcraft_talent_describe_accepts_hyphenated_wowhead_class_slug(monkeypatch, tmp_path: Path) -> None:
     apl_path = tmp_path / "deathknight_frost.simc"
     apl_path.write_text("actions=obliterate\n")
@@ -3416,6 +3454,21 @@ def test_warcraft_talent_describe_accepts_hyphenated_wowhead_class_slug(monkeypa
     payload = json.loads(result.stdout)
     assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
     assert payload["describe_result"]["payload"]["kind"] == "describe_build"
+
+
+def test_warcraft_talent_describe_rejects_path_containing_talent_calc_segment(tmp_path: Path) -> None:
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "tmp/talent-calc/druid/balance/ABC123", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "Talent transport packet file was not found: tmp/talent-calc/druid/balance/ABC123"
 
 
 def test_warcraft_talent_packet_normalizes_packet_write_failure(monkeypatch, tmp_path: Path) -> None:

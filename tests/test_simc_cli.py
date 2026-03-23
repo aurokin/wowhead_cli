@@ -633,6 +633,35 @@ def test_simc_validate_talent_transport_rejects_null_only_packet_rows(tmp_path: 
     assert payload["error"]["message"] == "No raw talent rows were available to validate."
 
 
+def test_simc_validate_talent_transport_rejects_boolean_packet_rows(tmp_path: Path) -> None:
+    packet_path = tmp_path / "bool-rows-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "unknown",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {},
+                "raw_evidence": {
+                    "talent_tree_entries": [{"entry": True, "node_id": 82244, "rank": 1}],
+                },
+                "validation": {"status": "not_validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(simc_app, ["validate-talent-transport", "--build-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert payload["error"]["message"] == "No raw talent rows were available to validate."
+
+
 def test_simc_validate_talent_transport_can_write_upgraded_packet(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     out_path = tmp_path / "validated-packet.json"

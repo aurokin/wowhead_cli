@@ -10,6 +10,7 @@ IdentityStatus = Literal["unknown", "normalized", "canonical", "inferred", "ambi
 IdentityConfidence = Literal["none", "low", "medium", "high"]
 TalentTransportStatus = Literal["unknown", "raw_only", "validated", "exact"]
 WOWHEAD_TALENT_CALC_SEGMENT = "talent-calc"
+WOWHEAD_EXPANSION_PREFIXES = frozenset({"classic", "tbc", "wotlk", "cata", "mop-classic", "ptr", "beta", "classic-ptr"})
 
 
 def _clean_text(value: str | None) -> str | None:
@@ -28,6 +29,10 @@ def _clean_notes(notes: list[str] | tuple[str, ...] | None) -> list[str]:
         if text:
             cleaned.append(text)
     return cleaned
+
+
+def _is_transport_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def normalize_actor_class(value: str | None) -> str | None:
@@ -76,15 +81,15 @@ def parse_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
         reference_url = urljoin("https://www.wowhead.com", candidate if candidate.startswith("/") else f"/{candidate}")
         parsed = urlparse(reference_url)
     path_parts = [part for part in parsed.path.split("/") if part]
-    try:
-        talent_calc_index = path_parts.index(WOWHEAD_TALENT_CALC_SEGMENT)
-    except ValueError:
+    if path_parts and path_parts[0] in WOWHEAD_EXPANSION_PREFIXES:
+        path_parts = path_parts[1:]
+    if not path_parts or path_parts[0] != WOWHEAD_TALENT_CALC_SEGMENT:
         return None
-    if len(path_parts) < talent_calc_index + 3:
+    if len(path_parts) < 3:
         return None
-    actor_class = normalize_actor_class(path_parts[talent_calc_index + 1])
-    spec = normalize_spec_name(path_parts[talent_calc_index + 2])
-    build_code = path_parts[talent_calc_index + 3] if len(path_parts) > talent_calc_index + 3 else None
+    actor_class = normalize_actor_class(path_parts[1])
+    spec = normalize_spec_name(path_parts[2])
+    build_code = path_parts[3] if len(path_parts) > 3 else None
     if not actor_class or not spec:
         return None
     return {
@@ -364,7 +369,7 @@ def _packet_class_spec_identity(build_identity: dict[str, Any]) -> tuple[str | N
 def _is_usable_talent_tree_row(row: Any) -> bool:
     if not isinstance(row, dict):
         return False
-    return all(isinstance(row.get(key), int) for key in ("entry", "node_id", "rank"))
+    return all(_is_transport_int(row.get(key)) for key in ("entry", "node_id", "rank"))
 
 
 def _has_usable_raw_talent_evidence(raw_evidence: dict[str, Any]) -> bool:

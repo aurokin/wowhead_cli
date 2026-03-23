@@ -121,6 +121,11 @@ def test_parse_wowhead_talent_calc_ref_rejects_non_wowhead_domains() -> None:
     assert parse_wowhead_talent_calc_ref("https://notwowhead.com/talent-calc/druid/balance/ABC123") is None
 
 
+def test_parse_wowhead_talent_calc_ref_rejects_buried_talent_calc_segments() -> None:
+    assert parse_wowhead_talent_calc_ref("foo/talent-calc/druid/balance/ABC123") is None
+    assert parse_wowhead_talent_calc_ref("https://www.wowhead.com/items/talent-calc/druid/balance/ABC123") is None
+
+
 def test_build_reference_payload_only_accepts_explicit_wowhead_talent_calc_urls() -> None:
     payload = build_reference_payload(
         ref="https://www.wowhead.com/talent-calc/druid/balance/ABC123",
@@ -425,6 +430,29 @@ def test_validate_talent_transport_packet_rejects_mixed_valid_and_invalid_raw_on
                 {"entry": 109839, "rank": 1},
             ]
         },
+        "validation": {"status": "not_validated"},
+        "scope": {},
+    }
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "raw_only status requires usable raw talent_tree_entries evidence" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_validate_talent_transport_packet_rejects_boolean_raw_only_rows() -> None:
+    packet = {
+        "kind": "talent_transport_packet",
+        "transport_status": "raw_only",
+        "build_identity": {
+            "class_spec_identity": {
+                "identity": {"actor_class": "druid", "spec": "balance"},
+            }
+        },
+        "transport_forms": {},
+        "raw_evidence": {"talent_tree_entries": [{"entry": True, "node_id": 82244, "rank": 1}]},
         "validation": {"status": "not_validated"},
         "scope": {},
     }

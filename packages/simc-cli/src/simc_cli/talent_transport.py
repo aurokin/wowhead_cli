@@ -56,6 +56,10 @@ TRAIT_ROW_RE = re.compile(
 HERO_TREE_ROW_RE = re.compile(r'^\s*\{\s*(?P<hero_tree_id>\d+),\s*"(?P<name>[^"]+)",\s*\d+\s*\},?\s*$')
 
 
+def _is_transport_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 @dataclass(frozen=True, slots=True)
 class TraitRecord:
     tree: str
@@ -260,7 +264,7 @@ def validate_talent_tree_transport(
         entry = row.get("entry")
         node_id = row.get("node_id")
         rank = row.get("rank")
-        if not isinstance(entry, int) or not isinstance(node_id, int) or not isinstance(rank, int):
+        if not _is_transport_int(entry) or not _is_transport_int(node_id) or not _is_transport_int(rank):
             unresolved_rows.append({"row": row, "reason": "missing_entry_node_or_rank"})
             continue
         candidates = records.get((entry, node_id, class_id), [])

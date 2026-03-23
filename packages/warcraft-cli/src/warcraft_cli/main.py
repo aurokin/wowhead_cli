@@ -687,8 +687,6 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
         parsed = urlparse(url_candidate)
         host = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""
         return bool(host) and (host == "wowhead.com" or host.endswith(".wowhead.com")) and "talent-calc" in parsed.path.lower()
-    if lowered.startswith("/"):
-        return "/talent-calc/" in lowered
     parts = [part for part in text.split("/") if part]
     known_classes = {
         "deathknight",
@@ -707,7 +705,7 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
         "warlock",
         "warrior",
     }
-    if len(parts) >= 3 and (parts[0] == "talent-calc" or parts[1] == "talent-calc"):
+    if len(parts) >= 3 and parts[0] == "talent-calc":
         return True
     return len(parts) >= 2 and parts[0].strip() in known_classes and all(part.strip() for part in parts[:2])
 

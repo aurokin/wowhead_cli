@@ -2890,7 +2890,8 @@ def _normalize_tool_ref(ref: str, *, tool_slug: str, expansion: ExpansionProfile
         raise ValueError(f"{tool_slug} reference cannot be empty.")
     parsed = urlparse(raw)
     if parsed.scheme and parsed.netloc:
-        if not parsed.netloc.endswith("wowhead.com"):
+        hostname = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""
+        if hostname != "wowhead.com" and not hostname.endswith(".wowhead.com"):
             raise ValueError(f"{tool_slug} URL must point to wowhead.com.")
         return raw
     normalized = raw.lstrip("/")

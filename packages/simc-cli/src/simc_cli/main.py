@@ -73,6 +73,10 @@ class RuntimeConfig:
     repo_root: str | None = None
 
 
+def _is_transport_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def _cfg(ctx: typer.Context) -> RuntimeConfig:
     obj = ctx.obj
     if isinstance(obj, RuntimeConfig):
@@ -249,9 +253,9 @@ def _packet_talent_tree_rows(packet: dict[str, Any]) -> list[dict[str, Any]]:
         node_id = row.get("node_id")
         rank = row.get("rank")
         normalized_row = {
-            "entry": entry if isinstance(entry, int) else None,
-            "node_id": node_id if isinstance(node_id, int) else None,
-            "rank": rank if isinstance(rank, int) else None,
+            "entry": entry if _is_transport_int(entry) else None,
+            "node_id": node_id if _is_transport_int(node_id) else None,
+            "rank": rank if _is_transport_int(rank) else None,
         }
         if all(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
             normalized.append(normalized_row)
