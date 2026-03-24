@@ -200,7 +200,7 @@ def test_talent_transport_packet_distinguishes_exact_validated_and_raw_only() ->
             }
         },
         raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
-        validation={"status": "validated"},
+        validation={"status": "validated", "actor_class": "druid", "spec": "balance"},
     )
     assert validated["transport_status"] == "validated"
 
@@ -234,7 +234,12 @@ def test_refresh_talent_transport_packet_preserves_scope_and_upgrades_status() -
                 "spec_talents": "109839:1",
             }
         },
-        validation={"status": "validated", "source": "simc_trait_data_round_trip"},
+        validation={
+            "status": "validated",
+            "source": "simc_trait_data_round_trip",
+            "actor_class": "druid",
+            "spec": "balance",
+        },
     )
 
     assert refreshed["transport_status"] == "validated"
@@ -524,7 +529,7 @@ def test_validate_talent_transport_packet_rejects_invalid_split_field_types() ->
         }
     }
     packet["transport_status"] = "validated"
-    packet["validation"] = {"status": "validated"}
+    packet["validation"] = {"status": "validated", "actor_class": "druid", "spec": "balance"}
 
     try:
         validate_talent_transport_packet(packet)
@@ -549,11 +554,59 @@ def test_validate_talent_transport_packet_rejects_validated_split_without_class_
         }
     }
     packet["transport_status"] = "validated"
-    packet["validation"] = {"status": "validated"}
+    packet["validation"] = {"status": "validated", "actor_class": "druid", "spec": "balance"}
 
     try:
         validate_talent_transport_packet(packet)
     except ValueError as exc:
         assert "Validated simc_split_talents packets must include build_identity.class_spec_identity.identity" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_validate_talent_transport_packet_rejects_validated_split_without_validation_identity() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="warcraftlogs_talent_tree",
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+    )
+    packet["transport_forms"] = {
+        "simc_split_talents": {
+            "class_talents": "103324:1",
+        }
+    }
+    packet["transport_status"] = "validated"
+    packet["validation"] = {"status": "validated"}
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "validation.actor_class and validation.spec" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_validate_talent_transport_packet_rejects_validated_split_identity_mismatch() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="warcraftlogs_talent_tree",
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+    )
+    packet["transport_forms"] = {
+        "simc_split_talents": {
+            "class_talents": "103324:1",
+        }
+    }
+    packet["transport_status"] = "validated"
+    packet["validation"] = {"status": "validated", "actor_class": "priest", "spec": "shadow"}
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "aligned with validation.actor_class/spec" in str(exc)
     else:
         raise AssertionError("expected ValueError")

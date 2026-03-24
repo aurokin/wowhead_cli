@@ -992,6 +992,16 @@ def validate_talent_transport_command(
             packet,
             transport_forms=transport_forms,
             validation=validation,
+            build_identity=build_identity_payload(
+                actor_class=resolved_actor_class,
+                spec=resolved_spec,
+                confidence="high" if resolved_actor_class and resolved_spec else "none",
+                source="simc_validate_talent_transport",
+                candidates=[(resolved_actor_class, resolved_spec)] if resolved_actor_class and resolved_spec else None,
+                source_notes=[
+                    "class/spec identity was refreshed from simc validate-talent-transport input"
+                ],
+            ),
         )
         transport_status = updated_packet["transport_status"] if isinstance(updated_packet.get("transport_status"), str) else transport_status
         written_packet_path = _write_packet_json_or_fail(ctx, out=out, packet=updated_packet)

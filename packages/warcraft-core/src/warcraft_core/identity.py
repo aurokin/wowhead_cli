@@ -396,6 +396,12 @@ def _packet_class_spec_identity(build_identity: dict[str, Any]) -> tuple[str | N
     return actor_class, spec
 
 
+def _validated_class_spec_identity(validation: dict[str, Any]) -> tuple[str | None, str | None]:
+    actor_class = normalize_actor_class(validation.get("actor_class")) if isinstance(validation.get("actor_class"), str) else None
+    spec = normalize_spec_name(validation.get("spec")) if isinstance(validation.get("spec"), str) else None
+    return actor_class, spec
+
+
 def _is_usable_talent_tree_row(row: Any) -> bool:
     if not isinstance(row, dict):
         return False
@@ -514,6 +520,7 @@ def refresh_talent_transport_packet(
     *,
     transport_forms: dict[str, Any] | None = None,
     validation: dict[str, Any] | None = None,
+    build_identity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     refreshed = dict(packet)
     cleaned_transport_forms, raw_payload, validation_payload, status = _talent_transport_payload_parts(
@@ -525,6 +532,8 @@ def refresh_talent_transport_packet(
     refreshed["validation"] = validation_payload
     refreshed["transport_status"] = status
     refreshed["raw_evidence"] = raw_payload
+    if build_identity is not None:
+        refreshed["build_identity"] = build_identity
     return validate_talent_transport_packet(refreshed)
 
 
@@ -613,6 +622,16 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
             if packet_actor_class is None or packet_spec is None:
                 raise ValueError(
                     "Validated simc_split_talents packets must include build_identity.class_spec_identity.identity."
+                )
+            validated_actor_class, validated_spec = _validated_class_spec_identity(validation)
+            if validated_actor_class is None or validated_spec is None:
+                raise ValueError(
+                    "Validated simc_split_talents packets must include validation.actor_class and validation.spec."
+                )
+            if (packet_actor_class, packet_spec) != (validated_actor_class, validated_spec):
+                raise ValueError(
+                    "Validated simc_split_talents packets must keep build_identity.class_spec_identity.identity aligned "
+                    "with validation.actor_class/spec."
                 )
 
     expected_status = _talent_transport_status(

@@ -2171,6 +2171,8 @@ def test_warcraft_passthrough_to_simc_validate_talent_transport(monkeypatch) -> 
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "druid",
+                "spec": "balance",
             },
         },
     )
@@ -2265,6 +2267,8 @@ def test_warcraft_packet_handoff_from_warcraftlogs_to_simc(monkeypatch, tmp_path
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "druid",
+                "spec": "balance",
             },
         },
     )
@@ -2572,7 +2576,12 @@ def test_warcraft_talent_packet_routes_warcraftlogs_and_upgrades(monkeypatch) ->
                     **packet,
                     "transport_status": "validated",
                     "transport_forms": {"simc_split_talents": {"class_talents": "103324:1"}},
-                    "validation": {"status": "validated", "source": "simc_trait_data_round_trip"},
+                    "validation": {
+                        "status": "validated",
+                        "source": "simc_trait_data_round_trip",
+                        "actor_class": "druid",
+                        "spec": "balance",
+                    },
                 },
             },
             "stdout": "",
@@ -2663,7 +2672,12 @@ def test_warcraft_talent_packet_upgrades_packet_file_and_writes_output(monkeypat
                     **packet,
                     "transport_status": "validated",
                     "transport_forms": {"simc_split_talents": {"class_talents": "103324:1"}},
-                    "validation": {"status": "validated", "source": "simc_trait_data_round_trip"},
+                    "validation": {
+                        "status": "validated",
+                        "source": "simc_trait_data_round_trip",
+                        "actor_class": "druid",
+                        "spec": "balance",
+                    },
                 }
             },
             "stdout": "",
@@ -4033,7 +4047,12 @@ def test_warcraft_talent_describe_routes_warcraftlogs_and_upgrades(monkeypatch) 
                         **packet,
                         "transport_status": "validated",
                         "transport_forms": {"simc_split_talents": {"class_talents": "103324:1"}},
-                        "validation": {"status": "validated", "source": "simc_trait_data_round_trip"},
+                        "validation": {
+                            "status": "validated",
+                            "source": "simc_trait_data_round_trip",
+                            "actor_class": "druid",
+                            "spec": "balance",
+                        },
                     },
                 },
                 "stdout": "",
@@ -4299,6 +4318,8 @@ def test_warcraft_talent_packet_preserves_warcraftlogs_provider_packet(monkeypat
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "paladin",
+                "spec": "retribution",
             },
         },
     )
@@ -4347,6 +4368,8 @@ def test_warcraft_talent_packet_out_matches_warcraftlogs_provider_file(monkeypat
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "paladin",
+                "spec": "retribution",
             },
         },
     )
@@ -4421,6 +4444,8 @@ def test_warcraft_talent_describe_packet_out_changes_after_validation_upgrade(mo
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "paladin",
+                "spec": "retribution",
             },
         },
     )
@@ -4537,6 +4562,8 @@ def test_warcraft_talent_packet_file_reuse_upgrades_raw_packet_consistently(monk
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "paladin",
+                "spec": "retribution",
             },
         },
     )
@@ -4642,6 +4669,8 @@ def test_warcraft_talent_round_trip_warcraftlogs_packet_to_describe(monkeypatch,
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "paladin",
+                "spec": "retribution",
             },
         },
     )
@@ -4721,6 +4750,8 @@ def test_warcraft_talent_describe_hides_stale_packet_path_after_in_memory_upgrad
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "druid",
+                "spec": "balance",
             },
         },
     )

@@ -407,7 +407,7 @@ def test_simc_identify_build_trusts_validated_split_packet_identity(monkeypatch,
                 "raw_evidence": {
                     "talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}],
                 },
-                "validation": {"status": "validated"},
+                "validation": {"status": "validated", "actor_class": "priest", "spec": "shadow"},
                 "scope": {},
             }
         )
@@ -462,7 +462,7 @@ def test_simc_identify_build_does_not_let_apl_override_validated_split_packet_id
                 "raw_evidence": {
                     "talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}],
                 },
-                "validation": {"status": "validated"},
+                "validation": {"status": "validated", "actor_class": "priest", "spec": "shadow"},
                 "scope": {},
             }
         )
@@ -659,6 +659,8 @@ def test_simc_validate_talent_transport_accepts_build_packet(monkeypatch, tmp_pa
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "druid",
+                "spec": "balance",
             },
         }
 
@@ -673,8 +675,77 @@ def test_simc_validate_talent_transport_accepts_build_packet(monkeypatch, tmp_pa
     assert payload["transport_status"] == "validated"
     assert payload["transport_forms"]["simc_split_talents"]["spec_talents"] == "109839:1"
     assert payload["updated_packet"]["transport_status"] == "validated"
+    assert payload["updated_packet"]["build_identity"]["class_spec_identity"]["identity"] == {
+        "actor_class": "druid",
+        "spec": "balance",
+    }
+    assert payload["updated_packet"]["validation"]["actor_class"] == "druid"
+    assert payload["updated_packet"]["validation"]["spec"] == "balance"
     packet_payload = json.loads(packet_path.read_text())
     assert payload["updated_packet"].get("source") == packet_payload.get("source")
+
+
+def test_simc_validate_talent_transport_refreshes_packet_identity_from_cli_override(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {},
+                "validation": {},
+                "scope": {},
+                "raw_evidence": {
+                    "talent_tree_entries": [
+                        {"entry": 103324, "node_id": 82244, "rank": 1},
+                    ]
+                },
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {
+                "simc_split_talents": {
+                    "class_talents": "103324:1",
+                }
+            },
+            "validation": {
+                "status": "validated",
+                "source": "simc_trait_data_round_trip",
+                "actor_class": kwargs["actor_class"],
+                "spec": kwargs["spec"],
+            },
+        },
+    )
+
+    result = runner.invoke(
+        simc_app,
+        [
+            "validate-talent-transport",
+            "--build-packet",
+            str(packet_path),
+            "--actor-class",
+            "priest",
+            "--spec",
+            "shadow",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["updated_packet"]["build_identity"]["class_spec_identity"]["identity"] == {
+        "actor_class": "priest",
+        "spec": "shadow",
+    }
+    assert payload["updated_packet"]["validation"]["actor_class"] == "priest"
+    assert payload["updated_packet"]["validation"]["spec"] == "shadow"
 
 
 def test_simc_validate_talent_transport_rejects_build_packet_with_talent_rows(tmp_path: Path) -> None:
@@ -859,6 +930,8 @@ def test_simc_validate_talent_transport_can_write_upgraded_packet(monkeypatch, t
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "druid",
+                "spec": "balance",
             },
         },
     )
@@ -919,6 +992,8 @@ def test_simc_validate_talent_transport_normalizes_write_failure(monkeypatch, tm
             "validation": {
                 "status": "validated",
                 "source": "simc_trait_data_round_trip",
+                "actor_class": "druid",
+                "spec": "balance",
             },
         },
     )
@@ -1118,7 +1193,7 @@ def test_simc_decode_build_uses_validated_split_packet_identity(monkeypatch, tmp
                     }
                 },
                 "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
-                "validation": {"status": "validated"},
+                "validation": {"status": "validated", "actor_class": "priest", "spec": "shadow"},
                 "scope": {},
             }
         )
@@ -1576,7 +1651,7 @@ def test_simc_describe_build_uses_validated_split_packet_identity(monkeypatch, t
                     }
                 },
                 "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
-                "validation": {"status": "validated"},
+                "validation": {"status": "validated", "actor_class": "priest", "spec": "shadow"},
                 "scope": {},
             }
         )
@@ -1659,6 +1734,25 @@ def test_simc_describe_build_accepts_wow_export_transport_form_from_build_packet
                 "scope": {},
             }
         )
+    )
+
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    monkeypatch.setattr("simc_cli.main._repo_paths", lambda _ctx: repo)
+    monkeypatch.setattr(
+        "simc_cli.build_input.supported_specs",
+        lambda _repo: [("druid", "balance")],
+    )
+    monkeypatch.setattr(
+        "simc_cli.build_input.decode_build",
+        lambda _repo, build_spec: type("Resolution", (), {"enabled_talents": {"wrath"}})(),
     )
 
     resolution = type(

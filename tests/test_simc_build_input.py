@@ -245,7 +245,9 @@ def test_load_build_spec_rejects_packet_that_mixes_exact_and_split_forms(tmp_pat
             "reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123"
           },
           "validation": {
-            "status": "validated"
+            "status": "validated",
+            "actor_class": "druid",
+            "spec": "balance"
           },
           "scope": {}
         }
@@ -316,7 +318,9 @@ def test_load_build_spec_extracts_split_transport_form_from_packet(tmp_path: Pat
             ]
           },
           "validation": {
-            "status": "validated"
+            "status": "validated",
+            "actor_class": "druid",
+            "spec": "balance"
           },
           "scope": {}
         }
@@ -785,12 +789,46 @@ def test_identify_build_does_not_echo_unverified_packet_identity_when_probe_fail
         with patch("simc_cli.build_input.decode_build", side_effect=RuntimeError("failed")):
             identified, identity = identify_build(repo, build_spec)
 
-    assert identified.actor_class == "priest"
-    assert identified.spec == "shadow"
+    assert identified.actor_class is None
+    assert identified.spec is None
     assert identity.actor_class is None
     assert identity.spec is None
     assert identity.confidence == "none"
     assert identity.candidate_count == 0
+
+
+def test_identify_build_preserves_apl_inferred_scope_for_wow_export_probe(tmp_path: Path) -> None:
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    build_spec = BuildSpec(
+        actor_class="priest",
+        spec="shadow",
+        talents="ABC123",
+        source_kind="wow_talent_export",
+        source_notes=["inferred from apl: priest_shadow"],
+        transport_form="wow_talent_export",
+        transport_status="exact",
+    )
+
+    with patch("simc_cli.build_input.supported_specs", return_value=[("priest", "shadow"), ("druid", "balance")]):
+        with patch("simc_cli.build_input.decode_build") as mocked_decode:
+            mocked_decode.side_effect = [
+                type("Resolution", (), {"enabled_talents": {"mind_blast"}})(),
+            ]
+            identified, identity = identify_build(repo, build_spec)
+
+    assert identified.actor_class == "priest"
+    assert identified.spec == "shadow"
+    assert identity.source == "simc_probe"
+    assert identity.candidates == [("priest", "shadow")]
+    assert mocked_decode.call_count == 1
 
 
 # --- tree_entries_string ---

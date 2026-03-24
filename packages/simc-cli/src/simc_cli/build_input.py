@@ -94,6 +94,19 @@ def _identity_value(packet: dict[str, Any], key: str) -> str | None:
     return None
 
 
+def _validated_packet_identity(packet: dict[str, Any]) -> tuple[str | None, str | None]:
+    actor_class = _identity_value(packet, "actor_class")
+    spec = _identity_value(packet, "spec")
+    validation = packet.get("validation")
+    if not isinstance(validation, dict) or validation.get("status") != "validated":
+        return None, None
+    validated_actor_class = _normalize_actor_class(validation.get("actor_class")) if isinstance(validation.get("actor_class"), str) else None
+    validated_spec = _normalize_spec_name(validation.get("spec")) if isinstance(validation.get("spec"), str) else None
+    if actor_class and spec and actor_class == validated_actor_class and spec == validated_spec:
+        return actor_class, spec
+    return None, None
+
+
 def extract_build_spec_from_packet(path: str) -> BuildSpec:
     packet, resolved_path = _load_build_packet(path)
     transport_forms = packet.get("transport_forms") if isinstance(packet.get("transport_forms"), dict) else {}
@@ -151,21 +164,20 @@ def extract_build_spec_from_packet(path: str) -> BuildSpec:
         spec_talents = split.get("spec_talents")
         hero_talents = split.get("hero_talents")
         if any(isinstance(value, str) and value.strip() for value in (class_talents, spec_talents, hero_talents)):
-            packet_actor_class = _identity_value(packet, "actor_class")
-            packet_spec = _identity_value(packet, "spec")
+            packet_actor_class, packet_spec = _validated_packet_identity(packet)
             source_notes.extend(
                 [
                     "transport form: simc_split_talents",
                     (
                         "class/spec metadata came from packet contents and was validated with the split transport"
-                        if transport_status_text == "validated" and packet_actor_class and packet_spec
+                        if packet_actor_class and packet_spec
                         else "class/spec metadata came from packet contents and was not independently validated"
                     ),
                 ]
             )
             return BuildSpec(
-                actor_class=packet_actor_class if transport_status_text == "validated" else None,
-                spec=packet_spec if transport_status_text == "validated" else None,
+                actor_class=packet_actor_class,
+                spec=packet_spec,
                 class_talents=class_talents.strip() if isinstance(class_talents, str) and class_talents.strip() else None,
                 spec_talents=spec_talents.strip() if isinstance(spec_talents, str) and spec_talents.strip() else None,
                 hero_talents=hero_talents.strip() if isinstance(hero_talents, str) and hero_talents.strip() else None,
@@ -219,6 +231,14 @@ def _normalize_spec_name(value: str | None) -> str | None:
         return None
     normalized = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
     return normalized or None
+
+
+def _has_trusted_identity_hint(build_spec: BuildSpec) -> bool:
+    return any(
+        note.startswith(("inferred from apl:", "profile:", "build file:"))
+        or note in {"command-line build options", "inline build text"}
+        for note in build_spec.source_notes
+    )
 
 
 def _raw_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
@@ -535,6 +555,7 @@ def load_build_spec(
 
 def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, BuildIdentity]:
     unverified_packet_transport = getattr(build_spec, "transport_form", None) == "wow_talent_export"
+    trusted_identity_hint = _has_trusted_identity_hint(build_spec)
 
     if build_spec.actor_class and build_spec.spec and not unverified_packet_transport:
         source = "direct"
@@ -576,9 +597,9 @@ def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, B
         )
 
     candidate_specs = supported_specs(repo)
-    if build_spec.actor_class and not unverified_packet_transport:
+    if build_spec.actor_class and (not unverified_packet_transport or trusted_identity_hint):
         candidate_specs = [item for item in candidate_specs if item[0] == build_spec.actor_class]
-    if build_spec.spec and not unverified_packet_transport:
+    if build_spec.spec and (not unverified_packet_transport or trusted_identity_hint):
         candidate_specs = [item for item in candidate_specs if item[1] == build_spec.spec]
 
     matches: list[tuple[str, str]] = []
@@ -617,8 +638,21 @@ def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, B
             ),
         )
 
+    unresolved = BuildSpec(
+        actor_class=None if unverified_packet_transport else build_spec.actor_class,
+        spec=None if unverified_packet_transport else build_spec.spec,
+        talents=build_spec.talents,
+        class_talents=build_spec.class_talents,
+        spec_talents=build_spec.spec_talents,
+        hero_talents=build_spec.hero_talents,
+        source_kind=build_spec.source_kind,
+        source_notes=build_spec.source_notes[:],
+        transport_form=build_spec.transport_form,
+        transport_status=build_spec.transport_status,
+        transport_source=build_spec.transport_source,
+    )
     return (
-        build_spec,
+        unresolved,
         BuildIdentity(
             actor_class=None if unverified_packet_transport else build_spec.actor_class,
             spec=None if unverified_packet_transport else build_spec.spec,

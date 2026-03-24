@@ -55,6 +55,11 @@ TRAIT_ROW_RE = re.compile(
 )
 HERO_TREE_ROW_RE = re.compile(r'^\s*\{\s*(?P<hero_tree_id>\d+),\s*"(?P<name>[^"]+)",\s*\d+\s*\},?\s*$')
 
+CLASS_ENUM_NAME_BY_ACTOR_CLASS = {
+    actor_class: actor_class.replace("deathknight", "death_knight").replace("demonhunter", "demon_hunter").upper()
+    for actor_class in CLASS_ID_BY_ACTOR_CLASS
+}
+
 
 def _is_transport_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
@@ -90,6 +95,21 @@ def _parse_int_list(value: str) -> tuple[int, ...]:
     return tuple(items)
 
 
+def _specialization_identity(enum_name: str) -> tuple[str, str] | None:
+    for actor_class, class_enum_name in sorted(CLASS_ENUM_NAME_BY_ACTOR_CLASS.items(), key=lambda item: len(item[1]), reverse=True):
+        prefix = f"{class_enum_name}_"
+        if not enum_name.startswith(prefix):
+            continue
+        spec_name = enum_name[len(prefix) :]
+        if not spec_name:
+            return None
+        normalized_spec = normalize_spec_name(spec_name.replace("_", " "))
+        if normalized_spec:
+            return actor_class, normalized_spec
+        return None
+    return None
+
+
 @cache
 def _specialization_ids(repo_root_text: str) -> dict[tuple[str, str], int]:
     repo_root = Path(repo_root_text)
@@ -102,13 +122,11 @@ def _specialization_ids(repo_root_text: str) -> dict[tuple[str, str], int]:
         if not match:
             continue
         enum_name = match.group("enum_name").strip()
-        if "_" not in enum_name:
+        identity = _specialization_identity(enum_name)
+        if identity is None:
             continue
-        class_name, spec_name = enum_name.split("_", 1)
-        actor_class = normalize_actor_class(class_name.replace("_", " "))
-        spec = normalize_spec_name(spec_name.replace("_", " "))
-        if actor_class and spec:
-            ids[(actor_class, spec)] = int(match.group("spec_id"))
+        actor_class, spec = identity
+        ids[(actor_class, spec)] = int(match.group("spec_id"))
     return ids
 
 
@@ -365,6 +383,8 @@ def validate_talent_tree_transport(
         "validation": {
             "status": "validated",
             "source": "simc_trait_data_round_trip",
+            "actor_class": normalized_actor_class,
+            "spec": normalized_spec,
             "resolved_entries": resolved_rows,
             "round_trip": {
                 "wow_talent_export": encoded_export,

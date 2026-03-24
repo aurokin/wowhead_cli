@@ -2614,10 +2614,12 @@ def test_warcraftlogs_report_player_talents_emits_validated_split_transport(monk
                     "hero_talents": "117176:1",
                 }
             },
-            "validation": {
-                "status": "validated",
-                "source": "simc_trait_data_round_trip",
-            },
+                "validation": {
+                    "status": "validated",
+                    "source": "simc_trait_data_round_trip",
+                    "actor_class": "paladin",
+                    "spec": "retribution",
+                },
         },
     )
 
@@ -2645,10 +2647,12 @@ def test_warcraftlogs_report_player_talents_can_write_transport_packet(monkeypat
                     "hero_talents": None,
                 }
             },
-            "validation": {
-                "status": "validated",
-                "source": "simc_trait_data_round_trip",
-            },
+                "validation": {
+                    "status": "validated",
+                    "source": "simc_trait_data_round_trip",
+                    "actor_class": "paladin",
+                    "spec": "retribution",
+                },
         },
     )
 
@@ -2678,10 +2682,12 @@ def test_warcraftlogs_report_player_talents_normalizes_write_failure(monkeypatch
                     "class_talents": "103324:1",
                 }
             },
-            "validation": {
-                "status": "validated",
-                "source": "simc_trait_data_round_trip",
-            },
+                "validation": {
+                    "status": "validated",
+                    "source": "simc_trait_data_round_trip",
+                    "actor_class": "paladin",
+                    "spec": "retribution",
+                },
         },
     )
 
