@@ -2650,7 +2650,7 @@ def test_warcraft_talent_packet_rejects_buried_real_wowhead_talent_calc_path() -
     )
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
-    assert payload["error"]["code"] == "unsupported_talent_source"
+    assert payload["error"]["code"] == "invalid_tool_ref"
 
 
 def test_warcraft_talent_packet_rejects_nested_talent_calc_non_url_ref() -> None:
@@ -2660,11 +2660,8 @@ def test_warcraft_talent_packet_rejects_nested_talent_calc_non_url_ref() -> None
     )
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
-    assert payload["error"]["code"] == "invalid_transport_packet"
-    assert (
-        payload["error"]["message"]
-        == "Talent transport packet file was not found: talent-calc/foo/talent-calc/druid/balance/ABC123"
-    )
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must be a Wowhead talent-calc path or class/spec ref."
 
 
 def test_warcraft_talent_packet_rejects_fake_host_wowhead_like_input() -> None:
@@ -2674,10 +2671,8 @@ def test_warcraft_talent_packet_rejects_fake_host_wowhead_like_input() -> None:
     )
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
-    assert payload["error"]["code"] == "invalid_transport_packet"
-    assert payload["error"]["message"] == (
-        "Talent transport packet file was not found: notwowhead.com/talent-calc/druid/balance/ABC123"
-    )
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must be a Wowhead talent-calc path or class/spec ref."
 
 
 def test_warcraft_talent_packet_accepts_hyphenated_wowhead_class_slug(monkeypatch) -> None:
@@ -2749,8 +2744,8 @@ def test_warcraft_talent_packet_rejects_path_containing_talent_calc_segment() ->
     result = runner.invoke(warcraft_app, ["talent-packet", "tmp/talent-calc/druid/balance/ABC123"])
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
-    assert payload["error"]["code"] == "invalid_transport_packet"
-    assert payload["error"]["message"] == "Talent transport packet file was not found: tmp/talent-calc/druid/balance/ABC123"
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must be a Wowhead talent-calc path or class/spec ref."
 
 
 
@@ -3462,7 +3457,7 @@ def test_warcraft_talent_describe_rejects_buried_real_wowhead_talent_calc_path(t
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["kind"] == "talent_describe"
-    assert payload["error"]["code"] == "unsupported_talent_source"
+    assert payload["error"]["code"] == "invalid_tool_ref"
 
 
 def test_warcraft_talent_describe_rejects_nested_talent_calc_non_url_ref(tmp_path: Path) -> None:
@@ -3476,11 +3471,8 @@ def test_warcraft_talent_describe_rejects_nested_talent_calc_non_url_ref(tmp_pat
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["kind"] == "talent_describe"
-    assert payload["error"]["code"] == "invalid_transport_packet"
-    assert (
-        payload["error"]["message"]
-        == "Talent transport packet file was not found: talent-calc/foo/talent-calc/druid/balance/ABC123"
-    )
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must be a Wowhead talent-calc path or class/spec ref."
 
 
 def test_warcraft_talent_describe_rejects_empty_segment_wowhead_ref(tmp_path: Path) -> None:
@@ -3494,8 +3486,8 @@ def test_warcraft_talent_describe_rejects_empty_segment_wowhead_ref(tmp_path: Pa
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["kind"] == "talent_describe"
-    assert payload["error"]["code"] == "invalid_transport_packet"
-    assert payload["error"]["message"] == "Talent transport packet file was not found: druid//balance/ABC123"
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must not include empty path segments."
 
 
 def test_warcraft_talent_describe_rejects_wowhead_ref_with_trailing_extra_segment(tmp_path: Path) -> None:
@@ -3509,7 +3501,8 @@ def test_warcraft_talent_describe_rejects_wowhead_ref_with_trailing_extra_segmen
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["kind"] == "talent_describe"
-    assert payload["error"]["code"] == "unsupported_talent_source"
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "Talent calculator URL must use /talent-calc/<class>/<spec>[/<build-code>]."
 
 
 def test_warcraft_talent_describe_rejects_fake_host_wowhead_like_input(tmp_path: Path) -> None:
@@ -3523,10 +3516,8 @@ def test_warcraft_talent_describe_rejects_fake_host_wowhead_like_input(tmp_path:
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["kind"] == "talent_describe"
-    assert payload["error"]["code"] == "invalid_transport_packet"
-    assert payload["error"]["message"] == (
-        "Talent transport packet file was not found: notwowhead.com/talent-calc/druid/balance/ABC123"
-    )
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must be a Wowhead talent-calc path or class/spec ref."
 
 
 def test_warcraft_talent_describe_accepts_hyphenated_wowhead_class_slug(monkeypatch, tmp_path: Path) -> None:
@@ -3598,8 +3589,8 @@ def test_warcraft_talent_describe_rejects_path_containing_talent_calc_segment(tm
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["kind"] == "talent_describe"
-    assert payload["error"]["code"] == "invalid_transport_packet"
-    assert payload["error"]["message"] == "Talent transport packet file was not found: tmp/talent-calc/druid/balance/ABC123"
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc reference must be a Wowhead talent-calc path or class/spec ref."
 
 
 def test_warcraft_talent_packet_normalizes_packet_write_failure(monkeypatch, tmp_path: Path) -> None:
@@ -3859,6 +3850,59 @@ def test_warcraft_talent_describe_passes_wowhead_listed_build_limit(monkeypatch)
     )
     assert result.exit_code == 0
     assert provider_calls[0] == ("wowhead", ["talent-calc-packet", "druid/balance/ABC123", "--listed-build-limit", "4"], None)
+
+
+def test_warcraft_talent_describe_passes_expansion_to_wowhead_route(monkeypatch) -> None:
+    provider_calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args, expansion))
+        if provider == "wowhead":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "talent_calc_packet",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "transport_forms": {
+                            "wowhead_talent_calc_url": "https://www.wowhead.com/cata/talent-calc/hunter/beast-mastery/XYZ987",
+                        },
+                        "build_identity": {
+                            "class_spec_identity": {"identity": {"actor_class": "hunter", "spec": "beast_mastery"}},
+                        },
+                        "raw_evidence": {"reference_url": "https://www.wowhead.com/cata/talent-calc/hunter/beast-mastery/XYZ987"},
+                        "validation": {},
+                        "scope": {"type": "wowhead_talent_calc", "expansion": "cata"},
+                    },
+                },
+                "stdout": "",
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 3},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["--expansion", "wotlk", "talent-describe", "cata/talent-calc/hunter/beast-mastery/XYZ987"],
+    )
+    assert result.exit_code == 0
+    assert provider_calls[0] == (
+        "wowhead",
+        ["talent-calc-packet", "cata/talent-calc/hunter/beast-mastery/XYZ987", "--listed-build-limit", "10"],
+        "wotlk",
+    )
 
 
 

@@ -16,7 +16,6 @@ from typer.main import get_command
 from warcraft_content.article_bundle import compare_article_bundles, load_article_bundle
 from warcraft_core.identity import (
     build_reference_transport_packet_payload,
-    parse_wowhead_talent_calc_ref,
     validate_talent_transport_packet,
 )
 from warcraft_core.output import emit
@@ -688,16 +687,22 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
     elif lowered.startswith(("www.wowhead.com/", "wowhead.com/")):
         url_candidate = f"https://{text}"
     if url_candidate is not None:
-        return parse_wowhead_talent_calc_ref(url_candidate) is not None
+        parsed = urlparse(url_candidate)
+        hostname = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""
+        path_parts = [part for part in parsed.path.split("/") if part]
+        return (
+            (hostname == "wowhead.com" or hostname.endswith(".wowhead.com"))
+            and "talent-calc" in path_parts
+        )
     parts = text.split("/")
     if parts and parts[0] == "":
         parts = parts[1:]
     if parts and parts[-1] == "":
         parts = parts[:-1]
-    if any(not part.strip() for part in parts):
+    if not parts:
         return False
     if parts and parts[0] in {"classic", "tbc", "wotlk", "cata", "mop-classic", "ptr", "beta", "classic-ptr"}:
-        parts = parts[1:]
+        return len(parts) >= 2 and parts[1].strip() == "talent-calc"
     known_classes = {
         "deathknight",
         "death-knight",
@@ -715,9 +720,11 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
         "warlock",
         "warrior",
     }
-    if len(parts) in {3, 4} and parts[0] == "talent-calc" and parts[1].strip() in known_classes:
+    if parts[0].strip() in known_classes:
         return True
-    return len(parts) in {2, 3} and parts[0].strip() in known_classes and all(part.strip() for part in parts)
+    if parts[0].strip() == "talent-calc":
+        return True
+    return len(parts) >= 2 and parts[1].strip() == "talent-calc"
 
 
 def _looks_like_warcraftlogs_report_reference(value: str) -> bool:

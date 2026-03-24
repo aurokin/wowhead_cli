@@ -2946,7 +2946,9 @@ def _parse_talent_calc_state(state_url: str) -> dict[str, Any]:
     if any(part == "" for part in raw_parts):
         raise ValueError("Talent calculator URL must not include empty path segments.")
     parts = raw_parts
+    expansion = "retail"
     if parts and parts[0] in EXPANSION_PREFIXES:
+        expansion = parts[0]
         parts = parts[1:]
     if not parts or parts[0] != "talent-calc":
         raise ValueError("Talent calculator URL must point to /talent-calc.")
@@ -2956,6 +2958,7 @@ def _parse_talent_calc_state(state_url: str) -> dict[str, Any]:
     spec_slug = parts[2] if len(parts) > 2 else None
     build_code = parts[3] if len(parts) > 3 else None
     return {
+        "expansion": expansion,
         "class_slug": class_slug,
         "spec_slug": spec_slug,
         "build_code": build_code,
@@ -5243,7 +5246,7 @@ def talent_calc_packet(
             source="wowhead_talent_calc_url",
             source_url=str(payload["page"]["canonical_url"]),
             notes=["exact transport packet came from an explicit Wowhead talent-calc ref"],
-            scope={"type": "wowhead_talent_calc", "expansion": str(payload["expansion"])},
+            scope={"type": "wowhead_talent_calc", "expansion": str(payload["tool"]["expansion"])},
         ),
         command_name="wowhead talent-calc-packet",
     )

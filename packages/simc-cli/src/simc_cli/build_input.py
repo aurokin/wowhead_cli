@@ -528,7 +528,9 @@ def load_build_spec(
 
 
 def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, BuildIdentity]:
-    if build_spec.actor_class and build_spec.spec:
+    unverified_packet_transport = getattr(build_spec, "transport_form", None) in {"wow_talent_export", "simc_split_talents"}
+
+    if build_spec.actor_class and build_spec.spec and not unverified_packet_transport:
         source = "direct"
         confidence = "high"
         if build_spec.source_kind == "wowhead_talent_calc_url":
@@ -566,9 +568,9 @@ def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, B
         )
 
     candidate_specs = supported_specs(repo)
-    if build_spec.actor_class:
+    if build_spec.actor_class and not unverified_packet_transport:
         candidate_specs = [item for item in candidate_specs if item[0] == build_spec.actor_class]
-    if build_spec.spec:
+    if build_spec.spec and not unverified_packet_transport:
         candidate_specs = [item for item in candidate_specs if item[1] == build_spec.spec]
 
     matches: list[tuple[str, str]] = []

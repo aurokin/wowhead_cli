@@ -446,6 +446,68 @@ def test_simc_identify_build_probes_split_packet_instead_of_trusting_packet_iden
     assert payload["identity"]["candidates"] == [{"actor_class": "druid", "spec": "balance"}]
 
 
+def test_simc_identify_build_does_not_let_apl_override_split_packet_probe(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    apl_path = tmp_path / "priest_shadow.simc"
+    apl_path.write_text("actions=mind_blast\n")
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "validated",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "priest", "spec": "shadow"},
+                    }
+                },
+                "transport_forms": {
+                    "simc_split_talents": {
+                        "class_talents": "103324:1",
+                        "spec_talents": "109839:1",
+                        "hero_talents": "117176:1",
+                    }
+                },
+                "raw_evidence": {
+                    "talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}],
+                },
+                "validation": {"status": "validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    monkeypatch.setattr("simc_cli.main._repo_paths", lambda _ctx: repo)
+    monkeypatch.setattr(
+        "simc_cli.build_input.supported_specs",
+        lambda _repo: [("priest", "shadow"), ("druid", "balance")],
+    )
+    monkeypatch.setattr(
+        "simc_cli.build_input.decode_build",
+        lambda _repo, build_spec: (
+            (_ for _ in ()).throw(RuntimeError("wrong spec"))
+            if (build_spec.actor_class, build_spec.spec) == ("priest", "shadow")
+            else type("Resolution", (), {"enabled_talents": {"moonkin_form"}})()
+        ),
+    )
+
+    result = runner.invoke(simc_app, ["identify-build", "--apl-path", str(apl_path), "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["actor_class"] == "druid"
+    assert payload["build_spec"]["spec"] == "balance"
+    assert payload["identity"]["source"] == "simc_probe"
+    assert payload["identity"]["candidates"] == [{"actor_class": "druid", "spec": "balance"}]
+
+
 def test_simc_identify_build_rejects_malformed_build_packet(tmp_path: Path) -> None:
     packet_path = tmp_path / "bad-packet.json"
     packet_path.write_text(
@@ -1108,6 +1170,78 @@ def test_simc_decode_build_accepts_wowhead_transport_form_from_build_packet(monk
     assert payload["decoded"]["source_kind"] == "wowhead_talent_calc_url"
 
 
+def test_simc_decode_build_probes_wow_export_packet_instead_of_trusting_packet_identity(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "exact-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "priest", "spec": "shadow"},
+                    }
+                },
+                "transport_forms": {"wow_talent_export": "ABC123"},
+                "raw_evidence": {"reference_type": "wow_talent_export"},
+                "validation": {},
+                "scope": {},
+            }
+        )
+    )
+
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    monkeypatch.setattr("simc_cli.main._repo_paths", lambda _ctx: repo)
+    monkeypatch.setattr(
+        "simc_cli.build_input.supported_specs",
+        lambda _repo: [("priest", "shadow"), ("druid", "balance")],
+    )
+    monkeypatch.setattr(
+        "simc_cli.build_input.decode_build",
+        lambda _repo, build_spec: (
+            (_ for _ in ()).throw(RuntimeError("wrong spec"))
+            if (build_spec.actor_class, build_spec.spec) == ("priest", "shadow")
+            else type("Resolution", (), {"enabled_talents": {"moonkin_form"}})()
+        ),
+    )
+
+    def fake_decode_build(_paths, build_spec):  # noqa: ANN001
+        assert build_spec.actor_class == "druid"
+        assert build_spec.spec == "balance"
+        return type(
+            "Resolution",
+            (),
+            {
+                "actor_class": "druid",
+                "spec": "balance",
+                "enabled_talents": {"moonkin_form"},
+                "source_kind": "wow_talent_export",
+                "generated_profile_text": 'druid="simc_decode"\ntalents=ABC123\n',
+                "talents_by_tree": {"class": [], "spec": [], "hero": [], "selection": []},
+                "source_notes": ["decoded via /tmp/simc"],
+            },
+        )()
+
+    monkeypatch.setattr("simc_cli.main.decode_build", fake_decode_build)
+
+    result = runner.invoke(simc_app, ["decode-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["actor_class"] == "druid"
+    assert payload["build_spec"]["spec"] == "balance"
+    assert payload["identity"]["source"] == "simc_probe"
+    assert payload["decoded"]["actor_class"] == "druid"
+    assert payload["decoded"]["spec"] == "balance"
+
+
 def test_simc_decode_build_rejects_malformed_build_packet(tmp_path: Path) -> None:
     packet_path = tmp_path / "bad-packet.json"
     packet_path.write_text(
@@ -1440,6 +1574,99 @@ def test_simc_describe_build_accepts_wow_export_transport_form_from_build_packet
     assert payload["build_spec"]["source_kind"] == "wow_talent_export"
     assert payload["build_spec"]["talents"] == "ABC123"
     assert payload["build_spec"]["transport_packet"]["transport_form"] == "wow_talent_export"
+
+
+def test_simc_describe_build_probes_wow_export_packet_instead_of_trusting_packet_identity(monkeypatch, tmp_path: Path) -> None:
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet_path = tmp_path / "exact-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "exact",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "priest", "spec": "shadow"},
+                    }
+                },
+                "transport_forms": {"wow_talent_export": "ABC123"},
+                "raw_evidence": {"reference_type": "wow_talent_export"},
+                "validation": {},
+                "scope": {},
+            }
+        )
+    )
+
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    monkeypatch.setattr("simc_cli.main._repo_paths", lambda _ctx: repo)
+    monkeypatch.setattr(
+        "simc_cli.build_input.supported_specs",
+        lambda _repo: [("priest", "shadow"), ("druid", "balance")],
+    )
+    monkeypatch.setattr(
+        "simc_cli.build_input.decode_build",
+        lambda _repo, build_spec: (
+            (_ for _ in ()).throw(RuntimeError("wrong spec"))
+            if (build_spec.actor_class, build_spec.spec) == ("priest", "shadow")
+            else type("Resolution", (), {"enabled_talents": {"moonkin_form"}})()
+        ),
+    )
+
+    resolution = type(
+        "Resolution",
+        (),
+        {
+            "actor_class": "druid",
+            "spec": "balance",
+            "source_kind": "wow_talent_export",
+            "enabled_talents": {"wrath"},
+            "talents_by_tree": {"class": [], "spec": [], "hero": [], "selection": []},
+            "source_notes": ["talent transport packet"],
+        },
+    )()
+
+    def fake_resolve_prune_context(_paths, _apl, option_values, targets):  # noqa: ANN001
+        assert option_values["build_packet"] == str(packet_path)
+        context = type("Context", (), {"targets": targets, "enabled_talents": {"wrath"}, "disabled_talents": set(), "talent_sources": {}})()
+        return context, resolution
+
+    monkeypatch.setattr("simc_cli.main._resolve_prune_context", fake_resolve_prune_context)
+    monkeypatch.setattr(
+        "simc_cli.main._describe_target_payload",
+        lambda _resolved, context, *, start_list, priority_limit, inactive_limit: {
+            "targets": context.targets,
+            "focus_list": "default",
+            "focus_path": ["default"],
+            "focus_resolution": "direct",
+            "active_priority": [],
+            "inactive_priority": [],
+            "active_action_names": ["wrath"],
+            "inactive_action_names": [],
+            "talent_tree": {"class": {"selected": [], "skipped": []}, "spec": {"selected": [], "skipped": []}, "hero": {"selected": [], "skipped": []}},
+            "inactive_talents": [],
+            "active_talents": [],
+            "explained_intent": {"setup": [], "helpers": [], "burst": [], "priorities": []},
+            "runtime_sensitive": [],
+        },
+    )
+
+    result = runner.invoke(simc_app, ["describe-build", "--apl-path", str(apl_path), "--build-packet", str(packet_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["build_spec"]["actor_class"] == "druid"
+    assert payload["build_spec"]["spec"] == "balance"
+    assert payload["identity"]["source"] == "simc_probe"
+    assert payload["build"]["actor_class"] == "druid"
+    assert payload["build"]["spec"] == "balance"
 
 
 def test_simc_describe_build_rejects_malformed_build_packet(tmp_path: Path) -> None:
