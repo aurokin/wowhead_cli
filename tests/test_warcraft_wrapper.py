@@ -2696,6 +2696,41 @@ def test_warcraft_talent_packet_upgrades_packet_file_and_writes_output(monkeypat
     assert written["transport_status"] == "validated"
 
 
+def test_warcraft_talent_packet_reemits_unknown_packet_file_without_auto_upgrade(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "unknown-packet.json"
+    out_path = tmp_path / "unknown-out.json"
+    packet = {
+        "kind": "talent_transport_packet",
+        "transport_status": "unknown",
+        "build_identity": {
+            "class_spec_identity": {
+                "identity": {"actor_class": "druid", "spec": "balance"},
+            }
+        },
+        "transport_forms": {},
+        "raw_evidence": {
+            "talent_tree_entries": [{"entry": None, "node_id": None, "rank": None}],
+        },
+        "validation": {"status": "not_validated"},
+        "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+    }
+    packet_path.write_text(json.dumps(packet))
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        raise AssertionError(f"unexpected provider call: {provider} {args}")
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["talent-packet", str(packet_path), "--out", str(out_path)])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["source_packet_status"] == "unknown"
+    assert payload["upgrade_attempted"] is False
+    assert payload["upgraded"] is False
+    assert payload["talent_transport_packet"] == packet
+    assert json.loads(out_path.read_text()) == packet
+
+
 def test_warcraft_talent_packet_requires_explicit_source_contract() -> None:
     result = runner.invoke(warcraft_app, ["talent-packet", "abcd1234"])
     assert result.exit_code == 1
@@ -4269,6 +4304,58 @@ def test_warcraft_talent_describe_uses_packet_file_and_can_write_output(monkeypa
     assert simc_calls[0]["packet_transport_status"] == "exact"
     written = json.loads(out_path.read_text())
     assert written["transport_status"] == "exact"
+
+
+def test_warcraft_talent_describe_skips_auto_upgrade_for_unknown_packet_file(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "unknown-packet.json"
+    apl_path = tmp_path / "druid_balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    packet = {
+        "kind": "talent_transport_packet",
+        "transport_status": "unknown",
+        "build_identity": {
+            "class_spec_identity": {
+                "identity": {"actor_class": "druid", "spec": "balance"},
+            }
+        },
+        "transport_forms": {},
+        "raw_evidence": {
+            "talent_tree_entries": [{"entry": None, "node_id": None, "rank": None}],
+        },
+        "validation": {"status": "not_validated"},
+        "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+    }
+    packet_path.write_text(json.dumps(packet))
+    simc_calls: list[dict[str, object]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        simc_calls.append(_simc_build_input_summary(args))
+        assert args[0] == "describe-build"
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 4},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", str(packet_path), "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["source_packet_status"] == "unknown"
+    assert payload["upgrade_attempted"] is False
+    assert payload["upgraded"] is False
+    assert payload["talent_transport_packet"] == packet
+    assert [row["command"] for row in simc_calls] == ["describe-build"]
 
 
 

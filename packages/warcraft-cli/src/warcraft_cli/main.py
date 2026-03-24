@@ -1099,7 +1099,7 @@ def _maybe_upgrade_transport_packet(
     source_status = packet.get("transport_status") if isinstance(packet.get("transport_status"), str) else None
     upgrade_result: dict[str, Any] | None = None
     packet_changed = False
-    upgrade_attempted = bool(validate and source_status in {"raw_only", "unknown"})
+    upgrade_attempted = bool(validate and source_status == "raw_only")
     if upgrade_attempted:
         original_packet = packet
         try:
