@@ -846,6 +846,7 @@ def test_talent_calc_command_supports_expansion_prefixed_relative_ref(monkeypatc
     result = runner.invoke(app, ["talent-calc", "cata/talent-calc/hunter/beast-mastery/XYZ987"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
+    assert payload["expansion"] == "cata"
     assert payload["tool"]["state_url"] == "https://www.wowhead.com/cata/talent-calc/hunter/beast-mastery/XYZ987"
     assert payload["tool"]["class_slug"] == "hunter"
     assert payload["tool"]["spec_slug"] == "beast-mastery"
@@ -927,6 +928,7 @@ def test_talent_calc_packet_command_supports_expansion_prefixed_relative_ref(mon
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["tool"]["state_url"] == "https://www.wowhead.com/cata/talent-calc/hunter/beast-mastery/XYZ987"
+    assert payload["expansion"] == "cata"
     assert (
         payload["talent_transport_packet"]["transport_forms"]["wowhead_talent_calc_url"]
         == "https://www.wowhead.com/cata/talent-calc/hunter/beast-mastery/XYZ987"
@@ -1031,7 +1033,8 @@ def test_talent_calc_packet_command_rejects_ref_without_build_code(monkeypatch) 
     result = runner.invoke(app, ["talent-calc-packet", "druid/balance"])
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
-    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc packet refs must include an explicit build code."
 
 
 def test_talent_calc_packet_command_rejects_non_wowhead_absolute_url() -> None:

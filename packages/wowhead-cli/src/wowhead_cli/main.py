@@ -3040,7 +3040,7 @@ def _base_talent_calc_payload(
         _fail(ctx, "invalid_tool_ref", str(exc))
         raise AssertionError("unreachable")
     return {
-        "expansion": cfg.expansion.key,
+        "expansion": str(state.get("expansion") or cfg.expansion.key),
         "tool": {
             "kind": "talent-calc",
             "input": ref,
@@ -5232,6 +5232,9 @@ def talent_calc_packet(
     out: str | None = typer.Option(None, "--out", help="Optional path to write just the exact talent transport packet JSON."),
 ) -> None:
     payload = _base_talent_calc_payload(ctx, ref=ref)
+    if not payload["tool"].get("has_build_code"):
+        _fail(ctx, "invalid_tool_ref", "talent-calc packet refs must include an explicit build code.")
+        raise AssertionError("unreachable")
     payload = _enrich_talent_calc_payload_with_page_data(
         ctx,
         payload,

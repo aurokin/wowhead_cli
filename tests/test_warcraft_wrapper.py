@@ -2544,7 +2544,11 @@ def test_warcraft_talent_packet_routes_warcraftlogs_and_upgrades(monkeypatch) ->
                     "talent_transport_packet": {
                         "kind": "talent_transport_packet",
                         "transport_status": "raw_only",
-                        "build_identity": {},
+                        "build_identity": {
+                            "class_spec_identity": {
+                                "identity": {"actor_class": "druid", "spec": "balance"},
+                            }
+                        },
                         "transport_forms": {},
                         "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
                         "validation": {"status": "not_validated"},
@@ -2633,7 +2637,11 @@ def test_warcraft_talent_packet_upgrades_packet_file_and_writes_output(monkeypat
             {
                 "kind": "talent_transport_packet",
                 "transport_status": "raw_only",
-                "build_identity": {},
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
                 "transport_forms": {},
                 "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
                 "validation": {"status": "not_validated"},
@@ -2689,6 +2697,17 @@ def test_warcraft_talent_packet_rejects_non_wowhead_absolute_url() -> None:
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "unsupported_talent_source"
+
+
+def test_warcraft_talent_packet_rejects_wowhead_ref_without_build_code() -> None:
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "druid/balance"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc packet refs must include an explicit build code."
 
 
 def test_warcraft_talent_packet_rejects_buried_real_wowhead_talent_calc_path() -> None:
@@ -3494,6 +3513,21 @@ def test_warcraft_talent_describe_rejects_non_wowhead_absolute_url() -> None:
     assert payload["error"]["code"] == "unsupported_talent_source"
 
 
+def test_warcraft_talent_describe_rejects_wowhead_ref_without_build_code(tmp_path: Path) -> None:
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "druid/balance", "--apl-path", str(apl_path)],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["kind"] == "talent_describe"
+    assert payload["error"]["code"] == "invalid_tool_ref"
+    assert payload["error"]["message"] == "talent-calc packet refs must include an explicit build code."
+
+
 def test_warcraft_talent_describe_rejects_buried_real_wowhead_talent_calc_path(tmp_path: Path) -> None:
     apl_path = tmp_path / "balance.simc"
     apl_path.write_text("actions=wrath\n")
@@ -3970,7 +4004,11 @@ def test_warcraft_talent_describe_routes_warcraftlogs_and_upgrades(monkeypatch) 
                     "talent_transport_packet": {
                         "kind": "talent_transport_packet",
                         "transport_status": "raw_only",
-                        "build_identity": {},
+                        "build_identity": {
+                            "class_spec_identity": {
+                                "identity": {"actor_class": "druid", "spec": "balance"},
+                            }
+                        },
                         "transport_forms": {},
                         "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
                         "validation": {"status": "not_validated"},

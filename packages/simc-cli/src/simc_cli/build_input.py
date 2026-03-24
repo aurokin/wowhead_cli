@@ -151,15 +151,21 @@ def extract_build_spec_from_packet(path: str) -> BuildSpec:
         spec_talents = split.get("spec_talents")
         hero_talents = split.get("hero_talents")
         if any(isinstance(value, str) and value.strip() for value in (class_talents, spec_talents, hero_talents)):
+            packet_actor_class = _identity_value(packet, "actor_class")
+            packet_spec = _identity_value(packet, "spec")
             source_notes.extend(
                 [
                     "transport form: simc_split_talents",
-                    "class/spec metadata came from packet contents and was not independently validated",
+                    (
+                        "class/spec metadata came from packet contents and was validated with the split transport"
+                        if transport_status_text == "validated" and packet_actor_class and packet_spec
+                        else "class/spec metadata came from packet contents and was not independently validated"
+                    ),
                 ]
             )
             return BuildSpec(
-                actor_class=None,
-                spec=None,
+                actor_class=packet_actor_class if transport_status_text == "validated" else None,
+                spec=packet_spec if transport_status_text == "validated" else None,
                 class_talents=class_talents.strip() if isinstance(class_talents, str) and class_talents.strip() else None,
                 spec_talents=spec_talents.strip() if isinstance(spec_talents, str) and spec_talents.strip() else None,
                 hero_talents=hero_talents.strip() if isinstance(hero_talents, str) and hero_talents.strip() else None,
@@ -528,13 +534,15 @@ def load_build_spec(
 
 
 def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, BuildIdentity]:
-    unverified_packet_transport = getattr(build_spec, "transport_form", None) in {"wow_talent_export", "simc_split_talents"}
+    unverified_packet_transport = getattr(build_spec, "transport_form", None) == "wow_talent_export"
 
     if build_spec.actor_class and build_spec.spec and not unverified_packet_transport:
         source = "direct"
         confidence = "high"
         if build_spec.source_kind == "wowhead_talent_calc_url":
             source = "wowhead_talent_calc_url"
+        elif build_spec.source_kind == "simc_split_talents":
+            source = "simc_split_talents"
         elif build_spec.source_kind == "wow_talent_export":
             source = "wow_talent_export"
             confidence = "medium"
@@ -612,8 +620,8 @@ def identify_build(repo: RepoPaths, build_spec: BuildSpec) -> tuple[BuildSpec, B
     return (
         build_spec,
         BuildIdentity(
-            actor_class=build_spec.actor_class,
-            spec=build_spec.spec,
+            actor_class=None if unverified_packet_transport else build_spec.actor_class,
+            spec=None if unverified_packet_transport else build_spec.spec,
             confidence="low" if matches else "none",
             source="simc_probe",
             candidate_count=len(matches),

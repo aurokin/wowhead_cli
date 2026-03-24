@@ -101,6 +101,7 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
   - `warcraft talent-describe ./tmp/gubkfc-packet-validated.json --apl-path <simc-root>/ActionPriorityLists/default/druid_balance.simc`
 - malformed-packet troubleshooting:
   - packet producers now fail with `invalid_transport_packet` before they print or write malformed packet JSON
+  - malformed Wowhead-like talent refs, including exact packet refs without a build code, now fail with `invalid_tool_ref`
   - wrapper routes preserve that same `invalid_transport_packet` error instead of hiding it behind a generic wrapper failure
   - `simc identify-build`, `simc decode-build`, `simc describe-build`, and `simc validate-talent-transport` fail with `invalid_build_packet` when `--build-packet` points at malformed packet JSON
 - `simc` is a phase-1 local-tool provider for local repo inspection, build decoding, and binary execution.
@@ -734,7 +735,7 @@ SimulationCraft behavior:
 - `identify-build`, `decode-build`, and `describe-build` also accept `--build-packet <path>` for talent transport packet JSON:
   - exact forms such as embedded Wowhead URLs or WoW export strings are preferred first
   - standalone exact `wow_talent_export` packets do not treat packet-supplied class/spec as trusted identity on their own; `simc` still falls back to safer inference or bounded probing when needed
-  - validated reconstructed forms such as `simc_split_talents` are used when no exact form exists
+  - validated reconstructed forms such as `simc_split_talents` are used when no exact form exists, and they stay bound to the class/spec they were validated under
   - raw-only packets must be upgraded through `simc validate-talent-transport` before they can drive build analysis
   - the returned `build_spec.transport_packet` block records only the packet `path`, chosen `transport_form`, and `transport_status`; packet provenance continues to live in `source_notes`
   - malformed packet files now fail consistently with `invalid_build_packet`

@@ -532,3 +532,28 @@ def test_validate_talent_transport_packet_rejects_invalid_split_field_types() ->
         assert "simc_split_talents.spec_talents" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_validate_talent_transport_packet_rejects_validated_split_without_class_spec_identity() -> None:
+    packet = talent_transport_packet_payload(
+        actor_class="Druid",
+        spec="Balance",
+        confidence="high",
+        source="warcraftlogs_talent_tree",
+        raw_evidence={"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+    )
+    packet["build_identity"] = {}
+    packet["transport_forms"] = {
+        "simc_split_talents": {
+            "class_talents": "103324:1",
+        }
+    }
+    packet["transport_status"] = "validated"
+    packet["validation"] = {"status": "validated"}
+
+    try:
+        validate_talent_transport_packet(packet)
+    except ValueError as exc:
+        assert "Validated simc_split_talents packets must include build_identity.class_spec_identity.identity" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")

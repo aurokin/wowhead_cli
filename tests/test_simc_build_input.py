@@ -337,14 +337,14 @@ def test_load_build_spec_extracts_split_transport_form_from_packet(tmp_path: Pat
         build_packet=str(packet_path),
     )
 
-    assert spec.actor_class is None
-    assert spec.spec is None
+    assert spec.actor_class == "druid"
+    assert spec.spec == "balance"
     assert spec.class_talents == "103324:1"
     assert spec.spec_talents == "109839:1"
     assert spec.hero_talents == "117176:1"
     assert spec.source_kind == "simc_split_talents"
     assert spec.transport_form == "simc_split_talents"
-    assert "class/spec metadata came from packet contents and was not independently validated" in spec.source_notes
+    assert "class/spec metadata came from packet contents and was validated with the split transport" in spec.source_notes
 
 
 def test_load_build_spec_extracts_wow_export_transport_form_from_packet(tmp_path: Path) -> None:
@@ -759,6 +759,38 @@ def test_identify_build_reports_ambiguous_probe_matches(tmp_path: Path) -> None:
     assert identified.spec is None
     assert identity.confidence == "low"
     assert identity.candidates == [("monk", "mistweaver"), ("demonhunter", "devourer")]
+
+
+def test_identify_build_does_not_echo_unverified_packet_identity_when_probe_fails(tmp_path: Path) -> None:
+    repo = RepoPaths(
+        root=tmp_path,
+        apl_default=tmp_path,
+        apl_assisted=tmp_path,
+        class_modules=tmp_path,
+        spell_dump=tmp_path,
+        build_dir=tmp_path,
+        build_simc=tmp_path / "simc",
+    )
+    build_spec = BuildSpec(
+        actor_class="priest",
+        spec="shadow",
+        talents="ABC123",
+        source_kind="wow_talent_export",
+        source_notes=["inferred from apl: /tmp/priest_shadow.simc"],
+        transport_form="wow_talent_export",
+        transport_status="exact",
+    )
+
+    with patch("simc_cli.build_input.supported_specs", return_value=[("priest", "shadow"), ("druid", "balance")]):
+        with patch("simc_cli.build_input.decode_build", side_effect=RuntimeError("failed")):
+            identified, identity = identify_build(repo, build_spec)
+
+    assert identified.actor_class == "priest"
+    assert identified.spec == "shadow"
+    assert identity.actor_class is None
+    assert identity.spec is None
+    assert identity.confidence == "none"
+    assert identity.candidate_count == 0
 
 
 # --- tree_entries_string ---

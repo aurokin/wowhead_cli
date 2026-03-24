@@ -58,6 +58,7 @@ Use `warcraft` first when the caller does not already know which provider they n
   - `warcraft talent-describe ./tmp/actor-packet-validated.json --apl-path <apl>`
 - Failure contract:
   - producer commands fail with `invalid_transport_packet` if they would otherwise emit malformed packet JSON
+  - malformed Wowhead-like talent refs, including exact packet refs without a build code, fail with `invalid_tool_ref`
   - `simc ... --build-packet <path>` fails with `invalid_build_packet` when the packet file is malformed
   - wrapper routing preserves provider `invalid_transport_packet` failures instead of replacing them with a generic wrapper error
 - Add `--simc-build-handoff` when you want the orchestration packet to include explicit guide build refs handed into `simc`; add `--simc-apl-path` when you also want exact-build `describe-build` output.

@@ -608,6 +608,12 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
             raise ValueError(
                 "Talent transport packet must not mix exact transport forms with simc_split_talents."
             )
+        if validation.get("status") == "validated":
+            packet_actor_class, packet_spec = _packet_class_spec_identity(build_identity)
+            if packet_actor_class is None or packet_spec is None:
+                raise ValueError(
+                    "Validated simc_split_talents packets must include build_identity.class_spec_identity.identity."
+                )
 
     expected_status = _talent_transport_status(
         transport_forms=transport_forms,
