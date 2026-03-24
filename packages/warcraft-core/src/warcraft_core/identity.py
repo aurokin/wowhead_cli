@@ -99,6 +99,9 @@ def parse_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
     candidate = _clean_text(ref)
     if candidate is None:
         return None
+    lowered = candidate.lower()
+    if "://" not in candidate and (lowered.startswith("wowhead.com/") or lowered.startswith("www.wowhead.com/")):
+        candidate = f"https://{candidate}"
     parsed = urlparse(candidate)
     if parsed.scheme and parsed.netloc:
         hostname = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""

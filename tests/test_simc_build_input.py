@@ -60,6 +60,14 @@ def test_parse_wowhead_talent_calc_ref_supports_relative_paths() -> None:
     assert spec.talents == "XYZ987"
 
 
+def test_parse_wowhead_talent_calc_ref_supports_scheme_less_wowhead_urls() -> None:
+    spec = parse_wowhead_talent_calc_ref("wowhead.com/talent-calc/demon-hunter/devourer/ABC123")
+    assert spec is not None
+    assert spec.actor_class == "demonhunter"
+    assert spec.spec == "devourer"
+    assert spec.talents == "ABC123"
+
+
 def test_parse_wowhead_talent_calc_ref_rejects_empty_or_extra_path_segments() -> None:
     assert parse_wowhead_talent_calc_ref("https://www.wowhead.com/talent-calc/druid//balance/ABC123") is None
     assert parse_wowhead_talent_calc_ref("https://www.wowhead.com/talent-calc/druid/balance/ABC123/extra") is None

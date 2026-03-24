@@ -117,6 +117,25 @@ def test_parse_wowhead_talent_calc_ref_supports_prefixed_paths_and_relative_urls
     }
 
 
+def test_parse_wowhead_talent_calc_ref_supports_scheme_less_wowhead_urls() -> None:
+    payload = parse_wowhead_talent_calc_ref("wowhead.com/talent-calc/druid/balance/ABC123")
+    assert payload == {
+        "actor_class": "druid",
+        "spec": "balance",
+        "build_code": "ABC123",
+        "reference_url": "https://wowhead.com/talent-calc/druid/balance/ABC123",
+        "source_kind": "wowhead_talent_calc_url",
+    }
+    www_payload = parse_wowhead_talent_calc_ref("www.wowhead.com/talent-calc/druid/balance/ABC123")
+    assert www_payload == {
+        "actor_class": "druid",
+        "spec": "balance",
+        "build_code": "ABC123",
+        "reference_url": "https://www.wowhead.com/talent-calc/druid/balance/ABC123",
+        "source_kind": "wowhead_talent_calc_url",
+    }
+
+
 def test_parse_wowhead_talent_calc_ref_rejects_non_wowhead_domains() -> None:
     assert parse_wowhead_talent_calc_ref("https://notwowhead.com/talent-calc/druid/balance/ABC123") is None
 
