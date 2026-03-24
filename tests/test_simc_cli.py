@@ -438,6 +438,40 @@ def test_simc_identify_build_trusts_validated_split_packet_identity(monkeypatch,
     assert payload["identity"]["candidates"] == [{"actor_class": "priest", "spec": "shadow"}]
 
 
+def test_simc_identify_build_rejects_unvalidated_split_packet(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "priest", "spec": "shadow"},
+                    }
+                },
+                "transport_forms": {
+                    "simc_split_talents": {
+                        "class_talents": "103324:1",
+                        "spec_talents": "109839:1",
+                    }
+                },
+                "raw_evidence": {
+                    "talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}],
+                },
+                "validation": {"status": "not_validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(simc_app, ["identify-build", "--build-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert "simc_split_talents transport form requires a validated packet identity" in payload["error"]["message"]
+
+
 def test_simc_identify_build_does_not_let_apl_override_validated_split_packet_identity(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     apl_path = tmp_path / "priest_shadow.simc"

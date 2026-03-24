@@ -351,6 +351,56 @@ def test_load_build_spec_extracts_split_transport_form_from_packet(tmp_path: Pat
     assert "class/spec metadata came from packet contents and was validated with the split transport" in spec.source_notes
 
 
+def test_load_build_spec_rejects_unvalidated_split_transport_form_from_packet(tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        """
+        {
+          "kind": "talent_transport_packet",
+          "transport_status": "raw_only",
+          "build_identity": {
+            "class_spec_identity": {
+              "identity": {
+                "actor_class": "druid",
+                "spec": "balance"
+              }
+            }
+          },
+          "transport_forms": {
+            "simc_split_talents": {
+              "class_talents": "103324:1",
+              "spec_talents": "109839:1"
+            }
+          },
+          "raw_evidence": {
+            "talent_tree_entries": [
+              {"entry": 103324, "node_id": 82244, "rank": 1}
+            ]
+          },
+          "validation": {
+            "status": "not_validated"
+          },
+          "scope": {}
+        }
+        """.strip()
+    )
+
+    with pytest.raises(ValueError, match="simc_split_talents transport form requires a validated packet identity"):
+        load_build_spec(
+            apl_path=None,
+            profile_path=None,
+            build_file=None,
+            build_text=None,
+            talents=None,
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+            actor_class=None,
+            spec_name=None,
+            build_packet=str(packet_path),
+        )
+
+
 def test_load_build_spec_extracts_wow_export_transport_form_from_packet(tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     packet_path.write_text(

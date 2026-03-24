@@ -165,14 +165,15 @@ def extract_build_spec_from_packet(path: str) -> BuildSpec:
         hero_talents = split.get("hero_talents")
         if any(isinstance(value, str) and value.strip() for value in (class_talents, spec_talents, hero_talents)):
             packet_actor_class, packet_spec = _validated_packet_identity(packet)
+            if transport_status_text != "validated" or not (packet_actor_class and packet_spec):
+                raise ValueError(
+                    f"simc_split_talents transport form requires a validated packet identity: {resolved_path}. "
+                    "Run simc validate-talent-transport first for raw_only packets."
+                )
             source_notes.extend(
                 [
                     "transport form: simc_split_talents",
-                    (
-                        "class/spec metadata came from packet contents and was validated with the split transport"
-                        if packet_actor_class and packet_spec
-                        else "class/spec metadata came from packet contents and was not independently validated"
-                    ),
+                    "class/spec metadata came from packet contents and was validated with the split transport",
                 ]
             )
             return BuildSpec(
