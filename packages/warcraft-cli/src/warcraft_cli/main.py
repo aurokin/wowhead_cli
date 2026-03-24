@@ -1169,14 +1169,6 @@ def _resolve_talent_transport(
             "provider": None,
             "packet_path": packet_path,
         }
-    elif _looks_like_transport_packet_path_input(source):
-        _fail_talent_route(
-            ctx,
-            code="invalid_transport_packet",
-            message=f"Talent transport packet file was not found: {source}",
-            source=source,
-            kind=kind,
-        )
     elif _looks_like_wowhead_talent_calc_reference(source):
         route, producer_result, packet = _wowhead_transport_packet(
             ctx,
@@ -1193,6 +1185,14 @@ def _resolve_talent_transport(
             fight_id=fight_id,
             allow_unlisted=allow_unlisted,
             requested_expansion=requested_expansion,
+            kind=kind,
+        )
+    elif _looks_like_transport_packet_path_input(source):
+        _fail_talent_route(
+            ctx,
+            code="invalid_transport_packet",
+            message=f"Talent transport packet file was not found: {source}",
+            source=source,
             kind=kind,
         )
     else:

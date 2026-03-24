@@ -2481,6 +2481,54 @@ def test_warcraft_talent_packet_passes_allow_unlisted_to_warcraftlogs(monkeypatc
     assert calls == [("warcraftlogs", ["report-player-talents", "abcd1234", "--actor-id", "9", "--fight-id", "1", "--allow-unlisted"], None)]
 
 
+def test_warcraft_talent_packet_routes_scheme_less_warcraftlogs_report_ref(monkeypatch) -> None:
+    calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        calls.append((provider, args, expansion))
+        return {
+            "provider": "warcraftlogs",
+            "exit_code": 0,
+            "payload": {
+                "provider": "warcraftlogs",
+                "kind": "report_player_talents",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "raw_only",
+                    "build_identity": {},
+                    "transport_forms": {},
+                    "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                    "validation": {"status": "not_validated"},
+                    "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "warcraftlogs.com/reports/abcd1234#fight=1", "--actor-id", "9", "--no-validate"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": None,
+        "allow_unlisted": False,
+    }
+    assert calls == [
+        (
+            "warcraftlogs",
+            ["report-player-talents", "warcraftlogs.com/reports/abcd1234#fight=1", "--actor-id", "9"],
+            None,
+        )
+    ]
+
+
 def test_warcraft_talent_packet_routes_warcraftlogs_and_upgrades(monkeypatch) -> None:
     calls: list[tuple[str, list[str]]] = []
 
@@ -4042,6 +4090,74 @@ def test_warcraft_talent_describe_passes_allow_unlisted_and_expansion(monkeypatc
         "retail",
     )
     assert provider_calls[1][2] == "retail"
+
+
+def test_warcraft_talent_describe_routes_scheme_less_warcraftlogs_report_ref(monkeypatch, tmp_path: Path) -> None:
+    apl_path = tmp_path / "balance.simc"
+    apl_path.write_text("actions=wrath\n")
+    provider_calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args, expansion))
+        if provider == "warcraftlogs":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "report_player_talents",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "raw_only",
+                        "build_identity": {},
+                        "transport_forms": {},
+                        "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                        "validation": {"status": "not_validated"},
+                        "scope": {"type": "report_fight_actor", "report_code": "abcd1234", "fight_id": 1, "actor_id": 9},
+                    },
+                },
+                "stdout": "",
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 6},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        [
+            "talent-describe",
+            "warcraftlogs.com/reports/abcd1234#fight=1",
+            "--actor-id",
+            "9",
+            "--apl-path",
+            str(apl_path),
+            "--no-validate",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {
+        "kind": "warcraftlogs_report_actor",
+        "provider": "warcraftlogs",
+        "actor_id": 9,
+        "fight_id": None,
+        "allow_unlisted": False,
+    }
+    assert provider_calls[0] == (
+        "warcraftlogs",
+        ["report-player-talents", "warcraftlogs.com/reports/abcd1234#fight=1", "--actor-id", "9"],
+        None,
+    )
+    assert provider_calls[1][0] == "simc"
 
 
 

@@ -111,3 +111,50 @@ def test_validate_talent_tree_transport_rejects_rows_for_other_specs(tmp_path: P
     assert payload["validation"]["status"] == "not_validated"
     assert payload["validation"]["reason"] == "simc_trait_resolution_incomplete"
     assert payload["validation"]["unresolved_entries"][0]["reason"] == "trait_not_found"
+
+
+def test_validate_talent_tree_transport_supports_specs_with_underscores(monkeypatch, tmp_path: Path) -> None:
+    generated = tmp_path / "engine" / "dbc" / "generated"
+    generated.mkdir(parents=True)
+    (generated / "sc_specialization_data.inc").write_text(
+        """enum specialization_e {
+  SPEC_NONE              = 0,
+  HUNTER_BEAST_MASTERY   = 253,
+};
+"""
+    )
+    (generated / "trait_data.inc").write_text(
+        "static constexpr std::array<trait_data_t, 1> __trait_data_data { {\n"
+        '  { 2, 3, 200001, 80001, 1, 0, 0, 0, 0, 0, 4, 2, 100, "Bestial Wrath", '
+        "{ 253, 0, 0, 0 }, { 0, 0, 0, 0 }, 0, 2 },\n"
+        "} };\n"
+    )
+
+    monkeypatch.setattr("simc_cli.talent_transport.encode_build", lambda repo, build_spec: "XYZ987")
+    monkeypatch.setattr(
+        "simc_cli.talent_transport.decode_build",
+        lambda repo, build_spec: BuildResolution(
+            actor_class="hunter",
+            spec="beast_mastery",
+            enabled_talents={"bestial_wrath"},
+            talents_by_tree={
+                "class": [],
+                "spec": [_decoded_talent(tree="spec", entry=200001, rank=1, name="Bestial Wrath")],
+                "hero": [],
+                "selection": [],
+            },
+            source_kind="wow_talent_export",
+            generated_profile_text=None,
+            source_notes=[],
+        ),
+    )
+
+    payload = validate_talent_tree_transport(
+        actor_class="Hunter",
+        spec="Beast Mastery",
+        talent_tree_rows=[{"entry": 200001, "node_id": 80001, "rank": 1}],
+        repo_root=tmp_path,
+    )
+
+    assert payload["validation"]["status"] == "validated"
+    assert payload["transport_forms"]["simc_split_talents"]["spec_talents"] == "200001:1"

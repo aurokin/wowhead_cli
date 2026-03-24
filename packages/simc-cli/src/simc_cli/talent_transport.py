@@ -34,7 +34,7 @@ TREE_NAME_BY_INDEX = {
 }
 
 SPECIALIZATION_LINE_RE = re.compile(
-    r"^\s*(?P<class_name>[A-Z_]+)_(?P<spec_name>[A-Z_]+)\s*=\s*(?P<spec_id>\d+),\s*$"
+    r"^\s*(?P<enum_name>[A-Z_]+)\s*=\s*(?P<spec_id>\d+),\s*$"
 )
 TRAIT_ROW_RE = re.compile(
     r'^\s*\{\s*'
@@ -101,8 +101,12 @@ def _specialization_ids(repo_root_text: str) -> dict[tuple[str, str], int]:
         match = SPECIALIZATION_LINE_RE.match(line)
         if not match:
             continue
-        actor_class = normalize_actor_class(match.group("class_name").replace("_", " "))
-        spec = normalize_spec_name(match.group("spec_name").replace("_", " "))
+        enum_name = match.group("enum_name").strip()
+        if "_" not in enum_name:
+            continue
+        class_name, spec_name = enum_name.split("_", 1)
+        actor_class = normalize_actor_class(class_name.replace("_", " "))
+        spec = normalize_spec_name(spec_name.replace("_", " "))
         if actor_class and spec:
             ids[(actor_class, spec)] = int(match.group("spec_id"))
     return ids
