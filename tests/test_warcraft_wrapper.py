@@ -2449,6 +2449,48 @@ def test_warcraft_talent_packet_routes_expansion_prefixed_wowhead_ref(monkeypatc
     assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
 
 
+def test_warcraft_talent_packet_routes_expansion_prefixed_class_spec_wowhead_ref(monkeypatch) -> None:
+    calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        calls.append((provider, args, expansion))
+        return {
+            "provider": "wowhead",
+            "exit_code": 0,
+            "payload": {
+                "provider": "wowhead",
+                "kind": "talent_calc_packet",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "exact",
+                    "transport_forms": {
+                        "wowhead_talent_calc_url": "https://www.wowhead.com/classic/talent-calc/druid/balance/ABC123",
+                    },
+                    "build_identity": {
+                        "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                    },
+                    "raw_evidence": {"reference_url": "https://www.wowhead.com/classic/talent-calc/druid/balance/ABC123"},
+                    "validation": {},
+                    "scope": {"type": "wowhead_talent_calc", "expansion": "classic"},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "classic/druid/balance/ABC123", "--no-validate"],
+    )
+    assert result.exit_code == 0
+    assert calls == [
+        ("wowhead", ["talent-calc-packet", "classic/druid/balance/ABC123", "--listed-build-limit", "10"], None)
+    ]
+    payload = json.loads(result.stdout)
+    assert payload["route"] == {"kind": "wowhead_talent_calc", "provider": "wowhead"}
+
+
 def test_warcraft_talent_packet_passes_allow_unlisted_to_warcraftlogs(monkeypatch) -> None:
     calls: list[tuple[str, list[str], str | None]] = []
 
@@ -4033,6 +4075,59 @@ def test_warcraft_talent_describe_passes_expansion_to_wowhead_route(monkeypatch)
         "wowhead",
         ["talent-calc-packet", "cata/talent-calc/hunter/beast-mastery/XYZ987", "--listed-build-limit", "10"],
         "wotlk",
+    )
+
+
+def test_warcraft_talent_describe_routes_expansion_prefixed_class_spec_wowhead_ref(monkeypatch) -> None:
+    provider_calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        provider_calls.append((provider, args, expansion))
+        if provider == "wowhead":
+            return {
+                "provider": provider,
+                "exit_code": 0,
+                "payload": {
+                    "provider": provider,
+                    "kind": "talent_calc_packet",
+                    "talent_transport_packet": {
+                        "kind": "talent_transport_packet",
+                        "transport_status": "exact",
+                        "transport_forms": {
+                            "wowhead_talent_calc_url": "https://www.wowhead.com/classic/talent-calc/druid/balance/ABC123",
+                        },
+                        "build_identity": {
+                            "class_spec_identity": {"identity": {"actor_class": "druid", "spec": "balance"}},
+                        },
+                        "raw_evidence": {"reference_url": "https://www.wowhead.com/classic/talent-calc/druid/balance/ABC123"},
+                        "validation": {},
+                        "scope": {"type": "wowhead_talent_calc", "expansion": "classic"},
+                    },
+                },
+                "stdout": "",
+            }
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": provider,
+                "kind": "describe_build",
+                "summary": {"active_action_count": 3},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-describe", "classic/druid/balance/ABC123"],
+    )
+    assert result.exit_code == 0
+    assert provider_calls[0] == (
+        "wowhead",
+        ["talent-calc-packet", "classic/druid/balance/ABC123", "--listed-build-limit", "10"],
+        None,
     )
 
 

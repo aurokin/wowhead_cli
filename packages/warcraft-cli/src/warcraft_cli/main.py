@@ -702,7 +702,9 @@ def _looks_like_wowhead_talent_calc_reference(value: str) -> bool:
     if not parts:
         return False
     if parts and parts[0] in {"classic", "tbc", "wotlk", "cata", "mop-classic", "ptr", "beta", "classic-ptr"}:
-        return len(parts) >= 2 and parts[1].strip() == "talent-calc"
+        parts = parts[1:]
+        if not parts:
+            return False
     known_classes = {
         "deathknight",
         "death-knight",
