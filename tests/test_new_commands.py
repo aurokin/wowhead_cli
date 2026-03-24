@@ -853,6 +853,22 @@ def test_talent_calc_command_supports_expansion_prefixed_relative_ref(monkeypatc
     assert payload["tool"]["build_code"] == "XYZ987"
 
 
+def test_talent_calc_command_supports_expansion_prefixed_class_spec_ref(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/classic/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc", "classic/druid/balance/ABC123"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["expansion"] == "classic"
+    assert payload["tool"]["state_url"] == "https://www.wowhead.com/classic/talent-calc/druid/balance/ABC123"
+    assert payload["tool"]["class_slug"] == "druid"
+    assert payload["tool"]["spec_slug"] == "balance"
+    assert payload["tool"]["build_code"] == "ABC123"
+
+
 def test_talent_calc_command_rejects_empty_segment_ref() -> None:
     result = runner.invoke(app, ["talent-calc", "druid//balance/ABC123"])
     assert result.exit_code == 1
@@ -934,6 +950,24 @@ def test_talent_calc_packet_command_supports_expansion_prefixed_relative_ref(mon
         == "https://www.wowhead.com/cata/talent-calc/hunter/beast-mastery/XYZ987"
     )
     assert payload["talent_transport_packet"]["scope"]["expansion"] == "cata"
+
+
+def test_talent_calc_packet_command_supports_expansion_prefixed_class_spec_ref(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url.endswith("/classic/talent-calc/druid/balance/ABC123")
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "classic/druid/balance/ABC123"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool"]["state_url"] == "https://www.wowhead.com/classic/talent-calc/druid/balance/ABC123"
+    assert payload["expansion"] == "classic"
+    assert (
+        payload["talent_transport_packet"]["transport_forms"]["wowhead_talent_calc_url"]
+        == "https://www.wowhead.com/classic/talent-calc/druid/balance/ABC123"
+    )
+    assert payload["talent_transport_packet"]["scope"]["expansion"] == "classic"
 
 
 def test_talent_calc_packet_command_can_write_exact_transport_packet(monkeypatch, tmp_path: Path) -> None:
