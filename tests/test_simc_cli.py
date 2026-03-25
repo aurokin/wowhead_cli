@@ -2297,6 +2297,23 @@ def test_simc_compare_builds_decode_failure_reports_error(monkeypatch) -> None:
     assert "error" in payload["comparisons"][0]
 
 
+def test_simc_compare_builds_rejects_buildless_wowhead_talent_calc_url() -> None:
+    result = runner.invoke(
+        simc_app,
+        [
+            "compare-builds",
+            "--base",
+            "https://www.wowhead.com/talent-calc/druid/balance",
+            "--other",
+            "DEF456",
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert "must include a build code" in payload["error"]["message"]
+
+
 # --- modify-build ---
 
 
@@ -2424,6 +2441,23 @@ def test_simc_modify_build_fails_on_bad_add_format(monkeypatch) -> None:
     assert result.exit_code == 1
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "invalid_add"
+
+
+def test_simc_modify_build_rejects_buildless_wowhead_talent_calc_url() -> None:
+    result = runner.invoke(
+        simc_app,
+        [
+            "modify-build",
+            "--talents",
+            "https://www.wowhead.com/talent-calc/druid/balance",
+            "--remove",
+            "innervate",
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert "must include a build code" in payload["error"]["message"]
 
 
 def test_simc_modify_build_encode_failure_reports_error(monkeypatch) -> None:

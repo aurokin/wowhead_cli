@@ -2594,10 +2594,19 @@ def compare_builds_command(
     paths = _repo_paths(ctx)
     trees = [t for t in tree] or ["class", "spec", "hero"]
 
-    base_spec, base_identity = _load_identified_build_spec(
-        paths, apl_path=None, profile_path=None, build_file=None, build_text=None,
-        talents=base, class_talents=None, spec_talents=None, hero_talents=None,
-        actor_class=actor_class, spec_name=spec_name,
+    base_spec, base_identity = _load_identified_build_spec_or_fail(
+        ctx,
+        paths,
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=base,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=actor_class,
+        spec_name=spec_name,
     )
     if not base_spec.actor_class or not base_spec.spec:
         _fail(ctx, "invalid_query", "Could not identify actor class and spec for base build.",
@@ -2669,10 +2678,19 @@ def modify_build_command(
 ) -> None:
     paths = _repo_paths(ctx)
 
-    base_spec, base_identity = _load_identified_build_spec(
-        paths, apl_path=None, profile_path=None, build_file=None, build_text=None,
-        talents=talents, class_talents=None, spec_talents=None, hero_talents=None,
-        actor_class=actor_class, spec_name=spec_name,
+    base_spec, base_identity = _load_identified_build_spec_or_fail(
+        ctx,
+        paths,
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=talents,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=actor_class,
+        spec_name=spec_name,
     )
     if not base_spec.actor_class or not base_spec.spec:
         _fail(ctx, "invalid_query", "Could not identify actor class and spec for base build.",
