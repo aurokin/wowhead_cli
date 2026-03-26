@@ -1045,7 +1045,8 @@ def build_harness_command(
     line: list[str] = typer.Option([], "--line", help="Extra profile line. Repeat as needed."),
 ) -> None:
     paths = _repo_paths(ctx)
-    build_spec, identity = _load_identified_build_spec(
+    build_spec, identity = _load_identified_build_spec_or_fail(
+        ctx,
         paths,
         apl_path=apl_path,
         profile_path=profile_path,
@@ -2620,11 +2621,15 @@ def compare_builds_command(
 
     comparisons: list[dict[str, Any]] = []
     for other_talents in other:
-        other_spec = load_build_spec(
-            apl_path=None, profile_path=None, build_file=None, build_text=None,
-            talents=other_talents, class_talents=None, spec_talents=None, hero_talents=None,
-            actor_class=base_spec.actor_class, spec_name=base_spec.spec,
-        )
+        try:
+            other_spec = load_build_spec(
+                apl_path=None, profile_path=None, build_file=None, build_text=None,
+                talents=other_talents, class_talents=None, spec_talents=None, hero_talents=None,
+                actor_class=base_spec.actor_class, spec_name=base_spec.spec,
+            )
+        except ValueError as exc:
+            comparisons.append({"input": other_talents, "error": str(exc)})
+            continue
         try:
             other_resolution = decode_build(paths, other_spec)
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
@@ -2718,10 +2723,19 @@ def modify_build_command(
     for tree_name, swap_source in swap_sources:
         if not swap_source:
             continue
-        swap_spec = load_build_spec(
-            apl_path=None, profile_path=None, build_file=None, build_text=None,
-            talents=swap_source, class_talents=None, spec_talents=None, hero_talents=None,
-            actor_class=base_spec.actor_class, spec_name=base_spec.spec,
+        swap_spec, _ = _load_identified_build_spec_or_fail(
+            ctx,
+            paths,
+            apl_path=None,
+            profile_path=None,
+            build_file=None,
+            build_text=None,
+            talents=swap_source,
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+            actor_class=base_spec.actor_class,
+            spec_name=base_spec.spec,
         )
         try:
             swap_resolution = decode_build(paths, swap_spec)

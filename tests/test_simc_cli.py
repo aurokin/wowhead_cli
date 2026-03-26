@@ -2314,6 +2314,29 @@ def test_simc_compare_builds_rejects_buildless_wowhead_talent_calc_url() -> None
     assert "must include a build code" in payload["error"]["message"]
 
 
+def test_simc_compare_builds_reports_buildless_wowhead_other_as_structured_error(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "simc_cli.main._load_identified_build_spec_or_fail",
+        lambda *args, **kwargs: (_fake_build_spec(), _fake_identity()),
+    )
+    monkeypatch.setattr("simc_cli.main.decode_build", lambda paths, spec: _fake_resolution())
+
+    result = runner.invoke(
+        simc_app,
+        [
+            "compare-builds",
+            "--base",
+            "BASE",
+            "--other",
+            "https://www.wowhead.com/talent-calc/druid/balance",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["comparisons"][0]["input"] == "https://www.wowhead.com/talent-calc/druid/balance"
+    assert "must include a build code" in payload["comparisons"][0]["error"]
+
+
 # --- modify-build ---
 
 
@@ -2460,6 +2483,31 @@ def test_simc_modify_build_rejects_buildless_wowhead_talent_calc_url() -> None:
     assert "must include a build code" in payload["error"]["message"]
 
 
+def test_simc_modify_build_rejects_buildless_wowhead_swap_source(monkeypatch) -> None:
+    def fake_load_identified_build_spec(paths, **kwargs):  # noqa: ANN001
+        if kwargs["talents"] == "BASE":
+            return _fake_build_spec(), _fake_identity()
+        raise ValueError("Wowhead talent-calc URLs must include a build code.")
+
+    monkeypatch.setattr("simc_cli.main._load_identified_build_spec", fake_load_identified_build_spec)
+    monkeypatch.setattr("simc_cli.main.decode_build", lambda paths, spec: _fake_resolution())
+
+    result = runner.invoke(
+        simc_app,
+        [
+            "modify-build",
+            "--talents",
+            "BASE",
+            "--swap-class-tree-from",
+            "https://www.wowhead.com/talent-calc/druid/balance",
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert "must include a build code" in payload["error"]["message"]
+
+
 def test_simc_modify_build_encode_failure_reports_error(monkeypatch) -> None:
     monkeypatch.setattr(
         "simc_cli.main._load_identified_build_spec",
@@ -2480,7 +2528,7 @@ def test_simc_build_harness_compare_report_and_verify_clean(monkeypatch, tmp_pat
     harness_path = tmp_path / "demo_harness.simc"
 
     monkeypatch.setattr(
-        "simc_cli.main._load_identified_build_spec",
+        "simc_cli.main._load_identified_build_spec_or_fail",
         lambda *args, **kwargs: (
             type(
                 "BuildSpec",
@@ -2577,6 +2625,25 @@ def test_simc_build_harness_compare_report_and_verify_clean(monkeypatch, tmp_pat
     clean_payload = json.loads(clean_result.stdout)
     assert clean_payload["kind"] == "verify_clean"
     assert clean_payload["git"]["dirty"] is False
+
+
+def test_simc_build_harness_rejects_buildless_wowhead_talent_calc_url() -> None:
+    result = runner.invoke(
+        simc_app,
+        [
+            "build-harness",
+            "--actor-class",
+            "druid",
+            "--spec",
+            "balance",
+            "--talents",
+            "https://www.wowhead.com/talent-calc/druid/balance",
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert "must include a build code" in payload["error"]["message"]
 
 
 def test_simc_apl_lists_graph_talents_and_trace(monkeypatch, tmp_path: Path) -> None:
