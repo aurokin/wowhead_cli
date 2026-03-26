@@ -476,6 +476,9 @@ def _guide_builds_simc_payload(
         build_url = reference.get("url")
         if not isinstance(build_url, str) or not build_url.strip():
             continue
+        build_code = reference.get("build_code")
+        if not isinstance(build_code, str) or not build_code.strip():
+            continue
         sources = row.get("sources") if isinstance(row.get("sources"), list) else []
         transport_packet = build_reference_transport_packet_payload(
             ref=build_url,
@@ -667,7 +670,7 @@ def _guide_builds_simc_payload(
         "apl_path": apl_path,
         "summary": {
             "returned_build_count": len(build_rows),
-            "excluded_build_count": max(0, len(handoff_rows) - len(selected_rows)),
+            "excluded_build_count": max(0, len(handoff_rows) - len(selected_rows)) + max(0, len(selected_rows) - len(build_rows)),
             "identify_success_count": identify_success_count,
             "decode_success_count": decode_success_count,
             "describe_success_count": describe_success_count,
@@ -735,7 +738,7 @@ def _looks_like_warcraftlogs_report_reference(value: str) -> bool:
         return False
     if "warcraftlogs.com/reports/" in text:
         return True
-    return 8 <= len(text) <= 32 and text.isalnum() and any(ch.isalpha() for ch in text) and any(ch.isdigit() for ch in text)
+    return 8 <= len(text) <= 32 and text.isalnum() and any(ch.isalpha() for ch in text)
 
 
 def _looks_like_transport_packet_path_input(value: str) -> bool:
@@ -1171,6 +1174,14 @@ def _resolve_talent_transport(
             "provider": None,
             "packet_path": packet_path,
         }
+    elif source.strip().lower().endswith(".json") and _looks_like_transport_packet_path_input(source):
+        _fail_talent_route(
+            ctx,
+            code="invalid_transport_packet",
+            message=f"Talent transport packet file was not found: {source}",
+            source=source,
+            kind=kind,
+        )
     elif _looks_like_wowhead_talent_calc_reference(source):
         route, producer_result, packet = _wowhead_transport_packet(
             ctx,

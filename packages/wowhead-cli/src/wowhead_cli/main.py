@@ -2905,12 +2905,14 @@ def _normalize_tool_ref(ref: str, *, tool_slug: str, expansion: ExpansionProfile
         "warlock",
         "warrior",
     }
-    parsed = urlparse(raw)
+    lowered_raw = raw.lower()
+    url_candidate = f"https://{raw}" if lowered_raw.startswith(("wowhead.com/", "www.wowhead.com/")) else raw
+    parsed = urlparse(url_candidate)
     if parsed.scheme and parsed.netloc:
         hostname = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""
         if hostname != "wowhead.com" and not hostname.endswith(".wowhead.com"):
             raise ValueError(f"{tool_slug} URL must point to wowhead.com.")
-        return raw
+        return url_candidate
     normalized = raw.lstrip("/")
     if tool_slug == "talent-calc":
         raw_parts = normalized.split("/")

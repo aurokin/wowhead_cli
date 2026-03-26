@@ -869,6 +869,18 @@ def test_talent_calc_command_supports_expansion_prefixed_class_spec_ref(monkeypa
     assert payload["tool"]["build_code"] == "ABC123"
 
 
+def test_talent_calc_command_supports_scheme_less_wowhead_ref(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url == "https://wowhead.com/talent-calc/druid/balance/ABC123"
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc", "wowhead.com/talent-calc/druid/balance/ABC123"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool"]["state_url"] == "https://wowhead.com/talent-calc/druid/balance/ABC123"
+
+
 def test_talent_calc_command_rejects_empty_segment_ref() -> None:
     result = runner.invoke(app, ["talent-calc", "druid//balance/ABC123"])
     assert result.exit_code == 1
@@ -968,6 +980,22 @@ def test_talent_calc_packet_command_supports_expansion_prefixed_class_spec_ref(m
         == "https://www.wowhead.com/classic/talent-calc/druid/balance/ABC123"
     )
     assert payload["talent_transport_packet"]["scope"]["expansion"] == "classic"
+
+
+def test_talent_calc_packet_command_supports_scheme_less_wowhead_ref(monkeypatch) -> None:
+    def fake_page_html(self, page_url: str):  # noqa: ANN001
+        assert page_url == "https://wowhead.com/talent-calc/druid/balance/ABC123"
+        return SAMPLE_TALENT_CALC_HTML
+
+    monkeypatch.setattr("wowhead_cli.main.WowheadClient.page_html", fake_page_html)
+    result = runner.invoke(app, ["talent-calc-packet", "wowhead.com/talent-calc/druid/balance/ABC123"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool"]["state_url"] == "https://wowhead.com/talent-calc/druid/balance/ABC123"
+    assert (
+        payload["talent_transport_packet"]["transport_forms"]["wowhead_talent_calc_url"]
+        == "https://wowhead.com/talent-calc/druid/balance/ABC123"
+    )
 
 
 def test_talent_calc_packet_command_can_write_exact_transport_packet(monkeypatch, tmp_path: Path) -> None:

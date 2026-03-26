@@ -211,3 +211,56 @@ def test_validate_talent_tree_transport_supports_multiword_class_enums(monkeypat
     assert payload["validation"]["actor_class"] == "deathknight"
     assert payload["validation"]["spec"] == "blood"
     assert payload["transport_forms"]["simc_split_talents"]["spec_talents"] == "300001:1"
+
+
+def test_validate_talent_tree_transport_parses_single_line_generated_files(monkeypatch, tmp_path: Path) -> None:
+    generated = tmp_path / "engine" / "dbc" / "generated"
+    generated.mkdir(parents=True)
+    (generated / "sc_specialization_data.inc").write_text(
+        "enum specialization_e { SPEC_NONE = 0, DEATH_KNIGHT_BLOOD = 250, HUNTER_BEAST_MASTERY = 253, };"
+    )
+    (generated / "trait_data.inc").write_text(
+        'static constexpr std::array<trait_data_t, 2> __trait_data_data { {'
+        ' { 2, 6, 300001, 81001, 1, 0, 0, 0, 0, 0, 4, 2, 100, "Heartbreaker", { 250, 0, 0, 0 }, { 0, 0, 0, 0 }, 0, 2 },'
+        ' { 3, 6, 300002, 81002, 1, 0, 0, 0, 0, 0, 4, 2, 100, "Sanlayn", { 250, 0, 0, 0 }, { 0, 0, 0, 0 }, 24, 2 },'
+        ' } };'
+        'static constexpr std::array<std::tuple<unsigned, const char*, unsigned>, 1> __trait_sub_tree_data { {'
+        ' { 24, "Sanlayn", 6 },'
+        ' } };'
+    )
+
+    monkeypatch.setattr("simc_cli.talent_transport.encode_build", lambda repo, build_spec: "DK123")
+    monkeypatch.setattr(
+        "simc_cli.talent_transport.decode_build",
+        lambda repo, build_spec: BuildResolution(
+            actor_class="deathknight",
+            spec="blood",
+            enabled_talents={"heartbreaker", "sanlayn"},
+            talents_by_tree={
+                "class": [],
+                "spec": [_decoded_talent(tree="spec", entry=300001, rank=1, name="Heartbreaker")],
+                "hero": [_decoded_talent(tree="hero", entry=300002, rank=1, name="Sanlayn")],
+                "selection": [],
+            },
+            source_kind="wow_talent_export",
+            generated_profile_text=None,
+            source_notes=[],
+        ),
+    )
+
+    payload = validate_talent_tree_transport(
+        actor_class="Death Knight",
+        spec="Blood",
+        talent_tree_rows=[
+            {"entry": 300001, "node_id": 81001, "rank": 1},
+            {"entry": 300002, "node_id": 81002, "rank": 1},
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert payload["validation"]["status"] == "validated"
+    assert payload["validation"]["actor_class"] == "deathknight"
+    assert payload["validation"]["spec"] == "blood"
+    assert payload["validation"]["resolved_entries"][1]["hero_tree"] == "Sanlayn"
+    assert payload["transport_forms"]["simc_split_talents"]["spec_talents"] == "300001:1"
+    assert payload["transport_forms"]["simc_split_talents"]["hero_talents"] == "300002:1"

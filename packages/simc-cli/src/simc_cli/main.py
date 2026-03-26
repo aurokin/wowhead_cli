@@ -975,6 +975,16 @@ def validate_talent_transport_command(
     if not rows:
         _fail(ctx, "invalid_query", "No raw talent rows were available to validate.")
         return
+    if not resolved_actor_class or not resolved_spec:
+        _fail(
+            ctx,
+            "invalid_query",
+            (
+                "Validate-talent-transport requires class/spec identity. "
+                "Provide --actor-class and --spec, or use a build packet with packet identity."
+            ),
+        )
+        return
 
     result = validate_talent_tree_transport(
         actor_class=resolved_actor_class,
@@ -988,21 +998,25 @@ def validate_talent_transport_command(
     updated_packet: dict[str, Any] | None = None
     written_packet_path: str | None = None
     if packet is not None:
-        updated_packet = refresh_talent_transport_packet(
-            packet,
-            transport_forms=transport_forms,
-            validation=validation,
-            build_identity=build_identity_payload(
-                actor_class=resolved_actor_class,
-                spec=resolved_spec,
-                confidence="high" if resolved_actor_class and resolved_spec else "none",
-                source="simc_validate_talent_transport",
-                candidates=[(resolved_actor_class, resolved_spec)] if resolved_actor_class and resolved_spec else None,
-                source_notes=[
-                    "class/spec identity was refreshed from simc validate-talent-transport input"
-                ],
-            ),
-        )
+        try:
+            updated_packet = refresh_talent_transport_packet(
+                packet,
+                transport_forms=transport_forms,
+                validation=validation,
+                build_identity=build_identity_payload(
+                    actor_class=resolved_actor_class,
+                    spec=resolved_spec,
+                    confidence="high" if resolved_actor_class and resolved_spec else "none",
+                    source="simc_validate_talent_transport",
+                    candidates=[(resolved_actor_class, resolved_spec)] if resolved_actor_class and resolved_spec else None,
+                    source_notes=[
+                        "class/spec identity was refreshed from simc validate-talent-transport input"
+                    ],
+                ),
+            )
+        except ValueError as exc:
+            _fail(ctx, "invalid_build_packet", str(exc))
+            return
         transport_status = updated_packet["transport_status"] if isinstance(updated_packet.get("transport_status"), str) else transport_status
         written_packet_path = _write_packet_json_or_fail(ctx, out=out, packet=updated_packet)
     _emit(

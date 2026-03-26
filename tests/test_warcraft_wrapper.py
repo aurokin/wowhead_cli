@@ -1300,6 +1300,44 @@ def test_warcraft_guide_builds_simc_hides_deleted_temp_packet_paths(monkeypatch,
     assert simc_payloads["describe"]["payload"]["build_spec"]["source_notes"] == ["talent transport packet"]
 
 
+def test_warcraft_guide_builds_simc_skips_buildless_talent_calc_refs(monkeypatch, tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "method-guide"
+    payload = _comparison_payload(
+        provider="method",
+        slug="mistweaver-monk",
+        page_url="https://www.method.gg/guides/mistweaver-monk/talents",
+        page_title="Method Talents",
+        analysis_tags=["builds_talents", "talent_recommendations"],
+    )
+    payload["build_references"] = {
+        "count": 1,
+        "items": [
+            {
+                "kind": "build_reference",
+                "reference_type": "wowhead_talent_calc_url",
+                "url": "https://www.wowhead.com/talent-calc/monk/mistweaver",
+                "label": "Landing Page",
+                "build_code": None,
+                "source_urls": ["https://www.method.gg/guides/mistweaver-monk/talents"],
+            }
+        ],
+    }
+    write_article_bundle(payload, provider="method", export_dir=bundle_dir)
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        raise AssertionError(f"unexpected provider call: {provider} {args}")
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["guide-builds-simc", str(bundle_dir)])
+    assert result.exit_code == 0
+    handoff = json.loads(result.stdout)
+    assert handoff["build_reference_count"] == 1
+    assert handoff["summary"]["returned_build_count"] == 0
+    assert handoff["summary"]["excluded_build_count"] == 1
+    assert handoff["builds"] == []
+
+
 def test_warcraft_guide_compare_query_fails_when_too_few_guides_export(
     monkeypatch,
     tmp_path: Path,
@@ -2575,6 +2613,44 @@ def test_warcraft_talent_packet_routes_scheme_less_warcraftlogs_report_ref(monke
     ]
 
 
+def test_warcraft_talent_packet_routes_alpha_only_warcraftlogs_report_code(monkeypatch) -> None:
+    calls: list[tuple[str, list[str], str | None]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        calls.append((provider, args, expansion))
+        return {
+            "provider": "warcraftlogs",
+            "exit_code": 0,
+            "payload": {
+                "provider": "warcraftlogs",
+                "kind": "report_player_talents",
+                "talent_transport_packet": {
+                    "kind": "talent_transport_packet",
+                    "transport_status": "raw_only",
+                    "build_identity": {},
+                    "transport_forms": {},
+                    "raw_evidence": {"talent_tree_entries": [{"entry": 103324, "node_id": 82244, "rank": 1}]},
+                    "validation": {"status": "not_validated"},
+                    "scope": {"type": "report_fight_actor", "report_code": "abcdefgh", "fight_id": 1, "actor_id": 9},
+                },
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(
+        warcraft_app,
+        ["talent-packet", "abcdefgh", "--actor-id", "9", "--fight-id", "1", "--no-validate"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["route"]["provider"] == "warcraftlogs"
+    assert calls == [
+        ("warcraftlogs", ["report-player-talents", "abcdefgh", "--actor-id", "9", "--fight-id", "1"], None)
+    ]
+
+
 def test_warcraft_talent_packet_routes_warcraftlogs_and_upgrades(monkeypatch) -> None:
     calls: list[tuple[str, list[str]]] = []
 
@@ -2888,6 +2964,14 @@ def test_warcraft_talent_packet_rejects_missing_packet_path_like_input(tmp_path:
     payload = json.loads(result.stderr)
     assert payload["error"]["code"] == "invalid_transport_packet"
     assert payload["error"]["message"] == f"Talent transport packet file was not found: {packet_path}"
+
+
+def test_warcraft_talent_packet_rejects_missing_file_like_class_spec_json_path() -> None:
+    result = runner.invoke(warcraft_app, ["talent-packet", "druid/balance/missing-packet.json"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_transport_packet"
+    assert payload["error"]["message"] == "Talent transport packet file was not found: druid/balance/missing-packet.json"
 
 
 def test_warcraft_talent_packet_rejects_unscoped_relative_packet_like_input() -> None:

@@ -928,6 +928,60 @@ def test_simc_validate_talent_transport_rejects_boolean_packet_rows(tmp_path: Pa
     assert payload["error"]["message"] == "No raw talent rows were available to validate."
 
 
+def test_simc_validate_talent_transport_rejects_talent_rows_without_class_spec_identity() -> None:
+    result = runner.invoke(
+        simc_app,
+        ["validate-talent-transport", "--talent-row", "103324:82244:1"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_query"
+    assert "requires class/spec identity" in payload["error"]["message"]
+
+
+def test_simc_validate_talent_transport_normalizes_packet_refresh_failures(monkeypatch, tmp_path: Path) -> None:
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {},
+                "validation": {"status": "not_validated"},
+                "scope": {},
+                "raw_evidence": {
+                    "talent_tree_entries": [
+                        {"entry": 103324, "node_id": 82244, "rank": 1},
+                    ]
+                },
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        "simc_cli.main.validate_talent_tree_transport",
+        lambda **kwargs: {
+            "transport_forms": {"simc_split_talents": {"class_talents": "103324:1"}},
+            "validation": {"status": "validated", "actor_class": "druid", "spec": "balance"},
+        },
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.refresh_talent_transport_packet",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("bad refresh")),
+    )
+
+    result = runner.invoke(simc_app, ["validate-talent-transport", "--build-packet", str(packet_path)])
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["error"]["code"] == "invalid_build_packet"
+    assert payload["error"]["message"] == "bad refresh"
+
+
 def test_simc_validate_talent_transport_can_write_upgraded_packet(monkeypatch, tmp_path: Path) -> None:
     packet_path = tmp_path / "build-packet.json"
     out_path = tmp_path / "validated-packet.json"

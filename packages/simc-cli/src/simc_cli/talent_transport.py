@@ -34,10 +34,10 @@ TREE_NAME_BY_INDEX = {
 }
 
 SPECIALIZATION_LINE_RE = re.compile(
-    r"^\s*(?P<enum_name>[A-Z_]+)\s*=\s*(?P<spec_id>\d+),\s*$"
+    r"(?P<enum_name>[A-Z_]+)\s*=\s*(?P<spec_id>\d+)\s*,"
 )
 TRAIT_ROW_RE = re.compile(
-    r'^\s*\{\s*'
+    r'\{\s*'
     r'(?P<tree_index>\d+),\s*'
     r'(?P<class_id>\d+),\s*'
     r'(?P<entry_id>\d+),\s*'
@@ -51,9 +51,9 @@ TRAIT_ROW_RE = re.compile(
     r'\{\s*[^}]*\},\s*'
     r'(?P<hero_tree_id>\d+),\s*'
     r'(?P<node_type>\d+)\s*'
-    r'\},?\s*$'
+    r'\},?'
 )
-HERO_TREE_ROW_RE = re.compile(r'^\s*\{\s*(?P<hero_tree_id>\d+),\s*"(?P<name>[^"]+)",\s*\d+\s*\},?\s*$')
+HERO_TREE_ROW_RE = re.compile(r'\{\s*(?P<hero_tree_id>\d+),\s*"(?P<name>[^"]+)",\s*\d+\s*\},?')
 
 CLASS_ENUM_NAME_BY_ACTOR_CLASS = {
     actor_class: actor_class.replace("deathknight", "death_knight").replace("demonhunter", "demon_hunter").upper()
@@ -117,10 +117,7 @@ def _specialization_ids(repo_root_text: str) -> dict[tuple[str, str], int]:
     if not path.exists():
         return {}
     ids: dict[tuple[str, str], int] = {}
-    for line in path.read_text().splitlines():
-        match = SPECIALIZATION_LINE_RE.match(line)
-        if not match:
-            continue
+    for match in SPECIALIZATION_LINE_RE.finditer(path.read_text()):
         enum_name = match.group("enum_name").strip()
         identity = _specialization_identity(enum_name)
         if identity is None:
@@ -137,10 +134,7 @@ def _hero_tree_names(repo_root_text: str) -> dict[int, str]:
     if not path.exists():
         return {}
     names: dict[int, str] = {}
-    for line in path.read_text().splitlines():
-        match = HERO_TREE_ROW_RE.match(line)
-        if not match:
-            continue
+    for match in HERO_TREE_ROW_RE.finditer(path.read_text()):
         names[int(match.group("hero_tree_id"))] = match.group("name").strip()
     return names
 
@@ -153,10 +147,7 @@ def _trait_records(repo_root_text: str) -> dict[tuple[int, int, int], list[Trait
         return {}
     hero_tree_names = _hero_tree_names(repo_root_text)
     records: dict[tuple[int, int, int], list[TraitRecord]] = {}
-    for line in path.read_text().splitlines():
-        match = TRAIT_ROW_RE.match(line)
-        if not match:
-            continue
+    for match in TRAIT_ROW_RE.finditer(path.read_text()):
         tree_index = int(match.group("tree_index"))
         tree = TREE_NAME_BY_INDEX.get(tree_index)
         if tree is None:
