@@ -741,6 +741,18 @@ def _looks_like_warcraftlogs_report_reference(value: str) -> bool:
     return 8 <= len(text) <= 32 and text.isalnum() and any(ch.isalpha() for ch in text)
 
 
+def _normalize_warcraftlogs_report_reference(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return text
+    parsed = urlparse(text)
+    if parsed.scheme or parsed.netloc:
+        return text
+    if text.startswith(("warcraftlogs.com/", "www.warcraftlogs.com/")):
+        return f"https://{text}"
+    return text
+
+
 def _looks_like_transport_packet_path_input(value: str) -> bool:
     text = value.strip()
     if not text:
@@ -1067,6 +1079,7 @@ def _warcraftlogs_transport_packet(
     requested_expansion: str | None,
     kind: str,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    normalized_source = _normalize_warcraftlogs_report_reference(source)
     route = {
         "kind": "warcraftlogs_report_actor",
         "provider": "warcraftlogs",
@@ -1074,7 +1087,7 @@ def _warcraftlogs_transport_packet(
         "fight_id": fight_id,
         "allow_unlisted": allow_unlisted,
     }
-    args = ["report-player-talents", source, "--actor-id", str(actor_id)]
+    args = ["report-player-talents", normalized_source, "--actor-id", str(actor_id)]
     if fight_id is not None:
         args.extend(["--fight-id", str(fight_id)])
     if allow_unlisted:

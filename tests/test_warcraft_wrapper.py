@@ -2607,7 +2607,7 @@ def test_warcraft_talent_packet_routes_scheme_less_warcraftlogs_report_ref(monke
     assert calls == [
         (
             "warcraftlogs",
-            ["report-player-talents", "warcraftlogs.com/reports/abcd1234#fight=1", "--actor-id", "9"],
+            ["report-player-talents", "https://warcraftlogs.com/reports/abcd1234#fight=1", "--actor-id", "9"],
             None,
         )
     ]
@@ -4425,7 +4425,7 @@ def test_warcraft_talent_describe_routes_scheme_less_warcraftlogs_report_ref(mon
     }
     assert provider_calls[0] == (
         "warcraftlogs",
-        ["report-player-talents", "warcraftlogs.com/reports/abcd1234#fight=1", "--actor-id", "9"],
+        ["report-player-talents", "https://warcraftlogs.com/reports/abcd1234#fight=1", "--actor-id", "9"],
         None,
     )
     assert provider_calls[1][0] == "simc"
