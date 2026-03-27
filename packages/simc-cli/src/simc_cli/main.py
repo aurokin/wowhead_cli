@@ -60,7 +60,8 @@ from simc_cli.repo import (
 from simc_cli.run import binary_version, build_repo, repo_git_status, run_profile, sync_repo
 from simc_cli.search import find_action, spec_file_search
 from simc_cli.sim import first_action_hits, run_first_casts, summarize_first_casts
-from warcraft_core.identity import build_identity_payload
+from simc_cli.talent_transport import validate_talent_tree_transport
+from warcraft_core.identity import build_identity_payload, refresh_talent_transport_packet, validate_talent_transport_packet
 from warcraft_core.output import emit
 
 app = typer.Typer(add_completion=False, help="SimulationCraft local workflow CLI.")
@@ -70,6 +71,10 @@ app = typer.Typer(add_completion=False, help="SimulationCraft local workflow CLI
 class RuntimeConfig:
     pretty: bool = False
     repo_root: str | None = None
+
+
+def _is_transport_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _cfg(ctx: typer.Context) -> RuntimeConfig:
@@ -89,6 +94,19 @@ def _fail(ctx: typer.Context, code: str, message: str, *, status: int = 1, extra
         payload.update(extra)
     _emit(ctx, payload, err=True)
     raise typer.Exit(status)
+
+
+def _write_packet_json_or_fail(ctx: typer.Context, *, out: str | None, packet: dict[str, Any]) -> str | None:
+    if not out:
+        return None
+    try:
+        output_path = Path(out).expanduser().resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(packet, indent=2) + "\n")
+        return str(output_path)
+    except OSError as exc:
+        _fail(ctx, "transport_packet_write_failed", f"Failed to write talent transport packet: {exc}")
+        raise AssertionError("unreachable")
 
 
 def _repo_paths(ctx: typer.Context) -> RepoPaths:
@@ -146,7 +164,7 @@ def _coming_soon_payload(*, query: str, suggested_command: str) -> dict[str, Any
 
 
 def _serialize_build_spec(spec: Any) -> dict[str, Any]:
-    return {
+    payload = {
         "actor_class": spec.actor_class,
         "spec": spec.spec,
         "talents": spec.talents,
@@ -156,6 +174,16 @@ def _serialize_build_spec(spec: Any) -> dict[str, Any]:
         "source_kind": getattr(spec, "source_kind", None),
         "source_notes": spec.source_notes,
     }
+    transport_source = getattr(spec, "transport_source", None)
+    transport_form = getattr(spec, "transport_form", None)
+    transport_status = getattr(spec, "transport_status", None)
+    if transport_source or transport_form or transport_status:
+        payload["transport_packet"] = {
+            "path": transport_source,
+            "transport_form": transport_form,
+            "transport_status": transport_status,
+        }
+    return payload
 
 
 def _serialize_build_identity(identity: Any) -> dict[str, Any]:
@@ -187,6 +215,67 @@ def _resolve_path(paths: RepoPaths, value: str) -> Path:
 
 def _relative_to_repo(paths: RepoPaths, path: Path) -> str | None:
     return str(path.relative_to(paths.root)) if path.is_relative_to(paths.root) else None
+
+
+def _load_transport_packet(path: str) -> tuple[dict[str, Any], str]:
+    resolved = Path(path).expanduser().resolve()
+    raw = json.loads(resolved.read_text())
+    packet = validate_talent_transport_packet(raw)
+    return packet, str(resolved)
+
+
+def _packet_identity_value(packet: dict[str, Any], key: str) -> str | None:
+    build_identity = packet.get("build_identity")
+    if not isinstance(build_identity, dict):
+        return None
+    class_spec_identity = build_identity.get("class_spec_identity")
+    if not isinstance(class_spec_identity, dict):
+        return None
+    identity = class_spec_identity.get("identity")
+    if not isinstance(identity, dict):
+        return None
+    value = identity.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _packet_talent_tree_rows(packet: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_evidence = packet.get("raw_evidence")
+    if not isinstance(raw_evidence, dict):
+        return []
+    rows = raw_evidence.get("talent_tree_entries")
+    if not isinstance(rows, list) or not rows:
+        return []
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return []
+        entry = row.get("entry")
+        node_id = row.get("node_id")
+        rank = row.get("rank")
+        normalized_row = {
+            "entry": entry if _is_transport_int(entry) else None,
+            "node_id": node_id if _is_transport_int(node_id) else None,
+            "rank": rank if _is_transport_int(rank) else None,
+        }
+        if all(isinstance(normalized_row.get(key), int) for key in ("entry", "node_id", "rank")):
+            normalized.append(normalized_row)
+        else:
+            return []
+    return normalized
+
+
+def _parse_talent_row(value: str) -> dict[str, int]:
+    parts = [part.strip() for part in value.split(":", 2)]
+    if len(parts) != 3:
+        raise ValueError(f"Invalid talent row '{value}'. Expected entry_id:node_id:rank.")
+    entry_text, node_text, rank_text = parts
+    if not entry_text.isdigit() or not node_text.isdigit() or not rank_text.isdigit():
+        raise ValueError(f"Invalid talent row '{value}'. Expected entry_id:node_id:rank.")
+    return {
+        "entry": int(entry_text),
+        "node_id": int(node_text),
+        "rank": int(rank_text),
+    }
 
 
 def _infer_default_apl_path(paths: RepoPaths, *, actor_class: str | None, spec: str | None) -> Path | None:
@@ -229,10 +318,12 @@ def _build_option_values(
     spec_name: str | None,
     enable: list[str],
     disable: list[str],
+    build_packet: str | None = None,
 ) -> dict[str, Any]:
     return {
         "profile_path": profile_path,
         "build_file": build_file,
+        "build_packet": build_packet,
         "build_text": build_text,
         "talents": talents,
         "class_talents": class_talents,
@@ -250,6 +341,7 @@ def _resolve_prune_context(paths: RepoPaths, apl_path: Path, option_values: dict
         apl_path=apl_path,
         profile_path=option_values["profile_path"],
         build_file=option_values["build_file"],
+        build_packet=option_values["build_packet"],
         build_text=option_values["build_text"],
         talents=option_values["talents"],
         class_talents=option_values["class_talents"],
@@ -292,11 +384,13 @@ def _load_identified_build_spec(
     hero_talents: str | None,
     actor_class: str | None,
     spec_name: str | None,
+    build_packet: str | None = None,
 ) -> tuple[Any, Any]:
     unresolved_spec = load_build_spec(
         apl_path=apl_path,
         profile_path=profile_path,
         build_file=build_file,
+        build_packet=build_packet,
         build_text=build_text,
         talents=talents,
         class_talents=class_talents,
@@ -306,6 +400,45 @@ def _load_identified_build_spec(
         spec_name=spec_name,
     )
     return identify_build(paths, unresolved_spec)
+
+
+def _load_identified_build_spec_or_fail(
+    ctx: typer.Context,
+    paths: RepoPaths,
+    *,
+    apl_path: str | Path | None,
+    profile_path: str | None,
+    build_file: str | None,
+    build_text: str | None,
+    talents: str | None,
+    class_talents: str | None,
+    spec_talents: str | None,
+    hero_talents: str | None,
+    actor_class: str | None,
+    spec_name: str | None,
+    build_packet: str | None = None,
+) -> tuple[Any, Any]:
+    try:
+        return _load_identified_build_spec(
+            paths,
+            apl_path=apl_path,
+            profile_path=profile_path,
+            build_file=build_file,
+            build_packet=build_packet,
+            build_text=build_text,
+            talents=talents,
+            class_talents=class_talents,
+            spec_talents=spec_talents,
+            hero_talents=hero_talents,
+            actor_class=actor_class,
+            spec_name=spec_name,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        if build_packet:
+            _fail(ctx, "invalid_build_packet", str(exc))
+            raise AssertionError("unreachable") from exc
+        _fail(ctx, "invalid_query", str(exc))
+        raise AssertionError("unreachable") from exc
 
 
 def _prune_context_payload(resolution: Any, context: PruneContext) -> dict[str, Any]:
@@ -452,6 +585,7 @@ def doctor(ctx: typer.Context) -> None:
                 "spec_files": "ready",
                 "identify_build": "ready",
                 "decode_build": "ready",
+                "validate_talent_transport": "ready",
                 "apl_lists": "ready",
                 "apl_graph": "ready",
                 "apl_talents": "ready",
@@ -673,8 +807,9 @@ def decode_build_command(
     apl_path: str | None = typer.Option(None, "--apl-path", help="Optional APL path used to infer actor class and spec."),
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
-    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or Wowhead talent-calc URL with build code."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -682,11 +817,13 @@ def decode_build_command(
     spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
 ) -> None:
     paths = _repo_paths(ctx)
-    build_spec, identity = _load_identified_build_spec(
+    build_spec, identity = _load_identified_build_spec_or_fail(
+        ctx,
         paths,
         apl_path=apl_path,
         profile_path=profile_path,
         build_file=build_file,
+        build_packet=build_packet,
         build_text=build_text,
         talents=talents,
         class_talents=class_talents,
@@ -752,8 +889,9 @@ def identify_build_command(
     apl_path: str | None = typer.Option(None, "--apl-path", help="Optional APL path used to infer actor class and spec."),
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
-    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or Wowhead talent-calc URL."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or Wowhead talent-calc URL with build code."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -761,11 +899,13 @@ def identify_build_command(
     spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as mistweaver."),
 ) -> None:
     paths = _repo_paths(ctx)
-    build_spec, identity = _load_identified_build_spec(
+    build_spec, identity = _load_identified_build_spec_or_fail(
+        ctx,
         paths,
         apl_path=apl_path,
         profile_path=profile_path,
         build_file=build_file,
+        build_packet=build_packet,
         build_text=build_text,
         talents=talents,
         class_talents=class_talents,
@@ -785,6 +925,123 @@ def identify_build_command(
     )
 
 
+@app.command("validate-talent-transport")
+def validate_talent_transport_command(
+    ctx: typer.Context,
+    build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
+    talent_row: list[str] = typer.Option([], "--talent-row", help="Raw talent row as entry_id:node_id:rank. Repeat as needed."),
+    actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as druid or paladin."),
+    spec_name: str | None = typer.Option(None, "--spec", help="Spec name such as balance or retribution."),
+    out: str | None = typer.Option(None, "--out", help="Optional path to write the upgraded packet JSON when --build-packet is used."),
+) -> None:
+    if build_packet and talent_row:
+        _fail(ctx, "invalid_query", "Use either --build-packet or --talent-row, not both.")
+        return
+    if not build_packet and not talent_row:
+        _fail(ctx, "invalid_query", "Provide either --build-packet or at least one --talent-row.")
+        return
+    if out and not build_packet:
+        _fail(ctx, "invalid_query", "--out requires --build-packet.")
+        return
+
+    source = "talent_rows"
+    resolved_packet_path: str | None = None
+    packet_transport_status: str | None = None
+    packet: dict[str, Any] | None = None
+    rows: list[dict[str, Any]] = []
+    resolved_actor_class = actor_class
+    resolved_spec = spec_name
+
+    if build_packet:
+        try:
+            packet, resolved_packet_path = _load_transport_packet(build_packet)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            _fail(ctx, "invalid_build_packet", str(exc))
+            return
+        source = "build_packet"
+        packet_transport_status = packet.get("transport_status") if isinstance(packet.get("transport_status"), str) else None
+        rows = _packet_talent_tree_rows(packet)
+        if actor_class is None:
+            resolved_actor_class = _packet_identity_value(packet, "actor_class")
+        if spec_name is None:
+            resolved_spec = _packet_identity_value(packet, "spec")
+    else:
+        try:
+            rows = [_parse_talent_row(value) for value in talent_row]
+        except ValueError as exc:
+            _fail(ctx, "invalid_talent_row", str(exc))
+            return
+
+    if not rows:
+        _fail(ctx, "invalid_query", "No raw talent rows were available to validate.")
+        return
+    if not resolved_actor_class or not resolved_spec:
+        _fail(
+            ctx,
+            "invalid_query",
+            (
+                "Validate-talent-transport requires class/spec identity. "
+                "Provide --actor-class and --spec, or use a build packet with packet identity."
+            ),
+        )
+        return
+
+    result = validate_talent_tree_transport(
+        actor_class=resolved_actor_class,
+        spec=resolved_spec,
+        talent_tree_rows=rows,
+        repo_root=_cfg(ctx).repo_root,
+    )
+    transport_forms = result.get("transport_forms") if isinstance(result.get("transport_forms"), dict) else {}
+    validation = result.get("validation") if isinstance(result.get("validation"), dict) else {}
+    transport_status = "validated" if transport_forms.get("simc_split_talents") else "raw_only"
+    updated_packet: dict[str, Any] | None = None
+    written_packet_path: str | None = None
+    if packet is not None:
+        try:
+            updated_packet = refresh_talent_transport_packet(
+                packet,
+                transport_forms=transport_forms,
+                validation=validation,
+                build_identity=build_identity_payload(
+                    actor_class=resolved_actor_class,
+                    spec=resolved_spec,
+                    confidence="high" if resolved_actor_class and resolved_spec else "none",
+                    source="simc_validate_talent_transport",
+                    candidates=[(resolved_actor_class, resolved_spec)] if resolved_actor_class and resolved_spec else None,
+                    source_notes=[
+                        "class/spec identity was refreshed from simc validate-talent-transport input"
+                    ],
+                ),
+            )
+        except ValueError as exc:
+            _fail(ctx, "invalid_build_packet", str(exc))
+            return
+        transport_status = updated_packet["transport_status"] if isinstance(updated_packet.get("transport_status"), str) else transport_status
+        written_packet_path = _write_packet_json_or_fail(ctx, out=out, packet=updated_packet)
+    _emit(
+        ctx,
+        {
+            "provider": "simc",
+            "kind": "validate_talent_transport",
+            "input": {
+                "source": source,
+                "build_packet": resolved_packet_path,
+                "packet_transport_status": packet_transport_status,
+                "actor_class": resolved_actor_class,
+                "spec": resolved_spec,
+                "talent_row_count": len(rows),
+            },
+            "raw_talent_tree_entries": rows,
+            "transport_status": transport_status,
+            "transport_forms": transport_forms,
+            "validation": validation,
+            "updated_packet": updated_packet,
+            "written_packet_path": written_packet_path,
+        },
+    )
+
+
 @app.command("build-harness")
 def build_harness_command(
     ctx: typer.Context,
@@ -793,7 +1050,7 @@ def build_harness_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -802,7 +1059,8 @@ def build_harness_command(
     line: list[str] = typer.Option([], "--line", help="Extra profile line. Repeat as needed."),
 ) -> None:
     paths = _repo_paths(ctx)
-    build_spec, identity = _load_identified_build_spec(
+    build_spec, identity = _load_identified_build_spec_or_fail(
+        ctx,
         paths,
         apl_path=apl_path,
         profile_path=profile_path,
@@ -1153,7 +1411,7 @@ def apl_prune_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -1242,7 +1500,7 @@ def apl_branch_trace_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -1315,7 +1573,7 @@ def apl_intent_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -1389,7 +1647,7 @@ def apl_intent_explain_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -1469,7 +1727,7 @@ def priority_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -1542,8 +1800,9 @@ def describe_build_command(
     inactive_limit: int = typer.Option(8, "--inactive-limit", min=1, max=50, help="Maximum inactive talent-gated actions to summarize per target view."),
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
-    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or talent-calc URL."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    build_packet: str | None = typer.Option(None, "--build-packet", help="Path to a talent transport packet JSON file."),
+    build_text: str | None = typer.Option(None, "--build-text", help="Inline build text, talent hash, or Wowhead talent-calc URL with build code."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -1553,11 +1812,13 @@ def describe_build_command(
     disable: list[str] = typer.Option([], "--disable", help="Disabled talent names. Repeat or pass comma-separated values."),
 ) -> None:
     paths = _repo_paths(ctx)
-    build_spec, identity = _load_identified_build_spec(
+    build_spec, identity = _load_identified_build_spec_or_fail(
+        ctx,
         paths,
         apl_path=apl_path,
         profile_path=profile_path,
         build_file=build_file,
+        build_packet=build_packet,
         build_text=build_text,
         talents=talents,
         class_talents=class_talents,
@@ -1586,6 +1847,7 @@ def describe_build_command(
     option_values = _build_option_values(
         profile_path=profile_path,
         build_file=build_file,
+        build_packet=build_packet,
         build_text=build_text,
         talents=talents,
         class_talents=class_talents,
@@ -1648,7 +1910,7 @@ def inactive_actions_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -1715,7 +1977,7 @@ def opener_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -1789,7 +2051,7 @@ def apl_branch_compare_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional left profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional left build file."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline left build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="Left WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    talents: str | None = typer.Option(None, "--talents", help="Left WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Left split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Left split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Left split hero talents string."),
@@ -1913,7 +2175,7 @@ def analysis_packet_command(
     profile_path: str | None = typer.Option(None, "--profile-path", help="Optional profile path containing build lines."),
     build_file: str | None = typer.Option(None, "--build-file", help="Optional plain text file with talents/spec lines."),
     build_text: str | None = typer.Option(None, "--build-text", help="Inline build text or talent hash."),
-    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL, SimC talents string, or talents=... line."),
+    talents: str | None = typer.Option(None, "--talents", help="WoW export, Wowhead talent-calc URL with build code, SimC talents string, or talents=... line."),
     class_talents: str | None = typer.Option(None, "--class-talents", help="Split class talents string."),
     spec_talents: str | None = typer.Option(None, "--spec-talents", help="Split spec talents string."),
     hero_talents: str | None = typer.Option(None, "--hero-talents", help="Split hero talents string."),
@@ -2338,7 +2600,7 @@ def _tree_diff_payload(diff: TreeDiff) -> dict[str, Any]:
 @app.command("compare-builds")
 def compare_builds_command(
     ctx: typer.Context,
-    base: str = typer.Option(..., "--base", help="Base build: WoW export, Wowhead talent-calc URL, or talents=... line."),
+    base: str = typer.Option(..., "--base", help="Base build: WoW export, Wowhead talent-calc URL with build code, or talents=... line."),
     other: list[str] = typer.Option(..., "--other", help="Build to compare against base. Repeat for multiple builds."),
     tree: list[str] = typer.Option([], "--tree", help="Limit diff to specific trees (class, spec, hero). Omit for all."),
     actor_class: str | None = typer.Option(None, "--actor-class", help="Actor class such as druid."),
@@ -2347,10 +2609,19 @@ def compare_builds_command(
     paths = _repo_paths(ctx)
     trees = [t for t in tree] or ["class", "spec", "hero"]
 
-    base_spec, base_identity = _load_identified_build_spec(
-        paths, apl_path=None, profile_path=None, build_file=None, build_text=None,
-        talents=base, class_talents=None, spec_talents=None, hero_talents=None,
-        actor_class=actor_class, spec_name=spec_name,
+    base_spec, base_identity = _load_identified_build_spec_or_fail(
+        ctx,
+        paths,
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=base,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=actor_class,
+        spec_name=spec_name,
     )
     if not base_spec.actor_class or not base_spec.spec:
         _fail(ctx, "invalid_query", "Could not identify actor class and spec for base build.",
@@ -2364,11 +2635,15 @@ def compare_builds_command(
 
     comparisons: list[dict[str, Any]] = []
     for other_talents in other:
-        other_spec = load_build_spec(
-            apl_path=None, profile_path=None, build_file=None, build_text=None,
-            talents=other_talents, class_talents=None, spec_talents=None, hero_talents=None,
-            actor_class=base_spec.actor_class, spec_name=base_spec.spec,
-        )
+        try:
+            other_spec = load_build_spec(
+                apl_path=None, profile_path=None, build_file=None, build_text=None,
+                talents=other_talents, class_talents=None, spec_talents=None, hero_talents=None,
+                actor_class=base_spec.actor_class, spec_name=base_spec.spec,
+            )
+        except ValueError as exc:
+            comparisons.append({"input": other_talents, "error": str(exc)})
+            continue
         try:
             other_resolution = decode_build(paths, other_spec)
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
@@ -2405,7 +2680,7 @@ def compare_builds_command(
 @app.command("modify-build")
 def modify_build_command(
     ctx: typer.Context,
-    talents: str = typer.Option(..., "--talents", help="Base build: WoW export, Wowhead talent-calc URL, or talents=... line."),
+    talents: str = typer.Option(..., "--talents", help="Base build: WoW export, Wowhead talent-calc URL with build code, or talents=... line."),
     swap_class_tree_from: str | None = typer.Option(
         None, "--swap-class-tree-from", help="Replace class tree from this build.",
     ),
@@ -2422,10 +2697,19 @@ def modify_build_command(
 ) -> None:
     paths = _repo_paths(ctx)
 
-    base_spec, base_identity = _load_identified_build_spec(
-        paths, apl_path=None, profile_path=None, build_file=None, build_text=None,
-        talents=talents, class_talents=None, spec_talents=None, hero_talents=None,
-        actor_class=actor_class, spec_name=spec_name,
+    base_spec, base_identity = _load_identified_build_spec_or_fail(
+        ctx,
+        paths,
+        apl_path=None,
+        profile_path=None,
+        build_file=None,
+        build_text=None,
+        talents=talents,
+        class_talents=None,
+        spec_talents=None,
+        hero_talents=None,
+        actor_class=actor_class,
+        spec_name=spec_name,
     )
     if not base_spec.actor_class or not base_spec.spec:
         _fail(ctx, "invalid_query", "Could not identify actor class and spec for base build.",
@@ -2453,10 +2737,19 @@ def modify_build_command(
     for tree_name, swap_source in swap_sources:
         if not swap_source:
             continue
-        swap_spec = load_build_spec(
-            apl_path=None, profile_path=None, build_file=None, build_text=None,
-            talents=swap_source, class_talents=None, spec_talents=None, hero_talents=None,
-            actor_class=base_spec.actor_class, spec_name=base_spec.spec,
+        swap_spec, _ = _load_identified_build_spec_or_fail(
+            ctx,
+            paths,
+            apl_path=None,
+            profile_path=None,
+            build_file=None,
+            build_text=None,
+            talents=swap_source,
+            class_talents=None,
+            spec_talents=None,
+            hero_talents=None,
+            actor_class=base_spec.actor_class,
+            spec_name=base_spec.spec,
         )
         try:
             swap_resolution = decode_build(paths, swap_spec)

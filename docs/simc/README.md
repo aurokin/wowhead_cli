@@ -17,6 +17,7 @@ Current commands:
 - `simc inspect`
 - `simc spec-files`
 - `simc identify-build`
+- `simc validate-talent-transport`
 - `simc describe-build`
 - `simc decode-build`
 - `simc build-harness`
@@ -131,9 +132,21 @@ Recent usability improvement:
   - `high-accuracy` -> `5000` iterations
 - `identify-build` and `decode-build` now distinguish between:
   - bare WoW talent export strings
-  - Wowhead talent-calc URLs
+  - Wowhead talent-calc URLs with build codes
   - SimC-native build/profile text
+  - talent transport packet JSON files that carry an exact or validated build transport form
   and report both `source_kind` and the normalized generated SimC profile used for decode/debug flows
+- raw-only packets are still valid evidence, but they are not accepted as direct build-analysis input; upgrade them through `validate-talent-transport` first
+- `validate-talent-transport` is the reusable cross-integration handoff primitive:
+  - it accepts a raw `talent_transport_packet` via `--build-packet`
+  - or repeated `--talent-row entry_id:node_id:rank` values with explicit class/spec
+  - it resolves rows through local SimC generated trait data
+  - it only emits validated `simc_split_talents` when the reconstructed build round-trips
+- malformed packet files now fail consistently with `invalid_build_packet` across:
+  - `identify-build --build-packet`
+  - `decode-build --build-packet`
+  - `describe-build --build-packet`
+  - `validate-talent-transport --build-packet`
 - `describe-build` now sits above that exact-build layer as the default “what is this build doing?” command
 - it keeps the summary evidence-backed by combining:
   - resolved build identity
@@ -143,7 +156,10 @@ Recent usability improvement:
   - ST vs AoE action deltas
 - exact-build workflows now auto-resolve class/spec when possible:
   - actor/spec lines and APL paths resolve directly
-  - Wowhead talent-calc URLs provide class/spec directly from the URL path
+  - Wowhead talent-calc URLs with build codes provide class/spec directly from the URL path
+  - standalone exact `wow_talent_export` packets preserve the export string, but packet-supplied class/spec still need corroboration from safer inference or a bounded SimC probe
+  - validated `simc_split_talents` packets stay bound to the class/spec identity they were validated under
+  - talent transport packets preserve provider provenance while still handing the best available exact or validated form into `simc`
   - bare WoW talent exports are identified by bounded local SimC probes against the installed spec set
 - this removes the old agent failure mode where a valid user talent export was rejected just because the consumer did not already know the engine-facing class/spec labels
 

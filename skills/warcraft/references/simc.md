@@ -26,13 +26,13 @@
 ## Effective Use
 
 - prefer readonly APL inspection before jumping to a real sim run
-- if the user provides a talent string, import string, or talent-calc URL, assume they want the exact build only; use `describe-build` first for “what is this build doing?” requests, then use `priority` or `inactive-actions` when you need finer evidence
+- if the user provides a talent string, import string, or Wowhead talent-calc URL with build code, assume they want the exact build only; use `describe-build` first for “what is this build doing?” requests, then use `priority` or `inactive-actions` when you need finer evidence
 - users may paste:
   - a bare WoW talent export string
-  - a Wowhead talent-calc URL
+  - a Wowhead talent-calc URL with build code
   - SimC-native build/profile text
   `identify-build`, `describe-build`, and `decode-build` report `source_kind`, resolved class/spec, and the normalized generated profile so you can verify the handoff before reasoning from it
-- for exact-build commands, `--talents` is now safe for the same common consumer inputs as `--build-text`, including bare WoW exports and Wowhead talent-calc URLs
+- for exact-build commands, `--talents` is now safe for the same common consumer inputs as `--build-text`, including bare WoW exports and Wowhead talent-calc URLs with build codes
 - do not tell the user they must provide class/spec unless `identify-build` failed first; the CLI now probes the local SimC spec set for bare WoW exports when direct metadata is missing
 - prefer `describe-build` over ad hoc prose synthesis when you need to talk about:
   - active hero/spec package
