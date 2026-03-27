@@ -5034,7 +5034,7 @@ def test_warcraft_talent_describe_hides_stale_packet_path_after_in_memory_upgrad
     assert "path" not in transport_packet
 
 
-def test_warcraft_talent_describe_hides_stale_packet_path_after_raw_only_refresh(
+def test_warcraft_talent_describe_preserves_packet_path_after_raw_only_refresh(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -5081,7 +5081,7 @@ def test_warcraft_talent_describe_hides_stale_packet_path_after_raw_only_refresh
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["source_packet_status"] == "raw_only"
-    assert payload["upgraded"] is True
+    assert payload["upgraded"] is False
     assert payload["talent_transport_packet"]["transport_status"] == "raw_only"
     assert payload["talent_transport_packet"]["validation"] == {
         "status": "raw_only",
@@ -5091,7 +5091,7 @@ def test_warcraft_talent_describe_hides_stale_packet_path_after_raw_only_refresh
     transport_packet = payload["describe_result"]["payload"]["build_spec"]["transport_packet"]
     assert transport_packet["transport_form"] == "talent_transport_packet"
     assert transport_packet["transport_status"] == "raw_only"
-    assert "path" not in transport_packet
+    assert transport_packet["path"] == str(packet_path.resolve())
 
 
 def test_warcraft_talent_packet_rejects_home_relative_missing_packet_path(

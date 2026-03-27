@@ -30,6 +30,13 @@ WOW_CLASS_SLUGS = frozenset(
 )
 
 
+def _is_wowhead_hostname(hostname: str | None) -> bool:
+    if not isinstance(hostname, str):
+        return False
+    normalized = hostname.lower()
+    return normalized == "wowhead.com" or normalized.endswith(".wowhead.com")
+
+
 def _clean_text(value: str | None) -> str | None:
     if value is None:
         return None
@@ -104,13 +111,14 @@ def parse_wowhead_talent_calc_ref(ref: str) -> dict[str, str | None] | None:
         candidate = f"https://{candidate}"
     parsed = urlparse(candidate)
     if parsed.scheme and parsed.netloc:
-        hostname = parsed.hostname.lower() if isinstance(parsed.hostname, str) else ""
-        if hostname != "wowhead.com" and not hostname.endswith(".wowhead.com"):
+        if not _is_wowhead_hostname(parsed.hostname):
             return None
         reference_url = urlunparse(parsed._replace(query="", fragment=""))
     else:
         reference_url = urljoin("https://www.wowhead.com", candidate if candidate.startswith("/") else f"/{candidate}")
         parsed = urlparse(reference_url)
+        if not _is_wowhead_hostname(parsed.hostname):
+            return None
     path_parts = _split_reference_path_parts(parsed.path)
     if path_parts is None:
         return None

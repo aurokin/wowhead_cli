@@ -932,8 +932,40 @@ def _upgrade_transport_packet_with_simc(
     return result, validate_talent_transport_packet(updated_packet)
 
 
-def _transport_packet_changed(previous_packet: dict[str, Any], updated_packet: dict[str, Any]) -> bool:
-    return previous_packet != updated_packet
+def _transport_status_rank(status: str | None) -> int:
+    return {
+        "unknown": 0,
+        "raw_only": 1,
+        "validated": 2,
+        "exact": 3,
+    }.get(status, -1)
+
+
+def _non_empty_transport_form_names(packet: dict[str, Any]) -> set[str]:
+    transport_forms = packet.get("transport_forms")
+    if not isinstance(transport_forms, dict):
+        return set()
+    form_names: set[str] = set()
+    for name, value in transport_forms.items():
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if isinstance(value, str):
+            if value.strip():
+                form_names.add(name)
+            continue
+        if value:
+            form_names.add(name)
+    return form_names
+
+
+def _transport_packet_upgraded(previous_packet: dict[str, Any], updated_packet: dict[str, Any]) -> bool:
+    previous_status = previous_packet.get("transport_status") if isinstance(previous_packet.get("transport_status"), str) else None
+    updated_status = updated_packet.get("transport_status") if isinstance(updated_packet.get("transport_status"), str) else None
+    if _transport_status_rank(updated_status) > _transport_status_rank(previous_status):
+        return True
+    previous_forms = _non_empty_transport_form_names(previous_packet)
+    updated_forms = _non_empty_transport_form_names(updated_packet)
+    return updated_forms > previous_forms
 
 
 def _describe_transport_packet_with_simc(
@@ -1152,7 +1184,7 @@ def _maybe_upgrade_transport_packet(
                 route=route,
                 provider_result=upgrade_result,
             )
-        packet_changed = _transport_packet_changed(original_packet, packet)
+        packet_changed = _transport_packet_upgraded(original_packet, packet)
     return source_status, upgrade_attempted, packet_changed, upgrade_result, packet
 
 

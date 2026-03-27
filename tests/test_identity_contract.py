@@ -138,6 +138,7 @@ def test_parse_wowhead_talent_calc_ref_supports_scheme_less_wowhead_urls() -> No
 
 def test_parse_wowhead_talent_calc_ref_rejects_non_wowhead_domains() -> None:
     assert parse_wowhead_talent_calc_ref("https://notwowhead.com/talent-calc/druid/balance/ABC123") is None
+    assert parse_wowhead_talent_calc_ref("//evil.com/talent-calc/druid/balance/ABC123") is None
 
 
 def test_parse_wowhead_talent_calc_ref_rejects_buried_talent_calc_segments() -> None:
