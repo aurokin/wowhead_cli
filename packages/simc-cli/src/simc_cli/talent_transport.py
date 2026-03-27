@@ -191,6 +191,8 @@ def _split_transport_forms(resolved_rows: list[dict[str, Any]]) -> dict[str, Any
         rank = row.get("rank")
         if tree in grouped and isinstance(entry, int) and isinstance(rank, int) and rank > 0:
             grouped[tree].append(f"{entry}:{rank}")
+    if not any(grouped.values()):
+        return {}
     return {
         "simc_split_talents": {
             "class_talents": "/".join(grouped["class"]) or None,
@@ -326,6 +328,15 @@ def validate_talent_tree_transport(
         }
 
     transport_forms = _split_transport_forms(resolved_rows)
+    if not transport_forms:
+        return {
+            "transport_forms": {},
+            "validation": {
+                "status": "not_validated",
+                "reason": "no_ranked_talent_entries",
+                "resolved_entries": resolved_rows,
+            },
+        }
     build_spec = _build_spec_from_transport(
         actor_class=normalized_actor_class,
         spec=normalized_spec,

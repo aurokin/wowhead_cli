@@ -1134,6 +1134,60 @@ def test_simc_validate_talent_transport_accepts_inline_rows(monkeypatch) -> None
     assert payload["validation"]["reason"] == "simc_trait_resolution_incomplete"
 
 
+def test_simc_validate_talent_transport_keeps_zero_rank_packets_raw_only(tmp_path: Path) -> None:
+    generated = tmp_path / "engine" / "dbc" / "generated"
+    generated.mkdir(parents=True)
+    (generated / "sc_specialization_data.inc").write_text(
+        """enum specialization_e {
+  SPEC_NONE              = 0,
+  DRUID_BALANCE          = 102,
+};
+"""
+    )
+    (generated / "trait_data.inc").write_text(
+        "static constexpr std::array<trait_data_t, 1> __trait_data_data { {\n"
+        '  { 1, 11, 103324, 82244, 1, 23, 108329, 29166, 0, 0, 10, 8, 100, "Innervate", '
+        "{ 0, 0, 0, 0 }, { 0, 0, 0, 0 }, 0, 0 },\n"
+        "} };\n"
+    )
+    packet_path = tmp_path / "build-packet.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "kind": "talent_transport_packet",
+                "transport_status": "raw_only",
+                "build_identity": {
+                    "class_spec_identity": {
+                        "identity": {"actor_class": "druid", "spec": "balance"},
+                    }
+                },
+                "transport_forms": {},
+                "raw_evidence": {
+                    "talent_tree_entries": [
+                        {"entry": 103324, "node_id": 82244, "rank": 0},
+                    ]
+                },
+                "validation": {"status": "not_validated"},
+                "scope": {},
+            }
+        )
+    )
+
+    result = runner.invoke(
+        simc_app,
+        ["--repo-root", str(tmp_path), "validate-talent-transport", "--build-packet", str(packet_path)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["transport_status"] == "raw_only"
+    assert payload["transport_forms"] == {}
+    assert payload["validation"]["status"] == "not_validated"
+    assert payload["validation"]["reason"] == "no_ranked_talent_entries"
+    assert payload["updated_packet"]["transport_status"] == "raw_only"
+    assert payload["updated_packet"]["transport_forms"] == {}
+    assert payload["updated_packet"]["validation"]["reason"] == "no_ranked_talent_entries"
+
+
 def test_simc_validate_talent_transport_requires_one_input_mode() -> None:
     result = runner.invoke(simc_app, ["validate-talent-transport"])
     assert result.exit_code == 1

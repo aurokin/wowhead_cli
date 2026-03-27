@@ -97,6 +97,38 @@ def test_validate_talent_tree_transport_stays_unvalidated_when_rows_do_not_resol
     assert payload["validation"]["unresolved_entries"][0]["reason"] == "trait_not_found"
 
 
+def test_validate_talent_tree_transport_rejects_zero_rank_only_rows(tmp_path: Path) -> None:
+    _write_fake_generated_repo(tmp_path)
+
+    payload = validate_talent_tree_transport(
+        actor_class="Druid",
+        spec="Balance",
+        talent_tree_rows=[
+            {"entry": 103324, "node_id": 82244, "rank": 0},
+        ],
+        repo_root=tmp_path,
+    )
+
+    assert payload["transport_forms"] == {}
+    assert payload["validation"]["status"] == "not_validated"
+    assert payload["validation"]["reason"] == "no_ranked_talent_entries"
+    assert payload["validation"]["resolved_entries"] == [
+        {
+            "entry": 103324,
+            "node_id": 82244,
+            "rank": 0,
+            "tree": "class",
+            "name": "Innervate",
+            "token": "innervate",
+            "max_rank": 1,
+            "hero_tree_id": None,
+            "hero_tree": None,
+            "node_type": 0,
+            "selection_index": 100,
+        }
+    ]
+
+
 def test_validate_talent_tree_transport_rejects_rows_for_other_specs(tmp_path: Path) -> None:
     _write_fake_generated_repo(tmp_path)
 
