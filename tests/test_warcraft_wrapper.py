@@ -1338,6 +1338,51 @@ def test_warcraft_guide_builds_simc_skips_buildless_talent_calc_refs(monkeypatch
     assert handoff["builds"] == []
 
 
+def test_warcraft_guide_builds_simc_backfills_build_code_from_explicit_url(monkeypatch, tmp_path: Path) -> None:
+    bundle_dir = tmp_path / "method-guide"
+    payload = _comparison_payload(
+        provider="method",
+        slug="mistweaver-monk",
+        page_url="https://www.method.gg/guides/mistweaver-monk/talents",
+        page_title="Method Talents",
+        analysis_tags=["builds_talents", "talent_recommendations"],
+        build_code="ABC123",
+    )
+    payload["build_references"]["items"][0]["build_code"] = None
+    write_article_bundle(payload, provider="method", export_dir=bundle_dir)
+
+    invoke_calls: list[dict[str, object]] = []
+
+    def fake_provider_invoke(provider: str, args: list[str], *, expansion: str | None = None) -> dict[str, object]:
+        assert provider == "simc"
+        assert args[0] in {"identify-build", "decode-build"}
+        invoke_calls.append(_simc_build_input_summary(args))
+        return {
+            "provider": provider,
+            "exit_code": 0,
+            "payload": {
+                "provider": "simc",
+                "kind": "identify_build" if args[0] == "identify-build" else "decode_build",
+                "build_spec": {"talents": "ABC123", "actor_class": "monk", "spec": "mistweaver"},
+            },
+            "stdout": "",
+        }
+
+    monkeypatch.setattr("warcraft_cli.main.provider_invoke", fake_provider_invoke)
+
+    result = runner.invoke(warcraft_app, ["guide-builds-simc", str(bundle_dir)])
+    assert result.exit_code == 0
+
+    handoff = json.loads(result.stdout)
+    assert handoff["build_reference_count"] == 1
+    assert handoff["summary"]["returned_build_count"] == 1
+    assert handoff["summary"]["excluded_build_count"] == 0
+    assert handoff["builds"][0]["reference"]["build_code"] == "ABC123"
+    assert handoff["builds"][0]["talent_transport_packet"]["transport_status"] == "exact"
+    assert invoke_calls[0]["build_input"] == "packet"
+    assert invoke_calls[0]["packet_transport_url"] == "https://www.wowhead.com/talent-calc/monk/mistweaver/ABC123"
+
+
 def test_warcraft_guide_compare_query_fails_when_too_few_guides_export(
     monkeypatch,
     tmp_path: Path,

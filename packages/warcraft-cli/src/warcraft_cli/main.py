@@ -16,6 +16,7 @@ from typer.main import get_command
 from warcraft_content.article_bundle import compare_article_bundles, load_article_bundle
 from warcraft_core.identity import (
     build_reference_transport_packet_payload,
+    parse_wowhead_talent_calc_ref,
     validate_talent_transport_packet,
 )
 from warcraft_core.output import emit
@@ -477,14 +478,19 @@ def _guide_builds_simc_payload(
         if not isinstance(build_url, str) or not build_url.strip():
             continue
         build_code = reference.get("build_code")
+        parsed_ref = parse_wowhead_talent_calc_ref(build_url)
+        if not isinstance(build_code, str) or not build_code.strip():
+            build_code = parsed_ref.get("build_code") if isinstance(parsed_ref, dict) else None
         if not isinstance(build_code, str) or not build_code.strip():
             continue
+        normalized_reference = dict(reference)
+        normalized_reference["build_code"] = build_code
         sources = row.get("sources") if isinstance(row.get("sources"), list) else []
         transport_packet = build_reference_transport_packet_payload(
             ref=build_url,
             provider="warcraft",
             source="guide_build_reference_handoff",
-            label=reference.get("label") if isinstance(reference.get("label"), str) else None,
+            label=normalized_reference.get("label") if isinstance(normalized_reference.get("label"), str) else None,
             source_urls=_unique_non_empty_strings(
                 [
                     url
@@ -544,7 +550,7 @@ def _guide_builds_simc_payload(
             packet_path.unlink(missing_ok=True) if packet_path is not None else None
         build_rows.append(
             {
-                "reference": reference,
+                "reference": normalized_reference,
                 "talent_transport_packet": transport_packet,
                 "sources": sources,
                 "evidence": {
