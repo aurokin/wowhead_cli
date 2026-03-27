@@ -95,8 +95,8 @@ def _identity_value(packet: dict[str, Any], key: str) -> str | None:
 
 
 def _validated_packet_identity(packet: dict[str, Any]) -> tuple[str | None, str | None]:
-    actor_class = _identity_value(packet, "actor_class")
-    spec = _identity_value(packet, "spec")
+    actor_class = _normalize_actor_class(_identity_value(packet, "actor_class"))
+    spec = _normalize_spec_name(_identity_value(packet, "spec"))
     validation = packet.get("validation")
     if not isinstance(validation, dict) or validation.get("status") != "validated":
         return None, None
