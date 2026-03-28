@@ -16,6 +16,20 @@ Use alongside:
 - [Package Layout](PACKAGE_LAYOUT.md)
 - [Documentation Map](../README.md)
 
+## Current Status
+
+Status:
+- completed for the initial host cutover
+
+Completed outcomes:
+- the machine-wide CLI wrappers point at the stable runtime under `~/.local/share/warcraft/`
+- stable skills export to `~/.local/share/warcraft/skills/`
+- the old repo-local editable deployment has a documented retirement path
+- the repo now lives under `~/code/warcraft_cli/master/`
+- sibling worktrees are the expected branch workflow under `~/code/warcraft_cli/`
+
+This document remains the source of truth for the operating model even though the initial migration work is complete.
+
 ## Current State
 
 Today the machine-wide local deploy is coupled to the current checkout path in three ways:

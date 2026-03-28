@@ -34,36 +34,37 @@ Validated shared systems:
 - wrapper expansion filtering and provider metadata
 - ranking policy for wrapper discovery
 - sample-backed analytics direction for profile and leaderboard providers
+- stable host deploy and sibling worktree workflow
 
 ## Now
 
 Highest-value work:
-1. Stabilize the local install and worktree workflow before parallel branch work begins.
-   - move from one checkout at `~/code/warcraft_cli` to a parent workspace with reserved `master/` plus sibling branch worktrees
-   - split machine-wide deploys from branch-local editable installs
-   - cut the host off from the current repo-local editable deployment before moving the repo
-   - keep skill resolution tied to a stable source instead of whichever worktree happens to be active
-   - keep `master/` as the only checkout allowed to drive machine-wide deploys
-   - see [architecture/WORKTREE_INSTALLATION_PLAN.md](architecture/WORKTREE_INSTALLATION_PLAN.md)
-2. Continue tightening the root wrapper.
+1. Continue tightening the root wrapper.
    - improve `warcraftlogs` routing beyond explicit report references
    - keep wrapper `doctor`, search, resolve, passthrough, and ranking policy aligned with actual provider capability
    - preserve provider registration status instead of overstating readiness
-3. Continue shared identity and cross-provider handoff work.
+2. Continue shared identity and cross-provider handoff work.
    - class/spec/build identity
    - encounter identity
    - ability identity
    - report-actor identity
    - guide/build/log crosswalks only where the source contract allows them
-4. Continue comparison and evidence surfaces.
+3. Continue comparison and evidence surfaces.
    - additive guide comparison
    - exact-build handoff into `simc`
    - consistent freshness, citations, and scope metadata for sampled, merged, cached, and derived outputs
-5. Continue safe Warcraft Logs growth.
+4. Continue safe Warcraft Logs growth.
    - explicit-scope encounter primitives
    - sampled cohort analytics
    - deeper report/detail coverage where the public contract is stable
    - user-auth expansion only after the public/report contract is tighter
+
+Recently completed:
+- stable host deploy and sibling worktree migration
+- stable skill export and repo-local deploy retirement workflow
+- reserved `master/` checkout policy for machine-wide deploys
+
+See [architecture/WORKTREE_INSTALLATION_PLAN.md](architecture/WORKTREE_INSTALLATION_PLAN.md).
 
 ## Provider Priorities
 
