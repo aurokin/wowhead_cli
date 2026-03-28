@@ -48,14 +48,15 @@ if ((${#BLOCKERS[@]})); then
   exit 1
 fi
 
+if [[ "$KEEP_VENV" == "true" ]]; then
+  echo "Kept repo-local venv at $OLD_VENV_DIR"
+  echo "No uninstall or archive work was performed."
+  exit 0
+fi
+
 if [[ "$SKIP_UNINSTALL" != "true" ]] && [[ -x "$OLD_VENV_DIR/bin/pip" ]]; then
   "$OLD_VENV_DIR/bin/pip" uninstall -y warcraft >/dev/null || true
   echo "Uninstalled the editable warcraft package from $OLD_VENV_DIR"
-fi
-
-if [[ "$KEEP_VENV" == "true" ]]; then
-  echo "Kept repo-local venv at $OLD_VENV_DIR"
-  exit 0
 fi
 
 if [[ "$DELETE_VENV" == "true" ]]; then

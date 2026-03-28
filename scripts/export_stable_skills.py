@@ -32,9 +32,12 @@ def main() -> None:
     args = parse_args()
     output_dir = args.output_dir.resolve()
     tmp_dir = output_dir.parent / f".tmp-skills-{output_dir.name}"
+    backup_dir = output_dir.parent / f".backup-skills-{output_dir.name}"
 
     if tmp_dir.exists():
         shutil.rmtree(tmp_dir)
+    if backup_dir.exists():
+        shutil.rmtree(backup_dir)
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     shutil.copytree(WARCRAFT_SKILL_DIR, tmp_dir / "warcraft")
@@ -47,8 +50,16 @@ def main() -> None:
     )
 
     if output_dir.exists():
-        shutil.rmtree(output_dir)
-    tmp_dir.rename(output_dir)
+        output_dir.rename(backup_dir)
+    try:
+        tmp_dir.rename(output_dir)
+    except Exception:
+        if backup_dir.exists() and not output_dir.exists():
+            backup_dir.rename(output_dir)
+        raise
+    else:
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir)
     print(output_dir)
 
 

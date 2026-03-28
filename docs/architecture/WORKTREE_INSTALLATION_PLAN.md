@@ -30,16 +30,16 @@ Completed outcomes:
 
 This document remains the source of truth for the operating model even though the initial migration work is complete.
 
-## Current State
+## Previous State
 
-Today the machine-wide local deploy is coupled to the current checkout path in three ways:
+Before the cutover, the machine-wide local deploy was coupled to the checkout path in three ways:
 - `scripts/dev_deploy.sh` creates a repo-local `.venv`
 - `scripts/dev_deploy.sh` installs the root package in editable mode
 - `scripts/dev_deploy.sh` writes `~/.local/bin/*` wrapper scripts that point at that repo-local `.venv`
 
-That means the current host runtime is effectively tied to `/home/auro/code/warcraft_cli/`.
+That meant the host runtime was effectively tied to `/home/auro/code/warcraft_cli/`.
 
-The current editable deployment should be treated as:
+That old editable deployment should be treated as:
 - the repo-local `.venv`
 - the editable install metadata inside that `.venv`
 - the `~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki,wowprogress,simc,warcraftlogs}` wrappers that point back to it

@@ -75,6 +75,12 @@ if git -C "$ROOT_DIR" rev-parse --verify --quiet "refs/heads/$BRANCH_NAME" >/dev
   exit 1
 fi
 
+if git -C "$ROOT_DIR" remote get-url origin >/dev/null 2>&1 && git -C "$ROOT_DIR" ls-remote --exit-code --heads origin "$BRANCH_NAME" >/dev/null 2>&1; then
+  echo "Remote branch already exists on origin: $BRANCH_NAME" >&2
+  echo "Fetch and attach it explicitly instead of creating a new local branch from the current checkout." >&2
+  exit 1
+fi
+
 git -C "$ROOT_DIR" worktree add "$TARGET_DIR" -b "$BRANCH_NAME"
 echo "Created worktree: $TARGET_DIR"
 
