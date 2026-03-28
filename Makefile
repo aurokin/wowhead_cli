@@ -16,13 +16,25 @@ SIMC := $(VENV)/bin/simc
 LINT_PATHS := packages/warcraft-core packages/warcraft-api packages/warcraft-content
 LINT_ALL_PATHS := packages tests scripts
 
-.PHONY: dev-deploy dev-deploy-no-link test test-live fmt-check lint lint-all complexity typecheck coverage deadcode run
+.PHONY: stable-deploy stable-deploy-no-link dev-deploy dev-deploy-no-link export-stable-skills retire-dev-deploy test test-live fmt-check lint lint-all complexity typecheck coverage deadcode run
+
+stable-deploy:
+	./scripts/stable_deploy.sh
+
+stable-deploy-no-link:
+	./scripts/stable_deploy.sh --no-link-bin
 
 dev-deploy:
 	./scripts/dev_deploy.sh
 
 dev-deploy-no-link:
 	./scripts/dev_deploy.sh --no-link-bin
+
+export-stable-skills:
+	PYTHON_BIN="$${PYTHON_BIN:-python3}"; "$$PYTHON_BIN" scripts/export_stable_skills.py --output-dir "$${XDG_DATA_HOME:-$$HOME/.local/share}/warcraft/skills"
+
+retire-dev-deploy:
+	./scripts/retire_dev_deploy.sh
 
 test:
 	$(PYTEST) -q

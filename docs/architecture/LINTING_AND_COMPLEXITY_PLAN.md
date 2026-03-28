@@ -193,12 +193,12 @@ For this machine, the efficient way to get all CLIs on `PATH` is already built i
 Use:
 
 ```bash
-make dev-deploy
+make stable-deploy
 ```
 
 That script:
-- creates `.venv` if needed
-- installs `-e '.[dev]'`
+- creates a stable venv under `~/.local/share/warcraft/`
+- installs the CLIs into that stable venv
 - writes wrapper scripts into `~/.local/bin` for:
   - `warcraft`
   - `wowhead`
@@ -208,6 +208,16 @@ That script:
   - `warcraft-wiki`
   - `wowprogress`
   - `simc`
+  - `warcraftlogs`
+- exports stable skills under `~/.local/share/warcraft/skills/`
+
+For branch-local editable development, use:
+
+```bash
+make dev-deploy
+```
+
+That keeps the current checkout editable without making the host depend on that checkout path.
 
 If this machine does not already have `~/.local/bin` on `PATH`, add:
 
@@ -218,9 +228,9 @@ export PATH="$HOME/.local/bin:$PATH"
 to the shell profile, for example `~/.zshrc`.
 
 This is the preferred local setup because it:
-- keeps the repo editable
-- avoids manual symlink work
-- keeps one consistent install path for all CLIs
+- keeps one consistent machine-wide install path for all CLIs
+- avoids making the host depend on a branch-local `.venv`
+- still allows branch-local editable development when needed
 
 ## Success Criteria
 

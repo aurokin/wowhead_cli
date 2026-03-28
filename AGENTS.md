@@ -6,7 +6,9 @@
 - Redis extras: `pip install -e '.[dev,redis]'`
 - Fast tests: `pytest -q`
 - Live tests: `WOWHEAD_LIVE_TESTS=1 pytest -q -m live`
+- Stable host deploy: `make stable-deploy`
 - Local deploy: `make dev-deploy`
+- Retire old repo-local deploy: `make retire-dev-deploy`
 - Lint: `make lint`
 - Full lint report: `make lint-all` (report-only; surfaces the full-repo Ruff backlog without failing)
 - Complexity report: `make complexity`

@@ -19,6 +19,7 @@ Warcraft data CLI monorepo.
 ## Install
 
 ```bash
+# branch-local editable environment
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
@@ -27,22 +28,38 @@ pip install -e '.[dev]'
 pip install -e '.[dev,redis]'
 ```
 
-## Local Dev Deploy
+## Stable Host Deploy
 
 ```bash
-# setup/update editable install and link ~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki,wowprogress,warcraftlogs,simc}
-make dev-deploy
+# install a stable machine-wide runtime under ~/.local/share/warcraft
+make stable-deploy
 warcraft doctor
 warcraft search "defias"
-warcraft search "mistweaver monk guide"
-warcraft resolve "https://www.warcraftlogs.com/reports/abcd1234#fight=3"
-wowhead search "defias"
+```
 
-# optional: update venv only (no ~/.local/bin changes)
+This writes `~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki,wowprogress,warcraftlogs,simc}` wrappers that point at a fixed venv under `~/.local/share/warcraft/`, and it exports stable skills under `~/.local/share/warcraft/skills/`.
+
+## Branch-Local Editable Deploy
+
+```bash
+# setup/update the current checkout as an editable branch-local environment
+make dev-deploy
+
+# optional: update the branch-local venv only (no ~/.local/bin changes)
 make dev-deploy-no-link
 ```
 
-This project uses editable install mode (`pip install -e`), so code changes are immediately reflected without rebuilding.
+This project uses editable install mode (`pip install -e`) for branch-local development, so code changes are immediately reflected without rebuilding.
+Only the reserved `master/` checkout should drive `make stable-deploy`.
+
+## Retiring The Old Repo-Local Deploy
+
+```bash
+# after stable-deploy has repointed ~/.local/bin away from this checkout
+make retire-dev-deploy
+```
+
+That command uninstalls the editable `warcraft` package from the repo-local `.venv` and archives the old `.venv` so the host no longer depends on the checkout path.
 If `wowhead` is not found, add `~/.local/bin` to your `PATH`.
 
 ## Supported Providers

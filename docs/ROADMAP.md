@@ -38,21 +38,28 @@ Validated shared systems:
 ## Now
 
 Highest-value work:
-1. Continue tightening the root wrapper.
+1. Stabilize the local install and worktree workflow before parallel branch work begins.
+   - move from one checkout at `~/code/warcraft_cli` to a parent workspace with reserved `master/` plus sibling branch worktrees
+   - split machine-wide deploys from branch-local editable installs
+   - cut the host off from the current repo-local editable deployment before moving the repo
+   - keep skill resolution tied to a stable source instead of whichever worktree happens to be active
+   - keep `master/` as the only checkout allowed to drive machine-wide deploys
+   - see [architecture/WORKTREE_INSTALLATION_PLAN.md](architecture/WORKTREE_INSTALLATION_PLAN.md)
+2. Continue tightening the root wrapper.
    - improve `warcraftlogs` routing beyond explicit report references
    - keep wrapper `doctor`, search, resolve, passthrough, and ranking policy aligned with actual provider capability
    - preserve provider registration status instead of overstating readiness
-2. Continue shared identity and cross-provider handoff work.
+3. Continue shared identity and cross-provider handoff work.
    - class/spec/build identity
    - encounter identity
    - ability identity
    - report-actor identity
    - guide/build/log crosswalks only where the source contract allows them
-3. Continue comparison and evidence surfaces.
+4. Continue comparison and evidence surfaces.
    - additive guide comparison
    - exact-build handoff into `simc`
    - consistent freshness, citations, and scope metadata for sampled, merged, cached, and derived outputs
-4. Continue safe Warcraft Logs growth.
+5. Continue safe Warcraft Logs growth.
    - explicit-scope encounter primitives
    - sampled cohort analytics
    - deeper report/detail coverage where the public contract is stable
