@@ -41,7 +41,7 @@ worktree-add:
 		echo 'Usage: make worktree-add BRANCH="<branch-name>"'; \
 		exit 2; \
 	fi
-	./scripts/create_worktree.sh "$(BRANCH)" $(if $(DEV_DEPLOY),--dev-deploy,)
+	./scripts/create_worktree.sh "$(BRANCH)" $(if $(filter 1 true yes,$(DEV_DEPLOY)),--dev-deploy,)
 
 test:
 	$(PYTEST) -q
