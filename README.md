@@ -42,6 +42,9 @@ This writes `~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-w
 ## Branch-Local Editable Deploy
 
 ```bash
+# create a sibling worktree from the reserved master checkout
+make worktree-add BRANCH="feature-wrapper-routing"
+
 # setup/update the current checkout as an editable branch-local environment
 make dev-deploy
 
@@ -51,6 +54,7 @@ make dev-deploy-no-link
 
 This project uses editable install mode (`pip install -e`) for branch-local development, so code changes are immediately reflected without rebuilding.
 Only the reserved `master/` checkout should drive `make stable-deploy`.
+Use `make worktree-add BRANCH="<name>"` from `master/` to create sibling worktrees under `~/code/warcraft_cli/`.
 
 ## Retiring The Old Repo-Local Deploy
 

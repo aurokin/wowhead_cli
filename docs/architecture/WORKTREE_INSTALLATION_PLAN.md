@@ -194,6 +194,9 @@ Required work:
 3. keep machine-wide deploys restricted to `master/`
 4. document the branch-local workflow clearly in developer-facing install docs
 
+Implemented command:
+- `make worktree-add BRANCH="<branch-name>"`
+
 Acceptance gate:
 - at least one feature worktree is active
 - branch-local edits do not affect machine-wide CLI routing until an explicit deploy is run from `master/`

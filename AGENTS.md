@@ -9,6 +9,7 @@
 - Stable host deploy: `make stable-deploy`
 - Local deploy: `make dev-deploy`
 - Retire old repo-local deploy: `make retire-dev-deploy`
+- Create sibling worktree: `make worktree-add BRANCH="<branch-name>"`
 - Lint: `make lint`
 - Full lint report: `make lint-all` (report-only; surfaces the full-repo Ruff backlog without failing)
 - Complexity report: `make complexity`
