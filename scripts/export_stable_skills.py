@@ -13,6 +13,10 @@ WARCRAFT_SKILL_DIR = REPO_ROOT / "skills" / "warcraft"
 GENERATE_PROVIDER_SKILLS_SCRIPT = REPO_ROOT / "scripts" / "generate_provider_skills.py"
 
 
+def _move_path(source: Path, destination: Path) -> None:
+    shutil.move(str(source), str(destination))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -50,12 +54,18 @@ def main() -> None:
     )
 
     if output_dir.exists():
-        output_dir.rename(backup_dir)
+        _move_path(output_dir, backup_dir)
     try:
-        tmp_dir.rename(output_dir)
-    except Exception:
+        _move_path(tmp_dir, output_dir)
+    except Exception as exc:
         if backup_dir.exists() and not output_dir.exists():
-            backup_dir.rename(output_dir)
+            try:
+                _move_path(backup_dir, output_dir)
+            except Exception as rollback_exc:
+                print(
+                    f"Failed to restore stable skills from backup {backup_dir} to {output_dir}: {rollback_exc}",
+                    file=sys.stderr,
+                )
         raise
     else:
         if backup_dir.exists():

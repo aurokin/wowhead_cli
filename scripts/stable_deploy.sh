@@ -13,6 +13,7 @@ EXPORT_SKILLS=true
 INSTALL_DEV=false
 INSTALL_REDIS=false
 ALLOW_NON_MASTER=false
+ALLOW_DIRTY=false
 BIN_NAMES="${WARCRAFT_BIN_NAMES:-warcraft wowhead method icy-veins raiderio warcraft-wiki wowprogress simc warcraftlogs}"
 
 while (($#)); do
@@ -37,6 +38,9 @@ while (($#)); do
       ;;
     --allow-non-master)
       ALLOW_NON_MASTER=true
+      ;;
+    --allow-dirty)
+      ALLOW_DIRTY=true
       ;;
     --bin-name)
       shift
@@ -68,6 +72,14 @@ if [[ "$ALLOW_NON_MASTER" != "true" ]] && git -C "$ROOT_DIR" rev-parse --is-insi
   fi
 fi
 
+if [[ "$ALLOW_DIRTY" != "true" ]] && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if ! git -C "$ROOT_DIR" diff --quiet --ignore-submodules=all || ! git -C "$ROOT_DIR" diff --cached --quiet --ignore-submodules=all; then
+    echo "Stable deploys must run from a clean worktree." >&2
+    echo "Commit or stash your changes first, or use --allow-dirty for a deliberate exception." >&2
+    exit 1
+  fi
+fi
+
 if [[ ! -d "$VENV_DIR" ]]; then
   "$PYTHON_BIN" -m venv "$VENV_DIR"
 fi
@@ -85,7 +97,7 @@ if ((${#EXTRAS[@]})); then
   PACKAGE_SPEC="$ROOT_DIR[$EXTRAS_CSV]"
 fi
 
-"$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel >/dev/null
+"$VENV_DIR/bin/python" -m pip install --quiet --upgrade pip setuptools wheel
 "$VENV_DIR/bin/pip" install --upgrade "$PACKAGE_SPEC"
 
 if [[ "$EXPORT_SKILLS" == "true" ]]; then

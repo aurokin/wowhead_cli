@@ -90,6 +90,7 @@ Only the stable checkout may perform the machine-wide deploy.
 Operational rule:
 - `master/` may update the stable venv, wrappers, and stable skill export
 - branch worktrees may update only their own local `.venv` and branch-local artifacts
+- stable deploys should come from a clean `master/` worktree unless the operator intentionally overrides that guard
 
 ### Install Mode Split
 
