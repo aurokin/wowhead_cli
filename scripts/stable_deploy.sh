@@ -73,7 +73,9 @@ if [[ "$ALLOW_NON_MASTER" != "true" ]] && git -C "$ROOT_DIR" rev-parse --is-insi
 fi
 
 if [[ "$ALLOW_DIRTY" != "true" ]] && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  if ! git -C "$ROOT_DIR" diff --quiet --ignore-submodules=all || ! git -C "$ROOT_DIR" diff --cached --quiet --ignore-submodules=all; then
+  if ! git -C "$ROOT_DIR" diff --quiet --ignore-submodules=all \
+    || ! git -C "$ROOT_DIR" diff --cached --quiet --ignore-submodules=all \
+    || [[ -n "$(git -C "$ROOT_DIR" status --porcelain --untracked-files=normal)" ]]; then
     echo "Stable deploys must run from a clean worktree." >&2
     echo "Commit or stash your changes first, or use --allow-dirty for a deliberate exception." >&2
     exit 1
