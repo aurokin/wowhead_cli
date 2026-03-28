@@ -55,6 +55,7 @@ make dev-deploy-no-link
 This project uses editable install mode (`pip install -e`) for branch-local development, so code changes are immediately reflected without rebuilding.
 Only the reserved `master/` checkout should drive `make stable-deploy`, and that checkout should be clean before deploying.
 Use `make worktree-add BRANCH="<name>"` from `master/` to create sibling worktrees under `~/code/warcraft_cli/`.
+The helper scripts derive the expected stable branch from `origin/HEAD` when available and also honor `WARCRAFT_STABLE_BRANCH` for repositories that do not use `master`.
 
 ## Retiring The Old Repo-Local Deploy
 

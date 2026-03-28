@@ -8,6 +8,7 @@ INSTALL_ROOT="${WARCRAFT_INSTALL_ROOT:-$XDG_DATA_HOME_DEFAULT/warcraft}"
 VENV_DIR="${WARCRAFT_STABLE_VENV_DIR:-$INSTALL_ROOT/install/venv}"
 SKILLS_DIR="${WARCRAFT_STABLE_SKILLS_DIR:-$INSTALL_ROOT/skills}"
 LOCAL_BIN_DIR="${WARCRAFT_LOCAL_BIN_DIR:-$HOME/.local/bin}"
+STABLE_BRANCH="${WARCRAFT_STABLE_BRANCH:-}"
 LINK_BIN=true
 EXPORT_SKILLS=true
 INSTALL_DEV=false
@@ -15,6 +16,34 @@ INSTALL_REDIS=false
 ALLOW_NON_MASTER=false
 ALLOW_DIRTY=false
 BIN_NAMES="${WARCRAFT_BIN_NAMES:-warcraft wowhead method icy-veins raiderio warcraft-wiki wowprogress simc warcraftlogs}"
+
+detect_stable_branch() {
+  if [[ -n "$STABLE_BRANCH" ]]; then
+    printf '%s\n' "$STABLE_BRANCH"
+    return 0
+  fi
+
+  if git -C "$ROOT_DIR" rev-parse --verify --quiet "refs/remotes/origin/HEAD" >/dev/null 2>&1; then
+    local origin_head_ref
+    origin_head_ref="$(git -C "$ROOT_DIR" symbolic-ref --quiet "refs/remotes/origin/HEAD" 2>/dev/null || true)"
+    if [[ -n "$origin_head_ref" ]]; then
+      printf '%s\n' "${origin_head_ref##refs/remotes/origin/}"
+      return 0
+    fi
+  fi
+
+  if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/master"; then
+    printf 'master\n'
+    return 0
+  fi
+
+  if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/main"; then
+    printf 'main\n'
+    return 0
+  fi
+
+  return 1
+}
 
 while (($#)); do
   case "$1" in
@@ -64,9 +93,14 @@ if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
 fi
 
 if [[ "$ALLOW_NON_MASTER" != "true" ]] && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if ! STABLE_BRANCH="$(detect_stable_branch)"; then
+    echo "Could not determine the stable branch for this repository." >&2
+    echo "Set WARCRAFT_STABLE_BRANCH or use --allow-non-master for a deliberate exception." >&2
+    exit 1
+  fi
   CURRENT_BRANCH="$(git -C "$ROOT_DIR" branch --show-current)"
-  if [[ "$CURRENT_BRANCH" != "master" ]]; then
-    echo "Stable deploys must run from the master branch. Current branch: $CURRENT_BRANCH" >&2
+  if [[ "$CURRENT_BRANCH" != "$STABLE_BRANCH" ]]; then
+    echo "Stable deploys must run from the stable branch '$STABLE_BRANCH'. Current branch: $CURRENT_BRANCH" >&2
     echo "Use --allow-non-master only for deliberate exceptions." >&2
     exit 1
   fi

@@ -3,8 +3,37 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CURRENT_BRANCH="$(git -C "$ROOT_DIR" branch --show-current)"
+STABLE_BRANCH="${WARCRAFT_STABLE_BRANCH:-}"
 ALLOW_NON_MASTER=false
 RUN_DEV_DEPLOY=false
+
+detect_stable_branch() {
+  if [[ -n "$STABLE_BRANCH" ]]; then
+    printf '%s\n' "$STABLE_BRANCH"
+    return 0
+  fi
+
+  if git -C "$ROOT_DIR" rev-parse --verify --quiet "refs/remotes/origin/HEAD" >/dev/null 2>&1; then
+    local origin_head_ref
+    origin_head_ref="$(git -C "$ROOT_DIR" symbolic-ref --quiet "refs/remotes/origin/HEAD" 2>/dev/null || true)"
+    if [[ -n "$origin_head_ref" ]]; then
+      printf '%s\n' "${origin_head_ref##refs/remotes/origin/}"
+      return 0
+    fi
+  fi
+
+  if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/master"; then
+    printf 'master\n'
+    return 0
+  fi
+
+  if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/main"; then
+    printf 'main\n'
+    return 0
+  fi
+
+  return 1
+}
 
 usage() {
   echo "Usage: $0 <branch-name> [--dev-deploy] [--allow-non-master]" >&2
@@ -50,13 +79,19 @@ if [[ -z "$BRANCH_NAME" ]]; then
   exit 2
 fi
 
-if [[ "$BRANCH_NAME" == "master" ]]; then
-  echo "Refusing to create a sibling worktree named 'master'." >&2
+if ! STABLE_BRANCH="$(detect_stable_branch)"; then
+  echo "Could not determine the stable branch for this repository." >&2
+  echo "Set WARCRAFT_STABLE_BRANCH or use --allow-non-master for a deliberate exception." >&2
+  exit 1
+fi
+
+if [[ "$BRANCH_NAME" == "$STABLE_BRANCH" ]]; then
+  echo "Refusing to create a sibling worktree named '$STABLE_BRANCH'." >&2
   exit 2
 fi
 
-if [[ "$ALLOW_NON_MASTER" != "true" ]] && [[ "$CURRENT_BRANCH" != "master" ]]; then
-  echo "Create sibling worktrees from the reserved master checkout. Current branch: $CURRENT_BRANCH" >&2
+if [[ "$ALLOW_NON_MASTER" != "true" ]] && [[ "$CURRENT_BRANCH" != "$STABLE_BRANCH" ]]; then
+  echo "Create sibling worktrees from the reserved stable checkout '$STABLE_BRANCH'. Current branch: $CURRENT_BRANCH" >&2
   echo "Use --allow-non-master only for deliberate exceptions." >&2
   exit 1
 fi

@@ -6,8 +6,8 @@ import subprocess
 from pathlib import Path
 
 
-def _init_repo(path: Path) -> None:
-    subprocess.run(["git", "init", "-b", "master"], cwd=path, check=True, capture_output=True, text=True)
+def _init_repo(path: Path, *, branch: str = "master") -> None:
+    subprocess.run(["git", "init", "-b", branch], cwd=path, check=True, capture_output=True, text=True)
     subprocess.run(["git", "config", "user.name", "Test User"], cwd=path, check=True, capture_output=True, text=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=path, check=True, capture_output=True, text=True)
     (path / "README.md").write_text("test\n", encoding="utf-8")
@@ -81,7 +81,7 @@ def test_create_worktree_refuses_non_master_without_override(tmp_path: Path) -> 
     )
 
     assert result.returncode == 1
-    assert "reserved master checkout" in result.stderr
+    assert "reserved stable checkout 'master'" in result.stderr
     assert not (workspace_root / "feature-two").exists()
 
 
@@ -117,3 +117,28 @@ def test_create_worktree_refuses_existing_remote_branch(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "Remote branch already exists" in result.stderr
     assert not (workspace_root / "feature-one").exists()
+
+
+def test_create_worktree_accepts_detected_main_as_stable_branch(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "warcraft_cli"
+    main_root = workspace_root / "main"
+    main_root.mkdir(parents=True)
+    _init_repo(main_root, branch="main")
+
+    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "create_worktree.sh"
+    script_copy = main_root / "scripts" / "create_worktree.sh"
+    script_copy.parent.mkdir(parents=True)
+    shutil.copy2(repo_script, script_copy)
+    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+
+    result = subprocess.run(
+        ["bash", str(script_copy), "feature-main-based"],
+        cwd=main_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    feature_root = workspace_root / "feature-main-based"
+    assert feature_root.is_dir()
+    assert "Created worktree" in result.stdout
