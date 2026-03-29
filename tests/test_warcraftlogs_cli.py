@@ -3150,6 +3150,47 @@ def test_warcraftlogs_client_reuses_shared_public_token_across_instances(monkeyp
     assert saved_state["warcraftlogs-client-credentials"]["auth_mode"] == "client_credentials"
 
 
+def test_warcraftlogs_client_ignores_invalid_shared_public_token_state(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.client.load_warcraftlogs_auth_config",
+        lambda start_dir=None: type(
+            "Auth",
+            (),
+            {
+                "configured": True,
+                "client_id": "client-id",
+                "client_secret": "client-secret",
+                "env_file": "/tmp/.env.local",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.client.load_provider_auth_state",
+        lambda provider: (_ for _ in ()).throw(json.JSONDecodeError("bad json", "{", 1)),
+    )
+
+    token_requests: list[str] = []
+
+    def _fake_request(client, url, *, method="GET", data=None, auth=None, retry_attempts=1, **kwargs):  # noqa: ANN001
+        del client, data, auth, retry_attempts, kwargs
+        token_requests.append(url)
+        return httpx.Response(
+            200,
+            json={"access_token": "public-token", "expires_in": 3600},
+            request=httpx.Request(method, url),
+        )
+
+    monkeypatch.setattr("warcraftlogs_cli.client.request_with_retries", _fake_request)
+
+    client = WarcraftLogsClient()
+    try:
+        assert client._token() == "public-token"
+    finally:
+        client.close()
+
+    assert token_requests == ["https://www.warcraftlogs.com/oauth/token"]
+
+
 def test_warcraftlogs_client_live_user_probe_does_not_write_shared_cache(monkeypatch) -> None:
     monkeypatch.setattr(
         "warcraftlogs_cli.client.load_warcraftlogs_auth_config",

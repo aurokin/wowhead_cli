@@ -1121,7 +1121,10 @@ class WarcraftLogsClient:
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def _load_shared_client_token(self, *, now: float) -> str | None:
-        payload = load_provider_auth_state(CLIENT_CREDENTIALS_STATE_PROVIDER)
+        try:
+            payload = load_provider_auth_state(CLIENT_CREDENTIALS_STATE_PROVIDER)
+        except (OSError, json.JSONDecodeError):
+            return None
         if not isinstance(payload, dict):
             return None
         if payload.get("auth_mode") != "client_credentials":
