@@ -138,6 +138,13 @@ while IFS= read -r REMOTE_NAME; do
     echo "Remote branch already exists on $REMOTE_NAME: $BRANCH_NAME" >&2
     echo "Fetch and attach it explicitly instead of creating a new local branch from the current checkout." >&2
     exit 1
+  else
+    REMOTE_STATUS=$?
+    if [[ "$REMOTE_STATUS" -ne 2 ]]; then
+      echo "Failed to query remote '$REMOTE_NAME' for branch '$BRANCH_NAME'." >&2
+      echo "Fix the remote transport/auth problem or remove the remote before creating a new sibling worktree." >&2
+      exit 1
+    fi
   fi
 done < <(git -C "$ROOT_DIR" remote)
 
