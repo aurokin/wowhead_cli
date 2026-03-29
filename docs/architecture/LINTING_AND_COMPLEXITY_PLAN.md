@@ -214,10 +214,11 @@ That script:
 For branch-local editable development, use:
 
 ```bash
-make dev-deploy
+make dev-deploy-no-link
 ```
 
 That keeps the current checkout editable without making the host depend on that checkout path.
+Use `make dev-deploy` only when you intentionally want `~/.local/bin` to point at the current checkout.
 
 If this machine does not already have `~/.local/bin` on `PATH`, add:
 

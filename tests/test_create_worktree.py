@@ -142,3 +142,87 @@ def test_create_worktree_accepts_detected_main_as_stable_branch(tmp_path: Path) 
     feature_root = workspace_root / "feature-main-based"
     assert feature_root.is_dir()
     assert "Created worktree" in result.stdout
+
+
+def test_create_worktree_allows_unknown_stable_branch_with_override(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "warcraft_cli"
+    trunk_root = workspace_root / "trunk"
+    trunk_root.mkdir(parents=True)
+    _init_repo(trunk_root, branch="trunk")
+
+    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "create_worktree.sh"
+    script_copy = trunk_root / "scripts" / "create_worktree.sh"
+    script_copy.parent.mkdir(parents=True)
+    shutil.copy2(repo_script, script_copy)
+    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+
+    result = subprocess.run(
+        ["bash", str(script_copy), "feature-trunk-based", "--allow-non-master"],
+        cwd=trunk_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    feature_root = workspace_root / "feature-trunk-based"
+    assert feature_root.is_dir()
+    assert "Created worktree" in result.stdout
+
+
+def test_create_worktree_refuses_existing_remote_branch_on_non_origin_remote(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "warcraft_cli"
+    remote_root = tmp_path / "upstream.git"
+    master_root = workspace_root / "master"
+    master_root.mkdir(parents=True)
+    _init_repo(master_root)
+
+    subprocess.run(["git", "init", "--bare", str(remote_root)], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "remote", "add", "upstream", str(remote_root)], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "push", "-u", "upstream", "master"], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "checkout", "-b", "feature-two"], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "push", "-u", "upstream", "feature-two"], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "checkout", "master"], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "branch", "-D", "feature-two"], cwd=master_root, check=True, capture_output=True, text=True)
+
+    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "create_worktree.sh"
+    script_copy = master_root / "scripts" / "create_worktree.sh"
+    script_copy.parent.mkdir(parents=True)
+    shutil.copy2(repo_script, script_copy)
+    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+
+    result = subprocess.run(
+        ["bash", str(script_copy), "feature-two"],
+        cwd=master_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Remote branch already exists on upstream" in result.stderr
+    assert not (workspace_root / "feature-two").exists()
+
+
+def test_create_worktree_normalizes_slash_branch_name_to_sibling_dir(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "warcraft_cli"
+    master_root = workspace_root / "master"
+    master_root.mkdir(parents=True)
+    _init_repo(master_root)
+
+    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "create_worktree.sh"
+    script_copy = master_root / "scripts" / "create_worktree.sh"
+    script_copy.parent.mkdir(parents=True)
+    shutil.copy2(repo_script, script_copy)
+    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+
+    result = subprocess.run(
+        ["bash", str(script_copy), "feature/cache"],
+        cwd=master_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    feature_root = workspace_root / "feature--cache"
+    assert feature_root.is_dir()
+    assert "Created worktree" in result.stdout

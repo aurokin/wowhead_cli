@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CURRENT_BRANCH="$(git -C "$ROOT_DIR" branch --show-current)"
 STABLE_BRANCH="${WARCRAFT_STABLE_BRANCH:-}"
+WORKTREE_DIR_NAME="${WARCRAFT_WORKTREE_DIR_NAME:-}"
 ALLOW_NON_MASTER=false
 RUN_DEV_DEPLOY=false
 
@@ -80,12 +81,15 @@ if [[ -z "$BRANCH_NAME" ]]; then
 fi
 
 if ! STABLE_BRANCH="$(detect_stable_branch)"; then
-  echo "Could not determine the stable branch for this repository." >&2
-  echo "Set WARCRAFT_STABLE_BRANCH or use --allow-non-master for a deliberate exception." >&2
-  exit 1
+  if [[ "$ALLOW_NON_MASTER" != "true" ]]; then
+    echo "Could not determine the stable branch for this repository." >&2
+    echo "Set WARCRAFT_STABLE_BRANCH or use --allow-non-master for a deliberate exception." >&2
+    exit 1
+  fi
+  STABLE_BRANCH=""
 fi
 
-if [[ "$BRANCH_NAME" == "$STABLE_BRANCH" ]]; then
+if [[ -n "$STABLE_BRANCH" ]] && [[ "$BRANCH_NAME" == "$STABLE_BRANCH" ]]; then
   echo "Refusing to create a sibling worktree named '$STABLE_BRANCH'." >&2
   exit 2
 fi
@@ -97,7 +101,10 @@ if [[ "$ALLOW_NON_MASTER" != "true" ]] && [[ "$CURRENT_BRANCH" != "$STABLE_BRANC
 fi
 
 PARENT_DIR="$(dirname "$ROOT_DIR")"
-TARGET_DIR="$PARENT_DIR/$BRANCH_NAME"
+if [[ -z "$WORKTREE_DIR_NAME" ]]; then
+  WORKTREE_DIR_NAME="${BRANCH_NAME//\//--}"
+fi
+TARGET_DIR="$PARENT_DIR/$WORKTREE_DIR_NAME"
 
 if [[ -e "$TARGET_DIR" ]]; then
   echo "Target path already exists: $TARGET_DIR" >&2
@@ -110,11 +117,14 @@ if git -C "$ROOT_DIR" rev-parse --verify --quiet "refs/heads/$BRANCH_NAME" >/dev
   exit 1
 fi
 
-if git -C "$ROOT_DIR" remote get-url origin >/dev/null 2>&1 && git -C "$ROOT_DIR" ls-remote --exit-code --heads origin "$BRANCH_NAME" >/dev/null 2>&1; then
-  echo "Remote branch already exists on origin: $BRANCH_NAME" >&2
-  echo "Fetch and attach it explicitly instead of creating a new local branch from the current checkout." >&2
-  exit 1
-fi
+while IFS= read -r REMOTE_NAME; do
+  [[ -z "$REMOTE_NAME" ]] && continue
+  if git -C "$ROOT_DIR" ls-remote --exit-code --heads "$REMOTE_NAME" "$BRANCH_NAME" >/dev/null 2>&1; then
+    echo "Remote branch already exists on $REMOTE_NAME: $BRANCH_NAME" >&2
+    echo "Fetch and attach it explicitly instead of creating a new local branch from the current checkout." >&2
+    exit 1
+  fi
+done < <(git -C "$ROOT_DIR" remote)
 
 git -C "$ROOT_DIR" worktree add "$TARGET_DIR" -b "$BRANCH_NAME"
 echo "Created worktree: $TARGET_DIR"
