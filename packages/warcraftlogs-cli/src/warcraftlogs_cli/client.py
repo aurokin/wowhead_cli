@@ -12,12 +12,13 @@ import httpx
 from warcraft_api.cache import CacheSettings, CacheTTLConfig, build_cache_store, load_prefixed_cache_settings_from_env
 from warcraft_api.http import DEFAULT_RETRY_ATTEMPTS, request_with_retries
 from warcraft_content.paths import provider_cache_root
-from warcraft_core.auth import load_provider_auth_state
+from warcraft_core.auth import load_provider_auth_state, save_provider_auth_state
 from warcraft_core.env import find_env_file, load_env_file, load_explicit_env_file
 from warcraft_core.paths import provider_env_path
 from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug
 
 DEFAULT_CACHE_DIR = provider_cache_root("warcraftlogs") / "http"
+CLIENT_CREDENTIALS_STATE_PROVIDER = "warcraftlogs-client-credentials"
 
 RATE_LIMIT_QUERY = """
 query RateLimit {
@@ -1115,6 +1116,51 @@ class WarcraftLogsClient:
             f"(for example in {self._credential_hint}).",
         )
 
+    def _client_credentials_cache_key(self) -> str:
+        raw = f"{self._site.key}\0{self._client_id}\0{self._client_secret}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _load_shared_client_token(self, *, now: float) -> str | None:
+        try:
+            payload = load_provider_auth_state(CLIENT_CREDENTIALS_STATE_PROVIDER)
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("auth_mode") != "client_credentials":
+            return None
+        if payload.get("credential_key") != self._client_credentials_cache_key():
+            return None
+        token = payload.get("access_token")
+        expires_at = payload.get("expires_at")
+        if not isinstance(token, str) or not token.strip():
+            return None
+        if not isinstance(expires_at, (int, float)):
+            return None
+        if now >= float(expires_at) - 60:
+            return None
+        self._access_token = token
+        self._token_expires_at = float(expires_at)
+        return token
+
+    def _save_shared_client_token(self, *, token: str, expires_at: float) -> None:
+        try:
+            save_provider_auth_state(
+                CLIENT_CREDENTIALS_STATE_PROVIDER,
+                {
+                    "access_token": token,
+                    "auth_mode": "client_credentials",
+                    "credential_key": self._client_credentials_cache_key(),
+                    "expires_at": expires_at,
+                    "site": self._site.key,
+                    "token_type": "Bearer",
+                },
+            )
+        except OSError:
+            # Shared token caching is an optimization. Public commands should
+            # still work even if the local state directory is unavailable.
+            return
+
     def _token(self) -> str:
         now = time.time()
         if self._access_token and now < self._token_expires_at - 60:
@@ -1125,6 +1171,9 @@ class WarcraftLogsClient:
                 "Public Warcraft Logs commands need WARCRAFTLOGS_CLIENT_ID and WARCRAFTLOGS_CLIENT_SECRET. "
                 f"Set them (for example in {self._credential_hint}).",
             )
+        shared_token = self._load_shared_client_token(now=now)
+        if shared_token is not None:
+            return shared_token
         response = request_with_retries(
             self._client(),
             self._site.oauth_token_url,
@@ -1140,6 +1189,7 @@ class WarcraftLogsClient:
             raise WarcraftLogsClientError("auth_failed", "Warcraft Logs token response did not include an access token.")
         self._access_token = token
         self._token_expires_at = now + int(expires_in)
+        self._save_shared_client_token(token=token, expires_at=self._token_expires_at)
         return token
 
     def _user_token(self) -> str:
