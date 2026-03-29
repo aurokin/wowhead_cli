@@ -95,6 +95,20 @@ detect_release_id() {
   printf '%s-%s\n' "$timestamp" "$short_sha"
 }
 
+validate_release_id() {
+  local candidate="$1"
+
+  if [[ ! "$candidate" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    return 1
+  fi
+
+  if [[ "$candidate" == "." ]] || [[ "$candidate" == ".." ]]; then
+    return 1
+  fi
+
+  return 0
+}
+
 prepare_layout() {
   if [[ -n "$EXPLICIT_VENV_DIR" ]] || [[ -n "$EXPLICIT_SKILLS_DIR" ]]; then
     VERSIONED_LAYOUT=false
@@ -106,6 +120,11 @@ prepare_layout() {
   fi
 
   RELEASE_ID="$(detect_release_id)"
+  if ! validate_release_id "$RELEASE_ID"; then
+    echo "Invalid stable release id: $RELEASE_ID" >&2
+    echo "Release ids may contain only letters, numbers, dot, underscore, and hyphen." >&2
+    exit 2
+  fi
   ACTIVE_RELEASE_ROOT="$INSTALL_RELEASES_DIR/$RELEASE_ID"
   TMP_RELEASE_ROOT="$INSTALL_RELEASES_DIR/.tmp-$RELEASE_ID-$$"
 
@@ -224,8 +243,6 @@ if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   exit 1
 fi
 
-prepare_layout
-
 if [[ "$ALLOW_NON_MASTER" != "true" ]] && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   if ! STABLE_BRANCH="$(detect_stable_branch)"; then
     echo "Could not determine the stable branch for this repository." >&2
@@ -249,6 +266,8 @@ if [[ "$ALLOW_DIRTY" != "true" ]] && git -C "$ROOT_DIR" rev-parse --is-inside-wo
     exit 1
   fi
 fi
+
+prepare_layout
 
 VENV_CREATED=false
 if [[ ! -d "$BUILD_VENV_DIR" ]]; then

@@ -245,6 +245,68 @@ def test_stable_deploy_skips_bootstrap_upgrade_when_runtime_ready(tmp_path: Path
     assert "Stable deploy complete." in result.stdout
 
 
+def test_stable_deploy_rejects_invalid_release_ids(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    _write_minimal_package(repo_root)
+    subprocess.run(["git", "add", "pyproject.toml"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "add-pyproject"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
+
+    install_root = tmp_path / "stable-root"
+    result = subprocess.run(
+        [
+            "bash",
+            str(script_copy),
+            "--allow-dirty",
+            "--no-link-bin",
+            "--no-export-skills",
+        ],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "WARCRAFT_INSTALL_ROOT": str(install_root),
+            "WARCRAFT_STABLE_RELEASE_ID": "../outside",
+        },
+    )
+
+    assert result.returncode == 2
+    assert "Invalid stable release id" in result.stderr
+    assert not (install_root / "install" / "releases").exists()
+
+
+def test_stable_deploy_rejected_preflight_does_not_leave_tmp_release_dir(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    subprocess.run(["git", "checkout", "-b", "feature"], cwd=repo_root, check=True, capture_output=True, text=True)
+    _write_minimal_package(repo_root)
+    subprocess.run(["git", "add", "pyproject.toml"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "add-pyproject"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
+
+    install_root = tmp_path / "stable-root"
+    result = subprocess.run(
+        ["bash", str(script_copy)],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "WARCRAFT_INSTALL_ROOT": str(install_root)},
+    )
+
+    assert result.returncode == 1
+    assert "Stable deploys must run from the stable branch" in result.stderr
+    releases_dir = install_root / "install" / "releases"
+    assert not releases_dir.exists() or not list(releases_dir.glob(".tmp-*"))
+
+
 def test_stable_rollback_repoints_current_to_an_older_release(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
