@@ -259,3 +259,113 @@ def test_stable_deploy_skips_bootstrap_upgrade_when_runtime_ready(tmp_path: Path
     assert result.returncode == 0
     assert "Stable deploy complete." in result.stdout
     assert "--no-build-isolation --upgrade" in pip_log.read_text(encoding="utf-8")
+
+
+def test_stable_deploy_uses_versioned_release_layout_by_default(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    _write_minimal_package(repo_root)
+    subprocess.run(["git", "add", "pyproject.toml"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "add-pyproject"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "stable_deploy.sh"
+    script_copy = repo_root / "scripts" / "stable_deploy.sh"
+    script_copy.parent.mkdir(parents=True)
+    shutil.copy2(repo_script, script_copy)
+    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+
+    install_root = tmp_path / "stable-root"
+    local_bin_dir = tmp_path / "bin"
+    result = subprocess.run(
+        [
+            "bash",
+            str(script_copy),
+            "--allow-dirty",
+            "--no-export-skills",
+        ],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "WARCRAFT_INSTALL_ROOT": str(install_root),
+            "WARCRAFT_LOCAL_BIN_DIR": str(local_bin_dir),
+            "WARCRAFT_BIN_NAMES": "warcraft",
+            "WARCRAFT_STABLE_RELEASE_ID": "release-one",
+        },
+    )
+
+    assert result.returncode == 0
+    release_root = install_root / "install" / "releases" / "release-one"
+    current_link = install_root / "install" / "current"
+    wrapper_path = local_bin_dir / "warcraft"
+
+    assert release_root.is_dir()
+    assert current_link.is_symlink()
+    assert current_link.resolve() == release_root.resolve()
+    assert wrapper_path.read_text(encoding="utf-8").strip().endswith(
+        f'exec "{current_link}/venv/bin/warcraft" "$@"'
+    )
+
+
+def test_stable_deploy_keeps_old_releases_and_repoints_current(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    _write_minimal_package(repo_root)
+    subprocess.run(["git", "add", "pyproject.toml"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "add-pyproject"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "stable_deploy.sh"
+    script_copy = repo_root / "scripts" / "stable_deploy.sh"
+    script_copy.parent.mkdir(parents=True)
+    shutil.copy2(repo_script, script_copy)
+    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+
+    install_root = tmp_path / "stable-root"
+    common_env = {
+        **os.environ,
+        "WARCRAFT_INSTALL_ROOT": str(install_root),
+        "WARCRAFT_LOCAL_BIN_DIR": str(tmp_path / "bin"),
+        "WARCRAFT_BIN_NAMES": "warcraft",
+    }
+
+    first = subprocess.run(
+        [
+            "bash",
+            str(script_copy),
+            "--allow-dirty",
+            "--no-export-skills",
+        ],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**common_env, "WARCRAFT_STABLE_RELEASE_ID": "release-one"},
+    )
+    second = subprocess.run(
+        [
+            "bash",
+            str(script_copy),
+            "--allow-dirty",
+            "--no-export-skills",
+        ],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**common_env, "WARCRAFT_STABLE_RELEASE_ID": "release-two"},
+    )
+
+    assert first.returncode == 0
+    assert second.returncode == 0
+    current_link = install_root / "install" / "current"
+    release_one = install_root / "install" / "releases" / "release-one"
+    release_two = install_root / "install" / "releases" / "release-two"
+
+    assert release_one.is_dir()
+    assert release_two.is_dir()
+    assert current_link.is_symlink()
+    assert current_link.resolve() == release_two.resolve()

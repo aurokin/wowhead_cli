@@ -64,7 +64,8 @@ Machine-wide CLI access must no longer depend on a repo-local `.venv` inside a b
 
 The stable machine deploy should use:
 - a fixed install root under `~/.local/share/warcraft/`
-- a fixed venv path under that install root
+- versioned release directories under that install root
+- a stable `install/current` pointer that flips only after a release build succeeds
 - `~/.local/bin` wrappers that point only to that fixed venv
 
 Branch worktrees may keep local `.venv` environments for development, but those branch-local environments must not own the machine-wide wrappers.
@@ -101,6 +102,7 @@ We need two distinct workflows:
 The machine deploy should prefer a non-editable install into the fixed venv.
 
 Branch-local development can continue to use editable installs inside the worktree-local `.venv`.
+Branch-local runtime data and cache should default to worktree-local storage so parallel agents do not trample each other, while shared credentials remain available from the host-level config/state roots.
 
 ## Target Layout
 
@@ -114,8 +116,12 @@ Example target layout:
 
 ~/.local/share/warcraft/
   install/
-    venv/
-  skills/
+    current/ -> releases/<release-id>/
+    releases/
+      <release-id>/
+        venv/
+        skills/
+  skills/ -> install/current/skills
 
 ~/.local/bin/
   warcraft
@@ -150,6 +156,7 @@ Implemented commands:
 Acceptance gate:
 - `warcraft`, `wowhead`, and at least one other provider command run from outside the repo
 - `~/.local/bin/*` wrappers no longer mention `/home/auro/code/warcraft_cli/.venv`
+- `~/.local/share/warcraft/install/current` points at an immutable release directory under `install/releases/`
 
 ### Phase 2: Cut Over And Retire The Current Editable Deployment
 

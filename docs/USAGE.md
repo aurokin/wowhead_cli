@@ -150,7 +150,8 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
 
 `warcraft doctor` reports:
 - wrapper health
-- shared XDG-style config/data/cache roots
+- effective XDG-style config/data/cache/state roots
+- active worktree-runtime isolation details when running from an editable worktree
 - registered provider readiness
 - provider expansion-support mode and active expansion eligibility when `--expansion` is set
 

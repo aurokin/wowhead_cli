@@ -37,7 +37,8 @@ warcraft doctor
 warcraft search "defias"
 ```
 
-This writes `~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki,wowprogress,warcraftlogs,simc}` wrappers that point at a fixed venv under `~/.local/share/warcraft/`, and it exports stable skills under `~/.local/share/warcraft/skills/`.
+This writes `~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki,wowprogress,warcraftlogs,simc}` wrappers that point at the stable `~/.local/share/warcraft/install/current/venv`, and it exports stable skills under `~/.local/share/warcraft/skills/`.
+By default the stable deploy stages a versioned release under `~/.local/share/warcraft/install/releases/<release-id>/` and then repoints `~/.local/share/warcraft/install/current/` only after the build succeeds.
 
 ## Branch-Local Editable Deploy
 
@@ -48,12 +49,16 @@ make worktree-add BRANCH="feature-wrapper-routing"
 # setup/update the current checkout as an editable branch-local environment
 make dev-deploy-no-link
 
+# optional: add the worktree venv to PATH in this shell
+source .warcraft/worktree-env.sh
+
 # deliberate exception: relink ~/.local/bin to this checkout
-make dev-deploy
+WARCRAFT_ALLOW_LINK_BIN=1 make dev-deploy
 ```
 
 This project uses editable install mode (`pip install -e`) for branch-local development, so code changes are immediately reflected without rebuilding.
 Use `make dev-deploy-no-link` for branch worktrees so the host keeps pointing at the stable checkout.
+That branch-local setup writes `.warcraft/worktree-env.sh`, keeps credentials in the shared host config/state roots, and isolates branch-local data/cache under `.warcraft/runtime/`.
 Only the reserved `master/` checkout should drive `make stable-deploy`, and that checkout should be clean before deploying.
 Use `make worktree-add BRANCH="<name>"` from `master/` to create sibling worktrees under `~/code/warcraft_cli/`.
 This repo pins that stable branch policy to `master` through the Make targets, while the helper scripts still honor `WARCRAFT_STABLE_BRANCH` for repositories that use a different trunk branch.

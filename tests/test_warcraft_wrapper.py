@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 import httpx
-from method_cli.main import app as method_app
 import typer
+from method_cli.main import app as method_app
 from typer.testing import CliRunner
 from warcraft_cli.main import app as warcraft_app
 from warcraft_content.article_bundle import write_article_bundle
@@ -395,6 +395,24 @@ def test_warcraft_doctor_reports_retail_filter_state() -> None:
     assert {row["provider"] for row in payload["excluded_providers"]} == {
         "warcraft-wiki",
         "simc",
+    }
+
+
+def test_warcraft_doctor_reports_worktree_runtime(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("WARCRAFT_WORKTREE_ROOT", str(tmp_path / "repo"))
+
+    result = runner.invoke(warcraft_app, ["doctor"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["paths"]["data_root"] == str((tmp_path / "repo" / ".warcraft" / "runtime" / "data").resolve())
+    assert payload["paths"]["cache_root"] == str((tmp_path / "repo" / ".warcraft" / "runtime" / "cache").resolve())
+    assert payload["paths"]["worktree_runtime"] == {
+        "active": True,
+        "worktree_root": str((tmp_path / "repo").resolve()),
+        "runtime_root": str((tmp_path / "repo" / ".warcraft" / "runtime").resolve()),
+        "isolated_roots": ["data", "cache"],
+        "shared_roots": ["config", "state"],
     }
 
 

@@ -17,7 +17,7 @@ LINT_PATHS := packages/warcraft-core packages/warcraft-api packages/warcraft-con
 LINT_ALL_PATHS := packages tests scripts
 WARCRAFT_STABLE_BRANCH ?= master
 
-.PHONY: stable-deploy stable-deploy-no-link dev-deploy dev-deploy-no-link export-stable-skills retire-dev-deploy worktree-add test test-live fmt-check lint lint-all complexity typecheck coverage deadcode run
+.PHONY: stable-deploy stable-deploy-no-link dev-deploy dev-deploy-no-link worktree-env export-stable-skills retire-dev-deploy worktree-add test test-live fmt-check lint lint-all complexity typecheck coverage deadcode run
 
 stable-deploy:
 	WARCRAFT_STABLE_BRANCH="$(WARCRAFT_STABLE_BRANCH)" ./scripts/stable_deploy.sh
@@ -30,6 +30,9 @@ dev-deploy:
 
 dev-deploy-no-link:
 	./scripts/dev_deploy.sh --no-link-bin
+
+worktree-env:
+	./scripts/setup_worktree_env.sh
 
 export-stable-skills:
 	PYTHON_BIN="$${PYTHON_BIN:-python3}"; "$$PYTHON_BIN" scripts/export_stable_skills.py --output-dir "$${XDG_DATA_HOME:-$$HOME/.local/share}/warcraft/skills"
