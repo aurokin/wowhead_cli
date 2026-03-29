@@ -307,6 +307,41 @@ def test_stable_deploy_rejected_preflight_does_not_leave_tmp_release_dir(tmp_pat
     assert not releases_dir.exists() or not list(releases_dir.glob(".tmp-*"))
 
 
+def test_stable_deploy_failed_install_cleans_tmp_release_dir(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    _write_minimal_package(repo_root)
+    subprocess.run(["git", "add", "pyproject.toml"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "add-pyproject"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
+
+    install_root = tmp_path / "stable-root"
+    result = subprocess.run(
+        [
+            "bash",
+            str(script_copy),
+            "--allow-dirty",
+            "--no-link-bin",
+        ],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "WARCRAFT_INSTALL_ROOT": str(install_root),
+            "WARCRAFT_STABLE_RELEASE_ID": "release-fail",
+        },
+    )
+
+    assert result.returncode == 2
+    releases_dir = install_root / "install" / "releases"
+    assert not list(releases_dir.glob(".tmp-release-fail-*"))
+    assert not (releases_dir / "release-fail").exists()
+
+
 def test_stable_rollback_repoints_current_to_an_older_release(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -535,3 +570,55 @@ def test_stable_deploy_keeps_old_releases_and_repoints_current(tmp_path: Path) -
     assert release_two.is_dir()
     assert current_link.is_symlink()
     assert current_link.resolve() == release_two.resolve()
+
+
+def test_stable_deploy_preserves_existing_skills_when_export_is_skipped(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    _write_minimal_package(repo_root)
+    subprocess.run(["git", "add", "pyproject.toml"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "add-pyproject"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
+
+    install_root = tmp_path / "stable-root"
+    releases_dir = install_root / "install" / "releases"
+    previous_release = releases_dir / "release-one"
+    previous_skills = previous_release / "skills"
+    previous_skills.mkdir(parents=True)
+    (previous_skills / "SKILL.md").write_text("stable skill\n", encoding="utf-8")
+
+    current_link = install_root / "install" / "current"
+    current_link.parent.mkdir(parents=True, exist_ok=True)
+    current_link.symlink_to(previous_release)
+
+    skills_link = install_root / "skills"
+    skills_link.parent.mkdir(parents=True, exist_ok=True)
+    skills_link.symlink_to(current_link / "skills")
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(script_copy),
+            "--allow-dirty",
+            "--no-link-bin",
+            "--no-export-skills",
+        ],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "WARCRAFT_INSTALL_ROOT": str(install_root),
+            "WARCRAFT_STABLE_RELEASE_ID": "release-two",
+        },
+    )
+
+    assert result.returncode == 0
+    release_two = releases_dir / "release-two"
+    assert current_link.resolve() == release_two.resolve()
+    assert (release_two / "skills").is_symlink()
+    assert (release_two / "skills").resolve() == previous_skills.resolve()
+    assert skills_link.resolve() == previous_skills.resolve()

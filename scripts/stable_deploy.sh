@@ -33,6 +33,7 @@ ACTIVE_VENV_DIR=""
 ACTIVE_SKILLS_DIR=""
 ACTIVE_RELEASE_ROOT=""
 TMP_RELEASE_ROOT=""
+PREVIOUS_SKILLS_DIR=""
 VERSIONED_LAYOUT=true
 
 detect_stable_branch() {
@@ -163,6 +164,26 @@ replace_with_symlink() {
   mv "$tmp_link" "$destination_path"
 }
 
+detect_existing_skills_dir() {
+  if [[ ! -e "$CURRENT_LINK/skills" ]]; then
+    return 1
+  fi
+
+  (
+    cd "$CURRENT_LINK/skills" && pwd -P
+  )
+}
+
+preserve_existing_skills() {
+  if [[ "$VERSIONED_LAYOUT" != "true" ]] || [[ "$EXPORT_SKILLS" == "true" ]] || [[ -z "$PREVIOUS_SKILLS_DIR" ]]; then
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$BUILD_SKILLS_DIR")"
+  ln -s "$PREVIOUS_SKILLS_DIR" "$BUILD_SKILLS_DIR"
+  echo "Reused stable skills from $PREVIOUS_SKILLS_DIR"
+}
+
 activate_release() {
   if [[ "$VERSIONED_LAYOUT" != "true" ]]; then
     return 0
@@ -173,6 +194,12 @@ activate_release() {
 
   if [[ "$EXPORT_SKILLS" == "true" ]]; then
     replace_with_symlink "$SKILLS_LINK" "$ACTIVE_SKILLS_DIR"
+  fi
+}
+
+cleanup_tmp_release() {
+  if [[ "$VERSIONED_LAYOUT" == "true" ]] && [[ -n "$TMP_RELEASE_ROOT" ]] && [[ -e "$TMP_RELEASE_ROOT" ]]; then
+    rm -rf "$TMP_RELEASE_ROOT"
   fi
 }
 
@@ -268,6 +295,8 @@ if [[ "$ALLOW_DIRTY" != "true" ]] && git -C "$ROOT_DIR" rev-parse --is-inside-wo
 fi
 
 prepare_layout
+trap cleanup_tmp_release EXIT
+PREVIOUS_SKILLS_DIR="$(detect_existing_skills_dir || true)"
 
 VENV_CREATED=false
 if [[ ! -d "$BUILD_VENV_DIR" ]]; then
@@ -304,6 +333,8 @@ fi
 if [[ "$EXPORT_SKILLS" == "true" ]]; then
   "$BUILD_VENV_DIR/bin/python" "$ROOT_DIR/scripts/export_stable_skills.py" --output-dir "$BUILD_SKILLS_DIR"
   echo "Prepared stable skills at $BUILD_SKILLS_DIR"
+else
+  preserve_existing_skills
 fi
 
 activate_release
