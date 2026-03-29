@@ -16,6 +16,12 @@ INSTALL_REDIS=false
 ALLOW_NON_MASTER=false
 ALLOW_DIRTY=false
 BIN_NAMES="${WARCRAFT_BIN_NAMES:-warcraft wowhead method icy-veins raiderio warcraft-wiki wowprogress simc warcraftlogs}"
+BOOTSTRAP_PACKAGES=(
+  "pip"
+  "setuptools"
+  "wheel"
+  "hatchling>=1.24.0"
+)
 
 detect_stable_branch() {
   if [[ -n "$STABLE_BRANCH" ]]; then
@@ -58,6 +64,26 @@ detect_stable_branch() {
   fi
 
   return 1
+}
+
+bootstrap_runtime_ready() {
+  "$VENV_DIR/bin/python" - <<'PY'
+import importlib.metadata
+import sys
+
+required = ("pip", "setuptools", "wheel", "hatchling")
+missing = []
+
+for package in required:
+    try:
+        importlib.metadata.version(package)
+    except importlib.metadata.PackageNotFoundError:
+        missing.append(package)
+
+if missing:
+    sys.stderr.write("Missing bootstrap packages: " + ", ".join(missing) + "\n")
+    raise SystemExit(1)
+PY
 }
 
 while (($#)); do
@@ -131,8 +157,10 @@ if [[ "$ALLOW_DIRTY" != "true" ]] && git -C "$ROOT_DIR" rev-parse --is-inside-wo
   fi
 fi
 
+VENV_CREATED=false
 if [[ ! -d "$VENV_DIR" ]]; then
   "$PYTHON_BIN" -m venv "$VENV_DIR"
+  VENV_CREATED=true
 fi
 
 PACKAGE_SPEC="$ROOT_DIR"
@@ -148,8 +176,18 @@ if ((${#EXTRAS[@]})); then
   PACKAGE_SPEC="$ROOT_DIR[$EXTRAS_CSV]"
 fi
 
-"$VENV_DIR/bin/python" -m pip install --quiet --upgrade pip setuptools wheel
-"$VENV_DIR/bin/pip" install --upgrade "$PACKAGE_SPEC"
+if [[ "$VENV_CREATED" == "true" ]] || ! bootstrap_runtime_ready >/dev/null 2>&1; then
+  if ! "$VENV_DIR/bin/python" -m pip install --quiet --upgrade "${BOOTSTRAP_PACKAGES[@]}"; then
+    if ! bootstrap_runtime_ready >/dev/null 2>&1; then
+      echo "Stable deploy requires pip, setuptools, wheel, and hatchling available in $VENV_DIR." >&2
+      echo "Bootstrap install failed, so the deploy cannot continue." >&2
+      exit 1
+    fi
+    echo "Bootstrap package upgrade failed; continuing with the existing stable runtime toolchain." >&2
+  fi
+fi
+
+"$VENV_DIR/bin/pip" install --no-build-isolation --upgrade "$PACKAGE_SPEC"
 
 if [[ "$EXPORT_SKILLS" == "true" ]]; then
   "$VENV_DIR/bin/python" "$ROOT_DIR/scripts/export_stable_skills.py" --output-dir "$SKILLS_DIR"
