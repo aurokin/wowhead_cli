@@ -44,7 +44,7 @@ fi
 "$VENV_DIR/bin/pip" install -e '.[dev]'
 
 if [[ "$LINK_BIN" == "true" ]]; then
-  LOCAL_BIN_DIR="$HOME/.local/bin"
+  LOCAL_BIN_DIR="${WARCRAFT_LOCAL_BIN_DIR:-$HOME/.local/bin}"
   mkdir -p "$LOCAL_BIN_DIR"
   for BIN_NAME in $BIN_NAMES; do
     WRAPPER_PATH="$LOCAL_BIN_DIR/$BIN_NAME"

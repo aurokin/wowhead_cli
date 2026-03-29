@@ -19,6 +19,7 @@ Warcraft data CLI monorepo.
 ## Install
 
 ```bash
+# branch-local editable environment
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
@@ -27,22 +28,45 @@ pip install -e '.[dev]'
 pip install -e '.[dev,redis]'
 ```
 
-## Local Dev Deploy
+## Stable Host Deploy
 
 ```bash
-# setup/update editable install and link ~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki,wowprogress,warcraftlogs,simc}
-make dev-deploy
+# install a stable machine-wide runtime under ~/.local/share/warcraft
+make stable-deploy
 warcraft doctor
 warcraft search "defias"
-warcraft search "mistweaver monk guide"
-warcraft resolve "https://www.warcraftlogs.com/reports/abcd1234#fight=3"
-wowhead search "defias"
-
-# optional: update venv only (no ~/.local/bin changes)
-make dev-deploy-no-link
 ```
 
-This project uses editable install mode (`pip install -e`), so code changes are immediately reflected without rebuilding.
+This writes `~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki,wowprogress,warcraftlogs,simc}` wrappers that point at a fixed venv under `~/.local/share/warcraft/`, and it exports stable skills under `~/.local/share/warcraft/skills/`.
+
+## Branch-Local Editable Deploy
+
+```bash
+# create a sibling worktree from the reserved master checkout
+make worktree-add BRANCH="feature-wrapper-routing"
+
+# setup/update the current checkout as an editable branch-local environment
+make dev-deploy-no-link
+
+# deliberate exception: relink ~/.local/bin to this checkout
+make dev-deploy
+```
+
+This project uses editable install mode (`pip install -e`) for branch-local development, so code changes are immediately reflected without rebuilding.
+Use `make dev-deploy-no-link` for branch worktrees so the host keeps pointing at the stable checkout.
+Only the reserved `master/` checkout should drive `make stable-deploy`, and that checkout should be clean before deploying.
+Use `make worktree-add BRANCH="<name>"` from `master/` to create sibling worktrees under `~/code/warcraft_cli/`.
+This repo pins that stable branch policy to `master` through the Make targets, while the helper scripts still honor `WARCRAFT_STABLE_BRANCH` for repositories that use a different trunk branch.
+If a repository carries both local `master` and `main` branches without a usable `origin/HEAD`, set `WARCRAFT_STABLE_BRANCH` explicitly instead of relying on auto-detection.
+
+## Retiring The Old Repo-Local Deploy
+
+```bash
+# after stable-deploy has repointed ~/.local/bin away from this checkout
+make retire-dev-deploy
+```
+
+That command uninstalls the editable `warcraft` package from the repo-local `.venv` and archives the old `.venv` so the host no longer depends on the checkout path.
 If `wowhead` is not found, add `~/.local/bin` to your `PATH`.
 
 ## Supported Providers

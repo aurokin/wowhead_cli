@@ -39,6 +39,7 @@ Documentation ownership:
 - [ROADMAP.md](ROADMAP.md)
 - [architecture/REPO_STRUCTURE_AND_PACKAGING.md](architecture/REPO_STRUCTURE_AND_PACKAGING.md)
 - [architecture/PACKAGE_LAYOUT.md](architecture/PACKAGE_LAYOUT.md)
+- [architecture/WORKTREE_INSTALLATION_PLAN.md](architecture/WORKTREE_INSTALLATION_PLAN.md)
 - [architecture/AUTH_ARCHITECTURE_PLAN.md](architecture/AUTH_ARCHITECTURE_PLAN.md)
 - [architecture/EXPANSION_FILTERING_PLAN.md](architecture/EXPANSION_FILTERING_PLAN.md)
 - [architecture/MIGRATION_CHECKLIST.md](architecture/MIGRATION_CHECKLIST.md)

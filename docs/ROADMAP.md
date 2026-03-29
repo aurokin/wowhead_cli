@@ -34,6 +34,7 @@ Validated shared systems:
 - wrapper expansion filtering and provider metadata
 - ranking policy for wrapper discovery
 - sample-backed analytics direction for profile and leaderboard providers
+- stable host deploy and sibling worktree workflow
 
 ## Now
 
@@ -57,6 +58,13 @@ Highest-value work:
    - sampled cohort analytics
    - deeper report/detail coverage where the public contract is stable
    - user-auth expansion only after the public/report contract is tighter
+
+Recently completed:
+- stable host deploy and sibling worktree migration
+- stable skill export and repo-local deploy retirement workflow
+- reserved `master/` checkout policy for machine-wide deploys
+
+See [architecture/WORKTREE_INSTALLATION_PLAN.md](architecture/WORKTREE_INSTALLATION_PLAN.md).
 
 ## Provider Priorities
 
