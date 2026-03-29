@@ -3098,6 +3098,58 @@ def test_warcraftlogs_client_public_token_requires_client_credentials(monkeypatc
     assert "WARCRAFTLOGS_CLIENT_ID" in exc_info.value.message
 
 
+def test_warcraftlogs_client_reuses_shared_public_token_across_instances(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "warcraftlogs_cli.client.load_warcraftlogs_auth_config",
+        lambda start_dir=None: type(
+            "Auth",
+            (),
+            {
+                "configured": True,
+                "client_id": "client-id",
+                "client_secret": "client-secret",
+                "env_file": "/tmp/.env.local",
+            },
+        )(),
+    )
+
+    saved_state: dict[str, dict[str, object]] = {}
+
+    monkeypatch.setattr(
+        "warcraftlogs_cli.client.load_provider_auth_state",
+        lambda provider: saved_state.get(provider),
+    )
+    monkeypatch.setattr(
+        "warcraftlogs_cli.client.save_provider_auth_state",
+        lambda provider, payload, path=None: saved_state.setdefault(provider, dict(payload)) and Path("/tmp/shared-token.json"),
+    )
+
+    token_requests: list[str] = []
+
+    def _fake_request(client, url, *, method="GET", data=None, auth=None, retry_attempts=1, **kwargs):  # noqa: ANN001
+        del client, data, auth, retry_attempts, kwargs
+        token_requests.append(url)
+        return httpx.Response(
+            200,
+            json={"access_token": "public-token", "expires_in": 3600},
+            request=httpx.Request(method, url),
+        )
+
+    monkeypatch.setattr("warcraftlogs_cli.client.request_with_retries", _fake_request)
+
+    first = WarcraftLogsClient()
+    second = WarcraftLogsClient()
+    try:
+        assert first._token() == "public-token"
+        assert second._token() == "public-token"
+    finally:
+        first.close()
+        second.close()
+
+    assert token_requests == ["https://www.warcraftlogs.com/oauth/token"]
+    assert saved_state["warcraftlogs-client-credentials"]["auth_mode"] == "client_credentials"
+
+
 def test_warcraftlogs_client_live_user_probe_does_not_write_shared_cache(monkeypatch) -> None:
     monkeypatch.setattr(
         "warcraftlogs_cli.client.load_warcraftlogs_auth_config",
