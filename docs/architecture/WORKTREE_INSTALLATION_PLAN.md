@@ -24,6 +24,9 @@ Status:
 Completed outcomes:
 - the machine-wide CLI wrappers point at the stable runtime under `~/.local/share/warcraft/`
 - stable skills export to `~/.local/share/warcraft/skills/`
+- stable releases are versioned under `~/.local/share/warcraft/install/releases/`
+- the active stable runtime is selected by repointing `~/.local/share/warcraft/install/current`
+- stable rollback is a first-class command instead of a manual-only symlink edit
 - the old repo-local editable deployment has a documented retirement path
 - the repo now lives under `~/code/warcraft_cli/master/`
 - sibling worktrees are the expected branch workflow under `~/code/warcraft_cli/`
@@ -151,12 +154,14 @@ Required work:
 Implemented commands:
 - `make stable-deploy`
 - `make stable-deploy-no-link`
+- `make stable-rollback RELEASE="<release-id>"`
 - `make export-stable-skills`
 
 Acceptance gate:
 - `warcraft`, `wowhead`, and at least one other provider command run from outside the repo
 - `~/.local/bin/*` wrappers no longer mention `/home/auro/code/warcraft_cli/.venv`
 - `~/.local/share/warcraft/install/current` points at an immutable release directory under `install/releases/`
+- a previously deployed stable release can be reactivated by repointing `install/current`
 
 ### Phase 2: Cut Over And Retire The Current Editable Deployment
 
@@ -222,6 +227,13 @@ Implemented command:
 Acceptance gate:
 - at least one feature worktree is active
 - branch-local edits do not affect machine-wide CLI routing until an explicit deploy is run from `master/`
+
+## Deferred Follow-Ups After The Current PR Cut
+
+These are intentionally not part of the current branch scope:
+- release pruning after the immutable-release rollback flow has had time to settle
+- optional automatic shell activation when entering a worktree
+- optional worktree claim or lease tracking for multi-agent coordination
 
 ## Verification Checklist
 

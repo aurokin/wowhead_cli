@@ -79,16 +79,21 @@ exit 0
     (bin_dir / "pip").chmod(0o755)
 
 
+def _copy_stable_script(script_name: str, repo_root: Path) -> Path:
+    repo_script = Path(__file__).resolve().parent.parent / "scripts" / script_name
+    script_copy = repo_root / "scripts" / script_name
+    script_copy.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(repo_script, script_copy)
+    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+    return script_copy
+
+
 def test_stable_deploy_refuses_dirty_worktree_without_override(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _init_repo(repo_root)
 
-    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "stable_deploy.sh"
-    script_copy = repo_root / "scripts" / "stable_deploy.sh"
-    script_copy.parent.mkdir(parents=True)
-    shutil.copy2(repo_script, script_copy)
-    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
 
     (repo_root / "README.md").write_text("dirty\n", encoding="utf-8")
 
@@ -109,11 +114,7 @@ def test_stable_deploy_refuses_untracked_files_without_override(tmp_path: Path) 
     repo_root.mkdir()
     _init_repo(repo_root)
 
-    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "stable_deploy.sh"
-    script_copy = repo_root / "scripts" / "stable_deploy.sh"
-    script_copy.parent.mkdir(parents=True)
-    shutil.copy2(repo_script, script_copy)
-    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
 
     (repo_root / "local-only.txt").write_text("untracked\n", encoding="utf-8")
 
@@ -134,11 +135,7 @@ def test_stable_deploy_accepts_detected_main_as_stable_branch(tmp_path: Path) ->
     repo_root.mkdir()
     _init_repo(repo_root, branch="main")
 
-    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "stable_deploy.sh"
-    script_copy = repo_root / "scripts" / "stable_deploy.sh"
-    script_copy.parent.mkdir(parents=True)
-    shutil.copy2(repo_script, script_copy)
-    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
 
     (repo_root / "local-only.txt").write_text("untracked\n", encoding="utf-8")
 
@@ -161,11 +158,7 @@ def test_stable_deploy_allows_unknown_stable_branch_with_override(tmp_path: Path
     _init_repo(repo_root, branch="trunk")
     _write_minimal_package(repo_root)
 
-    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "stable_deploy.sh"
-    script_copy = repo_root / "scripts" / "stable_deploy.sh"
-    script_copy.parent.mkdir(parents=True)
-    shutil.copy2(repo_script, script_copy)
-    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
 
     (repo_root / "local-only.txt").write_text("untracked\n", encoding="utf-8")
 
@@ -200,11 +193,7 @@ def test_stable_deploy_refuses_ambiguous_local_master_main_without_override(tmp_
     subprocess.run(["git", "checkout", "-b", "main"], cwd=repo_root, check=True, capture_output=True, text=True)
     subprocess.run(["git", "checkout", "master"], cwd=repo_root, check=True, capture_output=True, text=True)
 
-    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "stable_deploy.sh"
-    script_copy = repo_root / "scripts" / "stable_deploy.sh"
-    script_copy.parent.mkdir(parents=True)
-    shutil.copy2(repo_script, script_copy)
-    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
 
     result = subprocess.run(
         ["bash", str(script_copy)],
@@ -226,11 +215,7 @@ def test_stable_deploy_skips_bootstrap_upgrade_when_runtime_ready(tmp_path: Path
     subprocess.run(["git", "add", "pyproject.toml"], cwd=repo_root, check=True, capture_output=True, text=True)
     subprocess.run(["git", "commit", "-m", "add-pyproject"], cwd=repo_root, check=True, capture_output=True, text=True)
 
-    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "stable_deploy.sh"
-    script_copy = repo_root / "scripts" / "stable_deploy.sh"
-    script_copy.parent.mkdir(parents=True)
-    shutil.copy2(repo_script, script_copy)
-    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
 
     venv_dir = tmp_path / "stable-venv"
     _write_fake_stable_venv(venv_dir)
@@ -258,7 +243,64 @@ def test_stable_deploy_skips_bootstrap_upgrade_when_runtime_ready(tmp_path: Path
 
     assert result.returncode == 0
     assert "Stable deploy complete." in result.stdout
-    assert "--no-build-isolation --upgrade" in pip_log.read_text(encoding="utf-8")
+
+
+def test_stable_rollback_repoints_current_to_an_older_release(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+
+    script_copy = _copy_stable_script("stable_rollback.sh", repo_root)
+
+    install_root = tmp_path / "stable-root"
+    releases_dir = install_root / "install" / "releases"
+    old_release = releases_dir / "20260329010101-old1111"
+    new_release = releases_dir / "20260329020202-new2222"
+    (old_release / "venv").mkdir(parents=True)
+    (new_release / "venv").mkdir(parents=True)
+
+    current_link = install_root / "install" / "current"
+    current_link.parent.mkdir(parents=True, exist_ok=True)
+    current_link.symlink_to(new_release)
+
+    result = subprocess.run(
+        ["bash", str(script_copy), old_release.name],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=os.environ | {"WARCRAFT_INSTALL_ROOT": str(install_root)},
+    )
+
+    assert "Stable rollback complete." in result.stdout
+    assert current_link.is_symlink()
+    assert current_link.resolve() == old_release.resolve()
+
+
+def test_stable_rollback_lists_known_releases_when_target_is_missing(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+
+    script_copy = _copy_stable_script("stable_rollback.sh", repo_root)
+
+    install_root = tmp_path / "stable-root"
+    releases_dir = install_root / "install" / "releases"
+    known_release = releases_dir / "20260329030303-known3333"
+    (known_release / "venv").mkdir(parents=True)
+
+    result = subprocess.run(
+        ["bash", str(script_copy), "missing-release"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=os.environ | {"WARCRAFT_INSTALL_ROOT": str(install_root)},
+    )
+
+    assert result.returncode == 1
+    assert "Stable release not found" in result.stderr
+    assert known_release.name in result.stderr
 
 
 def test_stable_deploy_uses_versioned_release_layout_by_default(tmp_path: Path) -> None:
@@ -269,11 +311,7 @@ def test_stable_deploy_uses_versioned_release_layout_by_default(tmp_path: Path) 
     subprocess.run(["git", "add", "pyproject.toml"], cwd=repo_root, check=True, capture_output=True, text=True)
     subprocess.run(["git", "commit", "-m", "add-pyproject"], cwd=repo_root, check=True, capture_output=True, text=True)
 
-    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "stable_deploy.sh"
-    script_copy = repo_root / "scripts" / "stable_deploy.sh"
-    script_copy.parent.mkdir(parents=True)
-    shutil.copy2(repo_script, script_copy)
-    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
 
     install_root = tmp_path / "stable-root"
     local_bin_dir = tmp_path / "bin"

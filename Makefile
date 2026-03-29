@@ -17,13 +17,20 @@ LINT_PATHS := packages/warcraft-core packages/warcraft-api packages/warcraft-con
 LINT_ALL_PATHS := packages tests scripts
 WARCRAFT_STABLE_BRANCH ?= master
 
-.PHONY: stable-deploy stable-deploy-no-link dev-deploy dev-deploy-no-link worktree-env export-stable-skills retire-dev-deploy worktree-add test test-live fmt-check lint lint-all complexity typecheck coverage deadcode run
+.PHONY: stable-deploy stable-deploy-no-link stable-rollback dev-deploy dev-deploy-no-link worktree-env export-stable-skills retire-dev-deploy worktree-add test test-live fmt-check lint lint-all complexity typecheck coverage deadcode run
 
 stable-deploy:
 	WARCRAFT_STABLE_BRANCH="$(WARCRAFT_STABLE_BRANCH)" ./scripts/stable_deploy.sh
 
 stable-deploy-no-link:
 	WARCRAFT_STABLE_BRANCH="$(WARCRAFT_STABLE_BRANCH)" ./scripts/stable_deploy.sh --no-link-bin
+
+stable-rollback:
+	@if [ -z "$(RELEASE)" ]; then \
+		echo 'Usage: make stable-rollback RELEASE="<release-id>"'; \
+		exit 2; \
+	fi
+	WARCRAFT_STABLE_BRANCH="$(WARCRAFT_STABLE_BRANCH)" WARCRAFT_STABLE_RELEASE_ID="$(RELEASE)" ./scripts/stable_rollback.sh
 
 dev-deploy:
 	./scripts/dev_deploy.sh
