@@ -231,6 +231,40 @@ def test_create_worktree_refuses_remote_lookup_failures(tmp_path: Path) -> None:
     assert not (workspace_root / "feature-transport-check").exists()
 
 
+def test_create_worktree_ignores_non_exact_remote_tail_match(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "warcraft_cli"
+    remote_root = tmp_path / "upstream.git"
+    master_root = workspace_root / "master"
+    master_root.mkdir(parents=True)
+    _init_repo(master_root)
+
+    subprocess.run(["git", "init", "--bare", str(remote_root)], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "remote", "add", "upstream", str(remote_root)], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "push", "-u", "upstream", "master"], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "checkout", "-b", "topic/feature-one"], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "push", "-u", "upstream", "topic/feature-one"], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "checkout", "master"], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "branch", "-D", "topic/feature-one"], cwd=master_root, check=True, capture_output=True, text=True)
+
+    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "create_worktree.sh"
+    script_copy = master_root / "scripts" / "create_worktree.sh"
+    script_copy.parent.mkdir(parents=True)
+    shutil.copy2(repo_script, script_copy)
+    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+
+    result = subprocess.run(
+        ["bash", str(script_copy), "feature-one"],
+        cwd=master_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    feature_root = workspace_root / "feature-one"
+    assert feature_root.is_dir()
+    assert "Created worktree" in result.stdout
+
+
 def test_create_worktree_normalizes_slash_branch_name_to_sibling_dir(tmp_path: Path) -> None:
     workspace_root = tmp_path / "warcraft_cli"
     master_root = workspace_root / "master"

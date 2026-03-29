@@ -134,7 +134,7 @@ fi
 
 while IFS= read -r REMOTE_NAME; do
   [[ -z "$REMOTE_NAME" ]] && continue
-  if git -C "$ROOT_DIR" ls-remote --exit-code --heads "$REMOTE_NAME" "$BRANCH_NAME" >/dev/null 2>&1; then
+  if git -C "$ROOT_DIR" ls-remote --exit-code --heads "$REMOTE_NAME" "refs/heads/$BRANCH_NAME" >/dev/null 2>&1; then
     echo "Remote branch already exists on $REMOTE_NAME: $BRANCH_NAME" >&2
     echo "Fetch and attach it explicitly instead of creating a new local branch from the current checkout." >&2
     exit 1
