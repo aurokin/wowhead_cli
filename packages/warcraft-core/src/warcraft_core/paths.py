@@ -46,12 +46,28 @@ def worktree_runtime_root() -> Path | None:
 def worktree_runtime_details() -> dict[str, Any]:
     root = worktree_root()
     runtime_root = worktree_runtime_root()
+    isolated_roots: list[str] = []
+    shared_roots: list[str] = []
+
+    if root is not None and runtime_root is not None:
+        if _explicit_xdg_root("XDG_DATA_HOME") is None:
+            isolated_roots.append("data")
+        else:
+            shared_roots.append("data")
+
+        if _explicit_xdg_root("XDG_CACHE_HOME") is None:
+            isolated_roots.append("cache")
+        else:
+            shared_roots.append("cache")
+
+        shared_roots = [*shared_roots, "config", "state"]
+
     return {
         "active": root is not None and runtime_root is not None,
         "worktree_root": str(root) if root is not None else None,
         "runtime_root": str(runtime_root) if runtime_root is not None else None,
-        "isolated_roots": ["data", "cache"] if root is not None and runtime_root is not None else [],
-        "shared_roots": ["config", "state"] if root is not None and runtime_root is not None else [],
+        "isolated_roots": isolated_roots,
+        "shared_roots": shared_roots,
     }
 
 

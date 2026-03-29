@@ -416,6 +416,26 @@ def test_warcraft_doctor_reports_worktree_runtime(monkeypatch, tmp_path) -> None
     }
 
 
+def test_warcraft_doctor_reports_xdg_overrides_in_worktree_runtime(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("WARCRAFT_WORKTREE_ROOT", str(tmp_path / "repo"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+
+    result = runner.invoke(warcraft_app, ["doctor"])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.stdout)
+    assert payload["paths"]["data_root"] == str((tmp_path / "data" / "warcraft").resolve())
+    assert payload["paths"]["cache_root"] == str((tmp_path / "cache" / "warcraft").resolve())
+    assert payload["paths"]["worktree_runtime"] == {
+        "active": True,
+        "worktree_root": str((tmp_path / "repo").resolve()),
+        "runtime_root": str((tmp_path / "repo" / ".warcraft" / "runtime").resolve()),
+        "isolated_roots": [],
+        "shared_roots": ["data", "cache", "config", "state"],
+    }
+
+
 def test_warcraft_search_fans_out_across_providers(monkeypatch) -> None:
     def fake_search(self, query: str):  # noqa: ANN001
         return {

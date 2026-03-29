@@ -36,3 +36,10 @@ def test_explicit_xdg_roots_override_worktree_runtime(monkeypatch, tmp_path) -> 
 
     assert provider_data_root("simc") == (tmp_path / "data" / "warcraft" / "simc")
     assert provider_cache_root("simc") == (tmp_path / "cache" / "warcraft" / "simc")
+    assert worktree_runtime_details() == {
+        "active": True,
+        "worktree_root": str((tmp_path / "repo").resolve()),
+        "runtime_root": str((tmp_path / "repo" / ".warcraft" / "runtime").resolve()),
+        "isolated_roots": [],
+        "shared_roots": ["data", "cache", "config", "state"],
+    }

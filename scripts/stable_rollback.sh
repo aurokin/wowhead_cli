@@ -85,6 +85,20 @@ list_release_ids() {
   done < <(find "$INSTALL_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d | sort)
 }
 
+validate_release_id() {
+  local candidate="$1"
+
+  if [[ ! "$candidate" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    return 1
+  fi
+
+  if [[ "$candidate" == "." ]] || [[ "$candidate" == ".." ]]; then
+    return 1
+  fi
+
+  return 0
+}
+
 usage() {
   echo "Usage: $0 <release-id> [--allow-non-master]" >&2
   echo "Or set WARCRAFT_STABLE_RELEASE_ID to the target release id." >&2
@@ -127,6 +141,12 @@ if [[ -z "$RELEASE_ID" ]]; then
   exit 2
 fi
 
+if ! validate_release_id "$RELEASE_ID"; then
+  echo "Invalid stable release id: $RELEASE_ID" >&2
+  echo "Release ids may contain only letters, numbers, dot, underscore, and hyphen." >&2
+  exit 2
+fi
+
 if [[ "$ALLOW_NON_MASTER" != "true" ]] && git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   if ! STABLE_BRANCH="$(detect_stable_branch)"; then
     echo "Could not determine the stable branch for this repository." >&2
@@ -149,6 +169,13 @@ if [[ ! -d "$TARGET_RELEASE_ROOT" ]]; then
     echo "Available releases:" >&2
     printf ' - %s\n' $AVAILABLE_RELEASES >&2
   fi
+  exit 1
+fi
+
+RESOLVED_RELEASES_DIR="$(cd "$INSTALL_RELEASES_DIR" && pwd -P)"
+RESOLVED_TARGET_RELEASE_ROOT="$(cd "$TARGET_RELEASE_ROOT" && pwd -P)"
+if [[ "$(dirname "$RESOLVED_TARGET_RELEASE_ROOT")" != "$RESOLVED_RELEASES_DIR" ]]; then
+  echo "Stable release must resolve under $INSTALL_RELEASES_DIR: $RELEASE_ID" >&2
   exit 1
 fi
 

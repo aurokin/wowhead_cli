@@ -303,6 +303,72 @@ def test_stable_rollback_lists_known_releases_when_target_is_missing(tmp_path: P
     assert known_release.name in result.stderr
 
 
+def test_stable_rollback_rejects_invalid_release_ids(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+
+    script_copy = _copy_stable_script("stable_rollback.sh", repo_root)
+
+    install_root = tmp_path / "stable-root"
+    releases_dir = install_root / "install" / "releases"
+    valid_release = releases_dir / "20260329040404-known4444"
+    outside_release = install_root / "install" / "outside"
+    (valid_release / "venv").mkdir(parents=True)
+    (outside_release / "venv").mkdir(parents=True)
+
+    current_link = install_root / "install" / "current"
+    current_link.parent.mkdir(parents=True, exist_ok=True)
+    current_link.symlink_to(valid_release)
+
+    result = subprocess.run(
+        ["bash", str(script_copy), "../outside"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=os.environ | {"WARCRAFT_INSTALL_ROOT": str(install_root)},
+    )
+
+    assert result.returncode == 2
+    assert "Invalid stable release id" in result.stderr
+    assert current_link.resolve() == valid_release.resolve()
+
+
+def test_stable_rollback_rejects_release_paths_that_resolve_outside_releases_dir(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+
+    script_copy = _copy_stable_script("stable_rollback.sh", repo_root)
+
+    install_root = tmp_path / "stable-root"
+    releases_dir = install_root / "install" / "releases"
+    current_release = releases_dir / "20260329050505-current5555"
+    outside_release = install_root / "outside-release"
+    (current_release / "venv").mkdir(parents=True)
+    (outside_release / "venv").mkdir(parents=True)
+    (releases_dir / "20260329060606-symlink6666").parent.mkdir(parents=True, exist_ok=True)
+    (releases_dir / "20260329060606-symlink6666").symlink_to(outside_release, target_is_directory=True)
+
+    current_link = install_root / "install" / "current"
+    current_link.parent.mkdir(parents=True, exist_ok=True)
+    current_link.symlink_to(current_release)
+
+    result = subprocess.run(
+        ["bash", str(script_copy), "20260329060606-symlink6666"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=os.environ | {"WARCRAFT_INSTALL_ROOT": str(install_root)},
+    )
+
+    assert result.returncode == 1
+    assert "must resolve under" in result.stderr
+    assert current_link.resolve() == current_release.resolve()
+
+
 def test_stable_deploy_uses_versioned_release_layout_by_default(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
