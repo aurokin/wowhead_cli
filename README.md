@@ -57,6 +57,7 @@ Use `make dev-deploy-no-link` for branch worktrees so the host keeps pointing at
 Only the reserved `master/` checkout should drive `make stable-deploy`, and that checkout should be clean before deploying.
 Use `make worktree-add BRANCH="<name>"` from `master/` to create sibling worktrees under `~/code/warcraft_cli/`.
 This repo pins that stable branch policy to `master` through the Make targets, while the helper scripts still honor `WARCRAFT_STABLE_BRANCH` for repositories that use a different trunk branch.
+If a repository carries both local `master` and `main` branches without a usable `origin/HEAD`, set `WARCRAFT_STABLE_BRANCH` explicitly instead of relying on auto-detection.
 
 ## Retiring The Old Repo-Local Deploy
 

@@ -226,3 +226,29 @@ def test_create_worktree_normalizes_slash_branch_name_to_sibling_dir(tmp_path: P
     feature_root = workspace_root / "feature--cache"
     assert feature_root.is_dir()
     assert "Created worktree" in result.stdout
+
+
+def test_create_worktree_refuses_ambiguous_local_master_main_without_override(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "warcraft_cli"
+    master_root = workspace_root / "master"
+    master_root.mkdir(parents=True)
+    _init_repo(master_root)
+    subprocess.run(["git", "checkout", "-b", "main"], cwd=master_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "checkout", "master"], cwd=master_root, check=True, capture_output=True, text=True)
+
+    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "create_worktree.sh"
+    script_copy = master_root / "scripts" / "create_worktree.sh"
+    script_copy.parent.mkdir(parents=True)
+    shutil.copy2(repo_script, script_copy)
+    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+
+    result = subprocess.run(
+        ["bash", str(script_copy), "feature-ambiguous"],
+        cwd=master_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Could not determine the stable branch" in result.stderr

@@ -144,3 +144,28 @@ def test_stable_deploy_allows_unknown_stable_branch_with_override(tmp_path: Path
 
     assert result.returncode == 0
     assert "Stable deploy complete." in result.stdout
+
+
+def test_stable_deploy_refuses_ambiguous_local_master_main_without_override(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    subprocess.run(["git", "checkout", "-b", "main"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "checkout", "master"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    repo_script = Path(__file__).resolve().parent.parent / "scripts" / "stable_deploy.sh"
+    script_copy = repo_root / "scripts" / "stable_deploy.sh"
+    script_copy.parent.mkdir(parents=True)
+    shutil.copy2(repo_script, script_copy)
+    script_copy.chmod(script_copy.stat().st_mode | stat.S_IXUSR)
+
+    result = subprocess.run(
+        ["bash", str(script_copy)],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Could not determine the stable branch" in result.stderr

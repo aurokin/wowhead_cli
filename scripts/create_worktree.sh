@@ -23,12 +23,27 @@ detect_stable_branch() {
     fi
   fi
 
+  local has_master=false
+  local has_main=false
+
   if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/master"; then
+    has_master=true
+  fi
+
+  if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/main"; then
+    has_main=true
+  fi
+
+  if [[ "$has_master" == "true" ]] && [[ "$has_main" == "true" ]]; then
+    return 1
+  fi
+
+  if [[ "$has_master" == "true" ]]; then
     printf 'master\n'
     return 0
   fi
 
-  if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/main"; then
+  if [[ "$has_main" == "true" ]]; then
     printf 'main\n'
     return 0
   fi
