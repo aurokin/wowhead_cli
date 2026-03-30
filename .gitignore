@@ -6,6 +6,7 @@ research/warcraftlogs-docs-fresh/
 .playwright-cli/
 .generated-skills/
 .venv/
+.warcraft/
 __pycache__/
 .pytest_cache/
 .coverage

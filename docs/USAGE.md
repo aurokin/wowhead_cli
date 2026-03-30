@@ -4,6 +4,30 @@ This document is the command-oriented reference for the local Warcraft CLI works
 
 The goal is to keep the README short and keep detailed usage notes close to actual CLI behavior.
 
+## Workspace Commands
+
+```bash
+make stable-deploy
+make stable-deploy-no-link
+make stable-rollback RELEASE="20260329010101-abc1234"
+make worktree-add BRANCH="feature-wrapper-routing"
+make dev-deploy-no-link
+source .warcraft/worktree-env.sh
+WARCRAFT_ALLOW_LINK_BIN=1 make dev-deploy
+make retire-dev-deploy
+```
+
+Workspace command behavior:
+- `make stable-deploy` stages a versioned stable release under `~/.local/share/warcraft/install/releases/<release-id>/` and flips `install/current` only after the build succeeds
+- `make stable-deploy-no-link` builds the same stable release layout without rewriting `~/.local/bin`
+- `make stable-rollback RELEASE="<release-id>"` repoints `~/.local/share/warcraft/install/current` to an older immutable release; the existing wrappers and exported skills follow that pointer automatically
+- manual emergency rollback remains a plain symlink repoint to `~/.local/share/warcraft/install/releases/<release-id>`, because the host-facing wrappers always execute through `install/current`
+- `make worktree-add` creates a sibling worktree from the reserved stable checkout and initializes `.warcraft/worktree-env.sh` in the new worktree
+- `make dev-deploy-no-link` keeps the host on the stable install while updating the current worktree's editable `.venv`
+- `source .warcraft/worktree-env.sh` is the explicit shell activation step for worktree-local `PATH`, `data`, and `cache` roots
+- `WARCRAFT_ALLOW_LINK_BIN=1 make dev-deploy` is a deliberate exception that repoints `~/.local/bin` at the current checkout
+- `make retire-dev-deploy` archives or removes the old repo-local deploy only after the host wrappers no longer point at it
+
 ## Wrapper Commands
 
 ```bash
@@ -150,7 +174,8 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
 
 `warcraft doctor` reports:
 - wrapper health
-- shared XDG-style config/data/cache roots
+- effective XDG-style config/data/cache/state roots
+- active worktree-runtime isolation details when running from an editable worktree
 - registered provider readiness
 - provider expansion-support mode and active expansion eligibility when `--expansion` is set
 
