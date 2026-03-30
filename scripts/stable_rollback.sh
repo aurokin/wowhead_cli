@@ -63,14 +63,15 @@ replace_with_symlink() {
   ln -s "$target_path" "$tmp_link"
 
   if [[ -L "$destination_path" ]]; then
-    rm -f "$destination_path"
+    mv -Tf "$tmp_link" "$destination_path"
+    return 0
   elif [[ -e "$destination_path" ]]; then
     local backup_path="${destination_path}.backup.$(date -u +%Y%m%d%H%M%S)"
     mv "$destination_path" "$backup_path"
     echo "Backed up $destination_path to $backup_path"
   fi
 
-  mv "$tmp_link" "$destination_path"
+  mv -Tf "$tmp_link" "$destination_path"
 }
 
 list_release_ids() {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from warcraft_core.paths import provider_cache_root, provider_config_root, provider_data_root, worktree_runtime_details
+from warcraft_core.paths import provider_cache_root, provider_config_root, provider_data_root, worktree_root, worktree_runtime_details
 
 
 def test_provider_roots_use_xdg_homes(monkeypatch, tmp_path) -> None:  # noqa: ANN001
@@ -42,4 +42,18 @@ def test_explicit_xdg_roots_override_worktree_runtime(monkeypatch, tmp_path) -> 
         "runtime_root": str((tmp_path / "repo" / ".warcraft" / "runtime").resolve()),
         "isolated_roots": [],
         "shared_roots": ["data", "cache", "config", "state"],
+    }
+
+
+def test_explicit_runtime_dir_activates_worktree_runtime_without_root(monkeypatch, tmp_path) -> None:  # noqa: ANN001
+    monkeypatch.setenv("WARCRAFT_WORKTREE_RUNTIME_DIR", str(tmp_path / "runtime"))
+
+    assert provider_data_root("simc") == (tmp_path / "runtime" / "data" / "simc")
+    assert provider_cache_root("simc") == (tmp_path / "runtime" / "cache" / "simc")
+    assert worktree_runtime_details() == {
+        "active": True,
+        "worktree_root": str(worktree_root()),
+        "runtime_root": str((tmp_path / "runtime").resolve()),
+        "isolated_roots": ["data", "cache"],
+        "shared_roots": ["config", "state"],
     }
