@@ -9,7 +9,7 @@ from method_cli.main import app as method_app
 from raiderio_cli.main import app as raiderio_app
 from simc_cli.main import app as simc_app
 from typer.testing import CliRunner
-from warcraft_content.paths import cache_root, config_root, data_root
+from warcraft_content.paths import cache_root, config_root, data_root, state_root, worktree_runtime_details
 from warcraft_wiki_cli.main import app as warcraft_wiki_app
 from warcraftlogs_cli.main import app as warcraftlogs_app
 from wowhead_cli.expansion_profiles import list_profiles
@@ -420,6 +420,8 @@ def global_doctor_payload(*, requested_expansion: str | None = None) -> dict[str
             "config_root": str(config_root()),
             "data_root": str(data_root()),
             "cache_root": str(cache_root()),
+            "state_root": str(state_root()),
+            "worktree_runtime": worktree_runtime_details(),
         },
         "providers": [provider_doctor(provider.name, requested_expansion=requested_expansion) for provider in PROVIDERS],
         "included_providers": [provider.name for provider in included],

@@ -150,6 +150,10 @@ done < <(git -C "$ROOT_DIR" remote)
 
 git -C "$ROOT_DIR" worktree add "$TARGET_DIR" -b "$BRANCH_NAME"
 echo "Created worktree: $TARGET_DIR"
+if [[ -x "$TARGET_DIR/scripts/setup_worktree_env.sh" ]]; then
+  "$TARGET_DIR/scripts/setup_worktree_env.sh" >/dev/null
+  echo "Initialized worktree env: $TARGET_DIR/.warcraft/worktree-env.sh"
+fi
 
 if [[ "$RUN_DEV_DEPLOY" == "true" ]]; then
   make -C "$TARGET_DIR" dev-deploy-no-link

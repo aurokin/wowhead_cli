@@ -63,6 +63,14 @@ Recently completed:
 - stable host deploy and sibling worktree migration
 - stable skill export and repo-local deploy retirement workflow
 - reserved `master/` checkout policy for machine-wide deploys
+- worktree-local data/cache isolation with shared config/state credentials
+- versioned stable release layout with atomic `install/current` activation
+- first-class stable rollback via immutable release repointing
+
+Deferred operational follow-ups after the current PR cut:
+- optional release pruning after the rollback workflow has baked
+- optional automatic shell activation on worktree entry
+- optional worktree lease or registry coordination for multi-agent assignment
 
 See [architecture/WORKTREE_INSTALLATION_PLAN.md](architecture/WORKTREE_INSTALLATION_PLAN.md).
 

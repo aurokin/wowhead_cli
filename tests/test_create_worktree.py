@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import stat
 import subprocess
@@ -314,3 +315,55 @@ def test_create_worktree_refuses_ambiguous_local_master_main_without_override(tm
 
     assert result.returncode == 1
     assert "Could not determine the stable branch" in result.stderr
+
+
+def test_create_worktree_env_ignores_inherited_runtime_dir(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "warcraft_cli"
+    master_root = workspace_root / "master"
+    master_root.mkdir(parents=True)
+    _init_repo(master_root)
+
+    repo_scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
+    for script_name in ("create_worktree.sh", "setup_worktree_env.sh"):
+        source_path = repo_scripts_dir / script_name
+        target_path = master_root / "scripts" / script_name
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path)
+        target_path.chmod(target_path.stat().st_mode | stat.S_IXUSR)
+
+    subprocess.run(
+        ["git", "add", "scripts/create_worktree.sh", "scripts/setup_worktree_env.sh"],
+        cwd=master_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "add worktree scripts"],
+        cwd=master_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    inherited_runtime_root = tmp_path / "other-worktree" / ".warcraft" / "runtime"
+    env = dict(os.environ, WARCRAFT_WORKTREE_RUNTIME_DIR=str(inherited_runtime_root))
+
+    result = subprocess.run(
+        ["bash", str(master_root / "scripts" / "create_worktree.sh"), "feature-env"],
+        cwd=master_root,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    feature_root = workspace_root / "feature-env"
+    env_path = feature_root / ".warcraft" / "worktree-env.sh"
+    expected_runtime_root = feature_root / ".warcraft" / "runtime"
+    env_contents = env_path.read_text(encoding="utf-8")
+
+    assert env_path.is_file()
+    assert "Initialized worktree env" in result.stdout
+    assert f'export WARCRAFT_WORKTREE_RUNTIME_DIR="{expected_runtime_root}"' in env_contents
+    assert str(inherited_runtime_root) not in env_contents
