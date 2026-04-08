@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="$ROOT_DIR/.venv"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 LINK_BIN=true
+ALLOW_LINK_BIN="${WARCRAFT_ALLOW_LINK_BIN:-}"
 BIN_NAMES="${WARCRAFT_BIN_NAMES:-warcraft wowhead method icy-veins raiderio warcraft-wiki wowprogress simc warcraftlogs}"
 
 while (($#)); do
@@ -42,8 +43,14 @@ fi
 
 "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel >/dev/null
 "$VENV_DIR/bin/pip" install -e '.[dev]'
+"$ROOT_DIR/scripts/setup_worktree_env.sh" >/dev/null
 
 if [[ "$LINK_BIN" == "true" ]]; then
+  if [[ ! "$ALLOW_LINK_BIN" =~ ^(1|true|yes)$ ]]; then
+    echo "Refusing to relink ~/.local/bin without WARCRAFT_ALLOW_LINK_BIN=1." >&2
+    echo "Use make dev-deploy-no-link for normal branch-local setup." >&2
+    exit 1
+  fi
   LOCAL_BIN_DIR="${WARCRAFT_LOCAL_BIN_DIR:-$HOME/.local/bin}"
   mkdir -p "$LOCAL_BIN_DIR"
   for BIN_NAME in $BIN_NAMES; do
@@ -58,4 +65,5 @@ WRAP
 fi
 
 echo "Dev deploy complete."
+echo "Worktree env: $ROOT_DIR/.warcraft/worktree-env.sh"
 echo "Run with: warcraft search \"defias\""
