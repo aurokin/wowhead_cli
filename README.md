@@ -54,6 +54,9 @@ make worktree-add BRANCH="feature-wrapper-routing"
 # setup/update the current checkout as an editable branch-local environment
 make dev-deploy-no-link
 
+# optional: regenerate the shell env activation file for this worktree
+make worktree-env
+
 # optional: add the worktree venv to PATH in this shell
 source .warcraft/worktree-env.sh
 
@@ -64,6 +67,7 @@ WARCRAFT_ALLOW_LINK_BIN=1 make dev-deploy
 This project uses editable install mode (`pip install -e`) for branch-local development, so code changes are immediately reflected without rebuilding.
 Use `make dev-deploy-no-link` for branch worktrees so the host keeps pointing at the stable checkout.
 That branch-local setup writes `.warcraft/worktree-env.sh`, keeps credentials in the shared host config/state roots, and isolates branch-local data/cache under `.warcraft/runtime/`.
+Use `make worktree-env` whenever you want to regenerate or refresh that shell activation file explicitly.
 Only the reserved `master/` checkout should drive `make stable-deploy`, and that checkout should be clean before deploying.
 Use the same reserved `master/` checkout for `make stable-rollback` when you need to flip `install/current` back to an older release.
 Use `make worktree-add BRANCH="<name>"` from `master/` to create sibling worktrees under `~/code/warcraft_cli/`.

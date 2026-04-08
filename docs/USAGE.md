@@ -12,6 +12,7 @@ make stable-deploy-no-link
 make stable-rollback RELEASE="20260329010101-abc1234"
 make worktree-add BRANCH="feature-wrapper-routing"
 make dev-deploy-no-link
+make worktree-env
 source .warcraft/worktree-env.sh
 WARCRAFT_ALLOW_LINK_BIN=1 make dev-deploy
 make retire-dev-deploy
@@ -24,6 +25,7 @@ Workspace command behavior:
 - manual emergency rollback remains a plain symlink repoint to `~/.local/share/warcraft/install/releases/<release-id>`, because the host-facing wrappers always execute through `install/current`
 - `make worktree-add` creates a sibling worktree from the reserved stable checkout and initializes `.warcraft/worktree-env.sh` in the new worktree
 - `make dev-deploy-no-link` keeps the host on the stable install while updating the current worktree's editable `.venv`
+- `make worktree-env` regenerates `.warcraft/worktree-env.sh` for the current checkout when you want to refresh the shell activation file explicitly
 - `source .warcraft/worktree-env.sh` is the explicit shell activation step for worktree-local `PATH`, `data`, and `cache` roots
 - `WARCRAFT_ALLOW_LINK_BIN=1 make dev-deploy` is a deliberate exception that repoints `~/.local/bin` at the current checkout
 - `make retire-dev-deploy` archives or removes the old repo-local deploy only after the host wrappers no longer point at it
