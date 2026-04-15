@@ -119,17 +119,19 @@ class WowProgressClient:
 
             status_code = int(response.status_code)
             final_url = str(response.url)
+            html = str(response.text)
+            title_probe = html[:512].lower()
             if status_code in RETRYABLE_STATUS_CODES and attempt < attempts:
                 time.sleep(backoff_seconds(attempt))
                 continue
+            if status_code == 403 and "just a moment" in title_probe:
+                raise WowProgressClientError("blocked", "WowProgress returned a bot-protection challenge page.")
             if status_code == 403 and "/search?" in final_url:
                 raise WowProgressClientError("not_found", "WowProgress could not resolve that guild or character.")
             if status_code == 404:
                 raise WowProgressClientError("not_found", "WowProgress could not find that page.")
             if status_code >= 400:
                 raise WowProgressClientError("upstream_error", f"WowProgress request failed with HTTP {status_code}.")
-            html = str(response.text)
-            title_probe = html[:512].lower()
             if "just a moment" in title_probe:
                 raise WowProgressClientError("blocked", "WowProgress returned a bot-protection challenge page.")
             self._write_cache(key, html, ttl_seconds=ttl_seconds)
@@ -167,15 +169,17 @@ class WowProgressClient:
 
             status_code = int(response.status_code)
             final_url = str(response.url)
+            html = str(response.text)
+            title_probe = html[:512].lower()
             if status_code in RETRYABLE_STATUS_CODES and attempt < attempts:
                 time.sleep(backoff_seconds(attempt))
                 continue
+            if status_code == 403 and "just a moment" in title_probe:
+                raise WowProgressClientError("blocked", "WowProgress returned a bot-protection challenge page.")
             if status_code == 403 and "/search" in final_url:
                 raise WowProgressClientError("blocked", "WowProgress blocked the search request.")
             if status_code >= 400:
                 raise WowProgressClientError("upstream_error", f"WowProgress request failed with HTTP {status_code}.")
-            html = str(response.text)
-            title_probe = html[:512].lower()
             if "just a moment" in title_probe:
                 raise WowProgressClientError("blocked", "WowProgress returned a bot-protection challenge page.")
             self._write_cache(

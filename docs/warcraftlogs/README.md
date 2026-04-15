@@ -11,6 +11,7 @@ This file tracks Warcraft Logs-specific implementation state, boundaries, and cu
 The CLI should become the fastest trustworthy path for:
 - guild progression and ranking lookups
 - character ranking lookups
+- encounter ranking lookups for boss/class/spec leaderboard questions
 - report inspection
 - fight/event/table/graph extraction from reports
 - world metadata lookup for zones, encounters, regions, servers, and expansions
@@ -57,6 +58,7 @@ Implemented today:
   - `warcraftlogs guild-reports`
   - `warcraftlogs character`
   - `warcraftlogs character-rankings`
+  - `warcraftlogs encounter-rankings`
   - `warcraftlogs reports`
   - `warcraftlogs report`
   - `warcraftlogs report-fights`
@@ -146,6 +148,14 @@ Highest-value next implementation slices:
   - spec-filtered kill samples
   - kill-time-bounded report cohorts
   - deeper cross-report composition summaries beyond the current sampled class-presence/signature layer
+
+Current rankings split:
+- `encounter-rankings` is the official encounter leaderboard surface for boss/class/spec ranking questions
+  - normalized row `rank` values are derived from page order when the provider omits explicit per-row rank fields
+  - normalized pagination counts are page-scoped because Warcraft Logs does not currently return a stable global total for this surface
+- `character-rankings` remains the character-centric rankings surface
+- `boss-kills`, `top-kills`, `kill-time-distribution`, `boss-spec-usage`, `comp-samples`, and `ability-usage-summary` remain sampled cross-report analytics
+- on those sampled commands, `--spec-name` filters sampled kills by matching participant specs before aggregation; it does not turn the query into a spec ranking leaderboard
 
 After that:
 - user-auth plumbing

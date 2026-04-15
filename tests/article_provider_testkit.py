@@ -27,6 +27,14 @@ def invoke_live(runner: CliRunner, app: Any, args: list[str], *, provider_name: 
         if attempt < attempts:
             time.sleep(float(attempt))
     assert last_result is not None
+    try:
+        payload = json.loads(last_result.stderr or last_result.output)
+    except json.JSONDecodeError:
+        payload = None
+    error = payload.get("error") if isinstance(payload, dict) and isinstance(payload.get("error"), dict) else {}
+    error_code = error.get("code") if isinstance(error.get("code"), str) else None
+    if error_code == "blocked":
+        pytest.skip(f"Live {provider_name} requests are currently blocked by upstream bot protection.")
     pytest.fail(
         f"Live {provider_name} command failed after {attempts} attempts.\n"
         f"args={args}\n"

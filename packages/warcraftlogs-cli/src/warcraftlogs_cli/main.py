@@ -3,13 +3,13 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import secrets
 import shlex
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-import re
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -26,6 +26,8 @@ from warcraft_core.identity import (
     ability_identity_payload,
     class_spec_identity_payload,
     encounter_identity_payload,
+    normalize_actor_class,
+    normalize_spec_name,
     report_actor_identity_payload,
     talent_transport_packet_payload,
     validate_talent_transport_packet,
@@ -36,6 +38,7 @@ from warcraft_core.wow_normalization import normalize_region
 
 from warcraftlogs_cli.client import (
     RETAIL_PROFILE,
+    EncounterRankingsOptions,
     ReportFilterOptions,
     ReportPlayerDetailsOptions,
     ReportRankingsOptions,
@@ -86,11 +89,11 @@ def _validated_transport_packet(ctx: typer.Context, packet: Any, *, command_name
         return validate_talent_transport_packet(packet)
     except ValueError as exc:
         _fail(ctx, "invalid_transport_packet", f"{command_name} produced an invalid talent transport packet: {exc}")
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from exc
 
 
 def _utc_now_z() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _normalize_graphql_enum(value: str | None) -> str | None:
@@ -105,6 +108,88 @@ def _normalize_graphql_enum(value: str | None) -> str | None:
     if text.islower():
         return text[:1].upper() + text[1:]
     return text
+
+
+def _normalize_hard_mode_level_rank_filter(value: str | None) -> str | None:
+    normalized = _normalize_graphql_enum(value)
+    if normalized == "NoHardMode":
+        return "NormalMode"
+    return normalized
+
+
+_WARCRAFTLOGS_ENCOUNTER_RANKING_CLASS_DISPLAY_NAMES = {
+    "deathknight": "Death Knight",
+    "demonhunter": "Demon Hunter",
+    "druid": "Druid",
+    "evoker": "Evoker",
+    "hunter": "Hunter",
+    "mage": "Mage",
+    "monk": "Monk",
+    "paladin": "Paladin",
+    "priest": "Priest",
+    "rogue": "Rogue",
+    "shaman": "Shaman",
+    "warlock": "Warlock",
+    "warrior": "Warrior",
+}
+
+_WARCRAFTLOGS_ENCOUNTER_RANKING_SPEC_DISPLAY_NAMES = {
+    "affliction": "Affliction",
+    "arcane": "Arcane",
+    "arms": "Arms",
+    "assassination": "Assassination",
+    "augmentation": "Augmentation",
+    "balance": "Balance",
+    "beast_mastery": "Beast Mastery",
+    "blood": "Blood",
+    "brewmaster": "Brewmaster",
+    "destruction": "Destruction",
+    "devastation": "Devastation",
+    "demonology": "Demonology",
+    "discipline": "Discipline",
+    "elemental": "Elemental",
+    "enhancement": "Enhancement",
+    "feral": "Feral",
+    "fire": "Fire",
+    "frost": "Frost",
+    "fury": "Fury",
+    "guardian": "Guardian",
+    "havoc": "Havoc",
+    "holy": "Holy",
+    "marksmanship": "Marksmanship",
+    "mistweaver": "Mistweaver",
+    "outlaw": "Outlaw",
+    "preservation": "Preservation",
+    "protection": "Protection",
+    "restoration": "Restoration",
+    "retribution": "Retribution",
+    "shadow": "Shadow",
+    "subtlety": "Subtlety",
+    "survival": "Survival",
+    "unholy": "Unholy",
+    "vengeance": "Vengeance",
+    "windwalker": "Windwalker",
+}
+
+
+def _normalize_encounter_ranking_class_name(value: str | None) -> str | None:
+    normalized = normalize_actor_class(value)
+    if normalized and normalized in _WARCRAFTLOGS_ENCOUNTER_RANKING_CLASS_DISPLAY_NAMES:
+        return _WARCRAFTLOGS_ENCOUNTER_RANKING_CLASS_DISPLAY_NAMES[normalized]
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _normalize_encounter_ranking_spec_name(value: str | None) -> str | None:
+    normalized = normalize_spec_name(value)
+    if normalized and normalized in _WARCRAFTLOGS_ENCOUNTER_RANKING_SPEC_DISPLAY_NAMES:
+        return _WARCRAFTLOGS_ENCOUNTER_RANKING_SPEC_DISPLAY_NAMES[normalized]
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
 
 
 def _client(ctx: typer.Context) -> WarcraftLogsClient:
@@ -481,6 +566,23 @@ def _zone_payload(zone: dict[str, Any]) -> dict[str, Any]:
             for partition in (zone.get("partitions") if isinstance(zone.get("partitions"), list) else [])
             if isinstance(partition, dict)
         ],
+    }
+
+
+def _encounter_payload(encounter: dict[str, Any]) -> dict[str, Any]:
+    zone = encounter.get("zone") if isinstance(encounter.get("zone"), dict) else {}
+    expansion = zone.get("expansion") if isinstance(zone.get("expansion"), dict) else {}
+    return {
+        "id": encounter.get("id"),
+        "name": encounter.get("name"),
+        "journal_id": encounter.get("journalID"),
+        "zone": {
+            "id": zone.get("id"),
+            "name": zone.get("name"),
+            "expansion": {"id": expansion.get("id"), "name": expansion.get("name")} if expansion else None,
+        }
+        if zone
+        else None,
     }
 
 
@@ -968,7 +1070,6 @@ def _encounter_summary_payload(*, ref: ReportReference, report: dict[str, Any], 
     )
     if isinstance(encounter, dict):
         zone = encounter.get("zone") if isinstance(encounter.get("zone"), dict) else {}
-        expansion = zone.get("expansion") if isinstance(zone.get("expansion"), dict) else {}
         encounter_identity = encounter_identity_payload(
             encounter_id=encounter.get("id") if isinstance(encounter.get("id"), int) else None,
             journal_id=encounter.get("journalID") if isinstance(encounter.get("journalID"), int) else None,
@@ -977,18 +1078,7 @@ def _encounter_summary_payload(*, ref: ReportReference, report: dict[str, Any], 
             provider="warcraftlogs",
             source="report_encounter",
         )
-        encounter_payload = {
-            "id": encounter.get("id"),
-            "name": encounter.get("name"),
-            "journal_id": encounter.get("journalID"),
-            "zone": {
-                "id": zone.get("id"),
-                "name": zone.get("name"),
-                "expansion": {"id": expansion.get("id"), "name": expansion.get("name")} if expansion else None,
-            }
-            if zone
-            else None,
-        }
+        encounter_payload = _encounter_payload(encounter)
     return {
         "reference": _report_reference_payload(ref),
         "report": _report_payload(report),
@@ -1355,6 +1445,246 @@ def _boss_matches(fight: dict[str, Any], *, boss_id: int | None, boss_name: str 
     return query in actual or actual in query
 
 
+def _resolve_encounter(
+    ctx: typer.Context,
+    *,
+    client: WarcraftLogsClient,
+    zone_id: int,
+    boss_id: int | None,
+    boss_name: str | None,
+) -> dict[str, Any]:
+    zone = client.zone(zone_id=zone_id)
+    encounters = [row for row in (zone.get("encounters") if isinstance(zone.get("encounters"), list) else []) if isinstance(row, dict)]
+
+    if boss_id is not None:
+        zone_match = next((row for row in encounters if row.get("id") == boss_id), None)
+        if zone_match is None:
+            _fail(ctx, "not_found", f"Encounter {boss_id} was not found in zone {zone_id}.")
+        if boss_name and not _boss_matches(zone_match, boss_id=None, boss_name=boss_name):
+            _fail(ctx, "boss_scope_mismatch", f"Encounter {boss_id} in zone {zone_id} does not match boss name {boss_name!r}.")
+        encounter = client.encounter(encounter_id=boss_id)
+        encounter_zone = encounter.get("zone") if isinstance(encounter.get("zone"), dict) else {}
+        if encounter_zone.get("id") != zone_id:
+            _fail(ctx, "boss_scope_mismatch", f"Encounter {boss_id} does not belong to zone {zone_id}.")
+        return encounter
+
+    query = _normalize_match_text(boss_name)
+    if not query:
+        _fail(ctx, "missing_boss", "Provide --boss-id or --boss-name.")
+
+    exact_matches = [row for row in encounters if _normalize_match_text(str(row.get("name") or "")) == query]
+    fuzzy_matches = [row for row in encounters if _boss_matches(row, boss_id=None, boss_name=boss_name)]
+    candidates = exact_matches or fuzzy_matches
+    if not candidates:
+        _fail(ctx, "not_found", f"No encounter named {boss_name!r} was found in zone {zone_id}.")
+    if len(candidates) > 1:
+        names = ", ".join(sorted({str(row.get("name") or "") for row in candidates if row.get("name")}))
+        _fail(ctx, "ambiguous_boss", f"Boss name {boss_name!r} matched multiple encounters in zone {zone_id}: {names}")
+    encounter_id = candidates[0].get("id")
+    if not isinstance(encounter_id, int):
+        _fail(ctx, "invalid_provider_payload", f"Encounter rows for zone {zone_id} did not include a stable encounter id.")
+    return client.encounter(encounter_id=encounter_id)
+
+
+def _encounter_rankings_rows(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+    if not isinstance(value, dict):
+        return []
+    for key in ("rankings", "data", "entries", "rows"):
+        rows = value.get(key)
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+    return []
+
+
+_WARCRAFTLOGS_RANKINGS_PAGE_SIZE = 100
+_WARCRAFTLOGS_ENCOUNTER_RANKING_COMBATANT_INFO_KEYS = (
+    "talents",
+    "gear",
+    "externalBuffs",
+    "itemLevel",
+    "legendaryEffects",
+    "artifactTraits",
+    "covenantID",
+    "soulbindID",
+    "conduitIDs",
+)
+
+
+def _encounter_ranking_position(*, row: dict[str, Any], page: int, row_index: int) -> int | None:
+    provider_rank = row.get("rank")
+    if isinstance(provider_rank, int) and provider_rank > 0:
+        return provider_rank
+    if page < 1:
+        return None
+    return ((page - 1) * _WARCRAFTLOGS_RANKINGS_PAGE_SIZE) + row_index + 1
+
+
+def _encounter_ranking_has_combatant_info(row: dict[str, Any]) -> bool:
+    if isinstance(row.get("combatantInfo"), dict):
+        return True
+    return any(key in row for key in _WARCRAFTLOGS_ENCOUNTER_RANKING_COMBATANT_INFO_KEYS)
+
+
+def _encounter_ranking_other_players_count(row: dict[str, Any]) -> int:
+    if isinstance(row.get("otherPlayers"), list):
+        return len(row.get("otherPlayers"))
+    if isinstance(row.get("allCharacters"), list):
+        return max(len(row.get("allCharacters")) - 1, 0)
+    return 0
+
+
+def _encounter_ranking_row_payload(row: dict[str, Any], *, page: int, row_index: int) -> dict[str, Any]:
+    report = row.get("report") if isinstance(row.get("report"), dict) else {}
+    server = row.get("server") if isinstance(row.get("server"), dict) else {}
+    guild = row.get("guild") if isinstance(row.get("guild"), dict) else {}
+    class_name = row.get("className") if isinstance(row.get("className"), str) else row.get("class")
+    spec_name = row.get("spec") if isinstance(row.get("spec"), str) else row.get("specName")
+    report_code = next(
+        (
+            value
+            for value in (
+                row.get("reportCode"),
+                row.get("reportID"),
+                row.get("code"),
+                report.get("code"),
+            )
+            if isinstance(value, str) and value.strip()
+        ),
+        None,
+    )
+    fight_id = next(
+        (
+            value
+            for value in (
+                row.get("fightID"),
+                row.get("fightId"),
+                report.get("fightID"),
+                report.get("fightId"),
+            )
+            if isinstance(value, int)
+        ),
+        None,
+    )
+    return {
+        "name": row.get("name"),
+        "server_name": next(
+            (
+                value
+                for value in (
+                    row.get("serverName"),
+                    server.get("name"),
+                )
+                if isinstance(value, str) and value.strip()
+            ),
+            None,
+        ),
+        "server_region": next(
+            (
+                value
+                for value in (
+                    row.get("serverRegion"),
+                    server.get("region"),
+                )
+                if isinstance(value, str) and value.strip()
+            ),
+            None,
+        ),
+        "guild_name": next(
+            (
+                value
+                for value in (
+                    row.get("guildName"),
+                    guild.get("name"),
+                )
+                if isinstance(value, str) and value.strip()
+            ),
+            None,
+        ),
+        "class_name": class_name,
+        "spec_name": spec_name,
+        "class_spec_identity": class_spec_identity_payload(
+            actor_class=class_name if isinstance(class_name, str) else None,
+            spec=spec_name if isinstance(spec_name, str) else None,
+            provider="warcraftlogs",
+            source="encounter_rankings",
+            confidence="high",
+        ),
+        "rank": _encounter_ranking_position(row=row, page=page, row_index=row_index),
+        "out_of": row.get("outOf") if isinstance(row.get("outOf"), int) else None,
+        "rank_percent": (
+            row.get("rankPercent")
+            if isinstance(row.get("rankPercent"), (int, float))
+            else row.get("percentile") if isinstance(row.get("percentile"), (int, float)) else None
+        ),
+        "amount": row.get("amount"),
+        "total": row.get("total"),
+        "duration": row.get("duration"),
+        "start_time": row.get("startTime") if row.get("startTime") is not None else report.get("startTime"),
+        "report_code": report_code,
+        "fight_id": fight_id,
+        "report_url": _report_url(report_code, fight_id=fight_id),
+        "has_combatant_info": _encounter_ranking_has_combatant_info(row),
+        "other_players_count": _encounter_ranking_other_players_count(row),
+    }
+
+
+def _encounter_rankings_payload(
+    *,
+    encounter: dict[str, Any],
+    rankings: Any,
+    query: dict[str, Any],
+    top: int,
+) -> dict[str, Any]:
+    page = rankings.get("page") if isinstance(rankings, dict) and isinstance(rankings.get("page"), int) else query.get("page")
+    if not isinstance(page, int) or page < 1:
+        page = 1
+    normalized_rows = [
+        _encounter_ranking_row_payload(row, page=page, row_index=row_index)
+        for row_index, row in enumerate(_encounter_rankings_rows(rankings))
+    ]
+    returned = normalized_rows[:top]
+    page_count = rankings.get("count") if isinstance(rankings, dict) and isinstance(rankings.get("count"), int) else len(normalized_rows)
+    return {
+        "ok": True,
+        "provider": "warcraftlogs",
+        "kind": "encounter_rankings",
+        "ranking_basis": "encounter_character_rankings",
+        "query": query,
+        "encounter": _encounter_payload(encounter),
+        "encounter_identity": encounter_identity_payload(
+            encounter_id=encounter.get("id") if isinstance(encounter.get("id"), int) else None,
+            journal_id=encounter.get("journalID") if isinstance(encounter.get("journalID"), int) else None,
+            name=encounter.get("name") if isinstance(encounter.get("name"), str) else None,
+            zone_id=((encounter.get("zone") or {}).get("id") if isinstance(encounter.get("zone"), dict) else None),
+            provider="warcraftlogs",
+            source="encounter_rankings",
+        ),
+        "rankings": {
+            "count": len(returned),
+            "page_count": page_count,
+            "excluded_count": max(0, page_count - len(returned)),
+            "truncated": page_count > top,
+            "page": page,
+            "has_more_pages": rankings.get("hasMorePages") if isinstance(rankings, dict) else None,
+            "rows": returned,
+        },
+        "raw": rankings,
+    }
+
+
+def _sampled_spec_filter_notes(spec_name: str | None) -> list[str]:
+    if not spec_name:
+        return []
+    return [
+        (
+            "spec_name filters sampled fights by matching participant specs before aggregation; "
+            "these results are not a global spec ranking leaderboard"
+        )
+    ]
+
+
 def _player_spec_matches(actor: dict[str, Any], spec_name: str) -> bool:
     wanted = _normalize_match_text(spec_name)
     for spec in actor.get("specs") if isinstance(actor.get("specs"), list) else []:
@@ -1696,6 +2026,7 @@ def _boss_kills_payload(
         "ranking_basis": "sampled_fastest_kills",
         "matching_rule": "sampled_zone_reports_filtered_by_optional_boss_difficulty_spec_and_kill_time",
         "query": query,
+        "notes": _sampled_spec_filter_notes(query.get("spec_name") if isinstance(query, dict) else None),
         "freshness": _sampled_cross_report_freshness(),
         "citations": _sampled_cross_report_citations(rows),
         "sample": {
@@ -1723,6 +2054,7 @@ def _kill_time_distribution_payload(*, rows: list[dict[str, Any]], sample: dict[
         "kind": "kill_time_distribution",
         "matching_rule": "sampled_zone_reports_filtered_by_optional_boss_difficulty_spec_and_kill_time",
         "query": query,
+        "notes": _sampled_spec_filter_notes(query.get("spec_name") if isinstance(query, dict) else None),
         "freshness": _sampled_cross_report_freshness(),
         "citations": _sampled_cross_report_citations(rows),
         "sample": {
@@ -1809,6 +2141,7 @@ def _boss_spec_usage_payload(
         "ranking_basis": "sampled_finished_kill_cohort_spec_presence",
         "matching_rule": "spec_presence_across_sampled_finished_kills_with_player_details",
         "query": query,
+        "notes": _sampled_spec_filter_notes(query.get("spec_name") if isinstance(query, dict) else None),
         "freshness": _sampled_cross_report_freshness(),
         "citations": _sampled_cross_report_citations(rows),
         "sample": {
@@ -2008,6 +2341,7 @@ def _comp_samples_payload(
         "ranking_basis": "sampled_fastest_kills",
         "matching_rule": "class_roster_composition_across_sampled_finished_kills_with_player_details",
         "query": query,
+        "notes": _sampled_spec_filter_notes(query.get("spec_name") if isinstance(query, dict) else None),
         "freshness": _sampled_cross_report_freshness(),
         "citations": _sampled_cross_report_citations(rows),
         "sample": {
@@ -2173,6 +2507,7 @@ def _ability_usage_summary_payload(
             "event_limit": event_limit,
             "preview_limit": preview_limit,
         },
+        "notes": _sampled_spec_filter_notes(query.get("spec_name") if isinstance(query, dict) else None),
         "freshness": _sampled_cross_report_freshness(),
         "citations": _sampled_cross_report_citations(rows),
         "sample": {
@@ -3205,24 +3540,12 @@ def encounter(ctx: typer.Context, encounter_id: int) -> None:
     finally:
         client.close()
     zone = payload.get("zone") if isinstance(payload.get("zone"), dict) else {}
-    expansion = zone.get("expansion") if isinstance(zone.get("expansion"), dict) else {}
     _emit(
         ctx,
         {
             "ok": True,
             "provider": "warcraftlogs",
-            "encounter": {
-                "id": payload.get("id"),
-                "name": payload.get("name"),
-                "journal_id": payload.get("journalID"),
-                "zone": {
-                    "id": zone.get("id"),
-                    "name": zone.get("name"),
-                    "expansion": {"id": expansion.get("id"), "name": expansion.get("name")} if expansion else None,
-                }
-                if zone
-                else None,
-            },
+            "encounter": _encounter_payload(payload),
             "encounter_identity": encounter_identity_payload(
                 encounter_id=payload.get("id") if isinstance(payload.get("id"), int) else None,
                 journal_id=payload.get("journalID") if isinstance(payload.get("journalID"), int) else None,
@@ -3232,6 +3555,111 @@ def encounter(ctx: typer.Context, encounter_id: int) -> None:
                 source="encounter",
             ),
         },
+    )
+
+
+@app.command("encounter-rankings")
+def encounter_rankings(
+    ctx: typer.Context,
+    zone_id: int = typer.Option(..., "--zone-id", help="Warcraft Logs zone ID that contains the encounter."),
+    boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to rank."),
+    boss_name: str | None = typer.Option(None, "--boss-name", help="Encounter name to resolve within the selected zone."),
+    bracket: int | None = typer.Option(None, "--bracket", help="Optional Warcraft Logs bracket filter."),
+    difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
+    class_name: str | None = typer.Option(None, "--class-name", help="Optional class slug or class name filter."),
+    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec slug or spec name filter."),
+    metric: str | None = typer.Option(None, "--metric", help="Optional ranking metric such as dps, hps, or bossdps."),
+    page: int | None = typer.Option(None, "--page", min=1, help="Optional rankings page number."),
+    partition: int | None = typer.Option(None, "--partition", help="Optional Warcraft Logs partition filter."),
+    size: int | None = typer.Option(None, "--size", help="Optional raid size filter."),
+    server_region: str | None = typer.Option(None, "--server-region", help="Optional server region filter."),
+    server_slug: str | None = typer.Option(None, "--server-slug", help="Optional server slug filter."),
+    leaderboard: str | None = typer.Option(None, "--leaderboard", help="Optional leaderboard enum filter."),
+    hard_mode_level: str | None = typer.Option(None, "--hard-mode-level", help="Optional hard-mode-level enum filter."),
+    filter_text: str | None = typer.Option(None, "--filter", help="Optional Warcraft Logs advanced encounter ranking filter string."),
+    include_combatant_info: bool | None = typer.Option(
+        None,
+        "--include-combatant-info/--no-include-combatant-info",
+        help="Optional combatant info toggle.",
+    ),
+    include_other_players: bool | None = typer.Option(
+        None,
+        "--include-other-players/--no-include-other-players",
+        help="Optional toggle for other players in the clear.",
+    ),
+    top: int = typer.Option(10, "--top", min=1, max=100, help="Maximum returned ranking rows after normalization."),
+) -> None:
+    normalized_leaderboard = _normalize_graphql_enum(leaderboard)
+    normalized_hard_mode_level = _normalize_hard_mode_level_rank_filter(hard_mode_level)
+    normalized_class_name = _normalize_encounter_ranking_class_name(class_name)
+    normalized_spec_name = _normalize_encounter_ranking_spec_name(spec_name)
+    client = _client(ctx)
+    try:
+        encounter_payload = _resolve_encounter(
+            ctx,
+            client=client,
+            zone_id=zone_id,
+            boss_id=boss_id,
+            boss_name=boss_name,
+        )
+        options = EncounterRankingsOptions(
+            bracket=bracket,
+            difficulty=difficulty,
+            page=page,
+            partition=partition,
+            size=size,
+            server_region=server_region,
+            server_slug=server_slug,
+            leaderboard=normalized_leaderboard,
+            hard_mode_level=normalized_hard_mode_level,
+            metric=metric,
+            filter=filter_text,
+            include_combatant_info=include_combatant_info,
+            include_other_players=include_other_players,
+            class_name=normalized_class_name,
+            spec_name=normalized_spec_name,
+        )
+        rankings_payload = client.encounter_rankings(
+            encounter_id=int(encounter_payload["id"]),
+            options=options,
+        )
+    except WarcraftLogsClientError as exc:
+        _handle_client_error(ctx, exc)
+        return
+    finally:
+        client.close()
+    rankings = rankings_payload.get("characterRankings")
+    rankings_error = rankings.get("error") if isinstance(rankings, dict) and isinstance(rankings.get("error"), str) else None
+    if rankings_error:
+        _fail(ctx, "invalid_query", rankings_error)
+    _emit(
+        ctx,
+        _encounter_rankings_payload(
+            encounter=rankings_payload,
+            rankings=rankings,
+            query={
+                "zone_id": zone_id,
+                "boss_id": encounter_payload.get("id"),
+                "boss_name": encounter_payload.get("name"),
+                "bracket": bracket,
+                "difficulty": difficulty,
+                "class_name": class_name,
+                "spec_name": spec_name,
+                "metric": metric,
+                "page": page,
+                "partition": partition,
+                "size": size,
+                "server_region": normalize_region(server_region) if server_region else None,
+                "server_slug": server_slug,
+                "leaderboard": normalized_leaderboard,
+                "hard_mode_level": normalized_hard_mode_level,
+                "filter": filter_text,
+                "include_combatant_info": include_combatant_info,
+                "include_other_players": include_other_players,
+                "top": top,
+            },
+            top=top,
+        ),
     )
 
 
@@ -3622,7 +4050,11 @@ def boss_kills(
     boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
     boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
     difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
-    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants."),
+    spec_name: str | None = typer.Option(
+        None,
+        "--spec-name",
+        help="Optional sampled participant spec filter applied before ranking sampled kills.",
+    ),
     kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
     kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
     top: int = typer.Option(10, "--top", min=1, max=100, help="Maximum returned kill rows after ranking."),
@@ -3694,7 +4126,11 @@ def top_kills(
     boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
     boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
     difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
-    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants."),
+    spec_name: str | None = typer.Option(
+        None,
+        "--spec-name",
+        help="Optional sampled participant spec filter applied before ranking sampled kills.",
+    ),
     kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
     kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
     top: int = typer.Option(10, "--top", min=1, max=100, help="Maximum returned kill rows after ranking."),
@@ -3766,7 +4202,11 @@ def boss_spec_usage(
     boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
     boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
     difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
-    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants before aggregation."),
+    spec_name: str | None = typer.Option(
+        None,
+        "--spec-name",
+        help="Optional sampled participant spec filter applied before aggregation.",
+    ),
     kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
     kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
     top: int = typer.Option(10, "--top", min=1, max=100, help="Maximum returned spec rows after ranking."),
@@ -3858,7 +4298,11 @@ def ability_usage_summary(
     boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
     boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
     difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
-    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants before aggregation."),
+    spec_name: str | None = typer.Option(
+        None,
+        "--spec-name",
+        help="Optional sampled participant spec filter applied before aggregation.",
+    ),
     kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
     kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
     preview_limit: int = typer.Option(10, "--preview-limit", min=1, max=100, help="Maximum sampled kill rows to include in the preview payload."),
@@ -3934,7 +4378,11 @@ def comp_samples(
     boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
     boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
     difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
-    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants before aggregation."),
+    spec_name: str | None = typer.Option(
+        None,
+        "--spec-name",
+        help="Optional sampled participant spec filter applied before aggregation.",
+    ),
     kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
     kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
     top: int = typer.Option(10, "--top", min=1, max=100, help="Maximum returned sampled kill rows after ranking."),
@@ -4685,7 +5133,11 @@ def kill_time_distribution(
     boss_id: int | None = typer.Option(None, "--boss-id", help="Encounter ID to match."),
     boss_name: str | None = typer.Option(None, "--boss-name", help="Boss name to match within sampled fights."),
     difficulty: int | None = typer.Option(None, "--difficulty", help="Optional difficulty ID filter."),
-    spec_name: str | None = typer.Option(None, "--spec-name", help="Optional spec filter applied to fight participants."),
+    spec_name: str | None = typer.Option(
+        None,
+        "--spec-name",
+        help="Optional sampled participant spec filter applied before aggregation.",
+    ),
     kill_time_min: float | None = typer.Option(None, "--kill-time-min", help="Optional minimum kill time in seconds."),
     kill_time_max: float | None = typer.Option(None, "--kill-time-max", help="Optional maximum kill time in seconds."),
     report_pages: int = typer.Option(1, "--report-pages", min=1, max=10, help="How many report-list pages to sample."),

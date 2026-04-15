@@ -44,6 +44,7 @@ Documentation ownership:
 - [architecture/EXPANSION_FILTERING_PLAN.md](architecture/EXPANSION_FILTERING_PLAN.md)
 - [architecture/MIGRATION_CHECKLIST.md](architecture/MIGRATION_CHECKLIST.md)
 - [architecture/LINTING_AND_COMPLEXITY_PLAN.md](architecture/LINTING_AND_COMPLEXITY_PLAN.md)
+- [architecture/WARCRAFTLOGS_ENCOUNTER_RANKINGS_PLAN.md](architecture/WARCRAFTLOGS_ENCOUNTER_RANKINGS_PLAN.md)
 
 ## Provider CLI Docs
 

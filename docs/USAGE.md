@@ -543,6 +543,7 @@ warcraftlogs guild-rankings us illidan Liquid --zone-id 38 --size 20 --difficult
 warcraftlogs guild-reports us illidan Liquid --limit 10
 warcraftlogs character us illidan Roguecane
 warcraftlogs character-rankings us illidan Roguecane --zone-id 38 --difficulty 5 --metric dps --size 20
+warcraftlogs encounter-rankings --zone-id 46 --boss-id 3180 --difficulty 5 --class-name Druid --spec-name Balance --metric dps --top 10
 warcraftlogs reports --guild-region us --guild-realm illidan --guild-name Liquid --limit 10
 warcraftlogs report abcdefgh
 warcraftlogs report-fights abcdefgh --difficulty 5
@@ -631,6 +632,9 @@ EOF
   - server
   - guild memberships
 - `character-rankings` is available, but Warcraft Logs may return per-character permission errors or server-side errors for some characters; the CLI surfaces provider permission errors explicitly in the payload when they are available
+- `encounter-rankings` is the official encounter leaderboard surface for boss/class/spec ranking queries
+  - returned row `rank` values are derived from page order when Warcraft Logs omits per-row rank fields
+  - pagination counts in the normalized payload are page-scoped; the provider does not currently expose a stable global total for this surface
 - `reports`, `report`, and `report-fights` are the first typed report-inspection slice
 - `report-fights` stays on the stable broad fight-list contract for now; deeper fight-filter and phase workflows are still deferred
 - `report-player-details` exposes role buckets and participant summaries for a report or fight slice
@@ -680,6 +684,7 @@ EOF
   - they sample public finished reports for one zone
   - they rank within the sampled cohort, not all possible Warcraft Logs data
   - they expose sample, exclusion, truncation, freshness, and citation metadata so the agent does not have to pretend the sample is global
+  - on these sampled commands, `--spec-name` filters sampled kills by matching participant specs before aggregation; it does not turn the result into a spec leaderboard query
   - `boss-spec-usage` summarizes spec presence inside the sampled finished-kill cohort after boss/difficulty/spec/time filters have already been applied
   - `comp-samples` returns sampled kill rosters plus additive class-presence and exact class-signature summaries for the sampled cohort
   - `ability-usage-summary` summarizes one explicit `--ability-id` across that same sampled finished-kill cohort and reports cast counts per kill instead of inferring broader gameplay conclusions

@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
 import httpx
 import pytest
 from typer.testing import CliRunner
-from warcraftlogs_cli.client import WarcraftLogsClient, WarcraftLogsClientError, load_warcraftlogs_auth_config
+from warcraftlogs_cli.client import (
+    EncounterRankingsOptions,
+    RETAIL_PROFILE,
+    WarcraftLogsClient,
+    WarcraftLogsClientError,
+    _encounter_rankings_request,
+    load_warcraftlogs_auth_config,
+)
 from warcraftlogs_cli.main import app as warcraftlogs_app
 
 runner = CliRunner()
@@ -124,6 +132,79 @@ class _FakeWarcraftLogsClient:
             "name": "Dimensius, the All-Devouring",
             "journalID": 9001,
             "zone": {"id": 38, "name": "Manaforge Omega", "expansion": {"id": 12, "name": "Midnight"}},
+        }
+
+    def encounter_rankings(self, *, encounter_id: int, options: object) -> dict[str, object]:
+        assert encounter_id == 3012
+        assert options.bracket == 1
+        assert options.difficulty == 5
+        assert options.metric == "dps"
+        assert options.page in {1, 2}
+        assert options.partition == 2
+        assert options.size == 20
+        assert options.server_region == "us"
+        assert options.server_slug == "illidan"
+        assert options.leaderboard == "LogsOnly"
+        assert options.hard_mode_level == "NormalMode"
+        assert options.filter == "duration>120"
+        assert options.include_combatant_info is True
+        assert options.include_other_players is True
+        assert options.class_name == "Druid"
+        assert options.spec_name == "Balance"
+        rankings = [
+            {
+                "name": "Moonkinone",
+                "server": {"id": 10, "name": "Illidan", "region": "US"},
+                "guild": {"id": 77, "name": "Liquid", "faction": 0},
+                "class": "Druid",
+                "spec": "Balance",
+                "amount": 3456789.1,
+                "duration": 222000,
+                "report": {"code": "abcd1234", "fightID": 1, "startTime": 111},
+                "talents": [],
+                "gear": [],
+                "externalBuffs": [],
+                "allCharacters": [{"name": "Moonkinone"}, {"name": "Sherway"}, {"name": "Max"}],
+            },
+            {
+                "name": "Moonkintwo",
+                "serverName": "Tichondrius",
+                "serverRegion": "US",
+                "guildName": "Pieces",
+                "className": "Druid",
+                "spec": "Balance",
+                "amount": 3344556.7,
+                "duration": 224000,
+                "reportCode": "wxyz9876",
+                "fightID": 7,
+            },
+        ]
+        if options.page == 2:
+            rankings = [
+                {
+                    "name": "Moonkinthree",
+                    "serverName": "Area 52",
+                    "serverRegion": "US",
+                    "guildName": "Big Pull",
+                    "className": "Druid",
+                    "spec": "Balance",
+                    "amount": 3234567.8,
+                    "duration": 225000,
+                    "reportCode": "lmno2468",
+                    "fightID": 9,
+                }
+            ]
+        return {
+            "id": 3012,
+            "name": "Dimensius, the All-Devouring",
+            "journalID": 9001,
+            "zone": {"id": 38, "name": "Manaforge Omega", "expansion": {"id": 12, "name": "Midnight"}},
+            "characterRankings": {
+                "page": options.page,
+                "count": len(rankings),
+                "hasMorePages": options.page == 1,
+                "rankings": rankings,
+            },
         }
 
     def zone(self, *, zone_id: int) -> dict[str, object]:
@@ -938,6 +1019,90 @@ class _FakeWarcraftLogsClient:
                 ]
             },
         }
+
+
+def test_encounter_rankings_request_inlines_leaderboard_enum_and_omits_null_filters() -> None:
+    query, variables = _encounter_rankings_request(
+        encounter_id=3012,
+        options=EncounterRankingsOptions(difficulty=5, leaderboard="LogsOnly"),
+    )
+    assert "$leaderboard" not in query
+    assert "leaderboard: LogsOnly" in query
+    assert "$difficulty: Int" in query
+    assert "$bracket" not in query
+    assert variables == {"id": 3012, "difficulty": 5}
+
+
+def test_warcraftlogs_client_cache_key_includes_dynamic_query_text() -> None:
+    client = WarcraftLogsClient.__new__(WarcraftLogsClient)
+    client._site = RETAIL_PROFILE
+
+    logs_query, logs_variables = _encounter_rankings_request(
+        encounter_id=3012,
+        options=EncounterRankingsOptions(difficulty=5, leaderboard="LogsOnly"),
+    )
+    speed_query, speed_variables = _encounter_rankings_request(
+        encounter_id=3012,
+        options=EncounterRankingsOptions(difficulty=5, leaderboard="Speed"),
+    )
+
+    logs_key = client._cache_key(
+        "encounter_rankings",
+        {"operation_name": "EncounterRankings", "query": logs_query, "variables": logs_variables},
+    )
+    speed_key = client._cache_key(
+        "encounter_rankings",
+        {"operation_name": "EncounterRankings", "query": speed_query, "variables": speed_variables},
+    )
+
+    assert logs_variables == {"id": 3012, "difficulty": 5}
+    assert speed_variables == {"id": 3012, "difficulty": 5}
+    assert logs_query != speed_query
+    assert logs_key != speed_key
+
+
+def test_warcraftlogs_client_encounter_rankings_preserves_display_name_filters() -> None:
+    captured: dict[str, object] = {}
+    client = WarcraftLogsClient.__new__(WarcraftLogsClient)
+    client._guild_ttl = 300
+
+    def _fake_graphql(
+        *,
+        operation_name: str,
+        query: str,
+        variables: dict[str, object],
+        namespace: str,
+        ttl_seconds: int,
+    ) -> dict[str, object]:
+        captured["operation_name"] = operation_name
+        captured["query"] = query
+        captured["variables"] = variables
+        captured["namespace"] = namespace
+        captured["ttl_seconds"] = ttl_seconds
+        return {
+            "worldData": {
+                "encounter": {
+                    "id": 3012,
+                    "name": "Dimensius, the All-Devouring",
+                    "journalID": 9001,
+                    "zone": {"id": 38, "name": "Manaforge Omega", "expansion": {"id": 12, "name": "Midnight"}},
+                    "characterRankings": {"rankings": []},
+                }
+            }
+        }
+
+    client._graphql = _fake_graphql
+
+    payload = client.encounter_rankings(
+        encounter_id=3012,
+        options=EncounterRankingsOptions(class_name="Hunter", spec_name="Marksmanship"),
+    )
+
+    assert payload["id"] == 3012
+    assert captured["operation_name"] == "EncounterRankings"
+    assert captured["namespace"] == "encounter_rankings"
+    assert captured["ttl_seconds"] == 300
+    assert captured["variables"] == {"id": 3012, "className": "Hunter", "specName": "Marksmanship"}
 
 
 def test_warcraftlogs_doctor_reports_phase_one_capabilities(monkeypatch) -> None:
@@ -2133,6 +2298,7 @@ def test_warcraftlogs_boss_kills_samples_finished_reports_and_filters_by_spec(mo
     payload = json.loads(result.stdout)
     assert payload["kind"] == "boss_kills"
     assert payload["ranking_basis"] == "sampled_fastest_kills"
+    assert "not a global spec ranking leaderboard" in payload["notes"][0]
     assert payload["sample"]["source_report_count"] == 2
     assert payload["sample"]["finished_report_count"] == 1
     assert payload["sample"]["skipped_live_report_count"] == 1
@@ -2231,6 +2397,269 @@ def test_warcraftlogs_boss_spec_usage_returns_sorted_spec_rows(monkeypatch) -> N
     assert payload["spec_usage"][0]["role"] == "tanks"
     assert payload["spec_usage"][0]["kill_presence_count"] == 1
     assert payload["spec_usage"][0]["percent_of_kills"] == 100.0
+
+
+def test_warcraftlogs_encounter_rankings_returns_real_ranking_rows(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "encounter-rankings",
+            "--zone-id",
+            "38",
+            "--boss-name",
+            "Dimensius",
+            "--bracket",
+            "1",
+            "--difficulty",
+            "5",
+            "--class-name",
+            "Druid",
+            "--spec-name",
+            "Balance",
+            "--metric",
+            "dps",
+            "--page",
+            "1",
+            "--partition",
+            "2",
+            "--size",
+            "20",
+            "--server-region",
+            "us",
+            "--server-slug",
+            "illidan",
+            "--leaderboard",
+            "logs-only",
+            "--hard-mode-level",
+            "no-hard-mode",
+            "--filter",
+            "duration>120",
+            "--include-combatant-info",
+            "--include-other-players",
+            "--top",
+            "1",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["kind"] == "encounter_rankings"
+    assert payload["ranking_basis"] == "encounter_character_rankings"
+    assert payload["query"]["boss_id"] == 3012
+    assert payload["query"]["class_name"] == "Druid"
+    assert payload["query"]["spec_name"] == "Balance"
+    assert payload["query"]["leaderboard"] == "LogsOnly"
+    assert payload["query"]["hard_mode_level"] == "NormalMode"
+    assert payload["encounter"]["name"] == "Dimensius, the All-Devouring"
+    assert payload["rankings"]["count"] == 1
+    assert payload["rankings"]["page_count"] == 2
+    assert payload["rankings"]["truncated"] is True
+    assert payload["rankings"]["has_more_pages"] is True
+    assert payload["rankings"]["rows"][0]["name"] == "Moonkinone"
+    assert payload["rankings"]["rows"][0]["rank"] == 1
+    assert payload["rankings"]["rows"][0]["out_of"] is None
+    assert payload["rankings"]["rows"][0]["rank_percent"] is None
+    assert payload["rankings"]["rows"][0]["server_name"] == "Illidan"
+    assert payload["rankings"]["rows"][0]["server_region"] == "US"
+    assert payload["rankings"]["rows"][0]["guild_name"] == "Liquid"
+    assert payload["rankings"]["rows"][0]["start_time"] == 111
+    assert payload["rankings"]["rows"][0]["fight_id"] == 1
+    assert payload["rankings"]["rows"][0]["report_url"] == "https://www.warcraftlogs.com/reports/abcd1234#fight=1"
+    assert payload["rankings"]["rows"][0]["has_combatant_info"] is True
+    assert payload["rankings"]["rows"][0]["other_players_count"] == 2
+    assert payload["rankings"]["rows"][0]["class_spec_identity"]["identity"] == {"actor_class": "druid", "spec": "balance"}
+
+
+def test_warcraftlogs_encounter_rankings_normalizes_slug_filters(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "encounter-rankings",
+            "--zone-id",
+            "38",
+            "--boss-name",
+            "Dimensius",
+            "--bracket",
+            "1",
+            "--difficulty",
+            "5",
+            "--class-name",
+            "druid",
+            "--spec-name",
+            "balance",
+            "--metric",
+            "dps",
+            "--page",
+            "1",
+            "--partition",
+            "2",
+            "--size",
+            "20",
+            "--server-region",
+            "us",
+            "--server-slug",
+            "illidan",
+            "--leaderboard",
+            "logs-only",
+            "--hard-mode-level",
+            "no-hard-mode",
+            "--filter",
+            "duration>120",
+            "--include-combatant-info",
+            "--include-other-players",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["query"]["class_name"] == "druid"
+    assert payload["query"]["spec_name"] == "balance"
+    assert payload["rankings"]["rows"][0]["class_name"] == "Druid"
+    assert payload["rankings"]["rows"][0]["spec_name"] == "Balance"
+
+
+def test_warcraftlogs_encounter_rankings_derives_page_offset_ranks(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "encounter-rankings",
+            "--zone-id",
+            "38",
+            "--boss-name",
+            "Dimensius",
+            "--bracket",
+            "1",
+            "--difficulty",
+            "5",
+            "--class-name",
+            "Druid",
+            "--spec-name",
+            "Balance",
+            "--metric",
+            "dps",
+            "--page",
+            "2",
+            "--partition",
+            "2",
+            "--size",
+            "20",
+            "--server-region",
+            "us",
+            "--server-slug",
+            "illidan",
+            "--leaderboard",
+            "logs-only",
+            "--hard-mode-level",
+            "no-hard-mode",
+            "--filter",
+            "duration>120",
+            "--include-combatant-info",
+            "--include-other-players",
+            "--top",
+            "1",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["rankings"]["page"] == 2
+    assert payload["rankings"]["page_count"] == 1
+    assert payload["rankings"]["has_more_pages"] is False
+    assert payload["rankings"]["rows"][0]["name"] == "Moonkinthree"
+    assert payload["rankings"]["rows"][0]["rank"] == 101
+
+
+def test_warcraftlogs_encounter_rankings_surfaces_embedded_provider_errors(monkeypatch) -> None:
+    class _RankingErrorClient(_FakeWarcraftLogsClient):
+        def encounter_rankings(self, *, encounter_id: int, options: object) -> dict[str, object]:
+            assert encounter_id == 3012
+            assert options.class_name == "Hunter"
+            assert options.spec_name == "Marksmanship"
+            return {
+                "id": 3012,
+                "name": "Dimensius, the All-Devouring",
+                "journalID": 9001,
+                "zone": {"id": 38, "name": "Manaforge Omega", "expansion": {"id": 12, "name": "Midnight"}},
+                "characterRankings": {"error": "Invalid class and spec specified."},
+            }
+
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _RankingErrorClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "encounter-rankings",
+            "--zone-id",
+            "38",
+            "--boss-name",
+            "Dimensius",
+            "--class-name",
+            "Hunter",
+            "--spec-name",
+            "Marksmanship",
+        ],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stderr)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_query"
+    assert payload["error"]["message"] == "Invalid class and spec specified."
+
+
+def test_warcraftlogs_encounter_rankings_accepts_matching_boss_id_and_name(monkeypatch) -> None:
+    monkeypatch.setattr("warcraftlogs_cli.main._client", lambda ctx: _FakeWarcraftLogsClient())
+
+    result = runner.invoke(
+        warcraftlogs_app,
+        [
+            "encounter-rankings",
+            "--zone-id",
+            "38",
+            "--boss-id",
+            "3012",
+            "--boss-name",
+            "Dimensius",
+            "--bracket",
+            "1",
+            "--difficulty",
+            "5",
+            "--class-name",
+            "Druid",
+            "--spec-name",
+            "Balance",
+            "--metric",
+            "dps",
+            "--page",
+            "1",
+            "--partition",
+            "2",
+            "--size",
+            "20",
+            "--server-region",
+            "us",
+            "--server-slug",
+            "illidan",
+            "--leaderboard",
+            "logs-only",
+            "--hard-mode-level",
+            "no-hard-mode",
+            "--filter",
+            "duration>120",
+            "--include-combatant-info",
+            "--include-other-players",
+            "--top",
+            "1",
+        ],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["query"]["boss_id"] == 3012
+    assert payload["encounter"]["name"] == "Dimensius, the All-Devouring"
 
 
 def test_warcraftlogs_ability_usage_summary_returns_sampled_cast_summary(monkeypatch) -> None:
@@ -3027,6 +3456,22 @@ def test_warcraftlogs_auth_falls_back_to_xdg_provider_env(monkeypatch, tmp_path)
     assert auth.client_id == "provider-id"
     assert auth.client_secret == "provider-secret"
     assert auth.env_file == str(provider_env)
+
+
+def test_warcraftlogs_auth_config_does_not_leak_loaded_credentials_into_process_env(monkeypatch, tmp_path) -> None:
+    repo_env = tmp_path / ".env.local"
+    repo_env.write_text("WARCRAFTLOGS_CLIENT_ID=repo-id\nWARCRAFTLOGS_CLIENT_SECRET=repo-secret\n")
+
+    monkeypatch.delenv("WARCRAFTLOGS_CLIENT_ID", raising=False)
+    monkeypatch.delenv("WARCRAFTLOGS_CLIENT_SECRET", raising=False)
+
+    auth = load_warcraftlogs_auth_config(start_dir=str(tmp_path))
+
+    assert auth.configured is True
+    assert auth.client_id == "repo-id"
+    assert auth.client_secret == "repo-secret"
+    assert "WARCRAFTLOGS_CLIENT_ID" not in os.environ
+    assert "WARCRAFTLOGS_CLIENT_SECRET" not in os.environ
 
 
 def test_warcraftlogs_pkce_exchange_uses_client_auth(monkeypatch) -> None:

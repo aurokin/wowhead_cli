@@ -16,6 +16,13 @@ def _payload_for(args: list[str]) -> dict[str, object]:
     return json.loads(result.stdout)
 
 
+def _skip_if_wowprogress_blocked(error_payload: dict[str, object]) -> None:
+    error = error_payload.get("error") if isinstance(error_payload.get("error"), dict) else {}
+    error_code = error.get("code") if isinstance(error.get("code"), str) else None
+    if error_code == "blocked":
+        pytest.skip("WowProgress live requests are currently blocked by upstream bot protection.")
+
+
 @pytest.mark.live
 def test_live_warcraft_search_expansion_filter_only_uses_supported_providers() -> None:
     payload = _payload_for(["--expansion", "wotlk", "search", "thunderfury", "--limit", "3"])
@@ -90,13 +97,20 @@ def test_live_warcraft_guild_contract() -> None:
 
     assert payload["ok"] is True
     assert payload["query"] == {"region": "us", "realm": "mal-ganis", "name": "gn"}
+    wowprogress_source = payload["sources"]["wowprogress"]
+    if wowprogress_source["status"] != "ok":
+        _skip_if_wowprogress_blocked(wowprogress_source)
     assert payload["sources"]["wowprogress"]["status"] == "ok"
     assert payload["sources"]["raiderio"]["status"] == "ok"
 
 
 @pytest.mark.live
 def test_live_warcraft_guild_ranks_contract() -> None:
-    payload = _payload_for(["guild-ranks", "us", "Mal'Ganis", "gn"])
+    result = runner.invoke(app, ["guild-ranks", "us", "Mal'Ganis", "gn"])
+    if result.exit_code != 0:
+        _skip_if_wowprogress_blocked(json.loads(result.stderr or result.output))
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
 
     assert payload["ok"] is True
     assert payload["source"] == "wowprogress"

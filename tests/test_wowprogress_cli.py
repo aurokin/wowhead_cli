@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from typer.testing import CliRunner
 
-from wowprogress_cli.client import WowProgressClient
+from wowprogress_cli.client import WowProgressClient, WowProgressClientError
 from wowprogress_cli.main import (
     _candidate_from_probe,
     _guild_profile_distribution_values,
@@ -26,6 +27,27 @@ from wowprogress_cli.main import (
 )
 
 runner = CliRunner()
+
+
+def test_wowprogress_client_classifies_cloudflare_403_as_blocked(monkeypatch) -> None:
+    class _FakeResponse:
+        def __init__(self) -> None:
+            self.status_code = 403
+            self.url = "https://www.wowprogress.com/guild/us/mal-ganis/gn"
+            self.text = "<!DOCTYPE html><html><head><title>Just a moment...</title></head></html>"
+
+    class _FakeSession:
+        def get(self, url: str, **kwargs):  # noqa: ANN001
+            del url, kwargs
+            return _FakeResponse()
+
+    client = WowProgressClient(retry_attempts=1)
+    monkeypatch.setattr(client, "_client", lambda: _FakeSession())
+
+    with pytest.raises(WowProgressClientError) as exc_info:
+        client.fetch_guild_page(region="us", realm="Mal'Ganis", name="gn")
+
+    assert exc_info.value.code == "blocked"
 
 
 def test_wowprogress_doctor_reports_phase_one_capabilities() -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -173,6 +174,73 @@ query Encounter($id: Int!) {
   }
 }
 """
+
+_GRAPHQL_ENUM_LITERAL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+def _encounter_rankings_request(*, encounter_id: int, options: EncounterRankingsOptions) -> tuple[str, dict[str, Any]]:
+    variables: dict[str, Any] = {"id": encounter_id}
+    optional_variable_lines: list[str] = []
+    optional_argument_lines: list[str] = []
+
+    for name, graphql_type, value in (
+        ("bracket", "Int", options.bracket),
+        ("difficulty", "Int", options.difficulty),
+        ("filter", "String", options.filter),
+        ("page", "Int", options.page),
+        ("partition", "Int", options.partition),
+        ("serverRegion", "String", options.server_region),
+        ("serverSlug", "String", options.server_slug),
+        ("size", "Int", options.size),
+        ("hardModeLevel", "HardModeLevelRankFilter", options.hard_mode_level),
+        ("metric", "CharacterRankingMetricType", options.metric),
+        ("includeCombatantInfo", "Boolean", options.include_combatant_info),
+        ("includeOtherPlayers", "Boolean", options.include_other_players),
+        ("className", "String", options.class_name),
+        ("specName", "String", options.spec_name),
+    ):
+        if value is None:
+            continue
+        optional_variable_lines.append(f"  ${name}: {graphql_type}")
+        optional_argument_lines.append(f"        {name}: ${name}")
+        variables[name] = value
+
+    if options.leaderboard is not None:
+        if not _GRAPHQL_ENUM_LITERAL_RE.fullmatch(options.leaderboard):
+            raise ValueError(f"Invalid GraphQL enum literal for leaderboard: {options.leaderboard!r}")
+        optional_argument_lines.append(f"        leaderboard: {options.leaderboard}")
+
+    variable_block = ""
+    if optional_variable_lines:
+        variable_block = "\n" + "\n".join(optional_variable_lines)
+
+    if optional_argument_lines:
+        character_rankings_field = "      characterRankings(\n" + "\n".join(optional_argument_lines) + "\n      )"
+    else:
+        character_rankings_field = "      characterRankings"
+
+    query = f"""
+query EncounterRankings(
+  $id: Int!{variable_block}
+) {{
+  worldData {{
+    encounter(id: $id) {{
+      id
+      name
+      journalID
+      zone {{
+        id
+        name
+        expansion {{
+          id
+          name
+        }}
+      }}
+{character_rankings_field}
+    }}
+  }}
+}}
+"""
+    return query, variables
 
 GUILD_QUERY = """
 query Guild($name: String!, $serverSlug: String!, $serverRegion: String!, $zoneId: Int) {
@@ -1006,14 +1074,45 @@ class ReportRankingsOptions:
     timeframe: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class EncounterRankingsOptions:
+    bracket: int | None = None
+    difficulty: int | None = None
+    filter: str | None = None
+    page: int | None = None
+    partition: int | None = None
+    server_region: str | None = None
+    server_slug: str | None = None
+    size: int | None = None
+    leaderboard: str | None = None
+    hard_mode_level: str | None = None
+    metric: str | None = None
+    include_combatant_info: bool | None = None
+    include_other_players: bool | None = None
+    class_name: str | None = None
+    spec_name: str | None = None
+
+
 def load_warcraftlogs_auth_config(*, start_dir: str | None = None) -> WarcraftLogsAuthConfig:
+    previous_client_id = os.environ.get("WARCRAFTLOGS_CLIENT_ID")
+    previous_client_secret = os.environ.get("WARCRAFTLOGS_CLIENT_SECRET")
     env_path = load_env_file(start_dir=start_dir, override=True)
-    if not (os.getenv("WARCRAFTLOGS_CLIENT_ID") and os.getenv("WARCRAFTLOGS_CLIENT_SECRET")):
-        provider_env_path = warcraftlogs_provider_env_path()
-        if load_explicit_env_file(provider_env_path, override=True) is not None:
-            env_path = provider_env_path
-    client_id = os.getenv("WARCRAFTLOGS_CLIENT_ID")
-    client_secret = os.getenv("WARCRAFTLOGS_CLIENT_SECRET")
+    try:
+        if not (os.getenv("WARCRAFTLOGS_CLIENT_ID") and os.getenv("WARCRAFTLOGS_CLIENT_SECRET")):
+            provider_env_path = warcraftlogs_provider_env_path()
+            if load_explicit_env_file(provider_env_path, override=True) is not None:
+                env_path = provider_env_path
+        client_id = os.getenv("WARCRAFTLOGS_CLIENT_ID")
+        client_secret = os.getenv("WARCRAFTLOGS_CLIENT_SECRET")
+    finally:
+        if previous_client_id is None:
+            os.environ.pop("WARCRAFTLOGS_CLIENT_ID", None)
+        else:
+            os.environ["WARCRAFTLOGS_CLIENT_ID"] = previous_client_id
+        if previous_client_secret is None:
+            os.environ.pop("WARCRAFTLOGS_CLIENT_SECRET", None)
+        else:
+            os.environ["WARCRAFTLOGS_CLIENT_SECRET"] = previous_client_secret
     return WarcraftLogsAuthConfig(
         client_id=client_id.strip() if client_id else None,
         client_secret=client_secret.strip() if client_secret else None,
@@ -1352,7 +1451,7 @@ class WarcraftLogsClient:
         ttl_seconds: int,
         use_cache: bool = True,
     ) -> dict[str, Any]:
-        cache_payload = {"operation_name": operation_name, "variables": variables or {}}
+        cache_payload = {"operation_name": operation_name, "query": query, "variables": variables or {}}
         cache_key = self._cache_key(namespace, cache_payload)
         if use_cache:
             cached = self._read_cache(cache_key)
@@ -1576,6 +1675,41 @@ class WarcraftLogsClient:
             variables={"id": encounter_id},
             namespace="encounter",
             ttl_seconds=self._static_ttl,
+        )
+        world_data = data.get("worldData")
+        encounter = world_data.get("encounter") if isinstance(world_data, dict) else None
+        if not isinstance(encounter, dict):
+            raise WarcraftLogsClientError("not_found", f"Encounter {encounter_id!r} was not found.")
+        return encounter
+
+    def encounter_rankings(self, *, encounter_id: int, options: EncounterRankingsOptions) -> dict[str, Any]:
+        try:
+            request_options = EncounterRankingsOptions(
+                bracket=options.bracket,
+                difficulty=options.difficulty,
+                filter=options.filter,
+                page=options.page,
+                partition=options.partition,
+                server_region=normalize_region(options.server_region) if options.server_region else None,
+                server_slug=primary_realm_slug(options.server_slug) if options.server_slug else None,
+                size=options.size,
+                leaderboard=options.leaderboard,
+                hard_mode_level=options.hard_mode_level,
+                metric=options.metric,
+                include_combatant_info=options.include_combatant_info,
+                include_other_players=options.include_other_players,
+                class_name=options.class_name,
+                spec_name=options.spec_name,
+            )
+            query, variables = _encounter_rankings_request(encounter_id=encounter_id, options=request_options)
+        except ValueError as exc:
+            raise WarcraftLogsClientError("invalid_argument", str(exc)) from exc
+        data = self._graphql(
+            operation_name="EncounterRankings",
+            query=query,
+            variables=variables,
+            namespace="encounter_rankings",
+            ttl_seconds=self._guild_ttl,
         )
         world_data = data.get("worldData")
         encounter = world_data.get("encounter") if isinstance(world_data, dict) else None

@@ -35,6 +35,7 @@ Best fits:
   - `warcraftlogs guild-reports <region> <realm> <name>`
   - `warcraftlogs character <region> <realm> <name>`
   - `warcraftlogs character-rankings <region> <realm> <name>`
+  - `warcraftlogs encounter-rankings --zone-id ... --boss-id ...`
   - `warcraftlogs reports --guild-region ... --guild-realm ... --guild-name ...`
   - `warcraftlogs report <code>`
   - `warcraftlogs report-fights <code>`
@@ -102,6 +103,8 @@ Best fits:
   - `warcraftlogs character us illidan Roguecane`
 - character rankings, when the API allows them:
   - `warcraftlogs character-rankings us illidan Roguecane --zone-id 38 --difficulty 5 --metric dps --size 20`
+- encounter rankings for real boss/class/spec leaderboard queries:
+  - `warcraftlogs encounter-rankings --zone-id 46 --boss-id 3180 --difficulty 5 --class-name Druid --spec-name Balance --metric dps --top 10`
 - guild report listing:
   - `warcraftlogs reports --guild-region us --guild-realm illidan --guild-name Liquid --limit 10`
 - report inspection:
@@ -163,7 +166,9 @@ Best fits:
 - `report-events` intentionally requires a narrowed slice such as `--fight-id`, `--encounter-id`, `--start-time`, or `--end-time`
 - `report-events` can still return `events: null` for some valid report slices; use it as a typed event-query surface, not a guarantee of non-empty data
 - `report-rankings` can legitimately return zero rows for a valid public report slice
+- `encounter-rankings` is the ranking surface to use when the user means boss/class/spec leaderboard results like "top Balance parses on Vanguard"
 - `boss-kills`, `top-kills`, and `kill-time-distribution` are sampled cross-report analytics, not a promise that the CLI searched every possible public report
+- `boss-kills` and `top-kills` do accept `--spec-name`, but on those sampled commands the filter means "keep sampled kills whose participants included that spec", not "return spec rankings"
 - `boss-spec-usage` is also sampled cross-report analytics; it reports spec presence within the filtered finished-kill cohort, not a site-wide meta snapshot
 - `comp-samples` is sampled cross-report analytics too; it returns sampled kill rosters plus additive class-presence and exact class-signature summaries for that filtered cohort
 - `ability-usage-summary` is sampled cross-report analytics too; it reports explicit cast counts for one requested `--ability-id` across the filtered finished-kill cohort
