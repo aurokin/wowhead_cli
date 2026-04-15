@@ -185,12 +185,24 @@ preserve_existing_skills() {
   echo "Reused stable skills from $PREVIOUS_SKILLS_DIR"
 }
 
+refresh_versioned_runtime() {
+  if [[ "$VERSIONED_LAYOUT" != "true" ]]; then
+    return 0
+  fi
+
+  # Python entrypoint wrappers embed an absolute interpreter path, so once the
+  # staged release moves from the temp directory into its immutable release id,
+  # reinstall the package from the final location before repointing current/.
+  "$ACTIVE_RELEASE_ROOT/venv/bin/python" -m pip install --no-build-isolation --upgrade "$PACKAGE_SPEC"
+}
+
 activate_release() {
   if [[ "$VERSIONED_LAYOUT" != "true" ]]; then
     return 0
   fi
 
   mv "$TMP_RELEASE_ROOT" "$ACTIVE_RELEASE_ROOT"
+  refresh_versioned_runtime
   replace_with_symlink "$CURRENT_LINK" "$ACTIVE_RELEASE_ROOT"
 
   if [[ "$EXPORT_SKILLS" == "true" ]]; then

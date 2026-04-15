@@ -32,6 +32,40 @@ version = "0.0.0"
     )
 
 
+def _write_minimal_console_package(path: Path) -> None:
+    (path / "pyproject.toml").write_text(
+        """
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "warcraft-stable-deploy-test"
+version = "0.0.0"
+
+[project.scripts]
+warcraft = "warcraft_cli.main:run"
+
+[tool.setuptools]
+packages = ["warcraft_cli"]
+        """.strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    package_dir = path / "warcraft_cli"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "main.py").write_text(
+        """
+def run() -> None:
+    print("stable deploy ok")
+        """.strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def _write_fake_stable_venv(path: Path) -> None:
     bin_dir = path / "bin"
     bin_dir.mkdir(parents=True)
@@ -509,6 +543,56 @@ def test_stable_deploy_uses_versioned_release_layout_by_default(tmp_path: Path) 
     assert wrapper_path.read_text(encoding="utf-8").strip().endswith(
         f'exec "{current_link}/venv/bin/warcraft" "$@"'
     )
+
+
+def test_stable_deploy_rewrites_console_scripts_for_versioned_release_layout(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    _write_minimal_console_package(repo_root)
+    subprocess.run(
+        ["git", "add", "pyproject.toml", "warcraft_cli/__init__.py", "warcraft_cli/main.py"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(["git", "commit", "-m", "add-console-package"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+    script_copy = _copy_stable_script("stable_deploy.sh", repo_root)
+
+    install_root = tmp_path / "stable-root"
+    result = subprocess.run(
+        [
+            "bash",
+            str(script_copy),
+            "--allow-dirty",
+            "--no-link-bin",
+            "--no-export-skills",
+        ],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "WARCRAFT_INSTALL_ROOT": str(install_root),
+            "WARCRAFT_STABLE_RELEASE_ID": "release-one",
+        },
+    )
+
+    assert result.returncode == 0
+    release_root = install_root / "install" / "releases" / "release-one"
+    entrypoint_result = subprocess.run(
+        [str(release_root / "venv" / "bin" / "warcraft")],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert entrypoint_result.returncode == 0
+    assert entrypoint_result.stdout.strip() == "stable deploy ok"
 
 
 def test_stable_deploy_keeps_old_releases_and_repoints_current(tmp_path: Path) -> None:
