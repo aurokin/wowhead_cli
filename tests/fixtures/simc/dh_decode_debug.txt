@@ -1,0 +1,6 @@
+SimulationCraft debug talent decode sample
+adding class talent Voidblade (node=101 entry=201 rank=1/1)
+adding spec talent Void Ray (node=102 entry=202 rank=1/1)
+adding spec talent Devourer's Bite (node=103 entry=203 rank=1/1)
+adding hero talent Voidsurge (node=104 entry=204 rank=1/1)
+adding selection talent Midnight (node=105 entry=205 rank=1/1)

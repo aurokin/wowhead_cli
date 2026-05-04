@@ -9,12 +9,22 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-LIVE_ENABLED = os.getenv("WOWHEAD_LIVE_TESTS", "").strip().lower() in {"1", "true", "yes", "on"}
+PROVIDER_LIVE_ENV = {
+    "Icy Veins": "ICY_VEINS_LIVE_TESTS",
+    "Method": "METHOD_LIVE_TESTS",
+    "Warcraft Wiki": "WARCRAFT_WIKI_LIVE_TESTS",
+    "WowProgress": "WOWPROGRESS_LIVE_TESTS",
+}
+
+
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def require_live(provider_name: str) -> None:
-    if not LIVE_ENABLED:
-        pytest.skip(f"Set WOWHEAD_LIVE_TESTS=1 to run live {provider_name} tests.")
+    env_name = PROVIDER_LIVE_ENV.get(provider_name, "WOWHEAD_LIVE_TESTS")
+    if not _env_enabled(env_name):
+        pytest.skip(f"Set {env_name}=1 to run live {provider_name} tests.")
 
 
 def invoke_live(runner: CliRunner, app: Any, args: list[str], *, provider_name: str, attempts: int = 3):

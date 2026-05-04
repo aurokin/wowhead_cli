@@ -153,16 +153,18 @@ replace_with_symlink() {
   rm -f "$tmp_link"
   ln -s "$target_path" "$tmp_link"
 
-  if [[ -L "$destination_path" ]]; then
-    mv -Tf "$tmp_link" "$destination_path"
-    return 0
-  elif [[ -e "$destination_path" ]]; then
+  if [[ ! -L "$destination_path" && -e "$destination_path" ]]; then
     local backup_path="${destination_path}.backup.$(date -u +%Y%m%d%H%M%S)"
     mv "$destination_path" "$backup_path"
     echo "Backed up $destination_path to $backup_path"
   fi
 
-  mv -Tf "$tmp_link" "$destination_path"
+  "$PYTHON_BIN" - "$tmp_link" "$destination_path" <<'PY'
+import os
+import sys
+
+os.replace(sys.argv[1], sys.argv[2])
+PY
 }
 
 detect_existing_skills_dir() {

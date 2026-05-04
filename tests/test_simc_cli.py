@@ -4,10 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
-
 from simc_cli.main import app as simc_app
 from simc_cli.repo import RepoPaths
+from typer.testing import CliRunner
 
 runner = CliRunner()
 
@@ -3027,8 +3026,32 @@ def test_simc_analysis_packet_surfaces_runtime_timing_failures(monkeypatch, tmp_
     assert payload["error"]["message"] == "timing failed"
 
 
-def test_simc_sync_skips_dirty_repo(monkeypatch) -> None:
-    monkeypatch.setattr("simc_cli.main.repo_git_status", lambda paths: {"git": True, "dirty": True, "branch": "main", "head": "abc", "dirty_entries": [" M engine/file.cpp"]})
+def test_simc_sync_skips_dirty_repo(monkeypatch, tmp_path: Path) -> None:
+    repo_root = tmp_path / "simc"
+    repo_root.mkdir()
+    build_dir = repo_root / "build"
+    monkeypatch.setattr(
+        "simc_cli.main._repo_paths",
+        lambda ctx: RepoPaths(
+            root=repo_root,
+            apl_default=repo_root / "ActionPriorityLists" / "default",
+            apl_assisted=repo_root / "ActionPriorityLists" / "assisted_combat",
+            class_modules=repo_root / "engine" / "class_modules",
+            spell_dump=repo_root / "SpellDataDump",
+            build_dir=build_dir,
+            build_simc=build_dir / "simc",
+        ),
+    )
+    monkeypatch.setattr(
+        "simc_cli.main.repo_git_status",
+        lambda paths: {
+            "git": True,
+            "dirty": True,
+            "branch": "main",
+            "head": "abc",
+            "dirty_entries": [" M engine/file.cpp"],
+        },
+    )
     monkeypatch.setattr("simc_cli.main.sync_repo", lambda paths, allow_dirty: None)
     result = runner.invoke(simc_app, ["sync"])
     assert result.exit_code == 0
@@ -3037,10 +3060,34 @@ def test_simc_sync_skips_dirty_repo(monkeypatch) -> None:
     assert payload["reason"] == "dirty_worktree"
 
 
-def test_simc_build_surfaces_success(monkeypatch) -> None:
+def test_simc_build_surfaces_success(monkeypatch, tmp_path: Path) -> None:
+    repo_root = tmp_path / "simc"
+    build_dir = repo_root / "build"
+    build_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "simc_cli.main._repo_paths",
+        lambda ctx: RepoPaths(
+            root=repo_root,
+            apl_default=repo_root / "ActionPriorityLists" / "default",
+            apl_assisted=repo_root / "ActionPriorityLists" / "assisted_combat",
+            class_modules=repo_root / "engine" / "class_modules",
+            spell_dump=repo_root / "SpellDataDump",
+            build_dir=build_dir,
+            build_simc=build_dir / "simc",
+        ),
+    )
     monkeypatch.setattr(
         "simc_cli.main.build_repo",
-        lambda paths, target: type("Result", (), {"command": ["cmake", "--build", str(paths.build_dir)], "returncode": 0, "stdout": "Built target simc\n", "stderr": ""})(),
+        lambda paths, target: type(
+            "Result",
+            (),
+            {
+                "command": ["cmake", "--build", str(paths.build_dir)],
+                "returncode": 0,
+                "stdout": "Built target simc\n",
+                "stderr": "",
+            },
+        )(),
     )
     result = runner.invoke(simc_app, ["build"])
     assert result.exit_code == 0

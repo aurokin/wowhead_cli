@@ -5,7 +5,8 @@
 - Install: `pip install -e '.[dev]'`
 - Redis extras: `pip install -e '.[dev,redis]'`
 - Fast tests: `pytest -q`
-- Live tests: `WOWHEAD_LIVE_TESTS=1 pytest -q -m live`
+- Live tests: `make test-live`
+- Provider live tests: set the suite flag and pass the matching file, for example `WOWHEAD_LIVE_TESTS=1 pytest -q -m live tests/test_live_integration.py tests/test_live_endpoint_contracts.py`
 - Stable host deploy: `make stable-deploy`
 - Branch-local deploy: `make dev-deploy-no-link`
 - Deliberate relink of `~/.local/bin` to the current checkout: `make dev-deploy`

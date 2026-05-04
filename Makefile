@@ -16,6 +16,15 @@ SIMC := $(VENV)/bin/simc
 LINT_PATHS := packages/warcraft-core packages/warcraft-api packages/warcraft-content
 LINT_ALL_PATHS := packages tests scripts
 WARCRAFT_STABLE_BRANCH ?= master
+LIVE_TEST_ENV := \
+	WOWHEAD_LIVE_TESTS=1 \
+	METHOD_LIVE_TESTS=1 \
+	ICY_VEINS_LIVE_TESTS=1 \
+	RAIDERIO_LIVE_TESTS=1 \
+	WARCRAFT_WIKI_LIVE_TESTS=1 \
+	WOWPROGRESS_LIVE_TESTS=1 \
+	WARCRAFTLOGS_LIVE_TESTS=1 \
+	WARCRAFT_WRAPPER_LIVE_TESTS=1
 
 .PHONY: stable-deploy stable-deploy-no-link stable-rollback dev-deploy dev-deploy-no-link worktree-env export-stable-skills retire-dev-deploy worktree-add test test-live fmt-check lint lint-all complexity typecheck coverage deadcode run
 
@@ -58,7 +67,7 @@ test:
 	$(PYTEST) -q
 
 test-live:
-	WOWHEAD_LIVE_TESTS=1 $(PYTEST) -q -m live
+	$(LIVE_TEST_ENV) $(PYTEST) -q -m live
 
 fmt-check:
 	$(PYTHON) -m compileall -q packages

@@ -44,7 +44,7 @@ warcraftlogs = "warcraftlogs_cli.main:run"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-  "live: live network contract tests against Wowhead endpoints",
+  "live: live network contract tests against provider endpoints",
 ]
 
 [tool.ruff]

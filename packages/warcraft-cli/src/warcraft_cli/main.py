@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import tempfile
-from urllib.parse import urlparse
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NoReturn
+from urllib.parse import urlparse
 
 import typer
 from icy_veins_cli.main import app as icy_veins_app
@@ -30,13 +30,13 @@ from warcraft_core.provider_contract import (
     synthetic_resolve_payloads,
     synthetic_search_candidates,
 )
-from warcraft_core.wow_normalization import normalize_name, normalize_region, primary_realm_slug
 from warcraft_wiki_cli.main import app as warcraft_wiki_app
 from warcraftlogs_cli.main import app as warcraftlogs_app
 from wowhead_cli.expansion_profiles import resolve_expansion
 from wowhead_cli.main import app as wowhead_app
 from wowprogress_cli.main import app as wowprogress_app
 
+from warcraft_cli.guild import guild_merge_payload, normalized_identity, raiderio_guild_summary, wowprogress_guild_summary
 from warcraft_cli.providers import (
     expansion_filtered_providers,
     expansion_support_snapshot,
@@ -318,57 +318,6 @@ def _provider_payload_result(
         "status": "ok",
         "payload": payload,
         "exit_code": result.get("exit_code"),
-    }
-
-
-def _first_dict(items: Any) -> dict[str, Any] | None:
-    if not isinstance(items, list):
-        return None
-    for item in items:
-        if isinstance(item, dict):
-            return item
-    return None
-
-
-def _raiderio_guild_summary(payload: dict[str, Any]) -> dict[str, Any]:
-    guild = payload.get("guild") if isinstance(payload.get("guild"), dict) else {}
-    raiding = payload.get("raiding") if isinstance(payload.get("raiding"), dict) else {}
-    active_raid = _first_dict(raiding.get("progression"))
-    active_rankings = _first_dict(raiding.get("rankings"))
-    return {
-        "guild": guild,
-        "active_raid": {
-            "key": active_raid.get("raid_slug") if isinstance(active_raid, dict) else None,
-            "name": active_raid.get("raid_slug") if isinstance(active_raid, dict) else None,
-            "summary": active_raid.get("summary") if isinstance(active_raid, dict) else None,
-            "boss_count": active_raid.get("total_bosses") if isinstance(active_raid, dict) else None,
-            "rankings": active_rankings,
-        },
-        "roster": {
-            "member_count": guild.get("member_count"),
-            "preview": payload.get("roster_preview"),
-        },
-        "citations": payload.get("citations"),
-    }
-
-
-def _wowprogress_guild_summary(payload: dict[str, Any]) -> dict[str, Any]:
-    guild = payload.get("guild") if isinstance(payload.get("guild"), dict) else {}
-    progress = payload.get("progress") if isinstance(payload.get("progress"), dict) else {}
-    encounters = payload.get("encounters") if isinstance(payload.get("encounters"), dict) else {}
-    encounter_items = encounters.get("items") if isinstance(encounters.get("items"), list) else []
-    return {
-        "guild": guild,
-        "active_raid": {
-            "key": progress.get("tier_key"),
-            "name": progress.get("raid"),
-            "summary": progress.get("summary"),
-            "boss_count": encounters.get("count") if encounters.get("count") is not None else len(encounter_items),
-            "rankings": progress.get("ranks"),
-        },
-        "item_level": payload.get("item_level"),
-        "encounters": encounters,
-        "citations": payload.get("citations"),
     }
 
 
@@ -1280,7 +1229,6 @@ def _resolve_talent_transport(
         requested_expansion=requested_expansion,
         kind=kind,
     )
-    final_status = packet.get("transport_status") if isinstance(packet.get("transport_status"), str) else None
     return {
         "source": source,
         "route": route,
@@ -1403,14 +1351,6 @@ def _search_fallback_guide_match(
     }, None
 
 
-def _normalized_identity(region: str, realm: str, name: str) -> dict[str, str]:
-    return {
-        "region": normalize_region(region),
-        "realm": primary_realm_slug(realm),
-        "name": normalize_name(name),
-    }
-
-
 def _raiderio_source(identity: dict[str, str], *, expansion: str | None) -> dict[str, Any]:
     result = _provider_payload_result(
         "raiderio",
@@ -1422,7 +1362,7 @@ def _raiderio_source(identity: dict[str, str], *, expansion: str | None) -> dict
         return result
     return {
         **result,
-        "summary": _raiderio_guild_summary(payload),
+        "summary": raiderio_guild_summary(payload),
     }
 
 
@@ -1437,71 +1377,7 @@ def _wowprogress_source(identity: dict[str, str], *, expansion: str | None) -> d
         return result
     return {
         **result,
-        "summary": _wowprogress_guild_summary(payload),
-    }
-
-
-def _guild_conflicts(raiderio: dict[str, Any] | None, wowprogress: dict[str, Any] | None) -> dict[str, Any]:
-    reasons: list[str] = []
-    different_window = False
-    if raiderio and wowprogress:
-        ri_summary_payload = raiderio.get("summary") if isinstance(raiderio.get("summary"), dict) else {}
-        wp_summary_payload = wowprogress.get("summary") if isinstance(wowprogress.get("summary"), dict) else {}
-        ri_active = ri_summary_payload.get("active_raid") if isinstance(ri_summary_payload.get("active_raid"), dict) else {}
-        wp_active = wp_summary_payload.get("active_raid") if isinstance(wp_summary_payload.get("active_raid"), dict) else {}
-        ri_bosses = ri_active.get("boss_count")
-        wp_bosses = wp_active.get("boss_count")
-        ri_summary = str(ri_active.get("summary") or "")
-        wp_summary = str(wp_active.get("summary") or "")
-        if ri_bosses != wp_bosses or (ri_summary and wp_summary and ri_summary != wp_summary):
-            different_window = True
-            reasons.append("providers_report_different_active_raid_windows")
-    return {
-        "different_tier_window_detected": different_window,
-        "reasons": reasons,
-    }
-
-
-def _guild_merge_payload(identity: dict[str, str], *, raiderio: dict[str, Any], wowprogress: dict[str, Any]) -> dict[str, Any]:
-    ri_ok = raiderio.get("status") == "ok"
-    wp_ok = wowprogress.get("status") == "ok"
-    if not ri_ok and not wp_ok:
-        return {
-            "ok": False,
-            "error": {
-                "code": "guild_not_found",
-                "message": "No guild provider returned a guild snapshot for that query.",
-            },
-            "query": identity,
-            "sources": {
-                "raiderio": raiderio,
-                "wowprogress": wowprogress,
-            },
-        }
-    preferred_guild = (
-        ((wowprogress.get("summary") or {}).get("guild") if wp_ok else None)
-        or ((raiderio.get("summary") or {}).get("guild") if ri_ok else None)
-        or {}
-    )
-    return {
-        "ok": True,
-        "provider": "warcraft",
-        "kind": "guild_snapshot",
-        "query": identity,
-        "guild": {
-            "name": preferred_guild.get("name"),
-            "region": preferred_guild.get("region") or identity["region"],
-            "realm": preferred_guild.get("realm") or identity["realm"],
-            "faction": preferred_guild.get("faction"),
-        },
-        "sources": {
-            "raiderio": raiderio,
-            "wowprogress": wowprogress,
-        },
-        "conflicts": _guild_conflicts(
-            raiderio if ri_ok else None,
-            wowprogress if wp_ok else None,
-        ),
+        "summary": wowprogress_guild_summary(payload),
     }
 
 
@@ -1686,9 +1562,9 @@ def guild(
     realm: str = typer.Argument(..., help="Realm title or slug."),
     name: str = typer.Argument(..., help="Guild name."),
 ) -> None:
-    identity = _normalized_identity(region, realm, name)
+    identity = normalized_identity(region, realm, name)
     requested_expansion = _requested_expansion(ctx)
-    payload = _guild_merge_payload(
+    payload = guild_merge_payload(
         identity,
         raiderio=_raiderio_source(identity, expansion=requested_expansion),
         wowprogress=_wowprogress_source(identity, expansion=requested_expansion),
@@ -1705,7 +1581,7 @@ def guild_history(
     realm: str = typer.Argument(..., help="Realm title or slug."),
     name: str = typer.Argument(..., help="Guild name."),
 ) -> None:
-    identity = _normalized_identity(region, realm, name)
+    identity = normalized_identity(region, realm, name)
     requested_expansion = _requested_expansion(ctx)
     source_result = _provider_payload_result(
         "wowprogress",
@@ -1751,7 +1627,7 @@ def guild_ranks(
     realm: str = typer.Argument(..., help="Realm title or slug."),
     name: str = typer.Argument(..., help="Guild name."),
 ) -> None:
-    identity = _normalized_identity(region, realm, name)
+    identity = normalized_identity(region, realm, name)
     requested_expansion = _requested_expansion(ctx)
     source_result = _provider_payload_result(
         "wowprogress",

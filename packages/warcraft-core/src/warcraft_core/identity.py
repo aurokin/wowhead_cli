@@ -620,7 +620,10 @@ def validate_talent_transport_packet(packet: Any) -> dict[str, Any]:
                 raise ValueError(
                     f"Talent transport packet simc_split_talents.{key} must be a non-empty string when present."
                 )
-        if not any(isinstance(split.get(key), str) and split.get(key).strip() for key in ("class_talents", "spec_talents", "hero_talents")):
+        if not any(
+            isinstance(value := split.get(key), str) and bool(value.strip())
+            for key in ("class_talents", "spec_talents", "hero_talents")
+        ):
             raise ValueError(
                 "Talent transport packet simc_split_talents must include at least one non-empty class/spec/hero string."
             )

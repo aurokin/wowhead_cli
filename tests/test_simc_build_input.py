@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from simc_cli.build_input import (
     BuildSpec,
     DecodedTalent,
@@ -29,7 +28,7 @@ from simc_cli.build_input import (
 )
 from simc_cli.repo import RepoPaths
 
-FIXTURES = Path("/home/auro/code/simc_exp/tests/fixtures")
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "simc"
 
 
 def test_tokenize_talent_name_normalizes_text() -> None:

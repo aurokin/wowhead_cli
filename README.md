@@ -100,6 +100,7 @@ If `wowhead` is not found, add `~/.local/bin` to your `PATH`.
 
 ```bash
 warcraft doctor
+warcraft --pretty search "defias"
 warcraft search "defias"
 warcraft guide-compare-query "mistweaver monk guide"
 warcraft warcraftlogs resolve "https://www.warcraftlogs.com/reports/abcd1234#fight=3"
@@ -123,12 +124,22 @@ Use `warcraft` when the source is unclear. Use `wowhead`, `method`, `icy-veins`,
 # fast local suite (fixture + unit tests)
 pytest -q
 
-# live contract checks against real Wowhead endpoints
-WOWHEAD_LIVE_TESTS=1 pytest -q -m live
+# live contract checks against every opted-in provider suite
+make test-live
+
+# one provider at a time
+WOWHEAD_LIVE_TESTS=1 pytest -q -m live tests/test_live_integration.py tests/test_live_endpoint_contracts.py
+METHOD_LIVE_TESTS=1 pytest -q -m live tests/test_method_live.py
+ICY_VEINS_LIVE_TESTS=1 pytest -q -m live tests/test_icy_veins_live.py
+RAIDERIO_LIVE_TESTS=1 pytest -q -m live tests/test_raiderio_live.py
+WARCRAFT_WIKI_LIVE_TESTS=1 pytest -q -m live tests/test_warcraft_wiki_live.py
+WOWPROGRESS_LIVE_TESTS=1 pytest -q -m live tests/test_wowprogress_live.py
+WARCRAFTLOGS_LIVE_TESTS=1 pytest -q -m live tests/test_warcraftlogs_live.py
+WARCRAFT_WRAPPER_LIVE_TESTS=1 pytest -q -m live tests/test_warcraft_wrapper_live.py
 ```
 
-Live checks can be run manually in GitHub Actions via `.github/workflows/live-wowhead-contracts.yml` (`workflow_dispatch`).
-Live coverage includes mixed entity-type (`item`, `quest`, `npc`, `spell`) contracts and cross-entity compare checks.
+Wowhead live checks can be run manually in GitHub Actions via `.github/workflows/live-wowhead-contracts.yml` (`workflow_dispatch`).
+Wowhead live coverage includes mixed entity-type (`item`, `quest`, `npc`, `spell`) contracts and cross-entity compare checks.
 
 ## Health Checks
 

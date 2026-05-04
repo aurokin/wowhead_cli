@@ -90,6 +90,7 @@ warcraft simc first-cast <simc-root>/profiles/MID1/MID1_Monk_Windwalker.simc tig
 ## Wrapper Conventions
 
 - Use `warcraft` when the provider is unclear.
+- Put global flags before the subcommand, for example `warcraft --pretty search "defias"` or `warcraft --expansion wotlk search "thunderfury"`.
 - Use `warcraft resolve` for a conservative next-command recommendation across providers.
 - Use `warcraft search` when you want to inspect candidates across providers.
 - Use `warcraft <provider> ...` when you already know which service you need.

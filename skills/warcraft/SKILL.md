@@ -16,6 +16,8 @@ Use `warcraft` first when the caller does not already know which provider they n
   - `warcraft <provider> ...`
 - Version-specific request:
   - `warcraft --expansion <profile> ...`
+- Global flags:
+  - put them before the subcommand, e.g. `warcraft --pretty search "<query>"`
 - Trust check:
   - `warcraft doctor`
 - Cross-provider guide evidence:
