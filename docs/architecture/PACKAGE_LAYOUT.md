@@ -12,7 +12,6 @@ It is the concrete companion to:
 
 Use:
 - a root developer workspace
-- a reserved `master/` checkout for machine-wide deploys
 - sibling branch worktrees for parallel work
 - one `pyproject.toml` per package
 - lightweight root scripts, docs, and shared tooling only
@@ -24,10 +23,9 @@ This gives us:
 
 Recommended operator layout:
 - parent workspace directory
-- `master/` as the stable checkout used for host-facing deploys
 - sibling branch directories for feature worktrees
 
-Only `master/` should own machine-wide deploys and stable skill exports. Branch worktrees should remain branch-local development environments.
+Worktree creation and trunk hygiene are handled outside this repo with `worktrunk`. This repo owns local editable install helpers and worktree-local runtime isolation only.
 
 ## Package Naming
 

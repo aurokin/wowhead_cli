@@ -188,37 +188,15 @@ Refactor in small slices:
 
 ## Path And Local Install
 
-For this machine, the efficient way to get all CLIs on `PATH` is already built into the repo.
-
-Use:
-
-```bash
-make stable-deploy
-```
-
-That script:
-- creates a stable venv under `~/.local/share/warcraft/`
-- installs the CLIs into that stable venv
-- writes wrapper scripts into `~/.local/bin` for:
-  - `warcraft`
-  - `wowhead`
-  - `method`
-  - `icy-veins`
-  - `raiderio`
-  - `warcraft-wiki`
-  - `wowprogress`
-  - `simc`
-  - `warcraftlogs`
-- exports stable skills under `~/.local/share/warcraft/skills/`
-
-For branch-local editable development, use:
+For local editable development, use:
 
 ```bash
 make dev-deploy-no-link
 ```
 
-That keeps the current checkout editable without making the host depend on that checkout path.
+That keeps the current checkout editable without rewriting host-level command wrappers.
 Use `make dev-deploy` only when you intentionally want `~/.local/bin` to point at the current checkout.
+Worktree creation and trunk hygiene are handled outside this repo with `worktrunk`.
 
 If this machine does not already have `~/.local/bin` on `PATH`, add:
 

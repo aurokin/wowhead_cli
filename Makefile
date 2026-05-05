@@ -15,7 +15,6 @@ WOWPROGRESS := $(VENV)/bin/wowprogress
 SIMC := $(VENV)/bin/simc
 LINT_PATHS := packages/warcraft-core packages/warcraft-api packages/warcraft-content
 LINT_ALL_PATHS := packages tests scripts
-WARCRAFT_STABLE_BRANCH ?= master
 LIVE_TEST_ENV := \
 	WOWHEAD_LIVE_TESTS=1 \
 	METHOD_LIVE_TESTS=1 \
@@ -26,20 +25,7 @@ LIVE_TEST_ENV := \
 	WARCRAFTLOGS_LIVE_TESTS=1 \
 	WARCRAFT_WRAPPER_LIVE_TESTS=1
 
-.PHONY: stable-deploy stable-deploy-no-link stable-rollback dev-deploy dev-deploy-no-link worktree-env export-stable-skills retire-dev-deploy worktree-add test test-live fmt-check lint lint-all complexity typecheck coverage deadcode run
-
-stable-deploy:
-	WARCRAFT_STABLE_BRANCH="$(WARCRAFT_STABLE_BRANCH)" ./scripts/stable_deploy.sh
-
-stable-deploy-no-link:
-	WARCRAFT_STABLE_BRANCH="$(WARCRAFT_STABLE_BRANCH)" ./scripts/stable_deploy.sh --no-link-bin
-
-stable-rollback:
-	@if [ -z "$(RELEASE)" ]; then \
-		echo 'Usage: make stable-rollback RELEASE="<release-id>"'; \
-		exit 2; \
-	fi
-	WARCRAFT_STABLE_BRANCH="$(WARCRAFT_STABLE_BRANCH)" WARCRAFT_STABLE_RELEASE_ID="$(RELEASE)" ./scripts/stable_rollback.sh
+.PHONY: dev-deploy dev-deploy-no-link worktree-env test test-live fmt-check lint lint-all complexity typecheck coverage deadcode run
 
 dev-deploy:
 	./scripts/dev_deploy.sh
@@ -49,19 +35,6 @@ dev-deploy-no-link:
 
 worktree-env:
 	./scripts/setup_worktree_env.sh
-
-export-stable-skills:
-	PYTHON_BIN="$${PYTHON_BIN:-python3}"; "$$PYTHON_BIN" scripts/export_stable_skills.py --output-dir "$${XDG_DATA_HOME:-$$HOME/.local/share}/warcraft/skills"
-
-retire-dev-deploy:
-	./scripts/retire_dev_deploy.sh
-
-worktree-add:
-	@if [ -z "$(BRANCH)" ]; then \
-		echo 'Usage: make worktree-add BRANCH="<branch-name>"'; \
-		exit 2; \
-	fi
-	WARCRAFT_STABLE_BRANCH="$(WARCRAFT_STABLE_BRANCH)" ./scripts/create_worktree.sh "$(BRANCH)" $(if $(filter 1 true yes,$(DEV_DEPLOY)),--dev-deploy,)
 
 test:
 	$(PYTEST) -q

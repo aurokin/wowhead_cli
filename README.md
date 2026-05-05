@@ -28,29 +28,9 @@ pip install -e '.[dev]'
 pip install -e '.[dev,redis]'
 ```
 
-## Stable Host Deploy
+## Local Editable Deploy
 
 ```bash
-# install a stable machine-wide runtime under ~/.local/share/warcraft
-make stable-deploy
-
-# roll back the stable runtime to an earlier immutable release
-make stable-rollback RELEASE="20260329010101-abc1234"
-
-warcraft doctor
-warcraft search "defias"
-```
-
-This writes `~/.local/bin/{warcraft,wowhead,method,icy-veins,raiderio,warcraft-wiki,wowprogress,warcraftlogs,simc}` wrappers that point at the stable `~/.local/share/warcraft/install/current/venv`, and it exports stable skills under `~/.local/share/warcraft/skills/`.
-By default the stable deploy stages a versioned release under `~/.local/share/warcraft/install/releases/<release-id>/` and then repoints `~/.local/share/warcraft/install/current/` only after the build succeeds.
-Because wrappers and exported skills follow `install/current`, rollback is just a repoint of that symlink. `make stable-rollback` is the preferred path, but manual rollback stays simple if you need it urgently.
-
-## Branch-Local Editable Deploy
-
-```bash
-# create a sibling worktree from the reserved master checkout
-make worktree-add BRANCH="feature-wrapper-routing"
-
 # setup/update the current checkout as an editable branch-local environment
 make dev-deploy-no-link
 
@@ -64,24 +44,11 @@ source .warcraft/worktree-env.sh
 WARCRAFT_ALLOW_LINK_BIN=1 make dev-deploy
 ```
 
-This project uses editable install mode (`pip install -e`) for branch-local development, so code changes are immediately reflected without rebuilding.
-Use `make dev-deploy-no-link` for branch worktrees so the host keeps pointing at the stable checkout.
-That branch-local setup writes `.warcraft/worktree-env.sh`, keeps credentials in the shared host config/state roots, and isolates branch-local data/cache under `.warcraft/runtime/`.
+This project uses editable install mode (`pip install -e`) for local development, so code changes are immediately reflected without rebuilding.
+Use `make dev-deploy-no-link` for normal branch work. It updates the checkout-local `.venv` and writes `.warcraft/worktree-env.sh` without rewriting host-level command wrappers.
+The generated worktree env keeps credentials in the shared host config/state roots and isolates branch-local data/cache under `.warcraft/runtime/`.
 Use `make worktree-env` whenever you want to regenerate or refresh that shell activation file explicitly.
-Only the reserved `master/` checkout should drive `make stable-deploy`, and that checkout should be clean before deploying.
-Use the same reserved `master/` checkout for `make stable-rollback` when you need to flip `install/current` back to an older release.
-Use `make worktree-add BRANCH="<name>"` from `master/` to create sibling worktrees under `~/code/warcraft_cli/`.
-This repo pins that stable branch policy to `master` through the Make targets, while the helper scripts still honor `WARCRAFT_STABLE_BRANCH` for repositories that use a different trunk branch.
-If a repository carries both local `master` and `main` branches without a usable `origin/HEAD`, set `WARCRAFT_STABLE_BRANCH` explicitly instead of relying on auto-detection.
-
-## Retiring The Old Repo-Local Deploy
-
-```bash
-# after stable-deploy has repointed ~/.local/bin away from this checkout
-make retire-dev-deploy
-```
-
-That command uninstalls the editable `warcraft` package from the repo-local `.venv` and archives the old `.venv` so the host no longer depends on the checkout path.
+Worktree creation and trunk hygiene are intentionally outside this repo and should be handled with `worktrunk`.
 If `wowhead` is not found, add `~/.local/bin` to your `PATH`.
 
 ## Supported Providers

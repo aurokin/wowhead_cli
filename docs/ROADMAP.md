@@ -34,7 +34,7 @@ Validated shared systems:
 - wrapper expansion filtering and provider metadata
 - ranking policy for wrapper discovery
 - sample-backed analytics direction for profile and leaderboard providers
-- stable host deploy and sibling worktree workflow
+- worktree-local data/cache isolation with shared config/state credentials
 
 ## Now
 
@@ -60,19 +60,11 @@ Highest-value work:
    - user-auth expansion only after the public/report contract is tighter
 
 Recently completed:
-- stable host deploy and sibling worktree migration
-- stable skill export and repo-local deploy retirement workflow
-- reserved `master/` checkout policy for machine-wide deploys
 - worktree-local data/cache isolation with shared config/state credentials
-- versioned stable release layout with atomic `install/current` activation
-- first-class stable rollback via immutable release repointing
+- removal of the repo-owned stable deploy, rollback, skill export, and worktree creation workflow
 
-Deferred operational follow-ups after the current PR cut:
-- optional release pruning after the rollback workflow has baked
-- optional automatic shell activation on worktree entry
-- optional worktree lease or registry coordination for multi-agent assignment
-
-See [architecture/WORKTREE_INSTALLATION_PLAN.md](architecture/WORKTREE_INSTALLATION_PLAN.md).
+Operational note:
+- worktree creation and trunk hygiene are owned outside this repo by `worktrunk`
 
 ## Provider Priorities
 
