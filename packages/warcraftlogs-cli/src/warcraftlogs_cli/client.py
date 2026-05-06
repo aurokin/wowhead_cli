@@ -1306,6 +1306,18 @@ class WarcraftLogsClient:
             raise WarcraftLogsClientError("user_token_expired", "Saved Warcraft Logs user token has expired. Re-run the auth flow.")
         return token
 
+    def _has_user_token(self) -> bool:
+        payload = load_provider_auth_state("warcraftlogs")
+        if not isinstance(payload, dict):
+            return False
+        if payload.get("auth_mode") not in {"authorization_code", "pkce"}:
+            return False
+        token = payload.get("access_token")
+        if not isinstance(token, str) or not token.strip():
+            return False
+        expires_at = payload.get("expires_at")
+        return not (isinstance(expires_at, (int, float)) and time.time() >= float(expires_at))
+
     @property
     def site(self) -> WarcraftLogsSiteProfile:
         return self._site
@@ -1372,7 +1384,12 @@ class WarcraftLogsClient:
         ttl_seconds: int,
         use_cache: bool = True,
     ) -> dict[str, Any]:
-        cache_payload = {"operation_name": operation_name, "variables": variables or {}}
+        cache_payload = {
+            "endpoint": "user",
+            "operation_name": operation_name,
+            "query": query,
+            "variables": variables or {},
+        }
         cache_key = self._cache_key(namespace, cache_payload)
         if use_cache:
             cached = self._read_cache(cache_key)
@@ -1451,7 +1468,21 @@ class WarcraftLogsClient:
         ttl_seconds: int,
         use_cache: bool = True,
     ) -> dict[str, Any]:
-        cache_payload = {"operation_name": operation_name, "query": query, "variables": variables or {}}
+        if self._has_user_token():
+            return self._graphql_user(
+                operation_name=operation_name,
+                query=query,
+                variables=variables,
+                namespace=namespace,
+                ttl_seconds=ttl_seconds,
+                use_cache=use_cache,
+            )
+        cache_payload = {
+            "endpoint": "client",
+            "operation_name": operation_name,
+            "query": query,
+            "variables": variables or {},
+        }
         cache_key = self._cache_key(namespace, cache_payload)
         if use_cache:
             cached = self._read_cache(cache_key)
