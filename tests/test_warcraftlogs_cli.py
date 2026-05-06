@@ -3790,24 +3790,6 @@ def test_warcraftlogs_client_has_user_token_returns_false_when_expired(monkeypat
     assert client._has_user_token() is False
 
 
-def test_warcraftlogs_client_has_user_token_returns_false_when_state_unreadable(monkeypatch) -> None:
-    def _raise_decode(provider: str) -> None:
-        raise json.JSONDecodeError("expecting value", "", 0)
-
-    monkeypatch.setattr("warcraftlogs_cli.client.load_provider_auth_state", _raise_decode)
-    client = WarcraftLogsClient.__new__(WarcraftLogsClient)
-    assert client._has_user_token() is False
-
-
-def test_warcraftlogs_client_has_user_token_returns_false_when_state_oserror(monkeypatch) -> None:
-    def _raise_oserror(provider: str) -> None:
-        raise OSError("permission denied")
-
-    monkeypatch.setattr("warcraftlogs_cli.client.load_provider_auth_state", _raise_oserror)
-    client = WarcraftLogsClient.__new__(WarcraftLogsClient)
-    assert client._has_user_token() is False
-
-
 def test_warcraftlogs_client_has_user_token_returns_true_for_valid_user_token(monkeypatch) -> None:
     monkeypatch.setattr(
         "warcraftlogs_cli.client.load_provider_auth_state",
@@ -4119,3 +4101,27 @@ def test_warcraftlogs_auth_token_warns_when_view_user_profile_missing(monkeypatc
     assert payload["token"]["scopes"]["granted"] == []
     assert payload["token"]["scopes"]["has_view_user_profile"] is False
     assert "view-user-profile" in payload["token"]["scope_warning"]
+
+
+def test_warcraftlogs_auth_token_survives_corrupt_state_file(monkeypatch, tmp_path) -> None:
+    state_dir = tmp_path / "state-home" / "warcraft" / "providers"
+    state_dir.mkdir(parents=True)
+    (state_dir / "warcraftlogs.json").write_text("{not-valid-json")
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state-home"))
+
+    result = runner.invoke(warcraftlogs_app, ["auth", "token"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["token"]["endpoint_family"] == "client"
+    assert payload["token"]["scopes"]["granted"] == []
+    assert payload["token"]["scopes"]["has_view_user_profile"] is False
+
+
+def test_warcraftlogs_client_has_user_token_survives_corrupt_state_file(monkeypatch, tmp_path) -> None:
+    state_dir = tmp_path / "state-home" / "warcraft" / "providers"
+    state_dir.mkdir(parents=True)
+    (state_dir / "warcraftlogs.json").write_text("{not-valid-json")
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state-home"))
+
+    client = WarcraftLogsClient.__new__(WarcraftLogsClient)
+    assert client._has_user_token() is False
