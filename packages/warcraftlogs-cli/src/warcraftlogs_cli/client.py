@@ -1307,7 +1307,10 @@ class WarcraftLogsClient:
         return token
 
     def _has_user_token(self) -> bool:
-        payload = load_provider_auth_state("warcraftlogs")
+        try:
+            payload = load_provider_auth_state("warcraftlogs")
+        except (OSError, json.JSONDecodeError):
+            return False
         if not isinstance(payload, dict):
             return False
         if payload.get("auth_mode") not in {"authorization_code", "pkce"}:

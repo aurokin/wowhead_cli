@@ -3790,6 +3790,24 @@ def test_warcraftlogs_client_has_user_token_returns_false_when_expired(monkeypat
     assert client._has_user_token() is False
 
 
+def test_warcraftlogs_client_has_user_token_returns_false_when_state_unreadable(monkeypatch) -> None:
+    def _raise_decode(provider: str) -> None:
+        raise json.JSONDecodeError("expecting value", "", 0)
+
+    monkeypatch.setattr("warcraftlogs_cli.client.load_provider_auth_state", _raise_decode)
+    client = WarcraftLogsClient.__new__(WarcraftLogsClient)
+    assert client._has_user_token() is False
+
+
+def test_warcraftlogs_client_has_user_token_returns_false_when_state_oserror(monkeypatch) -> None:
+    def _raise_oserror(provider: str) -> None:
+        raise OSError("permission denied")
+
+    monkeypatch.setattr("warcraftlogs_cli.client.load_provider_auth_state", _raise_oserror)
+    client = WarcraftLogsClient.__new__(WarcraftLogsClient)
+    assert client._has_user_token() is False
+
+
 def test_warcraftlogs_client_has_user_token_returns_true_for_valid_user_token(monkeypatch) -> None:
     monkeypatch.setattr(
         "warcraftlogs_cli.client.load_provider_auth_state",
